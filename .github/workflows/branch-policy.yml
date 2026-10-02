@@ -1,0 +1,34 @@
+name: Branch policy
+
+# Flujo de ramas del proyecto:
+#   feature/* | fix/*  ──PR──▶  dev  ──PR──▶  staging  ──PR──▶  production
+#   hotfix/*  ──PR──▶  production (y luego se baja a staging y dev)
+#
+# Este check falla si un PR intenta saltarse una etapa.
+
+on:
+  pull_request:
+    branches: [dev, staging, production]
+
+jobs:
+  check:
+    name: Allowed source branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate head → base
+        env:
+          HEAD: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          echo "PR: $HEAD → $BASE"
+          case "$BASE" in
+            production)
+              [[ "$HEAD" == "staging" || "$HEAD" == hotfix/* ]] && exit 0
+              echo "::error::A production solo entran PRs desde staging o hotfix/*"; exit 1 ;;
+            staging)
+              [[ "$HEAD" == "dev" || "$HEAD" == hotfix/* ]] && exit 0
+              echo "::error::A staging solo entran PRs desde dev o hotfix/*"; exit 1 ;;
+            dev)
+              [[ "$HEAD" == feature/* || "$HEAD" == fix/* || "$HEAD" == chore/* || "$HEAD" == hotfix/* || "$HEAD" == staging || "$HEAD" == production ]] && exit 0
+              echo "::error::A dev entran PRs desde feature/*, fix/*, chore/* o hotfix/*"; exit 1 ;;
+          esac

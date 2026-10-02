@@ -1,0 +1,22 @@
+{
+    "name": "logistics/shipments",
+    "description": "Recepción de envíos — plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\Shipments\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\Shipments\\Infrastructure\\Providers\\ShipmentsServiceProvider"
+            ]
+        }
+    }
+}

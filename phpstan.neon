@@ -1,0 +1,33 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - app
+        - packages/logistics
+        - database/factories
+        - database/seeders
+
+    excludePaths:
+        - packages/*/*/tests/*
+
+    # Mismo nivel que dis-commerce: 8 = máximo antes del inferrable-only 9
+    level: 8
+
+    checkModelProperties: true
+    checkOctaneCompatibility: true
+
+    ignoreErrors:
+        # UserFactory del skeleton usa array<string, mixed> genérico (mismo caso que dis-commerce).
+        -
+            identifier: method.childReturnType
+            path: database/factories/UserFactory.php
+
+        # Los config/ de packages usan env() legítimamente
+        -
+            identifier: larastan.noEnvCallsOutsideOfConfig
+            path: packages/logistics/*/config/*.php
+
+    reportUnmatchedIgnoredErrors: false
+
+    tmpDir: .phpstan.cache

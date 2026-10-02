@@ -1,0 +1,23 @@
+{
+    "name": "logistics/labels",
+    "description": "Etiquetas QR firmadas — plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "ext-sodium": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\Labels\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\Labels\\Infrastructure\\Providers\\LabelsServiceProvider"
+            ]
+        }
+    }
+}
