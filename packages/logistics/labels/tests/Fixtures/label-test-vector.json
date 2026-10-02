@@ -1,0 +1,8 @@
+{
+    "description": "Shared Ed25519 label test vector (logistics <-> logistics-app). Do not edit by hand.",
+    "key_id": 1,
+    "public_key_base64": "zOoO3DEULPdeVHmozqu0xm6E8njSdpO0jIZN7y+K/yo=",
+    "canonical": "LGL|1|PKG|1|01JB8ZQ4X7K2M9N5P6R7S8T9VW|DM-260012345|3|LG-GT32WPP|1/2|1/1|CD-SCZ|C|1759312800",
+    "qr_content": "{\"v\":1,\"t\":\"PKG\",\"k\":1,\"id\":\"01JB8ZQ4X7K2M9N5P6R7S8T9VW\",\"o\":\"DM-260012345\",\"ln\":3,\"sku\":\"LG-GT32WPP\",\"u\":[1,2],\"pc\":[1,1],\"org\":\"CD-SCZ\",\"dst\":\"C\",\"ts\":1759312800,\"s\":\"vGUuqT7zusA-xPjt0iW0TSy6i8F5QojH3ajEFLQ5b3Mf5ze9QOzTT1MHCk-9QnWYil2H5Hj9cBcC2awgauFADw\"}",
+    "tampered_qr_content": "{\"v\":1,\"t\":\"PKG\",\"k\":1,\"id\":\"01JB8ZQ4X7K2M9N5P6R7S8T9VW\",\"o\":\"DM-260099999\",\"ln\":3,\"sku\":\"LG-GT32WPP\",\"u\":[1,2],\"pc\":[1,1],\"org\":\"CD-SCZ\",\"dst\":\"C\",\"ts\":1759312800,\"s\":\"vGUuqT7zusA-xPjt0iW0TSy6i8F5QojH3ajEFLQ5b3Mf5ze9QOzTT1MHCk-9QnWYil2H5Hj9cBcC2awgauFADw\"}"
+}

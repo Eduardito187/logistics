@@ -1,0 +1,132 @@
+{
+    "$schema": "https://getcomposer.org/schema.json",
+    "name": "dismac/logistics",
+    "type": "project",
+    "description": "Dismac Logistics Platform — despacho, última milla y red logística. Laravel 13 + DDD, fuera del dominio SAP.",
+    "keywords": [
+        "dismac",
+        "logistics",
+        "dispatch",
+        "laravel",
+        "ddd"
+    ],
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "ext-sodium": "*",
+        "filament/filament": "^4.0",
+        "laravel/framework": "^13.17",
+        "laravel/sanctum": "^4.0",
+        "laravel/tinker": "^3.0",
+        "logistics/coverage": "^0.1",
+        "logistics/execution": "^0.1",
+        "logistics/fleet": "^0.1",
+        "logistics/labels": "^0.1",
+        "logistics/network": "^0.1",
+        "logistics/notifications": "^0.1",
+        "logistics/planning": "^0.1",
+        "logistics/shipments": "^0.1",
+        "logistics/tracking": "^0.1"
+    },
+    "require-dev": {
+        "fakerphp/faker": "^1.23",
+        "larastan/larastan": "^3.0",
+        "laravel/pail": "^1.2.5",
+        "laravel/pint": "^1.27",
+        "mockery/mockery": "^1.6",
+        "nunomaduro/collision": "^8.6",
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-laravel": "^4.0",
+        "phpunit/phpunit": "^12.5.12"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "packages/logistics/*",
+            "options": {
+                "symlink": true
+            }
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/",
+            "Database\\Factories\\": "database/factories/",
+            "Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/",
+            "Logistics\\Coverage\\Tests\\": "packages/logistics/coverage/tests/",
+            "Logistics\\Execution\\Tests\\": "packages/logistics/execution/tests/",
+            "Logistics\\Fleet\\Tests\\": "packages/logistics/fleet/tests/",
+            "Logistics\\Labels\\Tests\\": "packages/logistics/labels/tests/",
+            "Logistics\\Network\\Tests\\": "packages/logistics/network/tests/",
+            "Logistics\\Notifications\\Tests\\": "packages/logistics/notifications/tests/",
+            "Logistics\\Planning\\Tests\\": "packages/logistics/planning/tests/",
+            "Logistics\\Shipments\\Tests\\": "packages/logistics/shipments/tests/",
+            "Logistics\\Tracking\\Tests\\": "packages/logistics/tracking/tests/"
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": [
+            "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+            "@php artisan package:discover --ansi",
+            "@php artisan filament:upgrade"
+        ],
+        "post-update-cmd": [
+            "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
+        ],
+        "post-root-package-install": [
+            "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
+        ],
+        "pre-package-uninstall": [
+            "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "test": [
+            "@php artisan config:clear --ansi",
+            "@php ./vendor/bin/pest"
+        ],
+        "test:unit": "@php ./vendor/bin/pest --testsuite=Unit",
+        "test:feature": "@php ./vendor/bin/pest --testsuite=Feature",
+        "test:coverage": "@php ./vendor/bin/pest --coverage --min=75",
+        "stan": "@php ./vendor/bin/phpstan analyse --memory-limit=1G",
+        "pint": "@php ./vendor/bin/pint",
+        "pint:check": "@php ./vendor/bin/pint --test",
+        "lint": [
+            "@pint:check",
+            "@stan"
+        ],
+        "ci": [
+            "@lint",
+            "@test"
+        ]
+    },
+    "extra": {
+        "laravel": {
+            "dont-discover": [
+                "logistics/coverage",
+                "logistics/execution",
+                "logistics/fleet",
+                "logistics/labels",
+                "logistics/network",
+                "logistics/notifications",
+                "logistics/planning",
+                "logistics/shipments",
+                "logistics/tracking"
+            ]
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "php-http/discovery": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
