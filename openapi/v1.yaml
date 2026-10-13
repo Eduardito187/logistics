@@ -1,0 +1,62 @@
+openapi: 3.1.0
+info:
+  title: Dismac Logistics API
+  version: 1.0.0
+  description: |
+    Contrato de la plataforma logística Dismac. Es la FUENTE DE VERDAD entre este backend y la
+    app interna (logistics-app), que genera su cliente Dart a partir de este archivo.
+
+    Tres puertas:
+      - /api/v1/app/*          → app interna Flutter (tokens por usuario + dispositivo)
+      - /api/v1/channels/*     → app de clientes, web, call center (credenciales por canal)
+      - /api/v1/integrations/* → SAP, transportistas, webhooks (credenciales de servicio)
+
+    Regla: todo endpoint nuevo se agrega acá en el mismo cambio que lo implementa.
+    Un cambio incompatible exige /v2: siempre habrá choferes con una versión vieja de la app.
+servers:
+  - url: http://localhost:8110/api/v1
+    description: Desarrollo local (docker compose)
+tags:
+  - name: system
+    description: Salud y metadatos de la API
+paths:
+  /health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: Health of the API and its critical dependencies
+      responses:
+        '200':
+          description: All dependencies are healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: At least one dependency is down
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status, api_version, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        api_version:
+          type: string
+          example: v1
+        checks:
+          type: object
+          required: [database, cache]
+          properties:
+            database:
+              type: boolean
+              description: PostgreSQL reachable with PostGIS enabled
+            cache:
+              type: boolean
+              description: Valkey reachable

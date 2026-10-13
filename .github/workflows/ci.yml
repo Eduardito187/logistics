@@ -1,0 +1,131 @@
+name: CI
+
+# Corre en cada PR hacia las ramas de entorno y en cada push a ellas (después del merge).
+on:
+  push:
+    branches: [dev, staging, production]
+  pull_request:
+    branches: [dev, staging, production]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PHP_VERSION: '8.4'
+
+jobs:
+  lint:
+    name: Lint (Pint + PHPStan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
+          tools: composer:v2
+          coverage: none
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Pint
+        run: ./vendor/bin/pint --test
+
+      - name: PHPStan
+        run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+
+  test:
+    name: Tests (Pest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: logistics_test
+          POSTGRES_USER: logistics
+          POSTGRES_PASSWORD: logistics
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U logistics -d logistics_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="valkey-cli ping"
+          --health-interval=10s
+          --health-timeout=3s
+          --health-retries=5
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_USERNAME: logistics
+      DB_PASSWORD: logistics
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
+          tools: composer:v2
+          coverage: pcov
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          PGPASSWORD=logistics psql -h 127.0.0.1 -U logistics -d logistics_test -c 'CREATE EXTENSION IF NOT EXISTS postgis;'
+
+      - name: Pest
+        run: ./vendor/bin/pest
+
+  image:
+    name: Build production image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Valida que la imagen de producción construye (composer --no-dev + caches de Laravel).
+      # Todavía no se publica en ningún registry: eso llega con el pipeline de deploy.
+      - name: Build (target prod)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .docker/php/Dockerfile
+          target: prod
+          push: false
+          tags: dismac/logistics-app:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

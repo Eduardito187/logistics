@@ -1,0 +1,65 @@
+# ============================================================
+# .dockerignore — logistics
+# Archivos que NO se copian al build de imágenes
+# ============================================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Env local (usar variables Docker o .env dentro del container)
+.env
+.env.*
+!.env.example
+
+# Dependencias (se instalan dentro del container)
+vendor/
+node_modules/
+
+# Storage runtime
+storage/logs/*
+!storage/logs/.gitkeep
+storage/framework/cache/*
+!storage/framework/cache/.gitkeep
+storage/framework/sessions/*
+!storage/framework/sessions/.gitkeep
+storage/framework/views/*
+!storage/framework/views/.gitkeep
+storage/framework/testing/*
+!storage/framework/testing/.gitkeep
+storage/app/public/*
+!storage/app/public/.gitkeep
+
+# Bootstrap cache
+bootstrap/cache/*.php
+!bootstrap/cache/.gitkeep
+
+# Tests (para prod build)
+.phpunit.result.cache
+.phpunit.cache/
+tests/coverage/
+
+# Docker orquestación (no se copia al build, pero el build SÍ necesita .docker/)
+docker-compose*.yml
+.docker/data/
+
+# Docs
+docs/
+*.md
+!README.md
+
+# IDE
+.idea/
+.vscode/
+.fleet/
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Herramientas dev
+.phpstan.cache/
+.php-cs-fixer.cache
+.pint.cache

@@ -1,0 +1,23 @@
+{
+    "name": "logistics/promise",
+    "description": "Promesa de entrega para canales: fechas y franjas disponibles, reserva temporal de cupo — plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\Promise\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\Promise\\Infrastructure\\Providers\\PromiseServiceProvider"
+            ]
+        }
+    }
+}

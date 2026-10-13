@@ -1,0 +1,23 @@
+{
+    "name": "logistics/sap-connector",
+    "description": "Conector SAP (capa anti-corrupción) — plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\SapConnector\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\SapConnector\\Infrastructure\\Providers\\SapConnectorServiceProvider"
+            ]
+        }
+    }
+}

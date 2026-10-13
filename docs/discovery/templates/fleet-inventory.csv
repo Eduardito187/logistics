@@ -1,0 +1,4 @@
+plate,capacity_kg,capacity_m3,home_base_node_code,status,doc_type,doc_expires_on,notes
+1234-ABC,3500,18.000,CD-LP-01,available,soat,2026-12-31,Camión rígido mediano; una fila por documento con vencimiento
+1234-ABC,3500,18.000,CD-LP-01,available,inspeccion_tecnica,2026-11-15,Repetir la placa en cada fila de documento
+5678-XYZ,8000,42.500,CD-SCZ-01,maintenance,soat,2027-03-20,En taller por frenos; status: available/in_service/maintenance/inactive
