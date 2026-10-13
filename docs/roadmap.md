@@ -16,17 +16,28 @@ completa (CD→cliente, CD→CD, CD→tienda, tienda→tienda, tienda→CD y rec
 - `[~]` parcial / en progreso.
 - `[ ]` pendiente.
 
-## Avance 2026-10-13 (DDD + CQRS + UUID v7 + outbox)
+## Avance 2026-10-13 (DDD + CQRS + Clean Architecture + UUID v7 + outbox)
 
-Construido en esta tanda, **compilado (`php -l` limpio) con tests escritos**, pero **sin verificar en
-containers** (Docker/vendor no disponibles en la sesión): por la regla #1 de `CLAUDE.md` no cuenta como
-"terminado" hasta correr `pest` + `phpstan` 8 + `pint` + verificación real. Marcado `[~]`.
+Construido en esta sesión, **compilado (`php -l` limpio) con tests escritos**, pero **sin verificar en
+containers** (Docker/vendor no disponibles): por la regla #1 de `CLAUDE.md` no cuenta como "terminado"
+hasta correr `pest` + `phpstan` 8 + `pint` + verificación real. Marcado `[~]`. Total: **16 packages,
+572 archivos PHP, 53 de tests**, todos con `php -l` limpio.
 
-- `[~]` Núcleo `logistics/shared`: UUID v7, `AbstractId`, `AggregateRoot` + eventos inmutables, buses CQRS (`CommandBus`/`QueryBus` + `HandlerRegistry`), `Clock`. ADR 008.
-- `[~]` `logistics/outbox`: transactional outbox (idempotencia por `event_id`, `SKIP LOCKED` + lease, backoff, dead-letter, comando relay).
-- `[~]` `logistics/settings`: configuración versionada por clave (CQRS).
-- `[~]` `logistics/network`, `logistics/fleet`, `logistics/coverage`, `logistics/shipments`: dominio + CQRS + repos Eloquent + migraciones (PostGIS en network/coverage).
-- Pendiente inmediato de estos contextos: **wiring del outbox** en los handlers (hoy `releaseEvents()` con TODO), **Filament**, **endpoints HTTP** + `openapi`, geocodificador real, y la **verificación en containers**.
+**Fundación (`[~]` código):**
+- `logistics/shared`: UUID v7, `AbstractId`, `AggregateRoot` + eventos inmutables, buses CQRS (`CommandBus`/`QueryBus` + `HandlerRegistry`), `Clock`. ADR 008.
+- `logistics/outbox`: transactional outbox (idempotencia por `event_id`, `SKIP LOCKED` + lease, backoff, dead-letter, relay).
+- `logistics/settings`: configuración versionada por clave (CQRS).
+
+**Fase 1 — bounded contexts (`[~]` código): los 9 con dominio + CQRS + repos Eloquent + migraciones.**
+- `network`, `coverage` (PostGIS punto→zona), `fleet`, `shipments`, `labels` (ZPL + pre-emisión + claves públicas), `planning` (tablero vía RouteOptimizer stub), `execution` (escaneos inmutables, POD, offline idempotente), `tracking` (página pública sin PII, proyección), `notifications` (cascada FCM/web push/email/SMS, ADR 006).
+
+**Fase 2 — packages nuevos (`[~]` código), registrados en raíz:**
+- `capacity` (cupos), `promise` (promesa + reserva), `sap-connector` (ACL SAP, traspasos idempotentes), `carriers` (tarifas por corredor).
+
+**Fase 0 — Discovery toolkit (`[x]` entregado, scripts verificados ejecutándolos):**
+- `docs/discovery/` (plan, KPIs, ingreso de pedidos, calidad de coordenadas, inventarios, satisfacción, accesos) + `tools/discovery/` (validador de pedidos y analizador de coordenadas en PHP stdlib).
+
+**Pendiente inmediato (lo que falta para cerrar lo `[~]`):** **verificación en containers** (pest/phpstan 8/pint — necesita Docker), **wiring del outbox** en los handlers (hoy `releaseEvents()` con `// TODO(outbox)`), **Filament/HTTP + `openapi`**, geocodificador real, auth/API gates, app Flutter, tableros React, infra/deploy.
 
 ## Estado actual (línea base, 2026-10)
 
