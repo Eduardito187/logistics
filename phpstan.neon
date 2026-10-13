@@ -17,6 +17,12 @@ parameters:
     checkModelProperties: true
     checkOctaneCompatibility: true
 
+    # Los handlers CQRS declaran su tipo concreto por genéricos (@implements CommandHandler<X>),
+    # así que PHPStan trata los instanceof/asserts de narrowing como "siempre verdaderos". Esos
+    # tipos vienen de PHPDoc; desactivamos la certeza de PHPDoc (sugerencia del propio PHPStan)
+    # para no exigir asserts redundantes en cada handler. El nivel 8 se mantiene.
+    treatPhpDocTypesAsCertain: false
+
     ignoreErrors:
         # UserFactory del skeleton usa array<string, mixed> genérico (mismo caso que dis-commerce).
         -
@@ -27,6 +33,23 @@ parameters:
         -
             identifier: larastan.noEnvCallsOutsideOfConfig
             path: packages/logistics/*/config/*.php
+
+        # Los repos Eloquent devuelven arrays secuenciales (listas en runtime) que PHPStan no puede
+        # probar como list<> a partir del tipo que infiere de Eloquent/array_map.
+        -
+            identifier: return.type
+            path: packages/logistics/*/src/Infrastructure/Persistence/Eloquent/*
+
+        # El @var del handler resuelto por el bus no fija el genérico T (se despacha por el registry).
+        -
+            identifier: missingType.generics
+            path: packages/logistics/shared/src/Infrastructure/Bus/*
+
+        # Binding de los buses CQRS: larastan sugiere bind/closure para Octane; el contenedor se
+        # reinyecta por request, así que la captura es intencional y segura acá.
+        -
+            identifier: larastan.octaneCompatibility
+            path: packages/logistics/shared/src/Infrastructure/Providers/SharedServiceProvider.php
 
     reportUnmatchedIgnoredErrors: false
 
