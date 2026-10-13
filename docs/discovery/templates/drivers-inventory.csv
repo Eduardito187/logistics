@@ -1,0 +1,3 @@
+full_name,license_number,license_expiry,enabled_vehicle_plates,active,notes
+Juan Perez Mamani,LC-00123,2027-05-10,1234-ABC;5678-XYZ,true,Vehiculos habilitados separados por punto y coma
+Maria Quispe Flores,LC-04567,2026-10-30,1234-ABC,false,Inactiva por licencia proxima a vencer; active: true/false
