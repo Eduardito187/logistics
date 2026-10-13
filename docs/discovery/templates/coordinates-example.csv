@@ -1,0 +1,16 @@
+id,customer,address_text,lat,lng,department,source
+1,Ferreteria La Esperanza,"Av. Cristo Redentor #2450, 3er anillo externo",-17.783327,-63.182103,Santa Cruz,sap
+2,Comercial Andina,"Calle Comercio #145, zona central",-16.495321,-68.133234,La Paz,sap
+3,Distribuidora El Alto,"Av. 6 de Marzo km 4, El Alto",-16.511872,-68.163455,La Paz,magento
+4,Tienda San Jorge,"C. Capitan Ravelo #2010, zona Sopocachi",,,Cochabamba,manual
+5,Minimarket Las Palmas,"Av. Blanco Galindo km 6",-17.389456,,Cochabamba,manual
+6,Hardware Center,"Av. Banzer #789, 4to anillo",-17.750000,-63.150000,Santa Cruz,sap
+7,Construmart Norte,"Av. Banzer #791, 4to anillo",-17.750000,-63.150000,Santa Cruz,sap
+8,Deposito Central PI,"Parque Industrial manzana PI-12",95.123456,-63.200000,Santa Cruz,manual
+9,Bazar Primavera,"Calle Sucre #330, centro",-19.047321,-200.123456,Potosi,manual
+10,Importadora Pacifico,"Oficina central (coordenada heredada)",-15.000000,-35.000000,Santa Cruz,magento
+11,Muebleria del Sur,"Zona Sur s/n, cerca del puente",-17,-63,Cochabamba,manual
+12,Comercial Tarija,"Av. La Paz #88, barrio El Molino",-21,-64,Tarija,manual
+13,Agropecuaria Oriente,"Carretera al Norte km 10",-17.806789,-63.201445,Santa Cruz,sap
+14,Libreria Potosi,"Calle Bolivar #210, centro historico",-19.583210,-65.753412,Potosi,magento
+15,Kiosco Central,"Mercado Abasto puesto 12",-21.535678,-64.729834,,manual
