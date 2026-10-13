@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Providers\AppServiceProvider;
 use App\Providers\Filament\AdminPanelProvider;
+use Logistics\Capacity\Infrastructure\Providers\CapacityServiceProvider;
+use Logistics\Carriers\Infrastructure\Providers\CarriersServiceProvider;
 use Logistics\Coverage\Infrastructure\Providers\CoverageServiceProvider;
 use Logistics\Execution\Infrastructure\Providers\ExecutionServiceProvider;
 use Logistics\Fleet\Infrastructure\Providers\FleetServiceProvider;
@@ -12,6 +14,8 @@ use Logistics\Network\Infrastructure\Providers\NetworkServiceProvider;
 use Logistics\Notifications\Infrastructure\Providers\NotificationsServiceProvider;
 use Logistics\Outbox\Infrastructure\Providers\OutboxServiceProvider;
 use Logistics\Planning\Infrastructure\Providers\PlanningServiceProvider;
+use Logistics\Promise\Infrastructure\Providers\PromiseServiceProvider;
+use Logistics\SapConnector\Infrastructure\Providers\SapConnectorServiceProvider;
 use Logistics\Settings\Infrastructure\Providers\SettingsServiceProvider;
 use Logistics\Shared\Infrastructure\Providers\SharedServiceProvider;
 use Logistics\Shipments\Infrastructure\Providers\ShipmentsServiceProvider;
@@ -46,6 +50,12 @@ return [
     // Visibilidad
     TrackingServiceProvider::class,
     NotificationsServiceProvider::class,
+
+    // Fase 2 — Prometer: cupos, promesa, conector SAP y transportistas
+    CapacityServiceProvider::class,
+    PromiseServiceProvider::class,
+    SapConnectorServiceProvider::class,
+    CarriersServiceProvider::class,
 
     // Admin web (al final: los resources de cada contexto ya están registrados)
     AdminPanelProvider::class,
