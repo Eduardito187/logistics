@@ -18,8 +18,12 @@ Imprimir: la app envía el ZPL a la impresora.
 | `SodiumLabelSigner` / `SodiumLabelVerifier` con rotación por `k` | Implementado |
 | `php artisan logistics:labels:keygen` | Implementado |
 | Vector de prueba compartido con la app | Implementado |
-| Emisión ligada a envíos, revocación, duplicados | Pendiente (depende de shipments/execution) |
-| Plantillas ZPL y pre-emisión offline | Pendiente |
+| Generación ZPL para Zebra ZQ630 Plus (`ZplLabelRenderer`) | Implementado |
+| Pre-emisión por lote (`LabelBatchFactory`): una etiqueta por bulto, `u`/`pc` N de M | Implementado |
+| CQRS: `EmitShipmentLabels` + `GetShipmentLabels` (sobre `logistics/shared`) | Implementado |
+| Persistencia de emitidas + detección de duplicados por `id` único (`labels_emitted`) | Implementado |
+| `php artisan logistics:labels:public-keys` (bundle de claves para la app) | Implementado |
+| Revocación por reimpresión | Pendiente (depende de execution) |
 | Payloads de MAN, NOD, VEH, DLV | Pendiente |
 
 ## Uso
