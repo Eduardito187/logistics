@@ -8,6 +8,8 @@ use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
 use Logistics\Tracking\Application\Command\OpenTracking\OpenTracking;
 use Logistics\Tracking\Application\Command\OpenTracking\OpenTrackingHandler;
+use Logistics\Tracking\Application\Command\PlaceShipmentOnRoute\PlaceShipmentOnRoute;
+use Logistics\Tracking\Application\Command\PlaceShipmentOnRoute\PlaceShipmentOnRouteHandler;
 use Logistics\Tracking\Application\Command\ProjectExecutionEvent\ProjectExecutionEvent;
 use Logistics\Tracking\Application\Command\ProjectExecutionEvent\ProjectExecutionEventHandler;
 use Logistics\Tracking\Application\Command\UpdateTruckPosition\UpdateTruckPosition;
@@ -41,6 +43,7 @@ final class TrackingServiceProvider extends ServiceProvider
         $registry = $this->app->make(HandlerRegistry::class);
         $registry->register(OpenTracking::class, OpenTrackingHandler::class);
         $registry->register(ProjectExecutionEvent::class, ProjectExecutionEventHandler::class);
+        $registry->register(PlaceShipmentOnRoute::class, PlaceShipmentOnRouteHandler::class);
         $registry->register(UpdateTruckPosition::class, UpdateTruckPositionHandler::class);
         $registry->register(GetPublicTracking::class, GetPublicTrackingHandler::class);
         $registry->register(GetShipmentTracking::class, GetShipmentTrackingHandler::class);

@@ -24,4 +24,11 @@ enum ScanType: string
 
     /** Recepción del bulto en un nodo logístico. */
     case NodeReception = 'NODE_RECEPTION';
+
+    /**
+     * Punto GPS de tránsito (breadcrumb): posición del vehículo en ruta entre paradas. No es un hito de
+     * la máquina de estados —no mueve la entrega ni graba evento de negocio—, solo telemetría del
+     * recorrido real para el mapa. Se registra en secuencia creciente mientras el camión se desplaza.
+     */
+    case InTransit = 'IN_TRANSIT';
 }

@@ -53,6 +53,29 @@ final class EloquentCapacityRepository implements CapacityRepository
         TimeSlot $slot,
         CapacityUnit $unit,
     ): ?CapacityBucket {
+        return $this->findBucketRecord($scope, $date, $slot, $unit, lockForUpdate: false);
+    }
+
+    public function findBucketForUpdate(
+        BucketScope $scope,
+        SlotDate $date,
+        TimeSlot $slot,
+        CapacityUnit $unit,
+    ): ?CapacityBucket {
+        return $this->findBucketRecord($scope, $date, $slot, $unit, lockForUpdate: true);
+    }
+
+    /**
+     * Resuelve el bucket por su clave natural, con o sin lock pesimista. Con lock, debe correr dentro de
+     * una transacción (la del CommandBus); fuera de transacción el lock no tiene efecto útil.
+     */
+    private function findBucketRecord(
+        BucketScope $scope,
+        SlotDate $date,
+        TimeSlot $slot,
+        CapacityUnit $unit,
+        bool $lockForUpdate,
+    ): ?CapacityBucket {
         $query = CapacityBucketRecord::query()
             ->where('slot_date', $date->toString())
             ->where('time_slot', $slot->toString())
@@ -65,6 +88,10 @@ final class EloquentCapacityRepository implements CapacityRepository
         $scope->zoneId === null
             ? $query->whereNull('zone_id')
             : $query->where('zone_id', $scope->zoneId);
+
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
 
         $record = $query->first();
 

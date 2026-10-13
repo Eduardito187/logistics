@@ -1,0 +1,365 @@
+# Fragmento OpenAPI del bounded context Outbox (transactional outbox).
+#
+# Archivo NUEVO: el integrador mergea estos `paths` y `components` en openapi/v1.yaml.
+# Las rutas son relativas al server (http://.../api/v1); por eso empiezan en /app o /integrations
+# (dos de las tres puertas; el outbox no expone nada por /channels). No editar openapi/v1.yaml aquí.
+
+paths:
+  /app/outbox/messages:
+    get:
+      tags: [outbox]
+      operationId: appListOutboxMessages
+      summary: List outbox messages (internal app)
+      description: >-
+        Paginated list of outbox messages for the operations control tower, optionally filtered by
+        status (pending, failed, dispatched, dead_lettered).
+      parameters:
+        - $ref: '#/components/parameters/OutboxStatusFilter'
+        - $ref: '#/components/parameters/OutboxPage'
+        - $ref: '#/components/parameters/OutboxPerPage'
+      responses:
+        '200':
+          description: A page of outbox messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxMessagePage'
+        '422':
+          $ref: '#/components/responses/OutboxValidationError'
+
+  /app/outbox/messages/stats:
+    get:
+      tags: [outbox]
+      operationId: appGetOutboxStats
+      summary: Outbox message counts by status (internal app)
+      description: Count of messages per status plus the live backlog (pending + failed).
+      responses:
+        '200':
+          description: Message counts by status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxStatsEnvelope'
+
+  /app/outbox/messages/{id}:
+    get:
+      tags: [outbox]
+      operationId: appGetOutboxMessage
+      summary: Get one outbox message (internal app)
+      description: Full detail of a message, including its payload and last error.
+      parameters:
+        - $ref: '#/components/parameters/OutboxMessageId'
+      responses:
+        '200':
+          description: The message was found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxMessageEnvelope'
+        '404':
+          $ref: '#/components/responses/OutboxNotFound'
+
+  /app/outbox/messages/{id}/retry:
+    post:
+      tags: [outbox]
+      operationId: appRetryOutboxMessage
+      summary: Requeue an outbox message (internal app)
+      description: >-
+        Requeues a failed or dead-lettered message so the relay dispatches it again. Resets the retry
+        counter and makes it available immediately. Rejected for already dispatched messages.
+      parameters:
+        - $ref: '#/components/parameters/OutboxMessageId'
+      responses:
+        '202':
+          description: The message was requeued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxActionEnvelope'
+        '404':
+          $ref: '#/components/responses/OutboxNotFound'
+        '422':
+          $ref: '#/components/responses/OutboxValidationError'
+
+  /app/outbox/messages/{id}/discard:
+    post:
+      tags: [outbox]
+      operationId: appDiscardOutboxMessage
+      summary: Discard an outbox message (internal app)
+      description: >-
+        Manually sends a dispatchable message to dead-letter with an audit reason, without waiting for
+        the retries to run out.
+      parameters:
+        - $ref: '#/components/parameters/OutboxMessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscardOutboxMessageRequest'
+      responses:
+        '202':
+          description: The message was discarded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxActionEnvelope'
+        '404':
+          $ref: '#/components/responses/OutboxNotFound'
+        '422':
+          $ref: '#/components/responses/OutboxValidationError'
+
+  /integrations/outbox/stats:
+    get:
+      tags: [outbox]
+      operationId: integrationsGetOutboxStats
+      summary: Outbox message counts by status (integrations)
+      description: 'Monitoring endpoint for services: message counts per status and backlog.'
+      responses:
+        '200':
+          description: Message counts by status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxStatsEnvelope'
+
+  /integrations/outbox/relay:
+    post:
+      tags: [outbox]
+      operationId: integrationsRelayOutbox
+      summary: Dispatch a batch of outbox messages (integrations)
+      description: >-
+        Runs the relay on demand (besides the scheduler). Dispatches up to `limit` dispatchable
+        messages and returns the run summary.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelayOutboxRequest'
+      responses:
+        '200':
+          description: Relay run summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelayOutboxResultEnvelope'
+        '422':
+          $ref: '#/components/responses/OutboxValidationError'
+
+components:
+  parameters:
+    OutboxMessageId:
+      name: id
+      in: path
+      required: true
+      description: Outbox message id (UUID v7).
+      schema:
+        type: string
+        format: uuid
+    OutboxStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Filter by message status.
+      schema:
+        $ref: '#/components/schemas/OutboxStatus'
+    OutboxPage:
+      name: page
+      in: query
+      required: false
+      description: 1-based page number.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    OutboxPerPage:
+      name: per_page
+      in: query
+      required: false
+      description: Page size (max 200).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 25
+
+  responses:
+    OutboxValidationError:
+      description: Input validation or business rule violation
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/OutboxProblem'
+    OutboxNotFound:
+      description: No outbox message exists with the requested id
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/OutboxProblem'
+
+  schemas:
+    OutboxStatus:
+      type: string
+      enum: [pending, failed, dispatched, dead_lettered]
+      description: Lifecycle status of an outbox message.
+
+    OutboxMessage:
+      type: object
+      required: [id, event_id, aggregate_type, aggregate_id, event_name, payload, status, attempts, available_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+          description: Idempotency key; appending the same event twice is a no-op.
+        aggregate_type:
+          type: string
+          example: network.node
+        aggregate_id:
+          type: string
+          format: uuid
+        event_name:
+          type: string
+          example: network.node_registered
+        payload:
+          type: object
+          additionalProperties: true
+        status:
+          $ref: '#/components/schemas/OutboxStatus'
+        attempts:
+          type: integer
+          minimum: 0
+        available_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        dispatched_at:
+          type: [string, 'null']
+          format: date-time
+        last_error:
+          type: [string, 'null']
+
+    OutboxMessageEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/OutboxMessage'
+
+    OutboxMessagePage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutboxMessage'
+        meta:
+          type: object
+          required: [total, page, per_page, last_page]
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            per_page:
+              type: integer
+            last_page:
+              type: integer
+
+    OutboxStats:
+      type: object
+      required: [pending, failed, dispatched, dead_lettered, backlog, total]
+      properties:
+        pending:
+          type: integer
+        failed:
+          type: integer
+        dispatched:
+          type: integer
+        dead_lettered:
+          type: integer
+        backlog:
+          type: integer
+          description: Live queue (pending + failed).
+        total:
+          type: integer
+
+    OutboxStatsEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/OutboxStats'
+
+    OutboxActionEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, status]
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              $ref: '#/components/schemas/OutboxStatus'
+
+    DiscardOutboxMessageRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Audit reason stored in last_error.
+
+    RelayOutboxRequest:
+      type: object
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: Max messages to dispatch in this run (defaults to server config).
+
+    RelayOutboxResult:
+      type: object
+      required: [pulled, dispatched, failed, dead_lettered]
+      properties:
+        pulled:
+          type: integer
+        dispatched:
+          type: integer
+        failed:
+          type: integer
+        dead_lettered:
+          type: integer
+
+    RelayOutboxResultEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/RelayOutboxResult'
+
+    OutboxProblem:
+      type: object
+      description: RFC 7807 problem document.
+      required: [title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

@@ -29,6 +29,12 @@ parameters:
             identifier: method.childReturnType
             path: database/factories/UserFactory.php
 
+        # Las factories de los packages usan el mismo array<string, mixed> genérico que UserFactory:
+        # Laravel exige array<model property, mixed> en el padre, que es un falso positivo acá.
+        -
+            identifier: method.childReturnType
+            path: packages/logistics/*/src/Infrastructure/Persistence/Eloquent/Factory/*
+
         # Los config/ de packages usan env() legítimamente
         -
             identifier: larastan.noEnvCallsOutsideOfConfig

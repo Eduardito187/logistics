@@ -1,0 +1,265 @@
+# Fragmento OpenAPI del contexto TRACKING (visibilidad del envío).
+#
+# Archivo NUEVO: NO toca openapi/v1.yaml. El integrador fusiona estos `paths`, `components.schemas` y
+# `tags` en el contrato raíz (P1-API-05: endpoint nuevo = spec en el mismo cambio). Las rutas acá son
+# relativas al servidor /api/v1 declarado en v1.yaml. La seguridad por puerta (token usuario+dispositivo,
+# credencial por canal, credencial de servicio) la define el integrador junto con los securitySchemes.
+openapi: 3.1.0
+info:
+  title: Dismac Logistics API — Tracking fragment
+  version: 1.0.0
+tags:
+  - name: tracking
+    description: Visibilidad del envío — página pública por token, seguimiento interno e ingesta de GPS
+paths:
+  /channels/tracking/{token}:
+    get:
+      tags: [tracking]
+      operationId: getPublicTracking
+      summary: Public tracking page by opaque token (no PII)
+      description: >
+        Puerta channels. Devuelve el estado visible del envío, cuántas paradas faltan antes de la del
+        cliente (remaining_stops), su posición en la ruta (route_position), un mensaje legible en
+        español ("Tu pedido está a N paradas"), la ETA y la última posición del camión. No expone datos
+        personales ni claves internas.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Token opaco del enlace de rastreo
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: Seguimiento encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PublicTracking'
+        '404':
+          description: Ningún seguimiento corresponde al token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /app/tracking/shipments/{shipmentId}:
+    get:
+      tags: [tracking]
+      operationId: getShipmentTracking
+      summary: Internal shipment tracking by shipment id
+      description: >
+        Puerta app (personal interno). Devuelve el seguimiento completo, incluidas las claves internas
+        (id de seguimiento, id de envío y token).
+      parameters:
+        - $ref: '#/components/parameters/ShipmentId'
+      responses:
+        '200':
+          description: Seguimiento encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ShipmentTracking'
+        '404':
+          description: El envío todavía no tiene seguimiento abierto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /app/tracking/shipments/{shipmentId}/position:
+    post:
+      tags: [tracking]
+      operationId: ingestTruckPositionFromApp
+      summary: Ingest live GPS position from the driver app
+      description: >
+        Puerta app (flujo del chofer). Escritura de alta frecuencia (~3 req/s). El mismo caso de uso se
+        expone en la puerta integrations para telemetría externa normalizada.
+      parameters:
+        - $ref: '#/components/parameters/ShipmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TruckPositionInput'
+      responses:
+        '202':
+          $ref: '#/components/responses/PositionAccepted'
+        '422':
+          description: Posición rechazada por una regla de negocio del dominio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /integrations/tracking/shipments/{shipmentId}/position:
+    post:
+      tags: [tracking]
+      operationId: ingestTruckPositionFromIntegration
+      summary: Ingest live GPS position from external telemetry
+      description: >
+        Puerta integrations (credenciales de servicio). Telemetría externa ya normalizada; mismo caso de
+        uso que la ingesta de la app.
+      parameters:
+        - $ref: '#/components/parameters/ShipmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TruckPositionInput'
+      responses:
+        '202':
+          $ref: '#/components/responses/PositionAccepted'
+        '422':
+          description: Posición rechazada por una regla de negocio del dominio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+components:
+  parameters:
+    ShipmentId:
+      name: shipmentId
+      in: path
+      required: true
+      description: UUID del envío
+      schema:
+        type: string
+        format: uuid
+  responses:
+    PositionAccepted:
+      description: Posición aceptada para proyección
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [shipment_id, accepted]
+                properties:
+                  shipment_id:
+                    type: string
+                    format: uuid
+                  accepted:
+                    type: boolean
+                    const: true
+  schemas:
+    VisibleStatus:
+      type: string
+      description: Estado visible del envío (vocabulario propio del contexto de seguimiento)
+      enum: [REGISTERED, PREPARED, ON_THE_WAY, ARRIVING, DELIVERED, FAILED]
+    TruckPosition:
+      type: object
+      description: Última posición conocida del camión
+      required: [lat, lng, reported_at]
+      properties:
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        reported_at:
+          type: string
+          format: date-time
+          description: Instante del reporte en ISO 8601
+    TruckPositionInput:
+      type: object
+      required: [lat, lng, reported_at]
+      properties:
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        reported_at:
+          type: string
+          format: date-time
+          description: Instante del reporte en ISO 8601
+    PublicTracking:
+      type: object
+      description: Vista pública del seguimiento (sin PII)
+      required: [status, remaining_stops, route_position, eta, last_position, stops_message]
+      properties:
+        status:
+          $ref: '#/components/schemas/VisibleStatus'
+        remaining_stops:
+          type: integer
+          minimum: 0
+          description: Paradas que el camión atiende antes de llegar a la del cliente
+        route_position:
+          type: [integer, 'null']
+          minimum: 1
+          description: Posición del envío en la secuencia de la ruta publicada (1 es la primera parada)
+        eta:
+          type: [string, 'null']
+          format: date-time
+        last_position:
+          oneOf:
+            - $ref: '#/components/schemas/TruckPosition'
+            - type: 'null'
+        stops_message:
+          type: string
+          description: Mensaje al cliente en español, p. ej. "Tu pedido está a 3 paradas."
+    ShipmentTracking:
+      type: object
+      description: Vista interna del seguimiento (incluye claves internas)
+      required: [id, shipment_id, token, status, remaining_stops, route_position, eta, last_position]
+      properties:
+        id:
+          type: string
+          format: uuid
+        shipment_id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        status:
+          $ref: '#/components/schemas/VisibleStatus'
+        remaining_stops:
+          type: integer
+          minimum: 0
+          description: Paradas que el camión atiende antes de llegar a la del cliente
+        route_position:
+          type: [integer, 'null']
+          minimum: 1
+          description: Posición del envío en la secuencia de la ruta publicada (1 es la primera parada)
+        eta:
+          type: [string, 'null']
+          format: date-time
+        last_position:
+          oneOf:
+            - $ref: '#/components/schemas/TruckPosition'
+            - type: 'null'
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Código estable legible por máquina
+            message:
+              type: string

@@ -29,8 +29,16 @@ Enviar de verdad a cada canal. El contrato `MessageDispatcher` lo implementa cad
 | `OutboxStore` + `EloquentOutboxStore` (insertOrIgnore, SKIP LOCKED, lease) | Implementado |
 | `RecordDomainEvents`, `RelayOutboxBatch` (backoff 1/5/30/120/360 min, 6 intentos) | Implementado |
 | `MessageDispatcher` + `NullMessageDispatcher` | Implementado |
+| `RoutingMessageDispatcher` (ruteo por `event_name` → adapter, config `routes`) | Implementado |
+| `OutboxReader` + `EloquentOutboxReader` (lado query: find/list/count/countByStatus) | Implementado |
+| CQRS operativo: `RetryMessage`/`DiscardMessage` + queries `ListOutboxMessages`/`GetOutboxMessage`/`GetOutboxStats` (ReadModels) | Implementado |
+| Config `config/logistics-outbox.php` (limit, lease, max_attempts, backoff, routes) | Implementado |
+| Factory + `OutboxSeeder` (demo en los 4 estados) | Implementado |
+| HTTP: controllers por caso de uso + fragmento `routes/api/outbox.php` (puertas app/integrations) | Implementado |
+| Fragmento `openapi/paths/outbox.yaml` | Implementado |
 | Migración `outbox_messages`, comando `logistics:outbox:relay` | Implementado |
-| Dispatchers reales por canal (SAP, FCM, email, SMS, webhooks) | Pendiente (otros contextos) |
+| Filament: panel de mensajes (pendientes/fallidos/despachados/dead-letter + reintentar) | Implementado |
+| Dispatchers reales por canal (SAP, FCM, email, SMS, webhooks) | Pendiente (otros contextos, enganchan vía config `routes`) |
 
 ## Uso
 

@@ -33,21 +33,35 @@ Cuatro capas (ver `docs/architecture.md`), con `Domain` en PHP puro (sin Laravel
     `StockTransferRepository`, excepción `SapConnectorException`.
 - **Application** (CQRS)
   - Comandos: `ImportSapOrders` (lee de SAP y devuelve `ImportedOrderDto`), `EnqueueStockTransfer`
-    (desde una recepción; idempotente por `eventId`), `DispatchPendingTransfers` (worker de despacho:
-    empuja a SAP y marca Sent/Failed).
+    (desde una recepción; idempotente por `eventId`), `AcknowledgeStockTransfer` (callback de SAP que
+    confirma un traspaso; idempotente), `DispatchPendingTransfers` (worker de despacho: empuja a SAP y
+    marca Sent/Failed), `DefineMaterialMapping` (define/actualiza el mapa de traducción; idempotente
+    por sku).
   - Consultas: `ListPendingTransfers`, `ListFailedTransfers` (reconciliación) con el read model
-    `StockTransferView`.
-- **Infrastructure**: `NullSapClient` (stub que loguea y devuelve `[]`), records y repos Eloquent con
-  sus mappers, migraciones (`sap_material_mappings`, `sap_stock_transfers` con `event_id` único) y el
-  `SapConnectorServiceProvider` que cablea todo.
-- **Presentation**: comando `logistics:sap:dispatch-transfers` (worker de reconciliación).
+    `StockTransferView`; `ListMaterialMappings` con el read model `MaterialMappingView`.
+- **Infrastructure**: puerto `SapClient` con dos adaptadores detrás del contrato — `HttpSapClient`
+  (cliente real, único que habla HTTP con SAP, con header de idempotencia) y `NullSapClient` (stub que
+  loguea y devuelve `[]`); el `SapConnectorServiceProvider` elige HTTP si hay `base_url` configurada y
+  si no cae al Null (el escaneo nunca depende de SAP). Records y repos Eloquent con sus mappers,
+  factories por modelo, migraciones (`sap_material_mappings`, `sap_stock_transfers` con `event_id`
+  único) y `config/logistics-sap-connector.php` (endpoint y credenciales SAP por env; centro/almacén
+  por defecto configurable, P2-SAP-06).
+- **Presentation**:
+  - Comando `logistics:sap:dispatch-transfers` (worker de reconciliación).
+  - Controllers HTTP por caso de uso en el fragmento `routes/api/sap-connector.php`: puerta
+    `integrations` (importar pedidos, acknowledge de SAP) y puerta `app` (encolar traspaso,
+    reconciliación, administrar el mapa de materiales).
+  - Filament: `StockTransferResource` (panel de reconciliación, solo lectura, con disparo de despacho)
+    y `MaterialMappingResource` (CRUD del mapa de traducción). Fragmento OpenAPI en
+    `openapi/paths/sap-connector.yaml`.
+- **Seeder**: `Infrastructure\Persistence\Seeders\SapConnectorSeeder` con datos de demo (mapa de
+  traducción realista y traspasos en todos los estados), idempotente; lo integra el `DatabaseSeeder`.
 
 ## Estado
 
-Dominio, aplicación (CQRS) e infraestructura (Eloquent) implementados. Pendiente:
+Dominio, aplicación (CQRS), infraestructura (Eloquent + adaptador SAP real y stub), presentación (HTTP,
+consola y Filament), factories y seeder implementados. Pendiente:
 
-- Integración real con el outbox: hoy los handlers liberan los eventos con `// TODO(outbox)` sin
-  despacharlos.
-- Cliente SAP real detrás de `SapClient` (hoy `NullSapClient`).
-- Verificación contra los containers (tests + PHPStan nivel 8 + Pint): sin Docker disponible, queda
-  pendiente; se dejó `php -l` limpio en todo el package.
+- Verificación contra los containers (tests + PHPStan nivel 8 + Pint): sin Docker disponible en este
+  cambio, queda pendiente (no es "terminado" según `CLAUDE.md`).
+- Credenciales reales de SAP en el gestor de secretos (P1-INFRA-04) para activar `HttpSapClient`.

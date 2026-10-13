@@ -22,11 +22,16 @@ RUN apk add --no-cache \
         libpq-dev \
         linux-headers \
         oniguruma-dev \
+        freetype-dev \
+        libjpeg-turbo-dev \
+        libpng-dev \
         shadow \
         tzdata \
         $PHPIZE_DEPS \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" \
         bcmath \
+        gd \
         intl \
         mbstring \
         opcache \

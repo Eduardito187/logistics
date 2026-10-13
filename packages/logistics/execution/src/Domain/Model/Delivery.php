@@ -10,6 +10,7 @@ use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
 use Logistics\Execution\Domain\Event\ShipmentLoaded;
 use Logistics\Execution\Domain\Event\ShipmentPrepared;
+use Logistics\Execution\Domain\Event\ShipmentUnloaded;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
@@ -211,6 +212,42 @@ final class Delivery extends AggregateRoot
     }
 
     /**
+     * Descarga guiada de un bulto en una parada (nodo o punto de la ruta): qué baja y dónde. No es el
+     * desenlace de la entrega; confirma/mantiene la entrega en InTransit y graba ShipmentUnloaded.
+     *
+     * Se puede descargar en varias paradas; cada descarga deja su escaneo inmutable con GPS y hora.
+     */
+    public function recordUnloadScan(
+        string $nodeId,
+        string $unitId,
+        GeoPoint $geo,
+        DeviceContext $device,
+        DateTimeImmutable $occurredAt,
+        string $idempotencyKey,
+    ): void {
+        if ($this->isDuplicate($idempotencyKey)) {
+            return;
+        }
+
+        if (trim($nodeId) === '') {
+            throw ExecutionException::because('la descarga guiada requiere el id de la parada (nodo)');
+        }
+
+        $this->guardTransition([DeliveryStatus::Loaded, DeliveryStatus::InTransit], 'InTransit');
+
+        $this->appendScan(ScanType::Unload, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
+
+        $this->status = DeliveryStatus::InTransit;
+        $this->recordEvent(new ShipmentUnloaded(
+            $this->id->toString(),
+            $this->shipmentId,
+            $nodeId,
+            $unitId,
+            $occurredAt,
+        ));
+    }
+
+    /**
      * Recepción de un bulto en un nodo logístico (paso por nodo). Pone/confirma la entrega en
      * InTransit y graba NodeReceptionRecorded.
      */
@@ -242,6 +279,26 @@ final class Delivery extends AggregateRoot
             $unitId,
             $occurredAt,
         ));
+    }
+
+    /**
+     * Punto GPS de tránsito (breadcrumb): posición del camión en ruta entre paradas. Es TELEMETRÍA pura,
+     * no un hito de la máquina de estados: no valida transición, no cambia el estado ni graba evento de
+     * negocio; solo agrega el escaneo inmutable para reconstruir el recorrido real en el mapa. Idempotente
+     * por clave, igual que el resto de escaneos.
+     */
+    public function recordTransitPing(
+        string $unitId,
+        GeoPoint $geo,
+        DeviceContext $device,
+        DateTimeImmutable $occurredAt,
+        string $idempotencyKey,
+    ): void {
+        if ($this->isDuplicate($idempotencyKey)) {
+            return;
+        }
+
+        $this->appendScan(ScanType::InTransit, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
     }
 
     public function id(): DeliveryId

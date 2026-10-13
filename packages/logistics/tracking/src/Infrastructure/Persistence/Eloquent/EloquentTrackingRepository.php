@@ -8,6 +8,7 @@ use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Model\ShipmentTracking;
 use Logistics\Tracking\Domain\ValueObject\TrackingId;
 use Logistics\Tracking\Domain\ValueObject\TrackingToken;
+use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
 
 /**
  * Implementación Eloquent del repositorio de seguimiento.
@@ -53,5 +54,24 @@ final class EloquentTrackingRepository implements TrackingRepository
         $record = TrackingRecord::query()->where('shipment_id', $shipmentId)->first();
 
         return $record === null ? null : $this->mapper->toDomain($record);
+    }
+
+    public function stopsAheadOnRoute(string $routeId, int $position): array
+    {
+        $terminal = array_map(
+            static fn (VisibleStatus $status): string => $status->value,
+            array_filter(VisibleStatus::cases(), static fn (VisibleStatus $status): bool => $status->isTerminal()),
+        );
+
+        $records = TrackingRecord::query()
+            ->where('route_id', $routeId)
+            ->where('route_position', '>', $position)
+            ->whereNotIn('status', $terminal)
+            ->orderBy('route_position')
+            ->get();
+
+        return $records
+            ->map(fn (TrackingRecord $record): ShipmentTracking => $this->mapper->toDomain($record))
+            ->all();
     }
 }

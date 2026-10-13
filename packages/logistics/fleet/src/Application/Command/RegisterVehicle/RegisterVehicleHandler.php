@@ -11,14 +11,15 @@ use Logistics\Fleet\Domain\ValueObject\Capacity;
 use Logistics\Fleet\Domain\ValueObject\DocumentExpiry;
 use Logistics\Fleet\Domain\ValueObject\PlateNumber;
 use Logistics\Fleet\Domain\ValueObject\VehicleStatus;
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
 /**
- * Construye el vehículo, lo persiste y libera sus eventos.
+ * Construye el vehículo, lo persiste y publica sus eventos al outbox.
  *
- * TODO(outbox): cuando se integre el package outbox, los eventos liberados se publican en la misma
- * transacción. Por ahora se liberan y se descartan a propósito (no se depende de outbox todavía).
+ * El save del repositorio y el append al outbox corren dentro de la misma transacción, que abre el
+ * decorador transaccional del CommandBus (Infrastructure); por eso acá no hay nada del framework.
  *
  * @implements CommandHandler<RegisterVehicle>
  */
@@ -26,6 +27,7 @@ final readonly class RegisterVehicleHandler implements CommandHandler
 {
     public function __construct(
         private VehicleRepository $vehicles,
+        private RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -50,6 +52,7 @@ final readonly class RegisterVehicleHandler implements CommandHandler
         );
 
         $this->vehicles->save($vehicle);
-        $vehicle->releaseEvents();
+
+        $this->recordEvents->record($vehicle->releaseEvents(), 'fleet.vehicle');
     }
 }

@@ -23,9 +23,24 @@ interface EmittedLabelRepository
     public function existsByLabelId(string $labelId): bool;
 
     /**
-     * Etiquetas emitidas para un pedido, ordenadas por línea y por orden de emisión.
+     * Etiquetas emitidas para un pedido (incluye revocadas), ordenadas por emisión y por línea.
      *
      * @return list<EmittedLabel>
      */
     public function forOrder(string $orderNumber): array;
+
+    /**
+     * Solo las etiquetas vigentes (no revocadas) de un pedido, en el mismo orden que forOrder().
+     *
+     * @return list<EmittedLabel>
+     */
+    public function activeForOrder(string $orderNumber): array;
+
+    /**
+     * Revoca todas las etiquetas vigentes de un pedido (reimpresión / corrección). No borra filas: las
+     * marca con `revoked_at` y el motivo, para auditoría. Devuelve los `labelId` efectivamente revocados.
+     *
+     * @return list<string>
+     */
+    public function revokeForOrder(string $orderNumber, int $revokedAt, string $reason): array;
 }

@@ -7,18 +7,24 @@ namespace Logistics\Coverage\Infrastructure\Providers;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Coverage\Application\Command\DefineZone;
 use Logistics\Coverage\Application\Command\DefineZoneHandler;
+use Logistics\Coverage\Application\Command\ImportCoverageKml;
+use Logistics\Coverage\Application\Command\ImportCoverageKmlHandler;
 use Logistics\Coverage\Application\Command\ImportCoverageMap;
 use Logistics\Coverage\Application\Command\ImportCoverageMapHandler;
 use Logistics\Coverage\Application\Command\UpdateZoneRules;
 use Logistics\Coverage\Application\Command\UpdateZoneRulesHandler;
 use Logistics\Coverage\Application\Query\ListZones;
 use Logistics\Coverage\Application\Query\ListZonesHandler;
+use Logistics\Coverage\Application\Query\ResolveDepartmentForPoint;
+use Logistics\Coverage\Application\Query\ResolveDepartmentForPointHandler;
 use Logistics\Coverage\Application\Query\ResolveZoneForPoint;
 use Logistics\Coverage\Application\Query\ResolveZoneForPointHandler;
+use Logistics\Coverage\Domain\Contract\DepartmentLocator;
 use Logistics\Coverage\Domain\Contract\GeoAreaRepository;
 use Logistics\Coverage\Domain\Contract\ZoneRepository;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\EloquentGeoAreaRepository;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\EloquentZoneRepository;
+use Logistics\Coverage\Infrastructure\Persistence\Eloquent\PostgisDepartmentLocator;
 use Logistics\Coverage\Presentation\Console\ResolveZoneCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -39,7 +45,9 @@ final class CoverageServiceProvider extends ServiceProvider
         DefineZone::class => DefineZoneHandler::class,
         UpdateZoneRules::class => UpdateZoneRulesHandler::class,
         ImportCoverageMap::class => ImportCoverageMapHandler::class,
+        ImportCoverageKml::class => ImportCoverageKmlHandler::class,
         ResolveZoneForPoint::class => ResolveZoneForPointHandler::class,
+        ResolveDepartmentForPoint::class => ResolveDepartmentForPointHandler::class,
         ListZones::class => ListZonesHandler::class,
     ];
 
@@ -47,6 +55,7 @@ final class CoverageServiceProvider extends ServiceProvider
     {
         $this->app->bind(ZoneRepository::class, EloquentZoneRepository::class);
         $this->app->bind(GeoAreaRepository::class, EloquentGeoAreaRepository::class);
+        $this->app->bind(DepartmentLocator::class, PostgisDepartmentLocator::class);
     }
 
     public function boot(): void

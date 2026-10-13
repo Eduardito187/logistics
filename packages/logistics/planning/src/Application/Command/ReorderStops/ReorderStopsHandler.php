@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Application\Command\ReorderStops;
 
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\ValueObject\PlanId;
@@ -11,13 +12,19 @@ use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
 /**
- * Carga el plan, reordena sus paradas, lo persiste y libera sus eventos.
+ * Carga el plan, reordena sus paradas, lo persiste y publica sus eventos al outbox.
+ *
+ * El save del repositorio y el append al outbox corren dentro de la misma transacción, que abre el
+ * decorador transaccional del CommandBus (Infrastructure); por eso acá no hay nada del framework.
  *
  * @implements CommandHandler<ReorderStops>
  */
 final readonly class ReorderStopsHandler implements CommandHandler
 {
-    public function __construct(private PlanRepository $plans) {}
+    public function __construct(
+        private PlanRepository $plans,
+        private RecordDomainEvents $recordEvents,
+    ) {}
 
     public function handle(Command $command): void
     {
@@ -32,7 +39,6 @@ final readonly class ReorderStopsHandler implements CommandHandler
 
         $this->plans->save($plan);
 
-        // TODO(outbox): despachar al outbox dentro de la misma transacción al integrar.
-        $plan->releaseEvents();
+        $this->recordEvents->record($plan->releaseEvents(), 'planning.plan');
     }
 }

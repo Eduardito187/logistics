@@ -12,7 +12,7 @@ namespace Logistics\Fleet\Application\ReadModel;
 final readonly class ExpiringDocumentView
 {
     /**
-     * @param 'vehicle'|'driver' $ownerType
+     * `ownerType` es uno de 'vehicle'|'driver'|'helper'; se guarda como texto para la proyección.
      */
     private function __construct(
         public string $ownerType,
@@ -31,6 +31,20 @@ final readonly class ExpiringDocumentView
     public static function forDriver(string $driverId, string $name, string $documentType, string $expiresOn, bool $expired): self
     {
         return new self('driver', $driverId, $name, $documentType, $expiresOn, $expired);
+    }
+
+    public static function forHelper(string $helperId, string $name, string $documentType, string $expiresOn, bool $expired): self
+    {
+        return new self('helper', $helperId, $name, $documentType, $expiresOn, $expired);
+    }
+
+    /**
+     * Documento de flota almacenado como entidad propia (con archivo S3). El dueño ya viene resuelto.
+     * `ownerType` es uno de 'vehicle'|'driver'|'helper'.
+     */
+    public static function forDocument(string $ownerType, string $ownerId, string $ownerLabel, string $documentType, string $expiresOn, bool $expired): self
+    {
+        return new self($ownerType, $ownerId, $ownerLabel, $documentType, $expiresOn, $expired);
     }
 
     /**

@@ -8,8 +8,9 @@ use Logistics\Shared\Application\Command\Command;
 
 /**
  * Comando para encolar una notificación de un envío. El tipo de mensaje determina la cascada de
- * canales (se resuelve desde las reglas configuradas). Email y teléfono son contactos de respaldo
- * opcionales; el canal primario va por el topic FCM del envío, sin datos de contacto.
+ * canales (se resuelve desde las reglas configuradas). Email, teléfono (SMS/WhatsApp) y chat id de
+ * Telegram son contactos de respaldo opcionales; el canal primario va por el topic FCM del envío, sin
+ * datos de contacto.
  */
 final readonly class QueueNotification implements Command
 {
@@ -18,5 +19,6 @@ final readonly class QueueNotification implements Command
         public string $messageType,
         public ?string $email = null,
         public ?string $phone = null,
+        public ?string $telegramChatId = null,
     ) {}
 }

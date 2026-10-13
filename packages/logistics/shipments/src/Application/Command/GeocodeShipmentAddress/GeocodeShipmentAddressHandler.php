@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Application\Command\GeocodeShipmentAddress;
 
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
@@ -21,6 +22,7 @@ final class GeocodeShipmentAddressHandler implements CommandHandler
     public function __construct(
         private readonly ShipmentRepository $shipments,
         private readonly AddressConfidenceScorer $scorer,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -39,7 +41,6 @@ final class GeocodeShipmentAddressHandler implements CommandHandler
 
         $this->shipments->save($shipment);
 
-        // TODO(outbox): despachar los eventos liberados al integrar el outbox.
-        $shipment->releaseEvents();
+        $this->recordEvents->record($shipment->releaseEvents(), 'shipments.shipment');
     }
 }

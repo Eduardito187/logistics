@@ -7,6 +7,7 @@ namespace Logistics\Notifications\Infrastructure\Channel;
 use Logistics\Notifications\Domain\Contract\ChannelSender;
 use Logistics\Notifications\Domain\Model\Notification;
 use Logistics\Notifications\Domain\ValueObject\Channel;
+use Logistics\Notifications\Domain\ValueObject\RenderedMessage;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -22,7 +23,7 @@ final readonly class NullChannelSender implements ChannelSender
         private ?LoggerInterface $logger = null,
     ) {}
 
-    public function send(Notification $notification, Channel $channel): void
+    public function send(Notification $notification, Channel $channel, RenderedMessage $message): void
     {
         $this->logger?->debug('Notification discarded by NullChannelSender', [
             'notification_id' => $notification->id()->toString(),
@@ -30,6 +31,8 @@ final readonly class NullChannelSender implements ChannelSender
             'message_type' => $notification->messageType()->value,
             'channel' => $channel->value,
             'fcm_topic' => $notification->fcmTopic()->value,
+            'subject' => $message->subject,
+            'body' => $message->body,
         ]);
     }
 }

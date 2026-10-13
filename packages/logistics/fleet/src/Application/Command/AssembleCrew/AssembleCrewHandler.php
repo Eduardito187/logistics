@@ -9,13 +9,15 @@ use Logistics\Fleet\Domain\Contract\CrewRepository;
 use Logistics\Fleet\Domain\Model\Crew;
 use Logistics\Fleet\Domain\ValueObject\DriverId;
 use Logistics\Fleet\Domain\ValueObject\VehicleId;
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
 /**
- * Arma la tripulación, la persiste y libera sus eventos.
+ * Arma la tripulación, la persiste y publica sus eventos al outbox.
  *
- * TODO(outbox): publicar los eventos liberados cuando se integre el package outbox.
+ * El save del repositorio y el append al outbox corren dentro de la misma transacción, que abre el
+ * decorador transaccional del CommandBus (Infrastructure); por eso acá no hay nada del framework.
  *
  * @implements CommandHandler<AssembleCrew>
  */
@@ -23,6 +25,7 @@ final readonly class AssembleCrewHandler implements CommandHandler
 {
     public function __construct(
         private CrewRepository $crews,
+        private RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -38,6 +41,7 @@ final readonly class AssembleCrewHandler implements CommandHandler
         );
 
         $this->crews->save($crew);
-        $crew->releaseEvents();
+
+        $this->recordEvents->record($crew->releaseEvents(), 'fleet.crew');
     }
 }

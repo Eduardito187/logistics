@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Infrastructure\Providers;
 
+use Illuminate\Contracts\Config\Repository as Config;
+use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Support\ServiceProvider;
+use Logistics\SapConnector\Application\Command\AcknowledgeStockTransfer\AcknowledgeStockTransfer;
+use Logistics\SapConnector\Application\Command\AcknowledgeStockTransfer\AcknowledgeStockTransferHandler;
+use Logistics\SapConnector\Application\Command\DefineMaterialMapping\DefineMaterialMapping;
+use Logistics\SapConnector\Application\Command\DefineMaterialMapping\DefineMaterialMappingHandler;
 use Logistics\SapConnector\Application\Command\DispatchPendingTransfers\DispatchPendingTransfers;
 use Logistics\SapConnector\Application\Command\DispatchPendingTransfers\DispatchPendingTransfersHandler;
 use Logistics\SapConnector\Application\Command\EnqueueStockTransfer\EnqueueStockTransfer;
@@ -13,6 +19,8 @@ use Logistics\SapConnector\Application\Command\ImportSapOrders\ImportSapOrders;
 use Logistics\SapConnector\Application\Command\ImportSapOrders\ImportSapOrdersHandler;
 use Logistics\SapConnector\Application\Query\ListFailedTransfers\ListFailedTransfers;
 use Logistics\SapConnector\Application\Query\ListFailedTransfers\ListFailedTransfersHandler;
+use Logistics\SapConnector\Application\Query\ListMaterialMappings\ListMaterialMappings;
+use Logistics\SapConnector\Application\Query\ListMaterialMappings\ListMaterialMappingsHandler;
 use Logistics\SapConnector\Application\Query\ListPendingTransfers\ListPendingTransfers;
 use Logistics\SapConnector\Application\Query\ListPendingTransfers\ListPendingTransfersHandler;
 use Logistics\SapConnector\Domain\Contract\MaterialMappingRepository;
@@ -20,9 +28,11 @@ use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Contract\StockTransferRepository;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\EloquentMaterialMappingRepository;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\EloquentStockTransferRepository;
+use Logistics\SapConnector\Infrastructure\Sap\HttpSapClient;
 use Logistics\SapConnector\Infrastructure\Sap\NullSapClient;
 use Logistics\SapConnector\Presentation\Console\DispatchStockTransfersCommand;
 use Logistics\Shared\Application\HandlerRegistry;
+use Psr\Log\LoggerInterface;
 
 /**
  * Registro del bounded context Conector SAP (capa anti-corrupción, ADR 002).
@@ -41,23 +51,58 @@ final class SapConnectorServiceProvider extends ServiceProvider
     private const HANDLERS = [
         ImportSapOrders::class => ImportSapOrdersHandler::class,
         EnqueueStockTransfer::class => EnqueueStockTransferHandler::class,
+        AcknowledgeStockTransfer::class => AcknowledgeStockTransferHandler::class,
         DispatchPendingTransfers::class => DispatchPendingTransfersHandler::class,
+        DefineMaterialMapping::class => DefineMaterialMappingHandler::class,
         ListPendingTransfers::class => ListPendingTransfersHandler::class,
         ListFailedTransfers::class => ListFailedTransfersHandler::class,
+        ListMaterialMappings::class => ListMaterialMappingsHandler::class,
     ];
 
     public function register(): void
     {
+        $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-sap-connector.php', 'logistics-sap-connector');
+
         $this->app->bind(MaterialMappingRepository::class, EloquentMaterialMappingRepository::class);
         $this->app->bind(StockTransferRepository::class, EloquentStockTransferRepository::class);
 
-        // El puerto que habla SAP: por defecto el stub Null; el cliente real reemplaza este binding.
-        $this->app->bind(SapClient::class, NullSapClient::class);
+        // El puerto que habla SAP: cliente HTTP real si hay base_url configurada; si no, el stub Null,
+        // para que la plataforma arranque y se pueda desarrollar sin SAP (el escaneo nunca depende de
+        // SAP). La selección se resuelve lazy, al primer uso.
+        $this->app->singleton(SapClient::class, function ($app): SapClient {
+            /** @var Config $config */
+            $config = $app->make(Config::class);
+
+            $baseUrl = $config->get('logistics-sap-connector.sap.base_url');
+            if (!is_string($baseUrl) || $baseUrl === '') {
+                /** @var LoggerInterface|null $logger */
+                $logger = $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null;
+
+                return new NullSapClient($logger);
+            }
+
+            $username = $config->get('logistics-sap-connector.sap.username');
+            $password = $config->get('logistics-sap-connector.sap.password');
+
+            return new HttpSapClient(
+                $app->make(HttpClient::class),
+                $baseUrl,
+                is_string($username) && $username !== '' ? $username : null,
+                is_string($password) && $password !== '' ? $password : null,
+                (string) $config->get('logistics-sap-connector.sap.orders_path', '/orders/pending'),
+                (string) $config->get('logistics-sap-connector.sap.stock_transfers_path', '/stock-transfers'),
+                (int) $config->get('logistics-sap-connector.sap.timeout', 10),
+            );
+        });
     }
 
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
+
+        $this->publishes([
+            __DIR__.'/../../../config/logistics-sap-connector.php' => config_path('logistics-sap-connector.php'),
+        ], 'logistics-sap-connector-config');
 
         /** @var HandlerRegistry $registry */
         $registry = $this->app->make(HandlerRegistry::class);

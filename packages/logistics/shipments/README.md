@@ -24,12 +24,18 @@ Dominio, aplicación (CQRS) e infraestructura (Eloquent) implementados.
 - **Domain**: agregado `Shipment` (raíz) con entidades `ShipmentLine` y `PhysicalUnit` (un bulto por
   unidad de producto, "N de M" de unidad y de pieza). Value objects: `OrderSource`, `SourceReference`
   (clave de idempotencia), `Address`/`GeoPoint`, `AddressConfidence` (+ `AddressConfidenceLevel` por
-  umbrales), `Sku`, `ProductName`, `Fraction`, `ShipmentStatus`, IDs tipados. Eventos
+  umbrales), `Sku`, `ProductName`, `Fraction`, `ShipmentStatus`, IDs tipados. La línea lleva además, de
+  forma OPCIONAL, `ProductImageUrl` (imagen del producto) y `Money` (precio unitario, por defecto BOB):
+  datos de presentación que consume el notificador para mostrar productos con miniatura en mail/push y
+  precio en el detalle; su ausencia no rompe la ingesta existente (default null). Eventos
   `ShipmentReceived`/`ShipmentPlanned`/`ShipmentAddressRescored`. Contratos `ShipmentRepository` y
   `AddressConfidenceScorer`.
-- **Application**: `ReceiveShipment` (API única de ingreso, idempotente por referencia de origen),
-  `GeocodeShipmentAddress`, consultas `FindShipment`/`ListShipments`/`ListLowConfidenceAddresses` y
-  read models `ShipmentView`/`ShipmentLineView`.
+- **Application**: `ReceiveShipment` (API única de ingreso, idempotente por referencia de origen; la
+  línea acepta `image_url`/`price` opcionales), `GeocodeShipmentAddress`, consultas
+  `FindShipment`/`ListShipments`/`ListLowConfidenceAddresses` y `ListShipmentProducts` (lista por envío
+  `[{sku, name, qty, image_url, price, currency}]` que el contexto `notifications` consume por el
+  QueryBus para armar el mail y el collage del push). Read models
+  `ShipmentView`/`ShipmentLineView`/`ShipmentProductView`.
 - **Infrastructure**: `EloquentShipmentRepository` + mapper, records `shipments`/`shipment_lines`/
   `shipment_units`, `NullAddressConfidenceScorer` (confianza media fija; la integración de
   geocodificación real llega después) y el `ShipmentsServiceProvider` que cablea todo.

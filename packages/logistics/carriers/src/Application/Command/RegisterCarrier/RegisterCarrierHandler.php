@@ -6,14 +6,15 @@ namespace Logistics\Carriers\Application\Command\RegisterCarrier;
 
 use Logistics\Carriers\Domain\Contract\CarrierRepository;
 use Logistics\Carriers\Domain\Model\Carrier;
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
 /**
- * Construye el transportista, lo persiste y libera sus eventos.
+ * Construye el transportista, lo persiste y publica sus eventos al outbox.
  *
- * TODO(outbox): cuando se integre el package outbox, los eventos liberados se publican en la misma
- * transacción. Por ahora se liberan y se descartan a propósito (no se depende de outbox todavía).
+ * El save del repositorio y el append al outbox corren dentro de la misma transacción, que abre el
+ * decorador transaccional del CommandBus (Infrastructure); por eso acá no hay nada del framework.
  *
  * @implements CommandHandler<RegisterCarrier>
  */
@@ -21,6 +22,7 @@ final readonly class RegisterCarrierHandler implements CommandHandler
 {
     public function __construct(
         private CarrierRepository $carriers,
+        private RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -35,6 +37,7 @@ final readonly class RegisterCarrierHandler implements CommandHandler
         );
 
         $this->carriers->save($carrier);
-        $carrier->releaseEvents();
+
+        $this->recordEvents->record($carrier->releaseEvents(), 'carriers.carrier');
     }
 }

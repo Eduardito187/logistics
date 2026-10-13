@@ -21,9 +21,12 @@ final readonly class TariffView
         public int $priceCents,
         public string $currency,
         public string $effectiveFrom,
+        // Nombre legible del transportista (tabla carriers.name) resuelto en el QueryHandler.
+        // Null si el transportista ya no existe; el UUID crudo se mantiene en carrier_id.
+        public ?string $carrierName = null,
     ) {}
 
-    public static function fromDomain(Tariff $tariff): self
+    public static function fromDomain(Tariff $tariff, ?string $carrierName = null): self
     {
         return new self(
             $tariff->id()->toString(),
@@ -35,17 +38,19 @@ final readonly class TariffView
             $tariff->price()->cents,
             $tariff->price()->currency,
             $tariff->effectiveFrom()->format('Y-m-d'),
+            $carrierName,
         );
     }
 
     /**
-     * @return array{id: string, carrier_id: string, corridor_from: string, corridor_to: string, corridor_type: string, vehicle_class: string, price_cents: int, currency: string, effective_from: string}
+     * @return array{id: string, carrier_id: string, carrier_name: string|null, corridor_from: string, corridor_to: string, corridor_type: string, vehicle_class: string, price_cents: int, currency: string, effective_from: string}
      */
     public function toArray(): array
     {
         return [
             'id' => $this->id,
             'carrier_id' => $this->carrierId,
+            'carrier_name' => $this->carrierName,
             'corridor_from' => $this->corridorFrom,
             'corridor_to' => $this->corridorTo,
             'corridor_type' => $this->corridorType,

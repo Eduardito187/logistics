@@ -11,19 +11,30 @@ use Logistics\Notifications\Domain\ValueObject\EscalateCondition;
 use Logistics\Notifications\Domain\ValueObject\MessageType;
 
 /**
- * Reglas de cascada por defecto (ADR 006): para todo tipo de mensaje, la cascada va de lo gratuito a
- * lo caro, escalando cuando no hay apertura: PushFcm → WebPush → Email → Sms.
+ * Reglas de cascada por defecto: para todo tipo de mensaje, la cascada va de lo gratuito a lo caro,
+ * escalando cuando no hay apertura: PushFcm → WebPush → Telegram → Email → WhatsApp → Sms.
  *
- * Mañana esto puede leerse de base o de un panel; hoy es la configuración fija del ADR.
+ * NOTA (decisión del dueño, 2026-10): el ADR 006 original fijaba "PushFcm → WebPush → Email → Sms, sin
+ * WhatsApp" por costo. El dueño pidió sumar WhatsApp y Telegram; se insertan en la cascada por orden de
+ * costo (Telegram gratis antes de email; WhatsApp antes del SMS crítico). El detalle queda en el README.
+ *
+ * Mañana esto puede leerse de base o de un panel (PersistedNotificationRulesProvider); hoy es el default.
  */
 final class DefaultNotificationRulesProvider implements NotificationRulesProvider
 {
     public function policyFor(MessageType $messageType): CascadePolicy
     {
-        // La cascada completa aplica a todos los tipos; el escalado a SMS solo se alcanza como respaldo
-        // crítico cuando no hubo apertura en los canales previos.
+        // La cascada completa aplica a todos los tipos; el escalado a WhatsApp/SMS solo se alcanza como
+        // respaldo cuando no hubo apertura en los canales previos.
         return CascadePolicy::of(
-            [Channel::PushFcm, Channel::WebPush, Channel::Email, Channel::Sms],
+            [
+                Channel::PushFcm,
+                Channel::WebPush,
+                Channel::Telegram,
+                Channel::Email,
+                Channel::WhatsApp,
+                Channel::Sms,
+            ],
             EscalateCondition::NoOpen,
         );
     }

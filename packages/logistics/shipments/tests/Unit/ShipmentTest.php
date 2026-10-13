@@ -9,6 +9,7 @@ use Logistics\Shipments\Domain\Model\Shipment;
 use Logistics\Shipments\Domain\Model\ShipmentLine;
 use Logistics\Shipments\Domain\ValueObject\Address;
 use Logistics\Shipments\Domain\ValueObject\AddressConfidence;
+use Logistics\Shipments\Domain\ValueObject\Customer;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ProductName;
 use Logistics\Shipments\Domain\ValueObject\ShipmentId;
@@ -36,7 +37,7 @@ function receiveShipment(?array $lines = null): Shipment
         ShipmentId::generate(),
         OrderSource::Sap,
         SourceReference::of(OrderSource::Sap, 'DM-260012345'),
-        'Juana Perez',
+        Customer::of('Juana Perez', '6284531 LP', '+591 71544820', 'juana.perez@gmail.com'),
         Address::of('Av. Siempre Viva 742', 'Portón azul'),
         AddressConfidence::of(80),
         $lines ?? [shipmentLine('LG-GT32', 'Heladera LG', 1)],
@@ -48,6 +49,9 @@ it('receives a valid shipment in Received status', function (): void {
 
     expect($shipment->status())->toBe(ShipmentStatus::Received)
         ->and($shipment->customerName())->toBe('Juana Perez')
+        ->and($shipment->customer()->documentId)->toBe('6284531 LP')
+        ->and($shipment->customer()->phone)->toBe('+591 71544820')
+        ->and($shipment->customer()->email)->toBe('juana.perez@gmail.com')
         ->and($shipment->source())->toBe(OrderSource::Sap)
         ->and($shipment->addressConfidence()->score)->toBe(80);
 });
@@ -121,7 +125,7 @@ it('rejects a source that does not match its reference', function (): void {
         ShipmentId::generate(),
         OrderSource::Magento,
         SourceReference::of(OrderSource::Sap, 'DM-1'),
-        'Juana Perez',
+        Customer::of('Juana Perez'),
         Address::of('Calle 1'),
         AddressConfidence::of(50),
         [shipmentLine('A', 'Producto A', 1)],
@@ -136,7 +140,7 @@ it('reconstitutes without recording events, enabling idempotent reload', functio
         $original->id(),
         $original->source(),
         $original->sourceReference(),
-        $original->customerName(),
+        $original->customer(),
         $original->address(),
         $original->addressConfidence(),
         $original->status(),

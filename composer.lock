@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1bdc92dc1ab18646ffffe0aed7dbb184",
+    "content-hash": "784e47ce4d6bccbc3640dd2d51b31f05",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -3534,14 +3534,50 @@
             "time": "2026-09-28T18:12:47+00:00"
         },
         {
+            "name": "logistics/access",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/logistics/access",
+                "reference": "38ca338a389e25c91cea20adff704249ebe39efe"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Logistics\\Access\\Infrastructure\\Providers\\AccessServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Logistics\\Access\\": "src/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Identidad, autenticación, RBAC dinámico (roles y permisos) y tokens de integración — plataforma logística Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "logistics/capacity",
             "version": "0.1.0",
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/capacity",
-                "reference": "108679fd452e0391e30052babdb6be7e3cb58519"
+                "reference": "eeac01d9898ee62c65903c54464a5487890ffd0b"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3555,7 +3591,9 @@
             },
             "autoload": {
                 "psr-4": {
-                    "Logistics\\Capacity\\": "src/"
+                    "Logistics\\Capacity\\": "src/",
+                    "Logistics\\Capacity\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Capacity\\Database\\Seeders\\": "database/seeders/"
                 }
             },
             "license": [
@@ -3573,9 +3611,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/carriers",
-                "reference": "3c2c6c17668a0d58e96ab41f03546fb3114800b1"
+                "reference": "7aefd39cc8628a948ad1d313dfd9cb6fa22c104f"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3607,9 +3646,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/coverage",
-                "reference": "d150ff901112bd856866541ca9411e319c70f08c"
+                "reference": "3c573f6cf13289d37f9d7df97b87d5acbaf6a1b1"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3641,9 +3681,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/execution",
-                "reference": "fbdee95566bcd87c0a2a737d76aa65e4d2810836"
+                "reference": "07bd0d73e420ff87c0d7bc775ad38d66af340991"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3657,7 +3698,9 @@
             },
             "autoload": {
                 "psr-4": {
-                    "Logistics\\Execution\\": "src/"
+                    "Logistics\\Execution\\": "src/",
+                    "Logistics\\Execution\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Execution\\Database\\Seeders\\": "database/seeders/"
                 }
             },
             "license": [
@@ -3675,9 +3718,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/fleet",
-                "reference": "bd2ee3de684a0d8154e08b2821aa929cfa8700d5"
+                "reference": "dc09ebf25e0c66f259955c2937558e2a74a3d695"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3709,10 +3753,11 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/labels",
-                "reference": "caac892e62d827879a4e1b46ae70770945acde26"
+                "reference": "12fbd9378cf6129635e7c2557c9576a64e39ead6"
             },
             "require": {
                 "ext-sodium": "*",
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3726,7 +3771,9 @@
             },
             "autoload": {
                 "psr-4": {
-                    "Logistics\\Labels\\": "src/"
+                    "Logistics\\Labels\\": "src/",
+                    "Logistics\\Labels\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Labels\\Database\\Seeders\\": "database/seeders/"
                 }
             },
             "license": [
@@ -3744,9 +3791,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/network",
-                "reference": "7b2a5d10532ce322556ad50c944bb706bb04ac1b"
+                "reference": "37de01f87cd318aa2c4d003a24f91a5c9367ffd0"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3760,7 +3808,9 @@
             },
             "autoload": {
                 "psr-4": {
-                    "Logistics\\Network\\": "src/"
+                    "Logistics\\Network\\": "src/",
+                    "Logistics\\Network\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Network\\Database\\Seeders\\": "database/seeders/"
                 }
             },
             "license": [
@@ -3778,9 +3828,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/notifications",
-                "reference": "e6b8699225f47862801f35c50719f3a1ad23fd84"
+                "reference": "c796c0f527af9372dc4e6afb3079eaaf4363cad1"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3794,7 +3845,9 @@
             },
             "autoload": {
                 "psr-4": {
-                    "Logistics\\Notifications\\": "src/"
+                    "Logistics\\Notifications\\": "src/",
+                    "Logistics\\Notifications\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Notifications\\Database\\Seeders\\": "database/seeders/"
                 }
             },
             "license": [
@@ -3846,9 +3899,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/planning",
-                "reference": "06a273013bc6e1e1121d14c873374bc5ef8b1938"
+                "reference": "7fb32d0aedd1709881ffe502d685d7d7caaef893"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3862,7 +3916,8 @@
             },
             "autoload": {
                 "psr-4": {
-                    "Logistics\\Planning\\": "src/"
+                    "Logistics\\Planning\\": "src/",
+                    "Logistics\\Planning\\Database\\": "database/"
                 }
             },
             "license": [
@@ -3880,9 +3935,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/promise",
-                "reference": "aaa9a57bdba45775d6d382adb7a9461c98486ed1"
+                "reference": "4e9bf90297fb3c01456dafc1555fb941e3786def"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3896,7 +3952,9 @@
             },
             "autoload": {
                 "psr-4": {
-                    "Logistics\\Promise\\": "src/"
+                    "Logistics\\Promise\\": "src/",
+                    "Logistics\\Promise\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Promise\\Database\\Seeders\\": "database/seeders/"
                 }
             },
             "license": [
@@ -3914,9 +3972,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/sap-connector",
-                "reference": "6bc426b3cbee28051de0e4fe0a6487df7c65be25"
+                "reference": "32aba50e60fe8391857e5d29b6cf831b94c6f274"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -3948,7 +4007,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/settings",
-                "reference": "68c8446d25f52fbf530ad7023d3db7d1bc97df38"
+                "reference": "78b97bc346b1ff6a7dfeb91adb1ffdc8f06b9351"
             },
             "require": {
                 "logistics/shared": "^0.1",
@@ -3964,7 +4023,9 @@
             },
             "autoload": {
                 "psr-4": {
-                    "Logistics\\Settings\\": "src/"
+                    "Logistics\\Settings\\": "src/",
+                    "Logistics\\Settings\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Settings\\Database\\Seeders\\": "database/seeders/"
                 }
             },
             "license": [
@@ -4015,9 +4076,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/shipments",
-                "reference": "df10dd12999a87ca8e422d97bdc91b8aff6c0330"
+                "reference": "0aca24d8ce6b02e621f2feb6496df87794e7b55c"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -4049,9 +4111,10 @@
             "dist": {
                 "type": "path",
                 "url": "packages/logistics/tracking",
-                "reference": "4cb2d7b0c6f675aa6dd0fb706166cbd69a16f81e"
+                "reference": "424ae639a9fab1c605bba0beb8501308e25c1370"
             },
             "require": {
+                "logistics/outbox": "^0.1",
                 "logistics/shared": "^0.1",
                 "php": "^8.3"
             },
@@ -4065,7 +4128,9 @@
             },
             "autoload": {
                 "psr-4": {
-                    "Logistics\\Tracking\\": "src/"
+                    "Logistics\\Tracking\\": "src/",
+                    "Logistics\\Tracking\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Tracking\\Database\\Seeders\\": "database/seeders/"
                 }
             },
             "license": [
@@ -12640,5 +12705,5 @@
         "ext-sodium": "*"
     },
     "platform-dev": {},
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }

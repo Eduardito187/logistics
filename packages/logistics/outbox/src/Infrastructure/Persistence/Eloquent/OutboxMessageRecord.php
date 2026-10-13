@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Logistics\Outbox\Infrastructure\Persistence\Eloquent;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Logistics\Outbox\Infrastructure\Persistence\Eloquent\Factories\OutboxMessageFactory;
 
 /**
  * Registro Eloquent de la tabla outbox_messages.
@@ -28,6 +30,9 @@ use Illuminate\Support\Carbon;
  */
 final class OutboxMessageRecord extends Model
 {
+    /** @use HasFactory<OutboxMessageFactory> */
+    use HasFactory;
+
     public $incrementing = false;
 
     public $timestamps = false;
@@ -37,6 +42,14 @@ final class OutboxMessageRecord extends Model
     protected $keyType = 'string';
 
     protected $guarded = [];
+
+    /**
+     * Factory del package (autoload PSR-4 bajo src/). Permite seeders y tests con datos realistas.
+     */
+    protected static function newFactory(): OutboxMessageFactory
+    {
+        return OutboxMessageFactory::new();
+    }
 
     /**
      * @return array<string, string>

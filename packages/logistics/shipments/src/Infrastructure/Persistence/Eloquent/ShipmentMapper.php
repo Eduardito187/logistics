@@ -9,10 +9,14 @@ use Logistics\Shipments\Domain\Model\Shipment;
 use Logistics\Shipments\Domain\Model\ShipmentLine;
 use Logistics\Shipments\Domain\ValueObject\Address;
 use Logistics\Shipments\Domain\ValueObject\AddressConfidence;
+use Logistics\Shipments\Domain\ValueObject\Customer;
+use Logistics\Shipments\Domain\ValueObject\DeliverySlot;
 use Logistics\Shipments\Domain\ValueObject\Fraction;
 use Logistics\Shipments\Domain\ValueObject\GeoPoint;
+use Logistics\Shipments\Domain\ValueObject\Money;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\PhysicalUnitId;
+use Logistics\Shipments\Domain\ValueObject\ProductImageUrl;
 use Logistics\Shipments\Domain\ValueObject\ProductName;
 use Logistics\Shipments\Domain\ValueObject\ShipmentId;
 use Logistics\Shipments\Domain\ValueObject\ShipmentLineId;
@@ -32,12 +36,16 @@ final class ShipmentMapper
     public function toShipmentRow(Shipment $shipment): array
     {
         $geoPoint = $shipment->address()->geoPoint;
+        $deliverySlot = $shipment->deliverySlot();
 
         return [
             'id' => $shipment->id()->toString(),
             'source' => $shipment->source()->value,
             'external_id' => $shipment->sourceReference()->externalId,
-            'customer_name' => $shipment->customerName(),
+            'customer_name' => $shipment->customer()->name,
+            'customer_document_id' => $shipment->customer()->documentId,
+            'customer_phone' => $shipment->customer()->phone,
+            'customer_email' => $shipment->customer()->email,
             'address_text' => $shipment->address()->text,
             'address_reference' => $shipment->address()->reference,
             'lat' => $geoPoint?->lat,
@@ -45,6 +53,9 @@ final class ShipmentMapper
             'address_confidence' => $shipment->addressConfidence()->score,
             'address_confidence_level' => $shipment->addressConfidence()->level->value,
             'status' => $shipment->status()->value,
+            'delivery_date' => $deliverySlot?->date,
+            'delivery_window_start' => $deliverySlot?->windowStart,
+            'delivery_window_end' => $deliverySlot?->windowEnd,
         ];
     }
 
@@ -53,11 +64,17 @@ final class ShipmentMapper
      */
     public function toLineRow(Shipment $shipment, ShipmentLine $line): array
     {
+        $unitPrice = $line->unitPrice();
+        $imageUrl = $line->imageUrl();
+
         return [
             'id' => $line->id()->toString(),
             'shipment_id' => $shipment->id()->toString(),
             'sku' => (string) $line->sku(),
             'product_name' => (string) $line->productName(),
+            'product_image_url' => $imageUrl !== null ? $imageUrl->value : null,
+            'unit_price' => $unitPrice?->amount,
+            'unit_price_currency' => $unitPrice?->currency,
             'quantity' => $line->quantity(),
         ];
     }
@@ -93,11 +110,20 @@ final class ShipmentMapper
 
         $lines = [];
         foreach ($record->lines as $lineRecord) {
+            $unitPrice = $lineRecord->unit_price !== null
+                ? Money::of(
+                    (float) $lineRecord->unit_price,
+                    $lineRecord->unit_price_currency ?? 'BOB',
+                )
+                : null;
+
             $lines[] = ShipmentLine::create(
                 ShipmentLineId::fromString($lineRecord->id),
                 Sku::of($lineRecord->sku),
                 ProductName::of($lineRecord->product_name),
                 $lineRecord->quantity,
+                ProductImageUrl::fromNullable($lineRecord->product_image_url),
+                $unitPrice,
             );
         }
 
@@ -111,16 +137,30 @@ final class ShipmentMapper
             );
         }
 
+        $customer = Customer::of(
+            $record->customer_name,
+            $record->customer_document_id,
+            $record->customer_phone,
+            $record->customer_email,
+        );
+
+        $deliverySlot = DeliverySlot::fromNullable(
+            $record->delivery_date,
+            $record->delivery_window_start,
+            $record->delivery_window_end,
+        );
+
         return Shipment::reconstitute(
             ShipmentId::fromString($record->id),
             $source,
             SourceReference::of($source, $record->external_id),
-            $record->customer_name,
+            $customer,
             $address,
             AddressConfidence::of($record->address_confidence),
             ShipmentStatus::from($record->status),
             $lines,
             $units,
+            $deliverySlot,
         );
     }
 }

@@ -8,7 +8,8 @@ use Logistics\Notifications\Domain\Exception\NotificationsException;
 
 /**
  * Destinatario de una notificación. El canal primario (push / web push) va por el topic FCM del envío,
- * sin datos de contacto; email y SMS son respaldos y necesitan, respectivamente, un email o un teléfono.
+ * sin datos de contacto; email, SMS, WhatsApp y Telegram son respaldos y necesitan, respectivamente,
+ * un email, un teléfono (SMS y WhatsApp) o un chat id de Telegram.
  *
  * La plataforma no guarda tokens de la app de clientes (ADR 006): el destinatario se identifica por el
  * envío, y los contactos de respaldo son opcionales.
@@ -19,10 +20,15 @@ final readonly class Recipient
         public string $shipmentId,
         public ?string $email,
         public ?string $phone,
+        public ?string $telegramChatId,
     ) {}
 
-    public static function of(string $shipmentId, ?string $email = null, ?string $phone = null): self
-    {
+    public static function of(
+        string $shipmentId,
+        ?string $email = null,
+        ?string $phone = null,
+        ?string $telegramChatId = null,
+    ): self {
         $trimmedShipment = trim($shipmentId);
         if ($trimmedShipment === '') {
             throw NotificationsException::because('el destinatario necesita un id de envío');
@@ -41,7 +47,12 @@ final readonly class Recipient
             $trimmedPhone = null;
         }
 
-        return new self($trimmedShipment, $trimmedEmail, $trimmedPhone);
+        $trimmedChatId = $telegramChatId !== null ? trim($telegramChatId) : null;
+        if ($trimmedChatId === '') {
+            $trimmedChatId = null;
+        }
+
+        return new self($trimmedShipment, $trimmedEmail, $trimmedPhone, $trimmedChatId);
     }
 
     /**
@@ -54,14 +65,15 @@ final readonly class Recipient
 
     /**
      * Indica si el destinatario tiene contacto para el canal dado. Push y web push van por topic y no
-     * requieren contacto; email y SMS sí.
+     * requieren contacto; email, SMS, WhatsApp y Telegram sí.
      */
     public function canReceiveVia(Channel $channel): bool
     {
         return match ($channel) {
             Channel::PushFcm, Channel::WebPush => true,
             Channel::Email => $this->email !== null,
-            Channel::Sms => $this->phone !== null,
+            Channel::Sms, Channel::WhatsApp => $this->phone !== null,
+            Channel::Telegram => $this->telegramChatId !== null,
         };
     }
 }

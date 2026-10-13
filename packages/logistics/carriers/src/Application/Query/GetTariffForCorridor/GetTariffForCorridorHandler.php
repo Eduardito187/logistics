@@ -8,6 +8,7 @@ use Logistics\Carriers\Application\ReadModel\TariffView;
 use Logistics\Carriers\Domain\Contract\TariffRepository;
 use Logistics\Carriers\Domain\ValueObject\CorridorRef;
 use Logistics\Carriers\Domain\ValueObject\VehicleClass;
+use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\CarrierRecord;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 
@@ -32,6 +33,13 @@ final readonly class GetTariffForCorridorHandler implements QueryHandler
             VehicleClass::from($query->vehicleClass),
         );
 
-        return $tariff !== null ? TariffView::fromDomain($tariff) : null;
+        if ($tariff === null) {
+            return null;
+        }
+
+        // Resolvemos el nombre legible del transportista (lado lectura) para no devolver solo el UUID.
+        $carrierName = CarrierRecord::query()->whereKey($tariff->carrierId())->value('name');
+
+        return TariffView::fromDomain($tariff, is_string($carrierName) ? $carrierName : null);
     }
 }

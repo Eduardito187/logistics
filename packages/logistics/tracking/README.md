@@ -25,16 +25,31 @@ Cuatro capas, igual que los packages de dis-commerce (ver `docs/architecture.md`
 ## Modelo de dominio
 
 - Agregado `ShipmentTracking` (id `TrackingId`, `shipmentId` string, `TrackingToken`, `VisibleStatus`,
-  `remainingStops`, `?Eta`, `?TruckPosition`). Referencia al envío por id string, nunca importando el
-  agregado de otro contexto.
+  `remainingStops`, `?Eta`, `?TruckPosition`, `?routeId` string, `?RoutePosition`). Referencia al envío
+  y a la ruta por id string, nunca importando el agregado de otro contexto.
 - Value objects `final readonly`: `TrackingToken` (opaco, no adivinable, base64url de 32 bytes
   aleatorios), `VisibleStatus` (Registered, Prepared, OnTheWay, Arriving, Delivered, Failed), `Eta`,
-  `GeoPoint`, `TruckPosition`.
-- Eventos: `TrackingOpened`, `TrackingStatusChanged`.
+  `GeoPoint`, `TruckPosition`, `RoutePosition` (posición 1-based en la ruta; `stopsBefore()` deriva las
+  paradas antes de la del cliente).
+- Eventos: `TrackingOpened`, `TrackingStatusChanged`, `ShipmentPlacedOnRoute`.
+
+### Paradas restantes (stops_remaining) y posición en la ruta
+
+`stops_remaining` = cuántas paradas atiende el camión ANTES de llegar a la del cliente; `route_position`
+= posición del envío en la secuencia de la ruta publicada (1 es la primera parada).
+
+- Al **publicarse la ruta** (planning), el puente `PlaceShipmentOnRoute` fija `route_id` + `route_position`
+  y deriva `stops_remaining = route_position - 1`.
+- Cada vez que una **entrega previa se resuelve** (evento terminal de `execution`: entregada/fallida),
+  `ProjectExecutionEvent` baja en cascada `stops_remaining` de los envíos de atrás en la misma ruta
+  (una sola vez por parada, idempotente ante reintentos del relay).
+- La página pública y la puerta `channels` exponen `remaining_stops`, `route_position` y un mensaje al
+  cliente en español (`stops_message`, p. ej. "Tu pedido está a 3 paradas.").
 
 ## Aplicación (CQRS)
 
-- Commands: `OpenTracking`, `ProjectExecutionEvent` (puente de proyección de eventos de ejecución),
+- Commands: `OpenTracking`, `ProjectExecutionEvent` (puente de proyección de eventos de ejecución; avanza
+  la cascada de paradas), `PlaceShipmentOnRoute` (puente que recibe la secuencia de la ruta publicada),
   `UpdateTruckPosition`.
 - Queries: `GetPublicTracking` (por token → `PublicTrackingView`, **sin PII**),
   `GetShipmentTracking` (por id de envío → `ShipmentTrackingView`, interno).

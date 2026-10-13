@@ -18,13 +18,19 @@ final readonly class PromiseView
         public string $id,
         public string $shipmentRef,
         public string $zoneId,
+        public ?string $zoneName,
         public string $slotDate,
         public string $timeSlot,
         public string $status,
         public ?string $reservedUntil,
     ) {}
 
-    public static function fromPromise(DeliveryPromise $promise): self
+    /**
+     * El nombre legible de la zona (coverage) no vive en el agregado de promise —este contexto solo
+     * conoce la zona como id primitivo—, así que se resuelve en el QueryHandler y se pasa como argumento.
+     * Null si no se pudo resolver (zona inexistente).
+     */
+    public static function fromPromise(DeliveryPromise $promise, ?string $zoneName = null): self
     {
         $window = $promise->reservedUntil();
 
@@ -32,6 +38,7 @@ final readonly class PromiseView
             $promise->id()->toString(),
             $promise->shipmentRef(),
             $promise->zoneId(),
+            $zoneName,
             $promise->slot()->dateString(),
             $promise->slot()->timeSlot,
             $promise->status()->value,
@@ -48,6 +55,7 @@ final readonly class PromiseView
             'id' => $this->id,
             'shipment_ref' => $this->shipmentRef,
             'zone_id' => $this->zoneId,
+            'zone_name' => $this->zoneName,
             'slot_date' => $this->slotDate,
             'time_slot' => $this->timeSlot,
             'status' => $this->status,

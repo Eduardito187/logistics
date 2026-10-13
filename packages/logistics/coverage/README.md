@@ -29,8 +29,22 @@ Dominio implementado (Fase 1, sin cupos):
   `ResolveZoneForPoint`, `ListZones`; read model `ZoneView`.
 - **Infrastructure**: `EloquentZoneRepository` (PostGIS: polígono en `geometry(Polygon,4326)`,
   punto→zona con `ST_Contains`) y `EloquentGeoAreaRepository`, con `ZoneMapper`. Migraciones de
-  `coverage_geo_areas` y `coverage_zones` (+ columna `area` e índice GIST por SQL).
-- **Presentation**: comando `logistics:coverage:resolve {lat} {lng}`.
+  `coverage_geo_areas` y `coverage_zones` (+ columna `area` e índice GIST por SQL). Factories
+  (`GeoAreaRecordFactory`, `ZoneRecordFactory` — esta rellena la geometría por SQL en `afterCreating`)
+  y `CoverageSeeder` con datos de demo de Bolivia (La Paz, Santa Cruz, Cochabamba). Los handlers de
+  escritura publican sus eventos al outbox (`RecordDomainEvents`) en la misma transacción.
+- **Presentation**: comando `logistics:coverage:resolve {lat} {lng}`; controllers HTTP para las
+  puertas `app`/`integrations` (resolver, listar, importar GeoJSON y KML) en el fragmento
+  `routes/api/coverage.php`; Filament `ZoneResource` y `GeoAreaResource`.
+
+## Importadores del mapa de cobertura
+
+Dos formatos, mismo destino (`ParsedZone` → `Zone`), ambos idempotentes a nivel de caso de uso:
+
+- **GeoJSON**: `GeoJsonCoverageParser` + comando `ImportCoverageMap` (`POST /integrations/coverage/map:import`).
+- **KML**: `KmlCoverageParser` (DOMDocument, PHP puro) + comando `ImportCoverageKml`
+  (`POST /integrations/coverage/map:import-kml`, cuerpo XML crudo). Lee `<Placemark>` (name, Polygon,
+  ExtendedData con node/services/baseMinutes/serviceDays) y cierra el anillo si viene abierto.
 
 La resolución punto→zona se prueba en un test Feature (necesita PostGIS); los VOs, el agregado y el
 parser en tests Unit.
