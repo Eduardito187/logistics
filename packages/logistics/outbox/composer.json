@@ -1,0 +1,23 @@
+{
+    "name": "logistics/outbox",
+    "description": "Transactional Outbox — I/O externo asíncrono, idempotente y con reintentos — plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\Outbox\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\Outbox\\Infrastructure\\Providers\\OutboxServiceProvider"
+            ]
+        }
+    }
+}

@@ -1,0 +1,181 @@
+# ============================================================
+# docker-compose.yml — logistics (DESARROLLO)
+# ============================================================
+# Containers prefijados `dismac_lg_*` y puertos propios para correr en paralelo
+# con dis-commerce (8090/3316/6389) y el resto de proyectos Dismac.
+# ============================================================
+
+name: dismac-logistics
+
+x-php: &php
+    build:
+        context: .
+        dockerfile: .docker/php/Dockerfile
+        target: dev
+        args:
+            UID: ${UID:-1000}
+            GID: ${GID:-1000}
+    image: dismac/logistics-app:dev
+    volumes:
+        - .:/var/www/html:cached
+        - vendor:/var/www/html/vendor
+    environment:
+        APP_ENV: local
+        DB_CONNECTION: pgsql
+        DB_HOST: postgres
+        DB_PORT: 5432
+        DB_DATABASE: logistics
+        DB_USERNAME: logistics
+        DB_PASSWORD: logistics
+        REDIS_HOST: valkey
+        REDIS_PORT: 6379
+    depends_on:
+        postgres:
+            condition: service_healthy
+        valkey:
+            condition: service_healthy
+    networks:
+        - dismac_lg
+
+services:
+    # -------------------- Aplicación PHP-FPM --------------------
+    app:
+        <<: *php
+        container_name: dismac_lg_app
+        restart: unless-stopped
+        volumes:
+            - .:/var/www/html:cached
+            - vendor:/var/www/html/vendor
+            - composer_cache:/home/logistics/.composer/cache
+
+    # -------------------- Nginx (web server) --------------------
+    nginx:
+        image: nginx:1.27-alpine
+        container_name: dismac_lg_nginx
+        restart: unless-stopped
+        ports:
+            - "${DOCKER_APP_PORT:-8110}:80"
+        volumes:
+            - .:/var/www/html:cached
+            - ./.docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+        depends_on:
+            - app
+        networks:
+            - dismac_lg
+
+    # -------------------- PostgreSQL + PostGIS --------------------
+    # PostGIS resuelve zonas de cobertura (polígonos), geocercas y distancias (ADR 003).
+    postgres:
+        image: postgis/postgis:17-3.5-alpine
+        container_name: dismac_lg_postgres
+        restart: unless-stopped
+        ports:
+            - "${DOCKER_DB_PORT:-5442}:5432"
+        environment:
+            POSTGRES_DB: logistics
+            POSTGRES_USER: logistics
+            POSTGRES_PASSWORD: logistics
+            TZ: America/La_Paz
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+            - ./.docker/postgres/init:/docker-entrypoint-initdb.d:ro
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U logistics -d logistics"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 20s
+        networks:
+            - dismac_lg
+
+    # -------------------- Valkey (cache + colas + locks) --------------------
+    valkey:
+        image: valkey/valkey:8-alpine
+        container_name: dismac_lg_valkey
+        restart: unless-stopped
+        ports:
+            - "${DOCKER_REDIS_PORT:-6409}:6379"
+        volumes:
+            - valkey_data:/data
+        command: valkey-server --appendonly yes
+        healthcheck:
+            test: ["CMD", "valkey-cli", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        networks:
+            - dismac_lg
+
+    # -------------------- Queue worker (siempre encendido) --------------------
+    # Sin `profiles` a propósito: en dis-commerce un worker opcional que nadie levantó dejó
+    # jobs sin procesar por más de 1 h. `--max-time` recicla el proceso para no correr código viejo.
+    queue-worker:
+        <<: *php
+        container_name: dismac_lg_queue_worker
+        restart: unless-stopped
+        command: php artisan queue:work redis --sleep=3 --tries=1 --timeout=600 --max-time=3600
+        healthcheck:
+            test: ["CMD-SHELL", "pgrep -f 'queue:work' || exit 1"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
+
+    # -------------------- Scheduler (siempre encendido) --------------------
+    scheduler:
+        <<: *php
+        container_name: dismac_lg_scheduler
+        restart: unless-stopped
+        command: php artisan schedule:work
+        healthcheck:
+            test: ["CMD-SHELL", "pgrep -f 'schedule:work' || exit 1"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
+
+    # -------------------- Mailpit (email catcher) --------------------
+    # El email es canal de notificación al cliente (ADR 006), así que se prueba local.
+    mailpit:
+        image: axllent/mailpit:latest
+        container_name: dismac_lg_mailpit
+        restart: unless-stopped
+        ports:
+            - "${DOCKER_MAILPIT_SMTP:-1055}:1025"
+            - "${DOCKER_MAILPIT_UI:-8055}:8025"
+        environment:
+            MP_MAX_MESSAGES: 5000
+            MP_DATABASE: /data/mailpit.db
+        volumes:
+            - mailpit_data:/data
+        networks:
+            - dismac_lg
+
+    # -------------------- Node (Vite + npm, bajo demanda) --------------------
+    node:
+        image: node:22-alpine
+        container_name: dismac_lg_node
+        working_dir: /var/www/html
+        volumes:
+            - .:/var/www/html:cached
+            - node_modules:/var/www/html/node_modules
+        ports:
+            - "${DOCKER_VITE_PORT:-5203}:5173"
+        command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+        networks:
+            - dismac_lg
+        profiles:
+            - node
+
+volumes:
+    postgres_data:
+    valkey_data:
+    vendor:
+    node_modules:
+    composer_cache:
+    mailpit_data:
+
+networks:
+    dismac_lg:
+        driver: bridge
+        name: dismac_lg_network

@@ -1,0 +1,18 @@
+semana,fecha_inicio,fecha_fin,kpi,valor_linea_base,valor_actual,meta,unidad,fuente,notas
+# Plantilla de medicion semanal de los 5 KPIs del piloto (ver ../01-kpis.md).
+# Una fila por semana y por KPI. Las lineas que empiezan con # son comentarios y no se cargan.
+# Columnas:
+#   semana           numero de semana del piloto (1, 2, 3, ...)
+#   fecha_inicio     primer dia del periodo medido (YYYY-MM-DD)
+#   fecha_fin        ultimo dia del periodo medido (YYYY-MM-DD)
+#   kpi              identificador corto del KPI: kpi1_llamadas_ubicacion | kpi2_consultas_estado |
+#                    kpi3_entregas_a_tiempo | kpi4_bultos_error | kpi5_satisfaccion
+#   valor_linea_base valor medido sin plataforma (referencia fija del piloto)
+#   valor_actual     valor medido en la semana en curso
+#   meta             meta de salida del piloto (a validar)
+#   unidad           unidad del valor: % | llamadas/entrega | consultas/pedido | puntos_csat | ...
+#   fuente           de donde salio el dato (planilla, call center, POD, encuesta, ...)
+#   notas            observaciones; si contiene comas, encerrar el campo entre comillas dobles
+# Filas de ejemplo (comentadas): copiar sin el # y ajustar valores.
+# 1,2026-11-03,2026-11-09,kpi1_llamadas_ubicacion,0.80,0.80,0.40,llamadas/entrega,"Bitacora de choferes, muestra 5 rutas",Linea base semana 1
+# 1,2026-11-03,2026-11-09,kpi3_entregas_a_tiempo,78,78,90,%,Hoja de ruta de despacho,"Fallidas 9%: ausente y direccion no encontrada"
