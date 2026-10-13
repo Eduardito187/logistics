@@ -18,13 +18,20 @@
         "laravel/framework": "^13.17",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
+        "logistics/capacity": "^0.1",
+        "logistics/carriers": "^0.1",
         "logistics/coverage": "^0.1",
         "logistics/execution": "^0.1",
         "logistics/fleet": "^0.1",
         "logistics/labels": "^0.1",
         "logistics/network": "^0.1",
         "logistics/notifications": "^0.1",
+        "logistics/outbox": "^0.1",
         "logistics/planning": "^0.1",
+        "logistics/promise": "^0.1",
+        "logistics/sap-connector": "^0.1",
+        "logistics/settings": "^0.1",
+        "logistics/shared": "^0.1",
         "logistics/shipments": "^0.1",
         "logistics/tracking": "^0.1"
     },
@@ -106,13 +113,20 @@
     "extra": {
         "laravel": {
             "dont-discover": [
+                "logistics/capacity",
+                "logistics/carriers",
                 "logistics/coverage",
                 "logistics/execution",
                 "logistics/fleet",
                 "logistics/labels",
                 "logistics/network",
                 "logistics/notifications",
+                "logistics/outbox",
                 "logistics/planning",
+                "logistics/promise",
+                "logistics/sap-connector",
+                "logistics/settings",
+                "logistics/shared",
                 "logistics/shipments",
                 "logistics/tracking"
             ]

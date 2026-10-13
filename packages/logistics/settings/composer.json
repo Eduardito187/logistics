@@ -1,0 +1,23 @@
+{
+    "name": "logistics/settings",
+    "description": "Reglas configurables y versionadas (coberturas, cupos, cortes, tarifas) — plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\Settings\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\Settings\\Infrastructure\\Providers\\SettingsServiceProvider"
+            ]
+        }
+    }
+}

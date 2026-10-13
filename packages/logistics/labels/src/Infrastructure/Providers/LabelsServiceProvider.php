@@ -6,11 +6,21 @@ namespace Logistics\Labels\Infrastructure\Providers;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\ServiceProvider;
+use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
+use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabelsHandler;
+use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
+use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabelsHandler;
+use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
+use Logistics\Labels\Domain\Contract\LabelRenderer;
 use Logistics\Labels\Domain\Contract\LabelSigner;
 use Logistics\Labels\Domain\Contract\LabelVerifier;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelSigner;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelVerifier;
+use Logistics\Labels\Infrastructure\Persistence\Eloquent\EloquentEmittedLabelRepository;
+use Logistics\Labels\Infrastructure\Zpl\ZplLabelRenderer;
+use Logistics\Labels\Presentation\Console\ExportPublicKeysCommand;
 use Logistics\Labels\Presentation\Console\GenerateSigningKeyCommand;
+use Logistics\Shared\Application\HandlerRegistry;
 use RuntimeException;
 
 /**
@@ -58,14 +68,27 @@ final class LabelsServiceProvider extends ServiceProvider
 
             return new SodiumLabelVerifier($keys);
         });
+
+        // Renderizado ZPL para Zebra y persistencia de etiquetas emitidas.
+        $this->app->bind(LabelRenderer::class, ZplLabelRenderer::class);
+        $this->app->bind(EmittedLabelRepository::class, EloquentEmittedLabelRepository::class);
     }
 
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
 
+        // Los handlers se registran contra el HandlerRegistry singleton del núcleo compartido.
+        // El bus los resuelve del contenedor, así reciben sus dependencias inyectadas.
+        $registry = $this->app->make(HandlerRegistry::class);
+        $registry->register(EmitShipmentLabels::class, EmitShipmentLabelsHandler::class);
+        $registry->register(GetShipmentLabels::class, GetShipmentLabelsHandler::class);
+
         if ($this->app->runningInConsole()) {
-            $this->commands([GenerateSigningKeyCommand::class]);
+            $this->commands([
+                GenerateSigningKeyCommand::class,
+                ExportPublicKeysCommand::class,
+            ]);
         }
     }
 

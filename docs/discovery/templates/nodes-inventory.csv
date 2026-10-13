@@ -1,0 +1,4 @@
+code,name,type,lat,lng,department,capacity_notes
+CD-LP-01,Centro de Distribucion La Paz El Alto,distribution_center,-16.513400,-68.166500,La Paz,Pulmon principal; ~2500 m2 de almacen; 4 andenes de carga
+T-SCZ-03,Tienda Santa Cruz Norte,store,-17.736900,-63.172300,Santa Cruz,Recibe y despacha; zona de staging chica; sin anden
+PR-CBB-02,Punto de Recojo Cochabamba Centro,pickup_point,-17.393500,-66.157000,Cochabamba,Solo recojo; mostrador y bodega pequena; sin venta en piso

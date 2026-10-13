@@ -34,7 +34,11 @@ RUN apk add --no-cache \
         pdo_pgsql \
         pgsql \
         zip \
-    && pecl install redis \
+    && for i in 1 2 3 4 5; do \
+         pecl install redis && break; \
+         echo "pecl install redis failed (attempt $i/5), retrying in 10s..."; \
+         sleep 10; \
+       done \
     && docker-php-ext-enable redis \
     && apk del $PHPIZE_DEPS \
     && rm -rf /var/cache/apk/* /tmp/*

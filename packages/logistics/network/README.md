@@ -19,4 +19,4 @@ Cuatro capas, igual que los packages de dis-commerce (ver `docs/architecture.md`
 
 ## Estado
 
-Esqueleto creado. Sin modelo de dominio todavía.
+Dominio y CQRS implementados; verificación en containers pendiente.

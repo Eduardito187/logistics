@@ -4,13 +4,20 @@ declare(strict_types=1);
 
 use App\Providers\AppServiceProvider;
 use App\Providers\Filament\AdminPanelProvider;
+use Logistics\Capacity\Infrastructure\Providers\CapacityServiceProvider;
+use Logistics\Carriers\Infrastructure\Providers\CarriersServiceProvider;
 use Logistics\Coverage\Infrastructure\Providers\CoverageServiceProvider;
 use Logistics\Execution\Infrastructure\Providers\ExecutionServiceProvider;
 use Logistics\Fleet\Infrastructure\Providers\FleetServiceProvider;
 use Logistics\Labels\Infrastructure\Providers\LabelsServiceProvider;
 use Logistics\Network\Infrastructure\Providers\NetworkServiceProvider;
 use Logistics\Notifications\Infrastructure\Providers\NotificationsServiceProvider;
+use Logistics\Outbox\Infrastructure\Providers\OutboxServiceProvider;
 use Logistics\Planning\Infrastructure\Providers\PlanningServiceProvider;
+use Logistics\Promise\Infrastructure\Providers\PromiseServiceProvider;
+use Logistics\SapConnector\Infrastructure\Providers\SapConnectorServiceProvider;
+use Logistics\Settings\Infrastructure\Providers\SettingsServiceProvider;
+use Logistics\Shared\Infrastructure\Providers\SharedServiceProvider;
 use Logistics\Shipments\Infrastructure\Providers\ShipmentsServiceProvider;
 use Logistics\Tracking\Infrastructure\Providers\TrackingServiceProvider;
 
@@ -22,6 +29,12 @@ use Logistics\Tracking\Infrastructure\Providers\TrackingServiceProvider;
 // después de correr cualquier instalador.
 return [
     AppServiceProvider::class,
+
+    // Núcleo compartido primero: expone el HandlerRegistry (CQRS) y los buses que los
+    // contextos usan al registrar sus handlers, además del outbox y la configuración versionada.
+    SharedServiceProvider::class,
+    OutboxServiceProvider::class,
+    SettingsServiceProvider::class,
 
     // Red y datos base
     NetworkServiceProvider::class,
@@ -37,6 +50,12 @@ return [
     // Visibilidad
     TrackingServiceProvider::class,
     NotificationsServiceProvider::class,
+
+    // Fase 2 — Prometer: cupos, promesa, conector SAP y transportistas
+    CapacityServiceProvider::class,
+    PromiseServiceProvider::class,
+    SapConnectorServiceProvider::class,
+    CarriersServiceProvider::class,
 
     // Admin web (al final: los resources de cada contexto ya están registrados)
     AdminPanelProvider::class,

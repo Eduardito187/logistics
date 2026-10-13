@@ -19,4 +19,22 @@ Cuatro capas, igual que los packages de dis-commerce (ver `docs/architecture.md`
 
 ## Estado
 
-Esqueleto creado. Sin modelo de dominio todavía.
+Dominio, aplicación (CQRS) e infraestructura (Eloquent) implementados.
+
+- **Domain**: agregado `Shipment` (raíz) con entidades `ShipmentLine` y `PhysicalUnit` (un bulto por
+  unidad de producto, "N de M" de unidad y de pieza). Value objects: `OrderSource`, `SourceReference`
+  (clave de idempotencia), `Address`/`GeoPoint`, `AddressConfidence` (+ `AddressConfidenceLevel` por
+  umbrales), `Sku`, `ProductName`, `Fraction`, `ShipmentStatus`, IDs tipados. Eventos
+  `ShipmentReceived`/`ShipmentPlanned`/`ShipmentAddressRescored`. Contratos `ShipmentRepository` y
+  `AddressConfidenceScorer`.
+- **Application**: `ReceiveShipment` (API única de ingreso, idempotente por referencia de origen),
+  `GeocodeShipmentAddress`, consultas `FindShipment`/`ListShipments`/`ListLowConfidenceAddresses` y
+  read models `ShipmentView`/`ShipmentLineView`.
+- **Infrastructure**: `EloquentShipmentRepository` + mapper, records `shipments`/`shipment_lines`/
+  `shipment_units`, `NullAddressConfidenceScorer` (confianza media fija; la integración de
+  geocodificación real llega después) y el `ShipmentsServiceProvider` que cablea todo.
+- **Presentation**: comando `logistics:shipments:receive-manual` para ingesta manual. Sin Filament ni
+  endpoints HTTP todavía.
+
+Pendiente: integración con el outbox (hoy los handlers liberan los eventos sin despacharlos),
+geocodificador real y verificación contra los containers (tests + PHPStan nivel 8 + Pint).

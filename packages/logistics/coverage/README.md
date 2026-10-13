@@ -19,4 +19,18 @@ Cuatro capas, igual que los packages de dis-commerce (ver `docs/architecture.md`
 
 ## Estado
 
-Esqueleto creado. Sin modelo de dominio todavía.
+Dominio implementado (Fase 1, sin cupos):
+
+- **Domain**: `Zone` (agregado) y `GeoArea` (entidad); VOs `GeoPoint`, `Polygon`, `AdminLevel`,
+  `ServiceDays`, `TimeWindow`, `ZoneRules`; IDs `ZoneId`/`GeoAreaId`; eventos `ZoneDefined` y
+  `ZoneRulesUpdated`; contratos `ZoneRepository`/`GeoAreaRepository`; servicio
+  `GeoJsonCoverageParser`; excepción `CoverageException`.
+- **Application (CQRS)**: comandos `DefineZone`, `UpdateZoneRules`, `ImportCoverageMap`; consultas
+  `ResolveZoneForPoint`, `ListZones`; read model `ZoneView`.
+- **Infrastructure**: `EloquentZoneRepository` (PostGIS: polígono en `geometry(Polygon,4326)`,
+  punto→zona con `ST_Contains`) y `EloquentGeoAreaRepository`, con `ZoneMapper`. Migraciones de
+  `coverage_geo_areas` y `coverage_zones` (+ columna `area` e índice GIST por SQL).
+- **Presentation**: comando `logistics:coverage:resolve {lat} {lng}`.
+
+La resolución punto→zona se prueba en un test Feature (necesita PostGIS); los VOs, el agregado y el
+parser en tests Unit.
