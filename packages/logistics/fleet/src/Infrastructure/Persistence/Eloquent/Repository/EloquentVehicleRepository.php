@@ -16,7 +16,7 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 final readonly class EloquentVehicleRepository implements VehicleRepository
 {
     public function __construct(
-        private VehicleMapper $mapper = new VehicleMapper(),
+        private VehicleMapper $mapper = new VehicleMapper,
     ) {}
 
     public function nextIdentity(): VehicleId

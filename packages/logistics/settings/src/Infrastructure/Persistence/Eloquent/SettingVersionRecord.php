@@ -12,13 +12,13 @@ use Illuminate\Database\Eloquent\Model;
  * La PK es un UUID string no autoincremental; `value` se castea a arreglo (columna jsonb). No tiene
  * `updated_at`: las filas son inmutables, solo se insertan (de ahí `$timestamps = false`).
  *
- * @property string $id
- * @property string $key
- * @property int $version
+ * @property string               $id
+ * @property string               $key
+ * @property int                  $version
  * @property array<string, mixed> $value
- * @property string $effective_from
- * @property string $created_at
- * @property string|null $created_by
+ * @property string               $effective_from
+ * @property string               $created_at
+ * @property string|null          $created_by
  */
 final class SettingVersionRecord extends Model
 {

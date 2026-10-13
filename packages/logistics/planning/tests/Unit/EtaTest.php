@@ -25,6 +25,6 @@ it('compares by arrival instant and minutes', function (): void {
 });
 
 it('rejects negative minutes', function (): void {
-    expect(fn () => Eta::at(new DateTimeImmutable(), -1))
+    expect(fn () => Eta::at(new DateTimeImmutable, -1))
         ->toThrow(PlanningException::class, 'no pueden ser negativos');
 });

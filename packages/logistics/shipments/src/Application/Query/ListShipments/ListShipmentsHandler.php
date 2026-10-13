@@ -9,7 +9,6 @@ use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
-use Logistics\Shipments\Domain\Model\Shipment;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 

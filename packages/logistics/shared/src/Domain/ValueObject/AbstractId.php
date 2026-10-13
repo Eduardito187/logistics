@@ -14,25 +14,16 @@ abstract readonly class AbstractId
 {
     final private function __construct(public Uuid $uuid) {}
 
-    /**
-     * @return static
-     */
     public static function generate(): static
     {
         return new static(Uuid::generate());
     }
 
-    /**
-     * @return static
-     */
     public static function fromString(string $value): static
     {
         return new static(Uuid::fromString($value));
     }
 
-    /**
-     * @return static
-     */
     public static function fromUuid(Uuid $uuid): static
     {
         return new static($uuid);

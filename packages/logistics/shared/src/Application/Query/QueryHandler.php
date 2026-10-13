@@ -13,7 +13,7 @@ namespace Logistics\Shared\Application\Query;
 interface QueryHandler
 {
     /**
-     * @param T $query
+     * @param  T $query
      * @return R
      */
     public function handle(Query $query): mixed;

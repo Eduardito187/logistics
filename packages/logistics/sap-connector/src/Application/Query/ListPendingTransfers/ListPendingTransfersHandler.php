@@ -27,7 +27,7 @@ final class ListPendingTransfersHandler implements QueryHandler
      */
     public function handle(Query $query): array
     {
-        if (! $query instanceof ListPendingTransfers) {
+        if (!$query instanceof ListPendingTransfers) {
             throw SapConnectorException::because('ListPendingTransfersHandler solo maneja ListPendingTransfers');
         }
 

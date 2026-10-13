@@ -94,8 +94,8 @@ final class DeliveryPlan extends AggregateRoot
      * Aplica el resultado del motor de rutas: ordena las paradas y les fija la ETA calculada, pasando el
      * plan de borrador a propuesto. Es el paso que concreta la propuesta automática.
      *
-     * @param list<string>        $orderedShipmentIds envíos en el orden de reparto que devolvió el motor
-     * @param array<string, Eta>  $etas               ETA por id de envío
+     * @param list<string>       $orderedShipmentIds envíos en el orden de reparto que devolvió el motor
+     * @param array<string, Eta> $etas               ETA por id de envío
      */
     public function proposeRoute(array $orderedShipmentIds, array $etas): void
     {

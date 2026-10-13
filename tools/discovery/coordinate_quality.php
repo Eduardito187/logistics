@@ -71,7 +71,7 @@ function main(array $argv): int
     }
 
     $path = $argv[1];
-    if (! is_file($path) || ! is_readable($path)) {
+    if (!is_file($path) || !is_readable($path)) {
         fwrite(STDERR, "Error: no se puede leer el archivo '{$path}'.\n");
 
         return 2;
@@ -124,7 +124,7 @@ function readCsv(string $path): array
         // Normalizamos los encabezados (minúsculas, sin espacios ni BOM) para ser tolerantes con exports.
         $header = array_map(
             static fn (?string $h): string => strtolower(trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $h))),
-            $header
+            $header,
         );
 
         $missing = array_diff(EXPECTED_HEADERS, $header);
@@ -202,13 +202,13 @@ function analyze(array $rows): array
 
     foreach ($rows as $row) {
         $dept = $row['department'] !== '' ? $row['department'] : '(sin department)';
-        if (! isset($byDepartment[$dept])) {
+        if (!isset($byDepartment[$dept])) {
             $byDepartment[$dept] = ['total' => 0, 'withCoords' => 0, 'valid' => 0, 'issues' => 0];
         }
         $byDepartment[$dept]['total']++;
 
         $hasCoords = $row['lat'] !== '' && $row['lng'] !== '' && is_numeric($row['lat']) && is_numeric($row['lng']);
-        if (! $hasCoords) {
+        if (!$hasCoords) {
             // Sin coordenada usable: es un problema en sí mismo (incompletitud).
             $byDepartment[$dept]['issues']++;
 
@@ -229,16 +229,16 @@ function analyze(array $rows): array
 
         $rowHasIssue = false;
 
-        if (! $inRange) {
+        if (!$inRange) {
             $outOfRange++;
             $rowHasIssue = true;
-        } elseif (! $inBolivia) {
+        } elseif (!$inBolivia) {
             // Solo cuenta como "fuera de Bolivia" si al menos es una coordenada en rango.
             $outOfBolivia++;
             $rowHasIssue = true;
         }
 
-        if (! $enoughDecimals) {
+        if (!$enoughDecimals) {
             $lowPrecision++;
             $rowHasIssue = true;
         } else {
@@ -433,7 +433,7 @@ function renderReport(string $path, array $a): void
 /**
  * Renderiza una tabla de texto con columnas alineadas al ancho de su contenido.
  *
- * @param list<string> $headers
+ * @param list<string>       $headers
  * @param list<list<string>> $rows
  */
 function renderTable(array $headers, array $rows): void

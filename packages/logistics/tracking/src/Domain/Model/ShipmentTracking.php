@@ -107,7 +107,7 @@ final class ShipmentTracking extends AggregateRoot
         }
         if ($this->status->isTerminal()) {
             throw TrackingException::because(
-                "el seguimiento ya está en estado terminal {$this->status->value}; no puede pasar a {$status->value}"
+                "el seguimiento ya está en estado terminal {$this->status->value}; no puede pasar a {$status->value}",
             );
         }
 

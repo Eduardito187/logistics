@@ -34,7 +34,7 @@ final class EloquentNodeRepository implements NodeRepository
         $latitude = $node->location()->latitude;
         $longitude = $node->location()->longitude;
 
-        $record = NodeRecord::query()->find($id) ?? new NodeRecord();
+        $record = NodeRecord::query()->find($id) ?? new NodeRecord;
         $record->id = $id;
         $record->code = $node->code()->toString();
         $record->name = $node->name();

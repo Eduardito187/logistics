@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $shipment_id
  * @property string $sku
  * @property string $product_name
- * @property int $quantity
+ * @property int    $quantity
  */
 final class ShipmentLineRecord extends Model
 {

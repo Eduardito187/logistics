@@ -27,7 +27,7 @@ final readonly class RecordDomainEvents
      * Encola todos los eventos de un agregado hacia el outbox.
      *
      * @param list<DomainEvent> $events
-     * @param string $aggregateType Nombre del tipo de agregado emisor (p. ej. "network.node").
+     * @param string            $aggregateType Nombre del tipo de agregado emisor (p. ej. "network.node").
      */
     public function record(array $events, string $aggregateType): void
     {

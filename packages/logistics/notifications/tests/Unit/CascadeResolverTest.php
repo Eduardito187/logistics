@@ -23,7 +23,7 @@ function resolverNotification(): Notification
 }
 
 it('resolves the next channel in order PushFcm -> WebPush -> Email -> Sms', function (): void {
-    $resolver = new CascadeResolver();
+    $resolver = new CascadeResolver;
     $notification = resolverNotification();
 
     // PushFcm -> WebPush
@@ -45,7 +45,7 @@ it('resolves the next channel in order PushFcm -> WebPush -> Email -> Sms', func
 });
 
 it('honors a custom policy order', function (): void {
-    $resolver = new CascadeResolver();
+    $resolver = new CascadeResolver;
     $notification = Notification::queue(
         NotificationId::generate(),
         'shp-2',

@@ -11,13 +11,13 @@ use Illuminate\Database\Eloquent\Model;
  *
  * La PK es un UUID en texto (no autoincremental): el id lo genera el dominio.
  *
- * @property string                                         $id
- * @property string                                         $name
- * @property string                                         $tax_id
- * @property string                                         $status
- * @property float|null                                     $rating
- * @property int                                            $rating_count
- * @property list<array{type: string, reference: string}>  $documents
+ * @property string                                       $id
+ * @property string                                       $name
+ * @property string                                       $tax_id
+ * @property string                                       $status
+ * @property float|null                                   $rating
+ * @property int                                          $rating_count
+ * @property list<array{type: string, reference: string}> $documents
  */
 final class CarrierRecord extends Model
 {

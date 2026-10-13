@@ -13,17 +13,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * Es detalle de Infrastructure: nunca cruza hacia Application ni Domain. El mapeo a/desde el agregado
  * lo hace ShipmentMapper.
  *
- * @property string $id
- * @property string $source
- * @property string $external_id
- * @property string $customer_name
- * @property string $address_text
+ * @property string      $id
+ * @property string      $source
+ * @property string      $external_id
+ * @property string      $customer_name
+ * @property string      $address_text
  * @property string|null $address_reference
  * @property string|null $lat
  * @property string|null $lng
- * @property int $address_confidence
- * @property string $address_confidence_level
- * @property string $status
+ * @property int         $address_confidence
+ * @property string      $address_confidence_level
+ * @property string      $status
  */
 final class ShipmentRecord extends Model
 {

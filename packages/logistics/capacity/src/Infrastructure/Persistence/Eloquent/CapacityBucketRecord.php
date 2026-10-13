@@ -13,14 +13,14 @@ use Illuminate\Database\Eloquent\Model;
  * La pk es el UUID del bucket (string, no autoincremental). total/used son decimales guardados como
  * string por Eloquent; el mapper los convierte a Quantity.
  *
- * @property string $id
+ * @property string      $id
  * @property string|null $node_id
  * @property string|null $zone_id
- * @property string $slot_date
- * @property string $time_slot
- * @property string $unit
- * @property string $total
- * @property string $used
+ * @property string      $slot_date
+ * @property string      $time_slot
+ * @property string      $unit
+ * @property string      $total
+ * @property string      $used
  */
 final class CapacityBucketRecord extends Model
 {

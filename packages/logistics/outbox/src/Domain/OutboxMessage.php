@@ -111,7 +111,7 @@ final class OutboxMessage
         $this->guardDispatchable(OutboxStatus::Dispatched);
 
         $this->status = OutboxStatus::Dispatched;
-        $this->dispatchedAt = $at ?? new DateTimeImmutable();
+        $this->dispatchedAt = $at ?? new DateTimeImmutable;
         $this->lastError = null;
     }
 

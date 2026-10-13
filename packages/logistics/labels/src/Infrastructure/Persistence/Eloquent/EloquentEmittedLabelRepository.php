@@ -26,7 +26,7 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
             throw DuplicateLabelException::forLabelId($label->labelId());
         }
 
-        $record = new EmittedLabelRecord();
+        $record = new EmittedLabelRecord;
         $record->id = Uuid::generate()->value;
         $record->order_id = $label->orderNumber;
         $record->label_id = $label->labelId();
@@ -34,7 +34,7 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
         $record->zpl = $label->zpl;
         $record->signed_json = $label->signedJson();
         // Se guarda como texto ISO-8601 con offset; la columna es timestamptz.
-        $record->created_at = (new DateTimeImmutable())->setTimestamp($label->emittedAt)->format('Y-m-d H:i:sP');
+        $record->created_at = (new DateTimeImmutable)->setTimestamp($label->emittedAt)->format('Y-m-d H:i:sP');
         $record->save();
     }
 

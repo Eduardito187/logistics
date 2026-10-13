@@ -33,7 +33,7 @@ final class SampleAggregate extends AggregateRoot
 }
 
 it('graba eventos y los libera una sola vez', function (): void {
-    $aggregate = new SampleAggregate();
+    $aggregate = new SampleAggregate;
     $aggregate->doSomething('abc');
     $aggregate->doSomething('def');
 

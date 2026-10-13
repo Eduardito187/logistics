@@ -11,12 +11,12 @@ use Illuminate\Database\Eloquent\Model;
  *
  * La PK es un UUID en texto (no autoincremental): el id lo genera el dominio.
  *
- * @property string                                         $id
- * @property string                                         $plate
- * @property int                                            $capacity_kg
- * @property float                                          $capacity_m3
- * @property string                                         $home_base_node_id
- * @property string                                         $status
+ * @property string                                        $id
+ * @property string                                        $plate
+ * @property int                                           $capacity_kg
+ * @property float                                         $capacity_m3
+ * @property string                                        $home_base_node_id
+ * @property string                                        $status
  * @property list<array{type: string, expires_on: string}> $documents
  */
 final class VehicleModel extends Model

@@ -12,12 +12,12 @@ use Illuminate\Database\Eloquent\Model;
  * Es detalle de Infrastructure: nunca cruza hacia Application ni Domain. El mapeo a/desde el agregado
  * lo hace PromiseMapper.
  *
- * @property string $id
- * @property string $shipment_ref
- * @property string $zone_id
- * @property string $slot_date
- * @property string $time_slot
- * @property string $status
+ * @property string      $id
+ * @property string      $shipment_ref
+ * @property string      $zone_id
+ * @property string      $slot_date
+ * @property string      $time_slot
+ * @property string      $status
  * @property string|null $reserved_until
  */
 final class PromiseRecord extends Model

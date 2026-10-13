@@ -28,7 +28,7 @@ final class EloquentCapacityRepository implements CapacityRepository
     {
         $id = $bucket->id()->toString();
 
-        $record = CapacityBucketRecord::query()->find($id) ?? new CapacityBucketRecord();
+        $record = CapacityBucketRecord::query()->find($id) ?? new CapacityBucketRecord;
         $record->id = $id;
         $record->node_id = $bucket->scope()->nodeId;
         $record->zone_id = $bucket->scope()->zoneId;

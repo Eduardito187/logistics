@@ -32,7 +32,7 @@ final class EnqueueStockTransferHandler implements CommandHandler
 
     public function handle(Command $command): void
     {
-        if (! $command instanceof EnqueueStockTransfer) {
+        if (!$command instanceof EnqueueStockTransfer) {
             throw SapConnectorException::because('EnqueueStockTransferHandler solo maneja EnqueueStockTransfer');
         }
 

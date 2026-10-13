@@ -18,7 +18,7 @@ use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\TariffRecord;
 final readonly class EloquentTariffRepository implements TariffRepository
 {
     public function __construct(
-        private TariffMapper $mapper = new TariffMapper(),
+        private TariffMapper $mapper = new TariffMapper,
     ) {}
 
     public function nextIdentity(): TariffId

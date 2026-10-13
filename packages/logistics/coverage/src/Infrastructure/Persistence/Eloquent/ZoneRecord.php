@@ -14,11 +14,11 @@ use Illuminate\Database\Eloquent\Model;
  * define la tabla, la conexión y los casts de las columnas no espaciales, y es el punto de anclaje
  * para el futuro admin de Filament.
  *
- * @property string                $id
- * @property string                $name
- * @property string|null           $parent_area_id
- * @property array<string, mixed>  $rules
- * @property bool                  $active
+ * @property string               $id
+ * @property string               $name
+ * @property string|null          $parent_area_id
+ * @property array<string, mixed> $rules
+ * @property bool                 $active
  */
 final class ZoneRecord extends Model
 {

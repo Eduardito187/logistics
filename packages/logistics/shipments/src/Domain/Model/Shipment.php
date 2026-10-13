@@ -30,8 +30,8 @@ final class Shipment extends AggregateRoot
     private const MAX_CUSTOMER_NAME_LENGTH = 180;
 
     /**
-     * @param list<ShipmentLine>  $lines
-     * @param list<PhysicalUnit>  $units
+     * @param list<ShipmentLine> $lines
+     * @param list<PhysicalUnit> $units
      */
     private function __construct(
         private readonly ShipmentId $id,

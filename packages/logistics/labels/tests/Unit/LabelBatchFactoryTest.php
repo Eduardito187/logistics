@@ -7,7 +7,7 @@ use Logistics\Labels\Domain\Service\LabelBatchFactory;
 use Logistics\Labels\Domain\ValueObject\LabelPayload;
 
 it('builds one label per physical piece: quantity x piecesPerUnit', function (): void {
-    $payloads = (new LabelBatchFactory())->build(
+    $payloads = (new LabelBatchFactory)->build(
         keyId: 1,
         orderNumber: 'DM-260012345',
         origin: 'CD-SCZ',
@@ -23,7 +23,7 @@ it('builds one label per physical piece: quantity x piecesPerUnit', function ():
 });
 
 it('numbers units and pieces as N of M for each line', function (): void {
-    $payloads = (new LabelBatchFactory())->build(
+    $payloads = (new LabelBatchFactory)->build(
         keyId: 1,
         orderNumber: 'DM-260012345',
         origin: 'CD-SCZ',
@@ -47,7 +47,7 @@ it('numbers units and pieces as N of M for each line', function (): void {
 });
 
 it('keeps the line number aligned with the line position and carries order data', function (): void {
-    $payloads = (new LabelBatchFactory())->build(
+    $payloads = (new LabelBatchFactory)->build(
         keyId: 7,
         orderNumber: 'DM-260012345',
         origin: 'CD-SCZ',
@@ -70,7 +70,7 @@ it('keeps the line number aligned with the line position and carries order data'
 });
 
 it('gives every label a unique ULID id', function (): void {
-    $payloads = (new LabelBatchFactory())->build(
+    $payloads = (new LabelBatchFactory)->build(
         keyId: 1,
         orderNumber: 'DM-260012345',
         origin: 'CD-SCZ',
@@ -89,7 +89,7 @@ it('gives every label a unique ULID id', function (): void {
 });
 
 it('rejects a line with no units or no pieces per unit', function (): void {
-    $factory = new LabelBatchFactory();
+    $factory = new LabelBatchFactory;
 
     expect(fn () => $factory->build(1, 'DM-1', 'CD-SCZ', 'C', 0, [['sku' => 'SKU', 'quantity' => 0, 'piecesPerUnit' => 1]]))
         ->toThrow(InvalidLabelException::class, 'unidad')

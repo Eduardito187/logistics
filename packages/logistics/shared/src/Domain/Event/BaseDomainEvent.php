@@ -24,7 +24,7 @@ abstract readonly class BaseDomainEvent implements DomainEvent
         ?DateTimeImmutable $occurredAt = null,
     ) {
         $this->eventId = $eventId ?? Uuid::generate();
-        $this->occurredAt = $occurredAt ?? new DateTimeImmutable();
+        $this->occurredAt = $occurredAt ?? new DateTimeImmutable;
     }
 
     public function eventId(): Uuid

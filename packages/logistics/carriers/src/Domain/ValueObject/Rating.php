@@ -26,7 +26,7 @@ final readonly class Rating
     {
         if ($value < self::MIN || $value > self::MAX) {
             throw CarriersException::because(
-                "La calificación debe estar entre ".self::MIN." y ".self::MAX.": {$value}.",
+                'La calificación debe estar entre '.self::MIN.' y '.self::MAX.": {$value}.",
             );
         }
 

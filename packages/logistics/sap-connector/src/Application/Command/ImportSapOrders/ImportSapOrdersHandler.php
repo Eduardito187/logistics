@@ -35,7 +35,7 @@ final class ImportSapOrdersHandler implements CommandHandler
 
     public function handle(Command $command): void
     {
-        if (! $command instanceof ImportSapOrders) {
+        if (!$command instanceof ImportSapOrders) {
             throw SapConnectorException::because('ImportSapOrdersHandler solo maneja ImportSapOrders');
         }
 
@@ -65,13 +65,13 @@ final class ImportSapOrdersHandler implements CommandHandler
         $orderRef = SapOrderRef::of($this->stringField($rawOrder, 'order_ref'));
 
         $rawLines = $rawOrder['lines'] ?? [];
-        if (! is_array($rawLines)) {
+        if (!is_array($rawLines)) {
             throw SapConnectorException::because("el pedido SAP {$orderRef->value} no trae líneas válidas");
         }
 
         $lines = [];
         foreach ($rawLines as $rawLine) {
-            if (! is_array($rawLine)) {
+            if (!is_array($rawLine)) {
                 throw SapConnectorException::because("una línea del pedido SAP {$orderRef->value} no es válida");
             }
             /** @var array<string, mixed> $rawLine */
@@ -118,7 +118,7 @@ final class ImportSapOrdersHandler implements CommandHandler
     private function stringField(array $row, string $key): string
     {
         $value = $row[$key] ?? null;
-        if (! is_string($value) || trim($value) === '') {
+        if (!is_string($value) || trim($value) === '') {
             throw SapConnectorException::because("campo SAP '{$key}' ausente o inválido");
         }
 

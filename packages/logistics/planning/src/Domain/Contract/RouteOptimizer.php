@@ -17,7 +17,7 @@ interface RouteOptimizer
     /**
      * Resuelve el orden de reparto y la ETA de cada parada a partir de la salida del depósito.
      *
-     * @param list<RouteStop> $stops
+     * @param  list<RouteStop>     $stops
      * @return list<OptimizedStop> las paradas en el orden de reparto propuesto, con su ETA
      */
     public function optimize(DateTimeImmutable $departAt, array $stops): array;

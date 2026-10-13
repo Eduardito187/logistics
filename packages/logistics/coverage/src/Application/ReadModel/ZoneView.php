@@ -13,7 +13,7 @@ final readonly class ZoneView
 {
     /**
      * @param array{type: string, coordinates: array<int, array<int, array{0: float, 1: float}>>} $polygon
-     * @param array<string, mixed>                                                                 $rules
+     * @param array<string, mixed>                                                                $rules
      */
     public function __construct(
         public string $id,

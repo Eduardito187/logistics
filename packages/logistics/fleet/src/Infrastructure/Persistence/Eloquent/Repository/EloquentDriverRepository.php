@@ -16,7 +16,7 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\DriverModel;
 final readonly class EloquentDriverRepository implements DriverRepository
 {
     public function __construct(
-        private DriverMapper $mapper = new DriverMapper(),
+        private DriverMapper $mapper = new DriverMapper,
     ) {}
 
     public function nextIdentity(): DriverId

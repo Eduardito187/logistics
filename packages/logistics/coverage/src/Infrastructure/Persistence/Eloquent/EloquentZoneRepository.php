@@ -82,6 +82,6 @@ final class EloquentZoneRepository implements ZoneRepository
 
     private function connection(): ConnectionInterface
     {
-        return (new ZoneRecord())->getConnection();
+        return (new ZoneRecord)->getConnection();
     }
 }

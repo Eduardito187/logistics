@@ -312,8 +312,8 @@ function esNumero(string $valor): bool
  * de una misma unidad.
  *
  * @param array<string, array{lineas: int, bultos: int, firma: string, filaPrimera: int}> $pedidos
- * @param array<string, string>                                                            $registro
- * @param list<string>                                                                     $errores
+ * @param array<string, string>                                                           $registro
+ * @param list<string>                                                                    $errores
  */
 function acumularPedido(array &$pedidos, array $registro, int $numeroFila, array $errores): void
 {
@@ -360,7 +360,7 @@ function acumularPedido(array &$pedidos, array $registro, int $numeroFila, array
  * Imprime el resumen, la tabla de errores y devuelve el código de salida (0 ok, 1 con errores).
  *
  * @param array<string, array{lineas: int, bultos: int, firma: string, filaPrimera: int}> $pedidos
- * @param list<array{fila: int, errores: list<string>}>                                    $erroresPorFila
+ * @param list<array{fila: int, errores: list<string>}>                                   $erroresPorFila
  */
 function imprimirReporte(string $ruta, int $totalPedidos, int $totalLineas, array $pedidos, array $erroresPorFila): int
 {

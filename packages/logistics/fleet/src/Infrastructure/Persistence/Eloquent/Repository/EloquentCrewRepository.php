@@ -16,7 +16,7 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\CrewModel;
 final readonly class EloquentCrewRepository implements CrewRepository
 {
     public function __construct(
-        private CrewMapper $mapper = new CrewMapper(),
+        private CrewMapper $mapper = new CrewMapper,
     ) {}
 
     public function nextIdentity(): CrewId

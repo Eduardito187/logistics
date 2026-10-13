@@ -12,11 +12,11 @@ use Illuminate\Database\Eloquent\Model;
  *
  * La pk es el UUID del seguimiento (string, no autoincremental). token y shipment_id son únicos.
  *
- * @property string $id
- * @property string $shipment_id
- * @property string $token
- * @property string $status
- * @property int $remaining_stops
+ * @property string      $id
+ * @property string      $shipment_id
+ * @property string      $token
+ * @property string      $status
+ * @property int         $remaining_stops
  * @property string|null $eta
  * @property string|null $last_lat
  * @property string|null $last_lng

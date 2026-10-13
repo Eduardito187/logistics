@@ -27,9 +27,8 @@ final readonly class LabelBatchFactory
     private const string CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
     /**
-     * @param list<array{sku: string, quantity: int, piecesPerUnit: int}> $lines líneas en orden; la
+     * @param  list<array{sku: string, quantity: int, piecesPerUnit: int}> $lines líneas en orden; la
      *                                                                            posición fija el número de línea
-     *
      * @return list<LabelPayload>
      */
     public function build(

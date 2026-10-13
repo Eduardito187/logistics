@@ -35,7 +35,7 @@ final class DispatchPendingTransfersHandler implements CommandHandler
 
     public function handle(Command $command): void
     {
-        if (! $command instanceof DispatchPendingTransfers) {
+        if (!$command instanceof DispatchPendingTransfers) {
             throw SapConnectorException::because('DispatchPendingTransfersHandler solo maneja DispatchPendingTransfers');
         }
 

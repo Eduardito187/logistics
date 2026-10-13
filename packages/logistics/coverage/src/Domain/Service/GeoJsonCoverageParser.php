@@ -22,8 +22,7 @@ use Logistics\Coverage\Domain\ValueObject\ZoneRules;
 final class GeoJsonCoverageParser
 {
     /**
-     * @param array<string, mixed> $featureCollection FeatureCollection de GeoJSON ya decodificado
-     *
+     * @param  array<string, mixed>   $featureCollection FeatureCollection de GeoJSON ya decodificado
      * @return array<int, ParsedZone>
      */
     public function parse(array $featureCollection): array

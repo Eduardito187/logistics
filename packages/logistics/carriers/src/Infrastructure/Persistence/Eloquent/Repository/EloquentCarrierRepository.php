@@ -16,7 +16,7 @@ use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\CarrierRecord;
 final readonly class EloquentCarrierRepository implements CarrierRepository
 {
     public function __construct(
-        private CarrierMapper $mapper = new CarrierMapper(),
+        private CarrierMapper $mapper = new CarrierMapper,
     ) {}
 
     public function nextIdentity(): CarrierId

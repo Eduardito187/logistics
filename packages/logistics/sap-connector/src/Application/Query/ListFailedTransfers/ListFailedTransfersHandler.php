@@ -27,7 +27,7 @@ final class ListFailedTransfersHandler implements QueryHandler
      */
     public function handle(Query $query): array
     {
-        if (! $query instanceof ListFailedTransfers) {
+        if (!$query instanceof ListFailedTransfers) {
             throw SapConnectorException::because('ListFailedTransfersHandler solo maneja ListFailedTransfers');
         }
 

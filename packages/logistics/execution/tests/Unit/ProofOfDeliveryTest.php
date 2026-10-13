@@ -22,7 +22,7 @@ it('accepts a null photo and normalizes a blank photo to null', function (): voi
 });
 
 it('requires a non-empty confirmation', function (): void {
-    expect(fn () => ProofOfDelivery::of('  ', 'https://cdn/foto.jpg', new DateTimeImmutable()))
+    expect(fn () => ProofOfDelivery::of('  ', 'https://cdn/foto.jpg', new DateTimeImmutable))
         ->toThrow(ExecutionException::class, 'confirmación');
 });
 

@@ -119,7 +119,7 @@ final class StockTransfer extends AggregateRoot
      */
     public function markSent(): void
     {
-        if (! $this->status->isDispatchable()) {
+        if (!$this->status->isDispatchable()) {
             throw SapConnectorException::because("transición inválida a Sent desde {$this->status->value}");
         }
 

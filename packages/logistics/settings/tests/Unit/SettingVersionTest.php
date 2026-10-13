@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Logistics\Settings\Domain\Contract\SettingsRepository;
+use Logistics\Settings\Domain\Exception\SettingsException;
 use Logistics\Settings\Domain\SettingVersion;
 use Logistics\Settings\Domain\ValueObject\SettingId;
 use Logistics\Settings\Domain\ValueObject\SettingKey;
@@ -157,4 +158,4 @@ it('rechaza una versión menor a 1', function (): void {
         new DateTimeImmutable('2026-01-01T00:00:00+00:00'),
         null,
     );
-})->throws(Logistics\Settings\Domain\Exception\SettingsException::class);
+})->throws(SettingsException::class);

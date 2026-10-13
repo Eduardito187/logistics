@@ -21,7 +21,7 @@ final class DispatchStockTransfersCommand extends Command
 
     public function handle(DispatchPendingTransfersHandler $handler): int
     {
-        $handler->handle(new DispatchPendingTransfers());
+        $handler->handle(new DispatchPendingTransfers);
 
         $this->info(sprintf(
             'Stock transfer dispatch finished: %d sent, %d failed.',

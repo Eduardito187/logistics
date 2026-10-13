@@ -32,7 +32,7 @@ enum OutboxStatus: string
 
     public function isTerminal(): bool
     {
-        return ! $this->isDispatchable();
+        return !$this->isDispatchable();
     }
 
     /**

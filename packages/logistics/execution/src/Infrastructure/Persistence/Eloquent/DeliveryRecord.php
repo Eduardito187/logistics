@@ -13,10 +13,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * Es detalle de Infrastructure: nunca cruza hacia Application ni Domain. El mapeo a/desde el agregado
  * lo hace DeliveryMapper.
  *
- * @property string $id
- * @property string $shipment_id
- * @property string $vehicle_id
- * @property string $status
+ * @property string      $id
+ * @property string      $shipment_id
+ * @property string      $vehicle_id
+ * @property string      $status
  * @property string|null $pod_confirmation
  * @property string|null $pod_photo_url
  * @property string|null $pod_captured_at

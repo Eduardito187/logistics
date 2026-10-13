@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $id
  * @property string $order_id
  * @property string $label_id
- * @property int $key_id
+ * @property int    $key_id
  * @property string $zpl
  * @property string $signed_json
  * @property string $created_at

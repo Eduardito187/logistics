@@ -12,14 +12,14 @@ use Illuminate\Database\Eloquent\Model;
  * El índice único sobre `event_id` respalda la idempotencia: una recepción (event_id) encola un solo
  * traspaso. Detalle de Infrastructure; el mapeo a/desde el agregado lo hace StockTransferMapper.
  *
- * @property string $id
- * @property string $event_id
- * @property string $shipment_ref
- * @property string $material
- * @property string $center
- * @property string $warehouse
- * @property int $quantity
- * @property string $status
+ * @property string      $id
+ * @property string      $event_id
+ * @property string      $shipment_ref
+ * @property string      $material
+ * @property string      $center
+ * @property string      $warehouse
+ * @property int         $quantity
+ * @property string      $status
  * @property string|null $last_error
  */
 final class StockTransferRecord extends Model

@@ -42,7 +42,7 @@ function sampleFeatureCollection(): array
 }
 
 it('parses a minimal FeatureCollection into zones', function (): void {
-    $parsed = (new GeoJsonCoverageParser())->parse(sampleFeatureCollection());
+    $parsed = (new GeoJsonCoverageParser)->parse(sampleFeatureCollection());
 
     expect($parsed)->toHaveCount(1);
 
@@ -61,13 +61,13 @@ it('defaults to everyday service when serviceDays is absent', function (): void 
     $collection = sampleFeatureCollection();
     unset($collection['features'][0]['properties']['serviceDays']);
 
-    $parsed = (new GeoJsonCoverageParser())->parse($collection);
+    $parsed = (new GeoJsonCoverageParser)->parse($collection);
 
     expect($parsed[0]->rules->serviceDays->toArray())->toBe([1, 2, 3, 4, 5, 6, 7]);
 });
 
 it('rejects a payload that is not a FeatureCollection', function (): void {
-    expect(fn () => (new GeoJsonCoverageParser())->parse(['type' => 'Feature']))
+    expect(fn () => (new GeoJsonCoverageParser)->parse(['type' => 'Feature']))
         ->toThrow(CoverageException::class, 'FeatureCollection');
 });
 
@@ -75,7 +75,7 @@ it('rejects a feature without a name', function (): void {
     $collection = sampleFeatureCollection();
     unset($collection['features'][0]['properties']['name']);
 
-    expect(fn () => (new GeoJsonCoverageParser())->parse($collection))
+    expect(fn () => (new GeoJsonCoverageParser)->parse($collection))
         ->toThrow(CoverageException::class, 'properties.name');
 });
 
@@ -83,6 +83,6 @@ it('rejects a feature with a non-polygon geometry', function (): void {
     $collection = sampleFeatureCollection();
     $collection['features'][0]['geometry']['type'] = 'Point';
 
-    expect(fn () => (new GeoJsonCoverageParser())->parse($collection))
+    expect(fn () => (new GeoJsonCoverageParser)->parse($collection))
         ->toThrow(CoverageException::class, 'Polygon');
 });
