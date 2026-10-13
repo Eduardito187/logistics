@@ -106,6 +106,52 @@ services:
         networks:
             - dismac_lg
 
+    # -------------------- OSRM (motor de rutas OpenStreetMap, ADR 009) --------------------
+    # Sirve las matrices `/table` y las geometrías `/route`/`/trip` para el ruteo de flota.
+    # Reemplaza al OSRM demo público (sin cuotas y sin que las coordenadas de clientes salgan
+    # a un tercero). Siempre encendido (sin `profiles`): planning y telemetry apuntan aquí vía
+    # OSRM_HOST=http://osrm:5000, y el ruteo cae a haversine solo si el servicio está caído.
+    #
+    # Requiere el extracto de Bolivia preprocesado (osrm-extract/partition/customize) dentro de
+    # `.docker/osrm/data`. El preprocesado NO corre aquí (es pesado): ver docs/routing-selfhost.md.
+    # Mientras no exista `bolivia-latest.osrm`, el contenedor reinicia en bucle a propósito: es la
+    # señal de que falta correr el runbook, no un fallo de configuración.
+    osrm:
+        image: osrm/osrm-backend:latest
+        container_name: dismac_lg_osrm
+        restart: unless-stopped
+        # Algoritmo MLD (partition + customize): permite actualizar tiempos sin recontraer todo el
+        # grafo. `--max-table-size` sube el tope de la matriz /table al volumen diario esperado.
+        command: osrm-routed --algorithm mld --max-table-size 10000 /data/bolivia-latest.osrm
+        ports:
+            - "${DOCKER_OSRM_PORT:-5010}:5000"
+        volumes:
+            # El extracto OSM de Bolivia y sus artefactos preprocesados viven aquí (fuera de git).
+            - ./.docker/osrm/data:/data
+        networks:
+            - dismac_lg
+
+    # -------------------- VROOM (solver VRP/VRPTW opcional, ADR 009) --------------------
+    # Backend de ruteo opt-in para escala y ventanas horarias duras (VRPTW). Se usa solo cuando
+    # PLANNING_ROUTING_BACKEND=vroom; con `builtin` (por defecto) queda ocioso pero encendido, así
+    # cambiar de backend no exige levantar servicios a mano. Resuelve apoyándose en el OSRM propio.
+    # vroom-express expone la API HTTP en :3000; planning lo alcanza vía VROOM_URL=http://vroom:3000.
+    vroom:
+        image: vroomvrp/vroom-docker:latest
+        container_name: dismac_lg_vroom
+        restart: unless-stopped
+        environment:
+            # Deja que vroom-express lea el config montado en lugar de regenerarlo en cada arranque.
+            VROOM_ROUTER: osrm
+        volumes:
+            - ./.docker/vroom/config.yml:/conf/config.yml:ro
+        ports:
+            - "${DOCKER_VROOM_PORT:-3010}:3000"
+        depends_on:
+            - osrm
+        networks:
+            - dismac_lg
+
     # -------------------- Queue worker (siempre encendido) --------------------
     # Sin `profiles` a propósito: en dis-commerce un worker opcional que nadie levantó dejó
     # jobs sin procesar por más de 1 h. `--max-time` recicla el proceso para no correr código viejo.

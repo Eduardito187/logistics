@@ -26,10 +26,15 @@ use Logistics\Shipments\Application\Query\ListShipmentProducts\ListShipmentProdu
 use Logistics\Shipments\Application\Query\ListShipments\ListShipments;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipmentsHandler;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
+use Logistics\Shipments\Domain\Contract\Geocoder;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
+use Logistics\Shipments\Infrastructure\Geocoding\GeocodeScoring;
 use Logistics\Shipments\Infrastructure\Geocoding\GoogleGeocoder;
-use Logistics\Shipments\Infrastructure\Geocoding\NullAddressConfidenceScorer;
+use Logistics\Shipments\Infrastructure\Geocoding\NominatimGeocoder;
+use Logistics\Shipments\Infrastructure\Geocoding\NullGeocoder;
+use Logistics\Shipments\Infrastructure\Geocoding\ProvisionalAddressConfidenceScorer;
 use Logistics\Shipments\Infrastructure\Ingestion\CsvShipmentSpreadsheetParser;
+use Logistics\Shipments\Infrastructure\Ingestion\DelegatingShipmentSpreadsheetParser;
 use Logistics\Shipments\Infrastructure\Magento\HttpMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Magento\NullMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\EloquentShipmentRepository;
@@ -65,8 +70,12 @@ final class ShipmentsServiceProvider extends ServiceProvider
 
         $this->app->bind(ShipmentRepository::class, EloquentShipmentRepository::class);
 
-        // Parser de planillas de carga (SHP-06): CSV con la librería estándar, sin dependencias.
-        $this->app->bind(ShipmentSpreadsheetParser::class, CsvShipmentSpreadsheetParser::class);
+        // Parser de planillas de carga (SHP-06): detecta el formato por el contenido. Hoy procesa CSV
+        // (librería estándar, sin dependencias) y reconoce binarios de Excel para devolver un error
+        // accionable (exportar a CSV) en vez de leerlos como texto.
+        $this->app->bind(ShipmentSpreadsheetParser::class, function ($app): ShipmentSpreadsheetParser {
+            return new DelegatingShipmentSpreadsheetParser($app->make(CsvShipmentSpreadsheetParser::class));
+        });
 
         // Lector de pedidos de Magento (SHP-07): adaptador HTTP real si hay base_url; si no, el stub
         // neutro, para que la app arranque sin credenciales. La selección se resuelve lazy, al primer uso.
@@ -90,34 +99,92 @@ final class ShipmentsServiceProvider extends ServiceProvider
             );
         });
 
-        // Scorer/geocodificador de direcciones: adaptador real de Google si hay clave; si no, el stub
-        // neutro, para que la app arranque y se pueda desarrollar sin credenciales (ADR: I/O externo
-        // configurable y degradable). La selección se resuelve lazy, al primer uso.
-        $this->app->singleton(AddressConfidenceScorer::class, function ($app): AddressConfidenceScorer {
+        // Geocodificador de direcciones: Google (si hay clave), Nominatim/OSM (sin clave) o el stub
+        // neutro, según config (driver) con AUTO por defecto, para que la app arranque y se desarrolle
+        // sin credenciales (ADR: I/O externo configurable y degradable). Se resuelve lazy, al primer uso.
+        $this->app->singleton(Geocoder::class, function ($app): Geocoder {
             /** @var Config $config */
             $config = $app->make(Config::class);
 
-            $apiKey = $config->get('logistics-shipments.geocoder.google_key');
-            if (!is_string($apiKey) || $apiKey === '') {
-                return new NullAddressConfidenceScorer;
-            }
+            return self::makeGeocoder($app->make(HttpClient::class), $app->make(CacheFactory::class), $config);
+        });
 
-            /** @var CacheFactory $cacheFactory */
-            $cacheFactory = $app->make(CacheFactory::class);
-            $store = $config->get('logistics-shipments.geocoder.cache_store');
+        // Scorer del INGRESO (y del seeder): provisional, local y sin I/O. El ingreso corre dentro de un
+        // request/transacción de usuario, donde no se hace HTTP síncrono a terceros (regla del proyecto):
+        // la geocodificación real (el Geocoder de arriba) la hace después, asíncrona, el comando
+        // GeocodeShipmentAddress vía el worker del outbox.
+        $this->app->bind(AddressConfidenceScorer::class, function ($app): AddressConfidenceScorer {
+            /** @var Config $config */
+            $config = $app->make(Config::class);
 
-            return new GoogleGeocoder(
-                $app->make(HttpClient::class),
-                $cacheFactory->store(is_string($store) && $store !== '' ? $store : null),
-                $apiKey,
-                (string) $config->get('logistics-shipments.geocoder.endpoint'),
-                (string) $config->get('logistics-shipments.geocoder.region', 'bo'),
-                (string) $config->get('logistics-shipments.geocoder.language', 'es'),
-                (int) $config->get('logistics-shipments.geocoder.timeout', 5),
-                (int) $config->get('logistics-shipments.geocoder.cache_ttl', 2592000),
-                (int) $config->get('logistics-shipments.geocoder.daily_quota', 40000),
+            return new ProvisionalAddressConfidenceScorer(
+                (int) $config->get('logistics-shipments.geocoder.provisional.with_coordinates', 70),
+                (int) $config->get('logistics-shipments.geocoder.provisional.without_coordinates', 30),
             );
         });
+    }
+
+    /**
+     * Selecciona y arma el geocodificador según la configuración del contexto.
+     */
+    private static function makeGeocoder(HttpClient $http, CacheFactory $cacheFactory, Config $config): Geocoder
+    {
+        $driver = $config->get('logistics-shipments.geocoder.driver');
+        $driver = is_string($driver) && $driver !== '' ? strtolower($driver) : null;
+
+        $googleKey = $config->get('logistics-shipments.geocoder.google.key');
+        $hasGoogleKey = is_string($googleKey) && $googleKey !== '';
+
+        $nominatimEnabled = (bool) $config->get('logistics-shipments.geocoder.nominatim.enabled', true);
+
+        // AUTO: Google si hay clave; si no, Nominatim si está habilitado; si no, el stub neutro.
+        if ($driver === null) {
+            $driver = match (true) {
+                $hasGoogleKey => 'google',
+                $nominatimEnabled => 'nominatim',
+                default => 'null',
+            };
+        }
+
+        $store = $config->get('logistics-shipments.geocoder.cache_store');
+        $cache = $cacheFactory->store(is_string($store) && $store !== '' ? $store : null);
+
+        $scoringConfig = $config->get('logistics-shipments.geocoder.scoring');
+        $scoring = GeocodeScoring::fromConfig(is_array($scoringConfig) ? $scoringConfig : []);
+
+        $cacheTtl = (int) $config->get('logistics-shipments.geocoder.cache_ttl', 2592000);
+
+        if ($driver === 'google' && $hasGoogleKey) {
+            return new GoogleGeocoder(
+                $http,
+                $cache,
+                $scoring,
+                (string) $googleKey,
+                (string) $config->get('logistics-shipments.geocoder.google.endpoint'),
+                (string) $config->get('logistics-shipments.geocoder.google.region', 'bo'),
+                (string) $config->get('logistics-shipments.geocoder.google.language', 'es'),
+                (int) $config->get('logistics-shipments.geocoder.google.timeout', 5),
+                $cacheTtl,
+                (int) $config->get('logistics-shipments.geocoder.google.daily_quota', 40000),
+            );
+        }
+
+        if ($driver === 'nominatim') {
+            return new NominatimGeocoder(
+                $http,
+                $cache,
+                $scoring,
+                (string) $config->get('logistics-shipments.geocoder.nominatim.endpoint'),
+                (string) $config->get('logistics-shipments.geocoder.nominatim.user_agent'),
+                (string) $config->get('logistics-shipments.geocoder.nominatim.country_codes', 'bo'),
+                (string) $config->get('logistics-shipments.geocoder.nominatim.language', 'es'),
+                (int) $config->get('logistics-shipments.geocoder.nominatim.timeout', 5),
+                $cacheTtl,
+                (int) $config->get('logistics-shipments.geocoder.nominatim.min_interval_ms', 1000),
+            );
+        }
+
+        return new NullGeocoder;
     }
 
     public function boot(): void

@@ -7,24 +7,31 @@ namespace Logistics\Coverage\Infrastructure\Providers;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Coverage\Application\Command\DefineZone;
 use Logistics\Coverage\Application\Command\DefineZoneHandler;
+use Logistics\Coverage\Application\Command\ImportCoverage;
+use Logistics\Coverage\Application\Command\ImportCoverageHandler;
 use Logistics\Coverage\Application\Command\ImportCoverageKml;
 use Logistics\Coverage\Application\Command\ImportCoverageKmlHandler;
 use Logistics\Coverage\Application\Command\ImportCoverageMap;
 use Logistics\Coverage\Application\Command\ImportCoverageMapHandler;
 use Logistics\Coverage\Application\Command\UpdateZoneRules;
 use Logistics\Coverage\Application\Command\UpdateZoneRulesHandler;
+use Logistics\Coverage\Application\Contract\ZoneRuleSettings;
+use Logistics\Coverage\Application\Query\GetEffectiveZoneRule;
+use Logistics\Coverage\Application\Query\GetEffectiveZoneRuleHandler;
 use Logistics\Coverage\Application\Query\ListZones;
 use Logistics\Coverage\Application\Query\ListZonesHandler;
 use Logistics\Coverage\Application\Query\ResolveDepartmentForPoint;
 use Logistics\Coverage\Application\Query\ResolveDepartmentForPointHandler;
 use Logistics\Coverage\Application\Query\ResolveZoneForPoint;
 use Logistics\Coverage\Application\Query\ResolveZoneForPointHandler;
+use Logistics\Coverage\Application\Report\ImportCoverageReport;
 use Logistics\Coverage\Domain\Contract\DepartmentLocator;
 use Logistics\Coverage\Domain\Contract\GeoAreaRepository;
 use Logistics\Coverage\Domain\Contract\ZoneRepository;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\EloquentGeoAreaRepository;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\EloquentZoneRepository;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\PostgisDepartmentLocator;
+use Logistics\Coverage\Infrastructure\Settings\SettingsZoneRuleGateway;
 use Logistics\Coverage\Presentation\Console\ResolveZoneCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -46,8 +53,10 @@ final class CoverageServiceProvider extends ServiceProvider
         UpdateZoneRules::class => UpdateZoneRulesHandler::class,
         ImportCoverageMap::class => ImportCoverageMapHandler::class,
         ImportCoverageKml::class => ImportCoverageKmlHandler::class,
+        ImportCoverage::class => ImportCoverageHandler::class,
         ResolveZoneForPoint::class => ResolveZoneForPointHandler::class,
         ResolveDepartmentForPoint::class => ResolveDepartmentForPointHandler::class,
+        GetEffectiveZoneRule::class => GetEffectiveZoneRuleHandler::class,
         ListZones::class => ListZonesHandler::class,
     ];
 
@@ -56,6 +65,14 @@ final class CoverageServiceProvider extends ServiceProvider
         $this->app->bind(ZoneRepository::class, EloquentZoneRepository::class);
         $this->app->bind(GeoAreaRepository::class, EloquentGeoAreaRepository::class);
         $this->app->bind(DepartmentLocator::class, PostgisDepartmentLocator::class);
+
+        // Regla de cobertura por zona como configuración versionada: el adaptador habla con el contexto
+        // Configuración solo por los buses CQRS (sin dependencia composer).
+        $this->app->bind(ZoneRuleSettings::class, SettingsZoneRuleGateway::class);
+
+        // Colector del resultado de la importación de cobertura: singleton de alcance de request,
+        // compartido entre el handler (que lo llena) y la acción de admin (que lo lee tras el dispatch).
+        $this->app->singleton(ImportCoverageReport::class);
     }
 
     public function boot(): void

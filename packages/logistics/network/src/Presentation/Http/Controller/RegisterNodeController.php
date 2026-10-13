@@ -19,8 +19,12 @@ final class RegisterNodeController
 {
     public function __invoke(RegisterNodeRequest $request, CommandBus $bus): JsonResponse
     {
-        /** @var array{code: string, name: string, type: string, latitude: int|float|string, longitude: int|float|string} $data */
+        /** @var array{code: string, name: string, type: string, latitude: int|float|string, longitude: int|float|string, department?: string|null} $data */
         $data = $request->validated();
+
+        $department = isset($data['department']) && $data['department'] !== ''
+            ? (string) $data['department']
+            : null;
 
         $bus->dispatch(new RegisterNodeCommand(
             $data['code'],
@@ -28,6 +32,7 @@ final class RegisterNodeController
             $data['type'],
             (float) $data['latitude'],
             (float) $data['longitude'],
+            $department,
         ));
 
         return new JsonResponse([

@@ -1,6 +1,9 @@
 name: CI
 
 # Corre en cada PR hacia las ramas de entorno y en cada push a ellas (después del merge).
+# La suite que valida acá es la misma que `make ci`: Pint (--test) + PHPStan nivel 8 + Pest.
+# En CI se ejecuta de forma nativa (sin Docker) contra los servicios de GitHub Actions para
+# que sea rápida y cacheable; localmente el equipo usa `make ci` dentro de los containers.
 on:
   push:
     branches: [dev, staging, production]
@@ -13,6 +16,8 @@ concurrency:
 
 env:
   PHP_VERSION: '8.4'
+  # Mismo major que el container `node` del docker-compose, para que el build del tema sea idéntico.
+  NODE_VERSION: '22'
 
 jobs:
   lint:
@@ -37,9 +42,11 @@ jobs:
 
       - run: composer install --no-interaction --no-progress --prefer-dist
 
+      # Pint --test: falla si algún archivo no cumple el estilo (no corrige).
       - name: Pint
         run: ./vendor/bin/pint --test
 
+      # El nivel (8) vive en phpstan.neon; no se pasa por flag para no divergir de `make stan`.
       - name: PHPStan
         run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
@@ -103,10 +110,56 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate
+          # PostGIS resuelve zonas de cobertura, geocercas y distancias (ADR 003); la suite lo necesita.
           PGPASSWORD=logistics psql -h 127.0.0.1 -U logistics -d logistics_test -c 'CREATE EXTENSION IF NOT EXISTS postgis;'
 
       - name: Pest
         run: ./vendor/bin/pest
+
+  assets:
+    name: Build admin theme
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sólo se necesita PHP/Composer para traer vendor/filament: el tema de Filament hace
+      # `@import` de vendor/filament/filament/resources/css/theme.css y Tailwind escanea sus vistas.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
+          tools: composer:v2
+          coverage: none
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install PHP deps (vendor/filament para el tema)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install JS deps
+        run: npm ci
+
+      # Compila app.css/app.js y el tema del admin (resources/css/filament/admin/theme.css).
+      - name: Build
+        run: npm run build
+
+      - name: Upload compiled assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-assets
+          path: public/build
+          if-no-files-found: error
+          retention-days: 7
 
   image:
     name: Build production image

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Logistics\Notifications\Presentation\Filament\Resources;
 
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Resources\Pages\PageRegistration;
@@ -14,11 +14,13 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Logistics\Notifications\Application\Command\ResetMessageTypeRule\ResetMessageTypeRule;
 use Logistics\Notifications\Domain\ValueObject\EscalateCondition;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\MessageTypeRuleRecord;
 use Logistics\Notifications\Presentation\Filament\Resources\MessageTypeRuleResource\Pages\CreateMessageTypeRule;
 use Logistics\Notifications\Presentation\Filament\Resources\MessageTypeRuleResource\Pages\EditMessageTypeRule;
 use Logistics\Notifications\Presentation\Filament\Resources\MessageTypeRuleResource\Pages\ListMessageTypeRules;
+use Logistics\Shared\Application\Command\CommandBus;
 
 /**
  * Admin de las reglas de cascada configurables por tipo de mensaje (P1-NOT-01). Define qué canales se
@@ -166,12 +168,38 @@ final class MessageTypeRuleResource extends Resource
             ])
             ->recordActions([
                 EditAction::make(),
-                DeleteAction::make(),
+                self::resetAction(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([]),
             ])
             ->defaultSort('message_type');
+    }
+
+    /**
+     * Acción "Reset to default": quita el override del tipo y lo devuelve a la cascada del ADR 006.
+     *
+     * No borra el Record con Eloquent (eso dejaría el override vivo en Configuración, que es la fuente de
+     * verdad que lee el motor): despacha ResetMessageTypeRule al bus CQRS, que publica una versión nueva
+     * de la clave sin el tipo y reproyecta la tabla de solo-estado. El historial queda preservado.
+     */
+    public static function resetAction(): Action
+    {
+        return Action::make('reset')
+            ->label(__('Reset to default'))
+            ->icon('heroicon-o-arrow-uturn-left')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->modalHeading(__('Reset to default cascade'))
+            ->modalDescription(__('This message type will fall back to the default cascade. A new setting version is recorded; history is preserved.'))
+            ->action(static function (MessageTypeRuleRecord $record): void {
+                $actor = auth()->user()?->getAuthIdentifier();
+
+                app(CommandBus::class)->dispatch(new ResetMessageTypeRule(
+                    messageType: (string) $record->message_type,
+                    createdBy: $actor !== null ? (string) $actor : null,
+                ));
+            });
     }
 
     /**

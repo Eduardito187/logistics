@@ -622,6 +622,19 @@ components:
         assembled_for:
           type: string
           format: date
+        shift_starts_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Optional work-shift start. When both shift bounds are sent, the crew's working hours are
+            validated against the configured shift rules (time window, maximum daily hours, and minimum
+            rest between the driver's and each helper's shifts). Must be sent together with shift_ends_at.
+        shift_ends_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional work-shift end. Must be later than shift_starts_at and sent together with it.
 
     Helper:
       type: object

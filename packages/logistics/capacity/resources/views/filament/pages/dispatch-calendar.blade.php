@@ -41,8 +41,8 @@
                         <dd class="font-medium">{{ $schedule['horizon_days'] }}</dd>
                     </div>
                     <div>
-                        <dt class="text-gray-500 dark:text-gray-400">{{ __('Default per slot') }}</dt>
-                        <dd class="font-medium">{{ $schedule['default_slot_deliveries'] }}</dd>
+                        <dt class="text-gray-500 dark:text-gray-400">{{ __('Scopes') }}</dt>
+                        <dd class="font-medium">{{ $schedule['scopes_count'] }}</dd>
                     </div>
                 </dl>
             </div>
@@ -56,6 +56,36 @@
                 </div>
             @endif
         </x-filament::section>
+
+        {{-- Historial de versiones de las reglas de cupo (settings): inmutable, de la más nueva a la
+             más vieja. Editar reglas publica una versión nueva; esto deja ver la traza de cambios. --}}
+        @if (! empty($history))
+            <x-filament::section>
+                <x-slot name="heading">{{ __('Capacity rules history') }}</x-slot>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b text-left text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                <th class="py-2 pr-4 font-medium">{{ __('Version') }}</th>
+                                <th class="py-2 pr-4 font-medium">{{ __('Effective from') }}</th>
+                                <th class="py-2 pr-4 font-medium">{{ __('Created at') }}</th>
+                                <th class="py-2 pr-4 font-medium">{{ __('Created by') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($history as $version)
+                                <tr class="border-b last:border-0 dark:border-gray-800">
+                                    <td class="py-2 pr-4 font-mono">{{ $version['version'] }}</td>
+                                    <td class="py-2 pr-4">{{ $version['effective_from'] }}</td>
+                                    <td class="py-2 pr-4">{{ $version['created_at'] }}</td>
+                                    <td class="py-2 pr-4">{{ $version['created_by'] ?: __('Unknown') }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </x-filament::section>
+        @endif
 
         {{-- Cupos del día, agrupados por scope --}}
         @forelse ($scopes as $scope)

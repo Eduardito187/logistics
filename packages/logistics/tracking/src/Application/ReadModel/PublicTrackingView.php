@@ -29,9 +29,12 @@ final readonly class PublicTrackingView
         public ?string $eta,
         public ?array $lastPosition,
         public string $stopsMessage,
+        // ¿La última posición es "en vivo" (fresca dentro de la ventana) o solo la última conocida?
+        // Null cuando no hay posición. Lo decide el QueryHandler con el Clock de la app.
+        public ?bool $positionIsLive = null,
     ) {}
 
-    public static function fromTracking(ShipmentTracking $tracking): self
+    public static function fromTracking(ShipmentTracking $tracking, ?bool $positionIsLive = null): self
     {
         return new self(
             $tracking->status()->value,
@@ -40,6 +43,7 @@ final readonly class PublicTrackingView
             $tracking->eta()?->toIso8601(),
             $tracking->lastPosition()?->toArray(),
             self::buildStopsMessage($tracking->status(), $tracking->remainingStops()),
+            $tracking->lastPosition() === null ? null : $positionIsLive,
         );
     }
 
@@ -70,7 +74,7 @@ final readonly class PublicTrackingView
     }
 
     /**
-     * @return array{status: string, remaining_stops: int, route_position: int|null, eta: string|null, last_position: array{lat: float, lng: float, reported_at: string}|null, stops_message: string}
+     * @return array{status: string, remaining_stops: int, route_position: int|null, eta: string|null, last_position: array{lat: float, lng: float, reported_at: string}|null, position_is_live: bool|null, stops_message: string}
      */
     public function toArray(): array
     {
@@ -80,6 +84,7 @@ final readonly class PublicTrackingView
             'route_position' => $this->routePosition,
             'eta' => $this->eta,
             'last_position' => $this->lastPosition,
+            'position_is_live' => $this->positionIsLive,
             'stops_message' => $this->stopsMessage,
         ];
     }

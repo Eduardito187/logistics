@@ -1,6 +1,6 @@
 # ADR 006 — Notificaciones sin WhatsApp
 
-**Status:** Accepted
+**Status:** Accepted (revisado por ADR 010: se habilitan WhatsApp y Telegram, acotados por regla y tope)
 **Fecha:** 2026-10-02
 **Deciders:** Eduard Huallata
 

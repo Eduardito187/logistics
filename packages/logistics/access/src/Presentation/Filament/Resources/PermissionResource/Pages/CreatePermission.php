@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Logistics\Access\Application\Command\RegisterPermission\RegisterPermission;
 use Logistics\Access\Infrastructure\Persistence\Eloquent\Model\PermissionRecord;
 use Logistics\Access\Presentation\Filament\Resources\PermissionResource;
+use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 use Logistics\Shared\Application\Command\CommandBus;
 
 /**
@@ -40,6 +41,13 @@ final class CreatePermission extends CreateRecord
         ));
 
         // La clave es única: identifica el permiso recién registrado para la redirección del admin.
-        return PermissionRecord::query()->where('key', $key)->firstOrFail();
+        $record = PermissionRecord::query()->where('key', $key)->firstOrFail();
+
+        AuditRecorder::record('permission.registered', 'access.permission', (string) $record->getKey(), [
+            'key' => $key,
+            'is_system' => (bool) ($data['is_system'] ?? false),
+        ]);
+
+        return $record;
     }
 }

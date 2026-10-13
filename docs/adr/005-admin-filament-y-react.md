@@ -1,6 +1,6 @@
 # ADR 005 — Admin en Filament; tablero de planificación en React
 
-**Status:** Accepted
+**Status:** Accepted (la capa de mapas revisada por ADR 009: Leaflet + OpenStreetMap en vez de Google Maps JS)
 **Fecha:** 2026-10-02
 **Deciders:** Eduard Huallata
 

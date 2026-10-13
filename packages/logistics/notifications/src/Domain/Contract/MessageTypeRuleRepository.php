@@ -27,6 +27,11 @@ interface MessageTypeRuleRepository
     public function save(MessageType $messageType, CascadePolicy $policy): void;
 
     /**
+     * Quita la política configurada de un tipo (si existe). No falla si no había ninguna.
+     */
+    public function remove(MessageType $messageType): void;
+
+    /**
      * Todas las políticas configuradas, keyed por MessageType->value.
      *
      * @return array<string, CascadePolicy>

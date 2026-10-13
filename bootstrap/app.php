@@ -2,13 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Problem\ProblemExceptionRenderer;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -21,7 +25,20 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Inertia (app web Vue): comparte datos con el front y maneja las peticiones X-Inertia. Es
+        // passthrough para respuestas que no son Inertia, así que no afecta al panel Filament (/admin).
+        $middleware->web(append: [
+            HandleInertiaRequests::class,
+            AddLinkHeadersForPreloadedAssets::class,
+        ]);
+
+        // Invitado en una ruta protegida (p.ej. /app) → al login. Reusamos el login de Filament para no
+        // duplicar auth; al compartir la sesión web, tras entrar el SPA queda autenticado.
+        // Invitado en ruta protegida del SPA (/app) → login del SPA (Vue) si ya existe; si aún no, cae al
+        // login de Filament. La sesión web es compartida, así que tras entrar el SPA queda autenticado.
+        $middleware->redirectGuestsTo(static fn (): string => Route::has('app.login')
+            ? route('app.login')
+            : route('filament.admin.auth.login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
@@ -55,4 +72,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(fn (ModelNotFoundException $e, Request $request): ?Response => $adminNotFoundRedirect($request));
         $exceptions->render(fn (NotFoundHttpException $e, Request $request): ?Response => $adminNotFoundRedirect($request));
+
+        // Manejo de errores UNIFORME (RFC 7807, application/problem+json) para las tres puertas de la
+        // API. Se registra DESPUÉS de los handlers del admin: para una petición api/* aquellos devuelven
+        // null (no son admin) y este toma el relevo; para el admin (web/Livewire) este devuelve null y
+        // conserva el manejo HTML y la redirección de deep-links de arriba. El catálogo de códigos vive
+        // en App\Http\Problem\ErrorCode.
+        $problemRenderer = new ProblemExceptionRenderer;
+        $exceptions->render(fn (Throwable $e, Request $request): ?Response => $problemRenderer->render($e, $request));
     })->create();

@@ -47,6 +47,26 @@ final readonly class PromiseView
     }
 
     /**
+     * Reconstruye la vista desde su forma primitiva (la que devuelve toArray()). La usa la capa de
+     * cache para rehidratar el modelo de lectura sin guardar nunca el objeto serializado (regla #7).
+     *
+     * @param array<string, mixed> $row
+     */
+    public static function fromArray(array $row): self
+    {
+        return new self(
+            (string) $row['id'],
+            (string) $row['shipment_ref'],
+            (string) $row['zone_id'],
+            isset($row['zone_name']) ? (string) $row['zone_name'] : null,
+            (string) $row['slot_date'],
+            (string) $row['time_slot'],
+            (string) $row['status'],
+            isset($row['reserved_until']) ? (string) $row['reserved_until'] : null,
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array

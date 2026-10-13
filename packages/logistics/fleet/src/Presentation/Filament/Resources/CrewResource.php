@@ -7,6 +7,7 @@ namespace Logistics\Fleet\Presentation\Filament\Resources;
 use BackedEnum;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
@@ -139,6 +140,21 @@ final class CrewResource extends Resource
                 ->native(false)
                 ->required()
                 ->format('Y-m-d'),
+
+            // Turno opcional: horas reales de salida y regreso. Si se fija, el alta valida la ventana
+            // horaria, la jornada máxima y el descanso mínimo contra los demás turnos de cada integrante.
+            DateTimePicker::make('shift_starts_at')
+                ->label(__('Shift start'))
+                ->native(false)
+                ->seconds(false)
+                ->requiredWith('shift_ends_at'),
+
+            DateTimePicker::make('shift_ends_at')
+                ->label(__('Shift end'))
+                ->native(false)
+                ->seconds(false)
+                ->requiredWith('shift_starts_at')
+                ->after('shift_starts_at'),
         ]);
     }
 
@@ -194,6 +210,14 @@ final class CrewResource extends Resource
                     ->whereKey($state)
                     ->value('name') ?? $state),
             TextEntry::make('assembled_for')->label(__('Assembled for'))->date('Y-m-d'),
+            TextEntry::make('shift_starts_at')
+                ->label(__('Shift start'))
+                ->dateTime('Y-m-d H:i')
+                ->placeholder('—'),
+            TextEntry::make('shift_ends_at')
+                ->label(__('Shift end'))
+                ->dateTime('Y-m-d H:i')
+                ->placeholder('—'),
         ]);
     }
 

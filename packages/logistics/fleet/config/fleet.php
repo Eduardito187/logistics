@@ -16,4 +16,16 @@ return [
 
     // Ventana por defecto, en días, del tablero de documentos por vencer (alertas de vencimiento).
     'expiry_alert_days' => (int) env('FLEET_EXPIRY_ALERT_DAYS', 30),
+
+    // Reglas por defecto de turnos y descansos de la tripulación. Son el respaldo: settings puede
+    // sobreescribirlas (versionadas) vía SettingsShiftRulesPolicy. Expresadas en horas por comodidad.
+    'shift' => [
+        // Jornada máxima de un turno.
+        'max_daily_hours' => (float) env('FLEET_SHIFT_MAX_DAILY_HOURS', 10),
+        // Ventana horaria permitida del día (hora de inicio más temprana y hora de fin más tardía).
+        'earliest_start_hour' => (float) env('FLEET_SHIFT_EARLIEST_START_HOUR', 5),
+        'latest_end_hour' => (float) env('FLEET_SHIFT_LATEST_END_HOUR', 22),
+        // Descanso mínimo entre dos turnos de una misma persona.
+        'min_rest_hours' => (float) env('FLEET_SHIFT_MIN_REST_HOURS', 10),
+    ],
 ];

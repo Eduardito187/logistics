@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Http\Problem\ErrorCode;
+use App\Http\Problem\ProblemDetails;
 use App\Models\ApiChannel;
 use App\Providers\AuthServiceProvider;
 use Closure;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -29,7 +30,10 @@ final class AuthenticateChannel
         $secret = $request->header('X-Channel-Secret');
 
         if (!is_string($key) || !is_string($secret) || $key === '' || $secret === '') {
-            return $this->unauthorized('Channel credentials are missing.');
+            return ProblemDetails::fromCode(
+                ErrorCode::MissingCredentials,
+                'Channel credentials are missing.',
+            )->toResponse($request);
         }
 
         $channel = ApiChannel::query()->where('key', $key)->where('active', true)->first();
@@ -37,17 +41,15 @@ final class AuthenticateChannel
         // Comparación en tiempo constante aunque el canal no exista (evita filtrar
         // qué keys son válidas por diferencia de tiempos).
         if ($channel === null || !$channel->verifySecret($secret)) {
-            return $this->unauthorized('Invalid channel credentials.');
+            return ProblemDetails::fromCode(
+                ErrorCode::InvalidCredentials,
+                'Invalid channel credentials.',
+            )->toResponse($request);
         }
 
         $channel->markUsed();
         $request->attributes->set(self::ATTRIBUTE, $channel);
 
         return $next($request);
-    }
-
-    private function unauthorized(string $message): JsonResponse
-    {
-        return new JsonResponse(['message' => $message], 401);
     }
 }

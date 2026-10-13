@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Http\Problem\ErrorCode;
+use App\Http\Problem\ProblemDetails;
 use Closure;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -23,15 +24,15 @@ final class EnsureAbility
         $user = $request->user();
 
         if ($user === null) {
-            return new JsonResponse(['message' => 'Unauthenticated.'], 401);
+            return ProblemDetails::fromCode(ErrorCode::Unauthenticated, 'Unauthenticated.')->toResponse($request);
         }
 
         foreach ($abilities as $ability) {
             if (!$user->tokenCan($ability)) {
-                return new JsonResponse(
-                    ['message' => 'Your token lacks the required ability: '.$ability],
-                    403,
-                );
+                return ProblemDetails::fromCode(
+                    ErrorCode::InsufficientScope,
+                    'Your token lacks the required ability: '.$ability,
+                )->toResponse($request);
             }
         }
 

@@ -6,7 +6,11 @@ use Illuminate\Support\Facades\Route;
 use Logistics\Execution\Presentation\Http\AssembleDailyRouteController;
 use Logistics\Execution\Presentation\Http\GetDeliveryStateController;
 use Logistics\Execution\Presentation\Http\GetDriverRouteController;
+use Logistics\Execution\Presentation\Http\GetNodeReceptionController;
 use Logistics\Execution\Presentation\Http\ListVehicleDeliveriesController;
+use Logistics\Execution\Presentation\Http\OpenNodeReceptionController;
+use Logistics\Execution\Presentation\Http\ReceiveUnitAtNodeController;
+use Logistics\Execution\Presentation\Http\ReconcileNodeReceptionController;
 use Logistics\Execution\Presentation\Http\RecordFailedDeliveryController;
 use Logistics\Execution\Presentation\Http\RecordLoadScanController;
 use Logistics\Execution\Presentation\Http\RecordNodeReceptionController;
@@ -63,6 +67,18 @@ return [
                 ->name('scans.unload');
             Route::post('deliveries/scans/node-reception', RecordNodeReceptionController::class)
                 ->name('scans.node-reception');
+
+            // Recepción conciliada en nodo (CD→CD, CD→tienda, tienda→tienda, tienda→CD): se abre con los
+            // bultos esperados, se escanea cada bulto recibido, y se concilia (faltantes/sobrantes). Todo
+            // idempotente y offline-first. El evento de conciliación alimenta tracking y el conector SAP.
+            Route::post('node-receptions', OpenNodeReceptionController::class)
+                ->name('node-receptions.open');
+            Route::get('node-receptions/{shipmentId}/{nodeId}', GetNodeReceptionController::class)
+                ->name('node-receptions.show');
+            Route::post('node-receptions/units', ReceiveUnitAtNodeController::class)
+                ->name('node-receptions.units.receive');
+            Route::post('node-receptions/reconcile', ReconcileNodeReceptionController::class)
+                ->name('node-receptions.reconcile');
 
             // Contraverificación del servidor de la firma de una etiqueta QR (verificación offline).
             Route::post('labels/verify', VerifyLabelController::class)

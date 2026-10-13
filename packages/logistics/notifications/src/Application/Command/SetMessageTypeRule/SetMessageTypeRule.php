@@ -19,5 +19,6 @@ final readonly class SetMessageTypeRule implements Command
         public string $messageType,
         public array $channels,
         public string $escalateWhen,
+        public ?string $createdBy = null,
     ) {}
 }

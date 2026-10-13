@@ -34,6 +34,9 @@ final readonly class CrewController
             'helper_ids.*' => ['uuid'],
             'vehicle_id' => ['required', 'uuid'],
             'assembled_for' => ['required', 'date_format:Y-m-d'],
+            // Turno opcional: si viene uno, debe venir el otro (el handler valida reglas y descansos).
+            'shift_starts_at' => ['sometimes', 'nullable', 'date', 'required_with:shift_ends_at'],
+            'shift_ends_at' => ['sometimes', 'nullable', 'date', 'required_with:shift_starts_at'],
         ]);
 
         /** @var list<string> $helperIds */
@@ -44,6 +47,8 @@ final readonly class CrewController
             helperIds: $helperIds,
             vehicleId: $validated['vehicle_id'],
             assembledFor: $validated['assembled_for'],
+            shiftStartsAt: $validated['shift_starts_at'] ?? null,
+            shiftEndsAt: $validated['shift_ends_at'] ?? null,
         ));
 
         return $this->respondAccepted([

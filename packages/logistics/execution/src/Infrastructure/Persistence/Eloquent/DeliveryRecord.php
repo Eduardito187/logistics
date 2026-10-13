@@ -24,6 +24,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * @property string      $status
  * @property string|null $pod_confirmation
  * @property string|null $pod_photo_url
+ * @property string|null $pod_photo_path
  * @property string|null $pod_captured_at
  * @property string|null $failure_reason
  */

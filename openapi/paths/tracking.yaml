@@ -74,6 +74,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+  /channels/tracking/{token}/units:
+    get:
+      tags: [tracking]
+      operationId: getPublicUnits
+      summary: Public per-parcel breakdown by opaque token (no PII)
+      description: >
+        Puerta channels. Devuelve el desglose de bultos del envío (etiqueta humana, estado y un mensaje
+        en español por bulto), sin datos personales ni claves internas. Mismo token que la página
+        pública del envío.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Token opaco del enlace de rastreo
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: Seguimiento encontrado (la lista puede estar vacía)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [units]
+                    properties:
+                      units:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PublicUnit'
+        '404':
+          description: Ningún seguimiento corresponde al token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /app/tracking/shipments/{shipmentId}/units:
+    get:
+      tags: [tracking]
+      operationId: getShipmentUnits
+      summary: Internal per-parcel tracking detail by shipment id
+      description: >
+        Puerta app (personal interno). Devuelve el detalle per-bulto del seguimiento del envío: estado,
+        última ubicación (nodo) y último escaneo de cada bulto. Alimenta la reconciliación de bultos.
+      parameters:
+        - $ref: '#/components/parameters/ShipmentId'
+      responses:
+        '200':
+          description: Detalle de bultos (la lista puede estar vacía)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [shipment_id, units]
+                    properties:
+                      shipment_id:
+                        type: string
+                        format: uuid
+                      units:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/UnitTracking'
   /app/tracking/shipments/{shipmentId}/position:
     post:
       tags: [tracking]
@@ -158,6 +228,48 @@ components:
       type: string
       description: Estado visible del envío (vocabulario propio del contexto de seguimiento)
       enum: [REGISTERED, PREPARED, ON_THE_WAY, ARRIVING, DELIVERED, FAILED]
+    UnitStatus:
+      type: string
+      description: Estado visible de un bulto (unidad física) dentro del seguimiento
+      enum: [REGISTERED, PREPARED, LOADED, UNLOADED, RECEIVED, DELIVERED, FAILED]
+    PublicUnit:
+      type: object
+      description: Vista pública de un bulto (sin PII)
+      required: [label, status, status_message]
+      properties:
+        label:
+          type: string
+          description: Etiqueta humana del bulto, p. ej. "Bulto 1 de 2"
+        status:
+          $ref: '#/components/schemas/UnitStatus'
+        status_message:
+          type: string
+          description: Mensaje por bulto en español, p. ej. "Cargado en el camión."
+    UnitTracking:
+      type: object
+      description: Vista interna del seguimiento de un bulto
+      required: [id, unit_id, shipment_id, status, last_location_id, last_seen_at, label]
+      properties:
+        id:
+          type: string
+          format: uuid
+        unit_id:
+          type: string
+          format: uuid
+        shipment_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/UnitStatus'
+        last_location_id:
+          type: [string, 'null']
+          description: Nodo/parada donde se vio por última vez el bulto
+        last_seen_at:
+          type: [string, 'null']
+          format: date-time
+        label:
+          type: [string, 'null']
+          description: Etiqueta humana del bulto ("N/M")
     TruckPosition:
       type: object
       description: Última posición conocida del camión
@@ -198,7 +310,7 @@ components:
     PublicTracking:
       type: object
       description: Vista pública del seguimiento (sin PII)
-      required: [status, remaining_stops, route_position, eta, last_position, stops_message]
+      required: [status, remaining_stops, route_position, eta, last_position, position_is_live, stops_message]
       properties:
         status:
           $ref: '#/components/schemas/VisibleStatus'
@@ -217,13 +329,18 @@ components:
           oneOf:
             - $ref: '#/components/schemas/TruckPosition'
             - type: 'null'
+        position_is_live:
+          type: [boolean, 'null']
+          description: >
+            True si la última posición es fresca (dentro de la ventana en vivo), false si es solo la
+            última posición conocida, null si no hay posición.
         stops_message:
           type: string
           description: Mensaje al cliente en español, p. ej. "Tu pedido está a 3 paradas."
     ShipmentTracking:
       type: object
       description: Vista interna del seguimiento (incluye claves internas)
-      required: [id, shipment_id, token, status, remaining_stops, route_position, eta, last_position]
+      required: [id, shipment_id, token, status, remaining_stops, route_position, eta, last_position, position_is_live]
       properties:
         id:
           type: string
@@ -231,6 +348,9 @@ components:
         shipment_id:
           type: string
           format: uuid
+        shipment_external_id:
+          type: [string, 'null']
+          description: Referencia externa humana del envío (shipments.external_id)
         token:
           type: string
         status:
@@ -250,6 +370,9 @@ components:
           oneOf:
             - $ref: '#/components/schemas/TruckPosition'
             - type: 'null'
+        position_is_live:
+          type: [boolean, 'null']
+          description: True si la última posición es fresca, false si es solo la última conocida, null si no hay posición.
     ApiError:
       type: object
       required: [error]

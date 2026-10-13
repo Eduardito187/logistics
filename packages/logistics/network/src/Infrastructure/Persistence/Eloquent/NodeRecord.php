@@ -17,13 +17,14 @@ use Logistics\Network\Database\Factories\NodeFactory;
  * La pk es el UUID del nodo (string, no autoincremental). La columna geográfica `location`
  * (geography Point) no se mapea acá: la puebla el repositorio por SQL a partir de lat/lng.
  *
- * @property string $id
- * @property string $code
- * @property string $name
- * @property string $type
- * @property string $lat
- * @property string $lng
- * @property string $status
+ * @property string      $id
+ * @property string      $code
+ * @property string      $name
+ * @property string      $type
+ * @property string      $lat
+ * @property string      $lng
+ * @property string      $status
+ * @property string|null $department
  */
 final class NodeRecord extends Model
 {
@@ -45,6 +46,7 @@ final class NodeRecord extends Model
         'lat',
         'lng',
         'status',
+        'department',
     ];
 
     /**

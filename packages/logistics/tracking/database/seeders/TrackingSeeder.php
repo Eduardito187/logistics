@@ -6,10 +6,13 @@ namespace Logistics\Tracking\Database\Seeders;
 
 use DateTimeImmutable;
 use Illuminate\Database\Seeder;
+use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 use Logistics\Tracking\Database\Factories\TrackingRecordFactory;
+use Logistics\Tracking\Domain\ValueObject\UnitStatus;
 use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\TrackingRecord;
+use Logistics\Tracking\Infrastructure\Persistence\Eloquent\UnitTrackingRecord;
 
 /**
  * Seeder propio del contexto de seguimiento con datos de demo realistas.
@@ -43,11 +46,19 @@ final class TrackingSeeder extends Seeder
 
     public function run(): void
     {
-        // Idempotente: si ya hay seguimientos de demo sembrados, no se vuelve a sembrar. El token es
-        // determinista por índice mientras que el upsert es por shipment_id; si el conjunto de envíos
-        // cambia entre corridas, un índice reusado chocaría con un token ya tomado por otro envío
-        // (tracking_shipments_token_unique). El contexto Tracking es dueño exclusivo de su tabla, así
-        // que basta con que tenga filas.
+        $this->seedShipmentTrackings();
+        $this->seedUnitTrackings();
+    }
+
+    /**
+     * Siembra el read model por ENVÍO. Idempotente: si ya hay seguimientos de demo sembrados, no se
+     * vuelve a sembrar. El token es determinista por índice mientras que el upsert es por shipment_id;
+     * si el conjunto de envíos cambia entre corridas, un índice reusado chocaría con un token ya tomado
+     * por otro envío (tracking_shipments_token_unique). El contexto Tracking es dueño exclusivo de su
+     * tabla, así que basta con que tenga filas.
+     */
+    private function seedShipmentTrackings(): void
+    {
         if (TrackingRecord::query()->exists()) {
             return;
         }
@@ -65,6 +76,64 @@ final class TrackingSeeder extends Seeder
             $status = self::STATUS_CYCLE[$index % count(self::STATUS_CYCLE)];
             $this->upsertTracking($shipmentId, $status, $index);
         }
+    }
+
+    /**
+     * Siembra el read model por BULTO a partir de los seguimientos ya sembrados y de los bultos REALES
+     * de cada envío (shipment_units). El estado de cada bulto se alinea con el estado visible de su
+     * envío. Idempotente y UUID-estable: la pk se deriva del unit_id y solo siembra si la tabla está
+     * vacía, así re-sembrar no duplica ni regenera ids (ver [[no-destructive-db-ops]]).
+     */
+    private function seedUnitTrackings(): void
+    {
+        if (UnitTrackingRecord::query()->exists()) {
+            return;
+        }
+
+        /** @var array<string, string> $statusByShipment */
+        $statusByShipment = TrackingRecord::query()->pluck('status', 'shipment_id')->all();
+        if ($statusByShipment === []) {
+            return;
+        }
+
+        $now = (new DateTimeImmutable)->format(DateTimeImmutable::ATOM);
+
+        /** @var iterable<PhysicalUnitRecord> $units */
+        $units = PhysicalUnitRecord::query()
+            ->whereIn('shipment_id', array_keys($statusByShipment))
+            ->orderBy('id')
+            ->get();
+
+        foreach ($units as $unit) {
+            $shipmentStatus = $statusByShipment[$unit->shipment_id] ?? VisibleStatus::Registered->value;
+            $unitStatus = $this->unitStatusFor($shipmentStatus);
+
+            UnitTrackingRecord::query()->updateOrCreate(
+                ['unit_id' => $unit->id],
+                [
+                    'id' => $this->deterministicUuid('unit-tracking-'.$unit->id),
+                    'shipment_id' => $unit->shipment_id,
+                    'status' => $unitStatus->value,
+                    'last_location_id' => null,
+                    'last_seen_at' => $unitStatus === UnitStatus::Registered ? null : $now,
+                ],
+            );
+        }
+    }
+
+    /**
+     * Mapea el estado visible del envío al estado del bulto para la demo (el envío entregado deja sus
+     * bultos entregados; en camino, cargados; etc.).
+     */
+    private function unitStatusFor(string $shipmentStatus): UnitStatus
+    {
+        return match ($shipmentStatus) {
+            VisibleStatus::Delivered->value => UnitStatus::Delivered,
+            VisibleStatus::Failed->value => UnitStatus::Failed,
+            VisibleStatus::OnTheWay->value, VisibleStatus::Arriving->value => UnitStatus::Loaded,
+            VisibleStatus::Prepared->value => UnitStatus::Prepared,
+            default => UnitStatus::Registered,
+        };
     }
 
     /**

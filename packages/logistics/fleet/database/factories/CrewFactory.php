@@ -27,7 +27,20 @@ final class CrewFactory extends Factory
             'helper_ids' => [],
             'vehicle_id' => Uuid::generate()->value,
             'assembled_for' => $this->faker->dateTimeBetween('-1 week', '+1 week')->format('Y-m-d'),
+            'shift_starts_at' => null,
+            'shift_ends_at' => null,
         ];
+    }
+
+    /**
+     * Fija el turno de trabajo (horas de salida y regreso) en formato texto de fecha-hora.
+     */
+    public function withShift(string $startsAt, string $endsAt): self
+    {
+        return $this->state(fn (): array => [
+            'shift_starts_at' => $startsAt,
+            'shift_ends_at' => $endsAt,
+        ]);
     }
 
     public function forDriver(string $driverId): self

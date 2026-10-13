@@ -16,109 +16,193 @@ use Logistics\Coverage\Domain\ValueObject\TimeWindow;
 use Logistics\Coverage\Domain\ValueObject\ZoneRules;
 
 /**
- * Seeder propio del contexto Cobertura con datos de demo realistas (Bolivia).
+ * Seeder propio del contexto Cobertura con la jerarquía geográfica real de Bolivia (datos de demo).
  *
- * Crea una jerarquía Departamento > Ciudad y un puñado de zonas de cobertura con polígonos reales
- * alrededor de Santa Cruz, La Paz y Cochabamba. Persiste SIEMPRE a través de los repositorios de
- * dominio (no inserta filas a mano) para que la geometría pase por PostGIS y las reglas por las
- * invariantes de ZoneRules. Requiere PostGIS levantado.
+ * Crea los 9 departamentos y, para La Paz, la cadena completa Departamento > Provincia > Municipio >
+ * Ciudad con sus zonas de cobertura (polígonos reales). Santa Cruz y Cochabamba se modelan con la
+ * cadena corta Departamento > Ciudad para demostrar que la resolución tolera que falten niveles
+ * intermedios. Persiste SIEMPRE a través de los repositorios de dominio (no inserta filas a mano) para
+ * que la geometría pase por PostGIS y las reglas por las invariantes de ZoneRules. Requiere PostGIS.
  *
- * El integrador lo invoca desde database/seeders/DatabaseSeeder.php; este package no toca ese
- * archivo compartido. Es idempotente por nombre: no re-crea áreas/zonas que ya existan.
+ * Es idempotente por (nivel + nombre): no re-crea áreas ni zonas que ya existan, así que puede correr
+ * sobre una base ya poblada. El integrador lo invoca desde database/seeders/DatabaseSeeder.php; este
+ * package no toca ese archivo compartido.
  */
 final class CoverageSeeder extends Seeder
 {
+    /**
+     * Áreas ya persistidas, indexadas por "nivel|nombre" para distinguir homónimos entre niveles
+     * (p. ej. "La Paz" existe como departamento y como ciudad).
+     *
+     * @var array<string, GeoArea>
+     */
+    private array $areas = [];
+
+    /**
+     * Nombres de zonas ya persistidas, para no duplicarlas.
+     *
+     * @var array<string, true>
+     */
+    private array $zones = [];
+
+    private GeoAreaRepository $areaRepository;
+
+    private ZoneRepository $zoneRepository;
+
     public function run(): void
     {
-        /** @var GeoAreaRepository $areas */
-        $areas = app(GeoAreaRepository::class);
-        /** @var ZoneRepository $zones */
-        $zones = app(ZoneRepository::class);
+        /** @var GeoAreaRepository $areaRepository */
+        $areaRepository = app(GeoAreaRepository::class);
+        $this->areaRepository = $areaRepository;
+        /** @var ZoneRepository $zoneRepository */
+        $zoneRepository = app(ZoneRepository::class);
+        $this->zoneRepository = $zoneRepository;
 
-        $existingAreas = [];
-        foreach ($areas->all() as $area) {
-            $existingAreas[$area->name()] = $area;
+        foreach ($this->areaRepository->all() as $area) {
+            $this->areas[$this->key($area->level(), $area->name())] = $area;
+        }
+        foreach ($this->zoneRepository->all() as $zone) {
+            $this->zones[$zone->name()] = true;
         }
 
-        $existingZones = [];
-        foreach ($zones->all() as $zone) {
-            $existingZones[$zone->name()] = true;
-        }
+        $this->seedLaPaz();
+        $this->seedSantaCruz();
+        $this->seedCochabamba();
+        $this->seedRemainingDepartments();
+    }
 
-        foreach ($this->catalogue() as $departmentName => $cities) {
-            $department = $existingAreas[$departmentName] ?? null;
-            if (!$department instanceof GeoArea) {
-                $department = GeoArea::create($areas->nextIdentity(), $departmentName, AdminLevel::Department, null);
-                $areas->save($department);
-                $existingAreas[$departmentName] = $department;
-            }
+    /**
+     * La Paz con la cadena completa: Departamento > Provincia > Municipio > Ciudad > Zona.
+     */
+    private function seedLaPaz(): void
+    {
+        $laPaz = $this->ensureArea('La Paz', AdminLevel::Department, null);
 
-            foreach ($cities as $cityName => $zoneDefs) {
-                $city = $existingAreas[$cityName] ?? null;
-                if (!$city instanceof GeoArea) {
-                    $city = GeoArea::create($areas->nextIdentity(), $cityName, AdminLevel::City, $department->id());
-                    $areas->save($city);
-                    $existingAreas[$cityName] = $city;
-                }
+        // Provincia Pedro Domingo Murillo: contiene las ciudades de La Paz y El Alto.
+        $murillo = $this->ensureArea('Pedro Domingo Murillo', AdminLevel::Province, $laPaz);
 
-                foreach ($zoneDefs as $zoneDef) {
-                    if (isset($existingZones[$zoneDef['name']])) {
-                        continue;
-                    }
-                    $zone = Zone::define(
-                        $zones->nextIdentity(),
-                        $zoneDef['name'],
-                        $city->id(),
-                        Polygon::fromRing($this->square($zoneDef['lng'], $zoneDef['lat'])),
-                        ZoneRules::define(
-                            $zoneDef['nodeId'],
-                            $zoneDef['services'],
-                            $zoneDef['baseMinutes'],
-                            $zoneDef['productLimits'],
-                            [TimeWindow::of('08:00', '18:00')],
-                            ServiceDays::of(1, 2, 3, 4, 5, 6),
-                        ),
-                    );
-                    $zones->save($zone);
-                    $existingZones[$zoneDef['name']] = true;
-                }
-            }
+        $municipalityLaPaz = $this->ensureArea('Nuestra Señora de La Paz', AdminLevel::Municipality, $murillo);
+        $cityLaPaz = $this->ensureArea('La Paz', AdminLevel::City, $municipalityLaPaz);
+        $this->ensureZone('Centro La Paz', $cityLaPaz, -68.133, -16.500, null, ['STD'], 150, []);
+        $this->ensureZone('Sopocachi', $cityLaPaz, -68.130, -16.515, null, ['STD', 'EXPRESS'], 120, []);
+
+        $municipalityElAlto = $this->ensureArea('El Alto', AdminLevel::Municipality, $murillo);
+        $cityElAlto = $this->ensureArea('El Alto', AdminLevel::City, $municipalityElAlto);
+        $this->ensureZone('Ceja El Alto', $cityElAlto, -68.163, -16.503, null, ['STD'], 180, ['BULKY' => 1]);
+
+        // Otros municipios de Murillo sin zonas de demo (completan la jerarquía).
+        $this->ensureArea('Palca', AdminLevel::Municipality, $murillo);
+        $this->ensureArea('Mecapaca', AdminLevel::Municipality, $murillo);
+        $this->ensureArea('Achocalla', AdminLevel::Municipality, $murillo);
+
+        // Más provincias de La Paz con algunos de sus municipios (ejemplo de jerarquía real).
+        $losAndes = $this->ensureArea('Los Andes', AdminLevel::Province, $laPaz);
+        $this->ensureArea('Pucarani', AdminLevel::Municipality, $losAndes);
+        $this->ensureArea('Laja', AdminLevel::Municipality, $losAndes);
+        $this->ensureArea('Batallas', AdminLevel::Municipality, $losAndes);
+
+        $omasuyos = $this->ensureArea('Omasuyos', AdminLevel::Province, $laPaz);
+        $this->ensureArea('Achacachi', AdminLevel::Municipality, $omasuyos);
+        $this->ensureArea('Ancoraimes', AdminLevel::Municipality, $omasuyos);
+
+        $ingavi = $this->ensureArea('Ingavi', AdminLevel::Province, $laPaz);
+        $this->ensureArea('Viacha', AdminLevel::Municipality, $ingavi);
+        $this->ensureArea('Guaqui', AdminLevel::Municipality, $ingavi);
+    }
+
+    /**
+     * Santa Cruz con cadena corta Departamento > Ciudad (sin provincia ni municipio modelados).
+     */
+    private function seedSantaCruz(): void
+    {
+        $santaCruz = $this->ensureArea('Santa Cruz', AdminLevel::Department, null);
+        $city = $this->ensureArea('Santa Cruz de la Sierra', AdminLevel::City, $santaCruz);
+
+        $this->ensureZone('Centro SCZ', $city, -63.182, -17.783, null, ['STD', 'EXPRESS'], 120, []);
+        $this->ensureZone('Equipetrol', $city, -63.197, -17.762, null, ['STD', 'EXPRESS'], 90, []);
+        $this->ensureZone('Plan Tres Mil', $city, -63.120, -17.830, null, ['STD'], 180, ['BULKY' => 2]);
+    }
+
+    /**
+     * Cochabamba con cadena corta Departamento > Ciudad.
+     */
+    private function seedCochabamba(): void
+    {
+        $cochabamba = $this->ensureArea('Cochabamba', AdminLevel::Department, null);
+        $city = $this->ensureArea('Cochabamba', AdminLevel::City, $cochabamba);
+
+        $this->ensureZone('Centro Cochabamba', $city, -66.157, -17.389, null, ['STD', 'EXPRESS'], 120, []);
+    }
+
+    /**
+     * Los seis departamentos restantes de Bolivia, sin zonas de demo (completan los 9 departamentos).
+     */
+    private function seedRemainingDepartments(): void
+    {
+        foreach (['Oruro', 'Potosí', 'Chuquisaca', 'Tarija', 'Beni', 'Pando'] as $name) {
+            $this->ensureArea($name, AdminLevel::Department, null);
         }
     }
 
     /**
-     * Catálogo de demo: departamento => ciudad => zonas con su punto central y reglas.
-     *
-     * @return array<string, array<string, array<int, array{
-     *     name: string, lng: float, lat: float, nodeId: string|null,
-     *     services: array<int, string>, baseMinutes: int, productLimits: array<string, int>
-     * }>>>
+     * Da de alta un área (idempotente por nivel + nombre) o reusa la existente.
      */
-    private function catalogue(): array
+    private function ensureArea(string $name, AdminLevel $level, ?GeoArea $parent): GeoArea
     {
-        return [
-            'Santa Cruz' => [
-                'Santa Cruz de la Sierra' => [
-                    ['name' => 'Centro SCZ', 'lng' => -63.182, 'lat' => -17.783, 'nodeId' => null, 'services' => ['STD', 'EXPRESS'], 'baseMinutes' => 120, 'productLimits' => []],
-                    ['name' => 'Equipetrol', 'lng' => -63.197, 'lat' => -17.762, 'nodeId' => null, 'services' => ['STD', 'EXPRESS'], 'baseMinutes' => 90, 'productLimits' => []],
-                    ['name' => 'Plan Tres Mil', 'lng' => -63.120, 'lat' => -17.830, 'nodeId' => null, 'services' => ['STD'], 'baseMinutes' => 180, 'productLimits' => ['BULKY' => 2]],
-                ],
-            ],
-            'La Paz' => [
-                'La Paz' => [
-                    ['name' => 'Centro La Paz', 'lng' => -68.133, 'lat' => -16.500, 'nodeId' => null, 'services' => ['STD'], 'baseMinutes' => 150, 'productLimits' => []],
-                    ['name' => 'Sopocachi', 'lng' => -68.130, 'lat' => -16.515, 'nodeId' => null, 'services' => ['STD', 'EXPRESS'], 'baseMinutes' => 120, 'productLimits' => []],
-                ],
-                'El Alto' => [
-                    ['name' => 'Ceja El Alto', 'lng' => -68.163, 'lat' => -16.503, 'nodeId' => null, 'services' => ['STD'], 'baseMinutes' => 180, 'productLimits' => ['BULKY' => 1]],
-                ],
-            ],
-            'Cochabamba' => [
-                'Cochabamba' => [
-                    ['name' => 'Centro Cochabamba', 'lng' => -66.157, 'lat' => -17.389, 'nodeId' => null, 'services' => ['STD', 'EXPRESS'], 'baseMinutes' => 120, 'productLimits' => []],
-                ],
-            ],
-        ];
+        $key = $this->key($level, $name);
+        $existing = $this->areas[$key] ?? null;
+        if ($existing instanceof GeoArea) {
+            return $existing;
+        }
+
+        $area = GeoArea::create($this->areaRepository->nextIdentity(), $name, $level, $parent?->id());
+        $this->areaRepository->save($area);
+        $this->areas[$key] = $area;
+
+        return $area;
+    }
+
+    /**
+     * Da de alta una zona de cobertura colgada de un área (idempotente por nombre).
+     *
+     * @param array<int, string> $services
+     * @param array<string, int> $productLimits
+     */
+    private function ensureZone(
+        string $name,
+        GeoArea $parentArea,
+        float $lng,
+        float $lat,
+        ?string $nodeId,
+        array $services,
+        int $baseMinutes,
+        array $productLimits,
+    ): void {
+        if (isset($this->zones[$name])) {
+            return;
+        }
+
+        $zone = Zone::define(
+            $this->zoneRepository->nextIdentity(),
+            $name,
+            $parentArea->id(),
+            Polygon::fromRing($this->square($lng, $lat)),
+            ZoneRules::define(
+                $nodeId,
+                $services,
+                $baseMinutes,
+                $productLimits,
+                [TimeWindow::of('08:00', '18:00')],
+                ServiceDays::of(1, 2, 3, 4, 5, 6),
+            ),
+        );
+        $this->zoneRepository->save($zone);
+        $this->zones[$name] = true;
+    }
+
+    private function key(AdminLevel $level, string $name): string
+    {
+        return $level->value.'|'.$name;
     }
 
     /**

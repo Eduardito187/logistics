@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Network\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Logistics\Network\Domain\ValueObject\Department;
 use Logistics\Network\Domain\ValueObject\NodeStatus;
 use Logistics\Network\Domain\ValueObject\NodeType;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
@@ -27,6 +28,9 @@ final class NodeFactory extends Factory
         /** @var NodeType $type */
         $type = $this->faker->randomElement(NodeType::cases());
 
+        /** @var Department $department */
+        $department = $this->faker->randomElement(Department::cases());
+
         $prefix = match ($type) {
             NodeType::DistributionCenter => 'CD',
             NodeType::Store => 'T',
@@ -42,6 +46,7 @@ final class NodeFactory extends Factory
             'lat' => $this->faker->randomFloat(7, -22.9, -9.7),
             'lng' => $this->faker->randomFloat(7, -69.6, -57.5),
             'status' => NodeStatus::Active->value,
+            'department' => $department->value,
         ];
     }
 
@@ -67,5 +72,13 @@ final class NodeFactory extends Factory
     public function asStore(): self
     {
         return $this->state(fn (): array => ['type' => NodeType::Store->value]);
+    }
+
+    /**
+     * Estado: nodo en un departamento concreto.
+     */
+    public function inDepartment(Department $department): self
+    {
+        return $this->state(fn (): array => ['department' => $department->value]);
     }
 }

@@ -23,6 +23,7 @@ use Logistics\Promise\Database\Seeders\PromiseSeeder;
 use Logistics\SapConnector\Infrastructure\Persistence\Seeders\SapConnectorSeeder;
 use Logistics\Settings\Database\Seeders\SettingsSeeder;
 use Logistics\Shipments\Infrastructure\Persistence\Seeders\ShipmentsDemoSeeder;
+use Logistics\Telemetry\Infrastructure\Seeder\TelemetryDemoSeeder;
 use Logistics\Tracking\Database\Seeders\TrackingSeeder;
 
 /**
@@ -90,6 +91,9 @@ class DatabaseSeeder extends Seeder
 
             // 9) Tracking: estados visibles derivados de ejecución/envíos.
             TrackingSeeder::class,
+
+            // 9b) Telemetría: geocercas de demo + recorrido GPS (pings/trip) de vehículos existentes.
+            TelemetryDemoSeeder::class,
 
             // 10) Etiquetas QR de bultos ya conocidos.
             LabelsSeeder::class,

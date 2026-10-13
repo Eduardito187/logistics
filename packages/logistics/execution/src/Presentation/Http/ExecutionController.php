@@ -7,7 +7,9 @@ namespace Logistics\Execution\Presentation\Http;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryState;
+use Logistics\Execution\Application\Query\GetNodeReception\GetNodeReception;
 use Logistics\Execution\Application\ReadModel\DeliveryView;
+use Logistics\Execution\Application\ReadModel\NodeReceptionView;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 
@@ -84,6 +86,18 @@ abstract class ExecutionController
     {
         /** @var DeliveryView|null $view */
         $view = $this->queryBus->ask(new GetDeliveryState($shipmentId));
+
+        return new JsonResponse(['data' => $view?->toArray()], $status);
+    }
+
+    /**
+     * Respuesta estándar tras una operación de recepción en nodo: devuelve el estado actual de la
+     * recepción del envío en ese nodo (esperados, recibidos, faltantes, sobrantes) en una sola llamada.
+     */
+    protected function nodeReceptionResponse(string $shipmentId, string $destinationNodeId, int $status = 200): JsonResponse
+    {
+        /** @var NodeReceptionView|null $view */
+        $view = $this->queryBus->ask(new GetNodeReception($shipmentId, $destinationNodeId));
 
         return new JsonResponse(['data' => $view?->toArray()], $status);
     }

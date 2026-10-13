@@ -22,7 +22,9 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * Pendientes = envíos en estado RECEIVED (todavía sin plan) con coordenadas. Lee en LOTES (chunkById)
  * para escalar a miles de pedidos sin cargarlos todos de golpe. El peso y el volumen se estiman por la
  * cantidad de bultos del pedido por los valores por bulto configurables (settings/config), hasta que
- * Envíos publique peso/volumen reales. La franja (delivery_slot) se lee si el envío la trae.
+ * Envíos publique peso/volumen reales. La franja se lee de la ventana horaria del envío
+ * (delivery_window_start/end) si la trae, y alimenta tanto el agrupamiento por slots como la restricción
+ * de ventanas del ruteador.
  *
  * Nota: hoy no se filtra por fecha porque el envío aún no lleva fecha prometida; cuando la lleve, el
  * filtro por $date entra acá sin tocar el resto del motor.
@@ -88,8 +90,11 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
         $packagesRaw = $record->getAttribute('lines_sum_quantity');
         $packages = is_numeric($packagesRaw) ? max(1, (int) $packagesRaw) : 1;
 
-        /** @var mixed $slot */
-        $slot = $record->getAttributes()['delivery_slot'] ?? null;
+        // La franja viaja en la ventana horaria del envío (delivery_window_start/end, 'HH:MM'). La clave de
+        // agrupamiento del modo slots se deriva de esa misma ventana para que un camión sirva una sola franja.
+        $windowStart = is_string($record->delivery_window_start) ? $record->delivery_window_start : null;
+        $windowEnd = is_string($record->delivery_window_end) ? $record->delivery_window_end : null;
+        $slot = $windowStart !== null && $windowEnd !== null ? "{$windowStart}-{$windowEnd}" : null;
 
         return DeliveryCandidate::of(
             shipmentId: (string) $record->id,
@@ -99,10 +104,12 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
             volumeM3: $packages * $defaultVolume,
             departmentId: $departmentId,
             zoneKey: $zoneKey,
-            deliverySlot: is_string($slot) ? $slot : null,
+            deliverySlot: $slot,
             orderReference: $record->external_id,
             customerName: $record->customer_name,
             address: $record->address_text,
+            windowStart: $windowStart,
+            windowEnd: $windowEnd,
         );
     }
 

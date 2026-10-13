@@ -15,10 +15,12 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
  * Es detalle de Infrastructure: nunca cruza hacia Application ni Domain. El mapeo a/desde el agregado
  * lo hace VehicleRouteMapper.
  *
- * @property string $id
- * @property string $vehicle_id
- * @property string $route_date
- * @property string $status
+ * @property string            $id
+ * @property string            $vehicle_id
+ * @property string|null       $driver_id
+ * @property list<string>|null $helper_ids
+ * @property string            $route_date
+ * @property string            $status
  */
 final class VehicleRouteRecord extends Model
 {
@@ -29,6 +31,15 @@ final class VehicleRouteRecord extends Model
     protected $table = 'execution_driver_routes';
 
     protected $guarded = [];
+
+    /**
+     * La tripulación (ayudantes) viaja como JSON; el chofer y la fecha quedan sin cast (texto).
+     *
+     * @var array<string, string>
+     */
+    protected $casts = [
+        'helper_ids' => 'array',
+    ];
 
     /**
      * Paradas de la ruta, en orden de reparto.

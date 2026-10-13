@@ -12,7 +12,7 @@
 .DEFAULT_GOAL := help
 .PHONY: help install up down restart build rebuild status logs shell root-shell \
         composer artisan tinker migrate fresh seed test test-unit coverage \
-        lint pint pint-fix stan ci db-shell valkey-shell reload npm-install npm-dev
+        lint pint pint-fix stan ci db-shell valkey-shell reload npm-install npm-dev assets
 
 DC := docker compose
 APP := $(DC) exec app
@@ -126,7 +126,7 @@ stan: ## Análisis estático (PHPStan nivel 8)
 lint: ## Pint + PHPStan
 	$(APP) composer lint
 
-ci: ## Lo mismo que corre el CI: lint + tests
+ci: ## Lo mismo que corre el CI (dentro del container): lint + tests
 	$(APP) composer ci
 
 # ------------------------------------------------------------
@@ -137,3 +137,16 @@ npm-install: ## npm install en el container node
 
 npm-dev: ## Vite dev server
 	$(DC) --profile node up node
+
+assets: ## Compila el tema del admin + assets (igual que el job `assets` del CI)
+	# El tema de Filament hace `@import` de vendor/filament/.../theme.css, pero en desarrollo
+	# `vendor/` vive en un volumen del container y no en el host donde corre node. Por eso se
+	# copia vendor/filament al host antes de buildear; así el bind mount del container node lo ve.
+	@echo "→ Copiando vendor/filament del container al host (lo necesita el build del tema)..."
+	@rm -rf vendor/filament
+	@mkdir -p vendor
+	$(DC) cp app:/var/www/html/vendor/filament ./vendor/filament
+	$(NODE) npm ci
+	$(NODE) npm run build
+	@echo ""
+	@echo "  ✓ Assets compilados en public/build"

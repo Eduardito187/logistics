@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Logistics\Notifications\Presentation\Filament\Resources\MessageTypeRuleResource\Pages;
 
 use Filament\Actions\Action;
-use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Notifications\Application\Command\SetMessageTypeRule\SetMessageTypeRule;
@@ -30,7 +29,7 @@ final class EditMessageTypeRule extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            DeleteAction::make(),
+            MessageTypeRuleResource::resetAction(),
         ];
     }
 
@@ -46,11 +45,14 @@ final class EditMessageTypeRule extends EditRecord
         /** @var list<string> $channels */
         $channels = array_values(array_map('strval', (array) ($data['channels'] ?? [])));
 
+        $actor = auth()->user()?->getAuthIdentifier();
+
         // El tipo viene del record (campo deshabilitado en el formulario de edición).
         app(CommandBus::class)->dispatch(new SetMessageTypeRule(
             messageType: (string) $record->message_type,
             channels: $channels,
             escalateWhen: (string) $data['escalate_when'],
+            createdBy: $actor !== null ? (string) $actor : null,
         ));
 
         return $record->refresh();

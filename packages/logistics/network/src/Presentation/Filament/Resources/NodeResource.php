@@ -17,6 +17,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Network\Application\Command\DeactivateNode\DeactivateNodeCommand;
+use Logistics\Network\Domain\ValueObject\Department;
 use Logistics\Network\Domain\ValueObject\NodeStatus;
 use Logistics\Network\Domain\ValueObject\NodeType;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
@@ -98,6 +99,11 @@ final class NodeResource extends Resource
                 ->native(false)
                 ->required()
                 ->options(self::enumOptions(NodeType::cases())),
+            Select::make('department')
+                ->label(__('Department'))
+                ->native(false)
+                ->options(self::enumOptions(Department::cases()))
+                ->placeholder(__('Unassigned')),
             TextInput::make('lat')
                 ->label(__('Latitude'))
                 ->required()
@@ -129,6 +135,10 @@ final class NodeResource extends Resource
                 ->badge()
                 ->color(static fn (string $state): string => $state === NodeStatus::Active->value ? 'success' : 'gray')
                 ->formatStateUsing(static fn (string $state): string => __(NodeStatus::from($state)->label())),
+            TextEntry::make('department')
+                ->label(__('Department'))
+                ->placeholder(__('Unassigned'))
+                ->formatStateUsing(static fn (string $state): string => __(Department::from($state)->label())),
             TextEntry::make('lat')
                 ->label(__('Latitude')),
             TextEntry::make('lng')
@@ -157,6 +167,12 @@ final class NodeResource extends Resource
                     ->badge()
                     ->color(static fn (string $state): string => $state === NodeStatus::Active->value ? 'success' : 'gray')
                     ->formatStateUsing(static fn (string $state): string => __(NodeStatus::from($state)->label())),
+                TextColumn::make('department')
+                    ->label(__('Department'))
+                    ->placeholder(__('Unassigned'))
+                    ->formatStateUsing(static fn (?string $state): string => $state === null ? '' : __(Department::from($state)->label()))
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('lat')
                     ->label(__('Latitude'))
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -177,6 +193,10 @@ final class NodeResource extends Resource
                     ->label(__('Status'))
                     ->native(false)
                     ->options(self::enumOptions(NodeStatus::cases())),
+                SelectFilter::make('department')
+                    ->label(__('Department'))
+                    ->native(false)
+                    ->options(self::enumOptions(Department::cases())),
             ])
             ->recordActions([
                 ViewAction::make(),
@@ -235,7 +255,7 @@ final class NodeResource extends Resource
     /**
      * Construye el mapa valor→etiqueta en inglés para un enum de este contexto.
      *
-     * @param  array<int, NodeType|NodeStatus> $cases
+     * @param  array<int, NodeType|NodeStatus|Department> $cases
      * @return array<string, string>
      */
     private static function enumOptions(array $cases): array

@@ -104,25 +104,65 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["php-fpm", "-F"]
 
 # ============================================================
+# Assets stage — compila el tema Filament y los assets con Vite
+# ============================================================
+# `public/build/` está en .gitignore, así que los assets NO vienen en el repo:
+# se compilan acá y se copian a la imagen prod. Node solo vive en este stage, no
+# en la imagen final. Para el tema custom de Filament ver resources/css/filament.
+FROM node:22-alpine AS assets
+
+WORKDIR /app
+
+# Capa de dependencias cacheable: solo se reinstala si cambian los manifiestos.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Fuente necesaria para `vite build` (resources/, vite.config.js, etc.).
+COPY . .
+RUN npm run build
+
+# ============================================================
 # Prod stage — código copiado, optimizado
 # ============================================================
+# Sin Xdebug/pcov ni herramientas de dev (make/vim/htop/redis-cli): esas solo
+# viven en el stage `dev`. Acá se suma supervisor para correr los workers de cola
+# y el scheduler bajo un solo proceso con reinicio automático (ver docs/deploy.md).
 FROM base AS prod
+
+# Los ARG son por-stage: hay que redeclararlos para que `${UID}`/`${GID}` resuelvan
+# en los COPY --chown y chown de este stage (si no, quedarían vacíos).
+ARG UID=1000
+ARG GID=1000
+
+# supervisor gobierna los workers de cola y el scheduler en el contenedor de workers.
+RUN apk add --no-cache supervisor \
+    && mkdir -p /var/log/supervisor \
+    && chown -R ${UID}:${GID} /var/log/supervisor
 
 COPY .docker/php/php.prod.ini /usr/local/etc/php/conf.d/zzz-logistics.ini
 COPY .docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
 COPY --chmod=0755 .docker/php/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY .docker/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
 
 COPY --chown=${UID}:${GID} . /var/www/html
 
 USER logistics
 
-RUN composer install --no-dev --no-interaction --optimize-autoloader --no-scripts \
+# Dependencias de producción, autoloader autoritativo (sin escaneo de FS en runtime).
+RUN composer install --no-dev --no-interaction --prefer-dist --no-progress \
+        --optimize-autoloader --classmap-authoritative --no-scripts \
     && composer clear-cache
 
-RUN php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache \
-    && php artisan event:cache
+# Assets compilados por Vite (tema Filament + app) desde el stage `assets`, y los
+# assets propios de Filament/Livewire publicados a public/ (vendor/filament, etc.).
+# Ambos son derivados del código, no del env, así que es seguro hornearlos en build.
+COPY --chown=${UID}:${GID} --from=assets /app/public/build /var/www/html/public/build
+RUN php artisan filament:assets
+
+# OJO: el `config:cache` NO se hace acá. En build el env de producción todavía no
+# existe y quedaría cacheado con los defaults, un bug clásico de contenedores. Las
+# caches de arranque las genera el entrypoint cuando OPTIMIZE_ON_BOOT=true, ya con
+# el env real inyectado (ver entrypoint.sh y docs/deploy.md).
 
 EXPOSE 9000
 

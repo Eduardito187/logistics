@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers\Filament;
 
+use App\Http\Middleware\SecurityHeaders;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
@@ -20,6 +21,8 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Logistics\Capacity\Presentation\Filament\Pages\DispatchCalendar;
+use Logistics\Fleet\Presentation\Filament\Pages\DriverHistory;
+use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
 
 /**
  * Admin web de la plataforma: datos maestros, reglas, flota, reconciliación.
@@ -64,6 +67,7 @@ final class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('Carriers'),
                 NavigationGroup::make('Execution'),
                 NavigationGroup::make('Tracking'),
+                NavigationGroup::make('Telemetry'),
                 NavigationGroup::make('Labels'),
                 NavigationGroup::make('Notifications'),
                 NavigationGroup::make('Integrations'),
@@ -138,16 +142,27 @@ final class AdminPanelProvider extends PanelProvider
                 in: base_path('packages/logistics/access/src/Presentation/Filament'),
                 for: 'Logistics\Access\Presentation\Filament',
             )
+            ->discoverResources(
+                in: base_path('packages/logistics/telemetry/src/Presentation/Filament'),
+                for: 'Logistics\Telemetry\Presentation\Filament',
+            )
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,
                 // Calendario de despacho del contexto Capacity (cupos por día/franja, por nodo/zona).
                 DispatchCalendar::class,
+                // Mapa de flota en vivo (telemetría GPS): todos los camiones en tiempo real.
+                LiveFleetMap::class,
+                // Historial operativo del chofer (desempeño cuantificable) del contexto Fleet.
+                DriverHistory::class,
             ])
             // Los widgets del tablero (p. ej. PlatformStatsWidget, validado por rol) se descubren
             // desde app/Filament/Widgets.
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->middleware([
+                // Cabeceras de seguridad del admin (S-12): CSP (Leaflet/Geoman/unpkg + tiles OSM),
+                // HSTS, X-Frame-Options, Referrer-Policy. Primero, para que cubra toda respuesta del panel.
+                SecurityHeaders::class,
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,

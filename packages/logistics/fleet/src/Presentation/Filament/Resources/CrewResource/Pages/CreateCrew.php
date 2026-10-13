@@ -29,11 +29,20 @@ final class CreateCrew extends CreateRecord
         /** @var list<string> $helperIds */
         $helperIds = array_values($data['helper_ids'] ?? []);
 
+        $shiftStartsAt = isset($data['shift_starts_at']) && $data['shift_starts_at'] !== ''
+            ? (string) $data['shift_starts_at']
+            : null;
+        $shiftEndsAt = isset($data['shift_ends_at']) && $data['shift_ends_at'] !== ''
+            ? (string) $data['shift_ends_at']
+            : null;
+
         app(CommandBus::class)->dispatch(new AssembleCrew(
             driverId: (string) $data['driver_id'],
             helperIds: $helperIds,
             vehicleId: (string) $data['vehicle_id'],
             assembledFor: (string) $data['assembled_for'],
+            shiftStartsAt: $shiftStartsAt,
+            shiftEndsAt: $shiftEndsAt,
         ));
 
         return CrewModel::query()

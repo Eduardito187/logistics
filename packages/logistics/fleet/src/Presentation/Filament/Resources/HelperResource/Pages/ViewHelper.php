@@ -8,9 +8,12 @@ use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
 use Logistics\Fleet\Presentation\Filament\Resources\HelperResource;
+use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
 
 /**
- * Vista de detalle de un ayudante en el admin (solo lectura).
+ * Vista de detalle de un ayudante en el admin.
+ *
+ * Desde la cabecera se puede editar el perfil (UpdateHelperProfile) y registrar documentos del ayudante.
  */
 final class ViewHelper extends ViewRecord
 {
@@ -23,6 +26,7 @@ final class ViewHelper extends ViewRecord
     {
         return [
             EditAction::make(),
+            OwnerDocuments::registerAction('helper'),
         ];
     }
 }

@@ -6,6 +6,7 @@ namespace Logistics\Planning\Domain\Model;
 
 use Logistics\Planning\Domain\Event\PlanProposed;
 use Logistics\Planning\Domain\Event\PlanPublished;
+use Logistics\Planning\Domain\Event\StopRemovedFromPlan;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\ValueObject\Eta;
 use Logistics\Planning\Domain\ValueObject\LoadLane;
@@ -159,6 +160,53 @@ final class DeliveryPlan extends AggregateRoot
 
         $this->applyOrder($orderedShipmentIds);
         $this->geometry = null;
+    }
+
+    /**
+     * Quita del plan la parada del envío dado y renumera la secuencia 1..n. Es la contraparte de
+     * assignShipment: habilita MOVER un envío a otro camión (el plan de origen lo suelta, el de destino lo
+     * toma). No se puede sobre un plan publicado (su hoja de ruta ya está congelada).
+     *
+     * Invalida la geometría guardada: al cambiar el conjunto de paradas, la polilínea por calles deja de
+     * corresponder y debe recalcularse en el servidor antes de volver a mostrarla. Graba el evento
+     * StopRemovedFromPlan para que el outbox propague el cambio.
+     */
+    public function removeStop(string $shipmentId): void
+    {
+        $this->guardNotPublished('quitar envíos');
+
+        $trimmed = trim($shipmentId);
+        if ($trimmed === '') {
+            throw PlanningException::because('el id de envío no puede estar vacío');
+        }
+        if (!$this->hasShipment($trimmed)) {
+            throw PlanningException::because("el envío {$trimmed} no está en el plan");
+        }
+
+        $remaining = [];
+        foreach ($this->stops as $stop) {
+            if ($stop->shipmentId() !== $trimmed) {
+                $remaining[] = $stop;
+            }
+        }
+
+        // Renumera la secuencia 1..n tras quitar la parada, para que el orden quede sin huecos.
+        $sequence = StopSequence::first();
+        foreach ($remaining as $stop) {
+            $stop->placeAt($sequence);
+            $sequence = $sequence->next();
+        }
+
+        $this->stops = $remaining;
+        $this->geometry = null;
+
+        $this->recordEvent(new StopRemovedFromPlan(
+            $this->id->toString(),
+            $this->date->toString(),
+            $this->vehicleId,
+            $trimmed,
+            count($this->stops),
+        ));
     }
 
     /**

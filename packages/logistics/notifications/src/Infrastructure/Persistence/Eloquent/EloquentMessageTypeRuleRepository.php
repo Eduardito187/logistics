@@ -40,6 +40,11 @@ final class EloquentMessageTypeRuleRepository implements MessageTypeRuleReposito
         );
     }
 
+    public function remove(MessageType $messageType): void
+    {
+        MessageTypeRuleRecord::query()->whereKey($messageType->value)->delete();
+    }
+
     public function all(): array
     {
         $policies = [];

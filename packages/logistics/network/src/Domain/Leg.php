@@ -10,6 +10,7 @@ use Logistics\Network\Domain\Exception\NetworkException;
 use Logistics\Network\Domain\ValueObject\CorridorType;
 use Logistics\Network\Domain\ValueObject\LegId;
 use Logistics\Network\Domain\ValueObject\NodeId;
+use Logistics\Network\Domain\ValueObject\NodeType;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
 /**
@@ -31,17 +32,37 @@ final class Leg extends AggregateRoot
     /**
      * Define un tramo nuevo entre dos nodos y graba el evento LegDefined.
      *
-     * El origen y el destino deben ser nodos distintos: un corredor de un nodo a sí mismo no tiene
-     * sentido en la red.
+     * Valida los extremos contra el corredor: el origen y el destino deben ser nodos distintos, el
+     * corredor debe unir dos nodos (los corredores terminales —CdToCustomer, StorePickup— acaban en
+     * el cliente y no son tramos) y los tipos de nodo de origen y destino deben calzar con los que
+     * declara el corredor (p. ej. CdToStore exige un CD de origen y una tienda de destino).
+     *
+     * Recibe los tipos de nodo como argumentos de validación: el tramo no los almacena (su estado es
+     * solo id, origen, destino y corredor), pero los necesita para hacer cumplir la invariante en el
+     * mismo lugar donde nace el agregado.
      */
     public static function define(
         LegId $id,
         NodeId $from,
+        NodeType $fromType,
         NodeId $to,
+        NodeType $toType,
         CorridorType $corridor,
     ): self {
         if ($from->equals($to)) {
             throw NetworkException::because('un tramo no puede tener el mismo nodo de origen y destino');
+        }
+
+        if ($corridor->isTerminal()) {
+            throw NetworkException::because(
+                "el corredor {$corridor->value} acaba en el cliente, no en un nodo: no puede ser un tramo",
+            );
+        }
+
+        if (!$corridor->acceptsEndpoints($fromType, $toType)) {
+            throw NetworkException::because(
+                "los tipos de nodo ({$fromType->value} → {$toType->value}) no corresponden al corredor {$corridor->value}",
+            );
         }
 
         $leg = new self($id, $from, $to, $corridor);

@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Enums\Role;
+use App\Http\Problem\ErrorCode;
+use App\Http\Problem\ProblemDetails;
 use App\Models\User;
 use Closure;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -23,7 +24,7 @@ final class EnsureRole
         $user = $request->user();
 
         if (!$user instanceof User) {
-            return new JsonResponse(['message' => 'Unauthenticated.'], 401);
+            return ProblemDetails::fromCode(ErrorCode::Unauthenticated, 'Unauthenticated.')->toResponse($request);
         }
 
         $required = [];
@@ -35,7 +36,10 @@ final class EnsureRole
         }
 
         if ($required === [] || !$user->hasAnyRole(...$required)) {
-            return new JsonResponse(['message' => 'This action is not allowed for your role.'], 403);
+            return ProblemDetails::fromCode(
+                ErrorCode::InsufficientRole,
+                'This action is not allowed for your role.',
+            )->toResponse($request);
         }
 
         return $next($request);

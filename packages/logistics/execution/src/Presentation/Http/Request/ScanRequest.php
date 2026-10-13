@@ -24,8 +24,30 @@ abstract class ScanRequest extends FormRequest
     }
 
     /**
-     * Reglas comunes a todo escaneo. device_id/user_id/idempotency_key se aceptan opcionales porque
-     * pueden llegar por header o inyectados desde el token de Auth.
+     * La clave de idempotencia es un contrato OFFLINE-FIRST: la app la genera por escaneo y la manda,
+     * de preferencia, en el header `Idempotency-Key`. Para que la validación la exija por igual venga
+     * por header o por cuerpo, aquí se resuelve a una sola clave recortada (cuerpo primero, luego
+     * header) y se fija en el cuerpo. Si no hay ninguna, se deja vacía para que `required` la rechace:
+     * así no se cuela una clave en blanco, que colisionaría en el índice único de la base.
+     */
+    protected function prepareForValidation(): void
+    {
+        $body = $this->input('idempotency_key');
+        $key = is_string($body) ? trim($body) : '';
+
+        if ($key === '') {
+            $header = $this->header('Idempotency-Key');
+            $key = is_string($header) ? trim($header) : '';
+        }
+
+        $this->merge(['idempotency_key' => $key]);
+    }
+
+    /**
+     * Reglas comunes a todo escaneo. device_id/user_id se aceptan opcionales porque pueden llegar
+     * inyectados desde el token de Auth. La clave de idempotencia es OBLIGATORIA (header o cuerpo): sin
+     * ella no hay forma de deduplicar el reenvío offline, y una clave vacía colisionaría en el índice
+     * único de la base. prepareForValidation() ya normaliza el header al cuerpo.
      *
      * @return array<string, mixed>
      */
@@ -39,7 +61,7 @@ abstract class ScanRequest extends FormRequest
             'occurred_at' => ['required', 'date'],
             'device_id' => ['sometimes', 'string', 'max:128'],
             'user_id' => ['sometimes', 'string', 'max:128'],
-            'idempotency_key' => ['sometimes', 'string', 'max:128'],
+            'idempotency_key' => ['required', 'string', 'min:1', 'max:128'],
         ];
     }
 }

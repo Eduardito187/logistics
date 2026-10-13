@@ -42,7 +42,13 @@ Cuatro capas (ver `docs/architecture.md`), con `Domain` en PHP puro (sin Laravel
 - **Infrastructure**: puerto `SapClient` con dos adaptadores detrás del contrato — `HttpSapClient`
   (cliente real, único que habla HTTP con SAP, con header de idempotencia) y `NullSapClient` (stub que
   loguea y devuelve `[]`); el `SapConnectorServiceProvider` elige HTTP si hay `base_url` configurada y
-  si no cae al Null (el escaneo nunca depende de SAP). Records y repos Eloquent con sus mappers,
+  si no cae al Null (el escaneo nunca depende de SAP). Adapter del relay `Outbox\SapMessageDispatcher`
+  que cierra la cadena **evento → outbox → SAP**: el relay le entrega los hechos del conector (prefijo
+  `sap_connector.`) y empuja a SAP cada `stock_transfer_enqueued` por el puerto `SapClient`, idempotente
+  (ignora reentregas de traspasos ya enviados y los hechos que no son de encolado) y relanzando ante un
+  fallo para que el relay reintente con backoff. El provider registra esa ruta en el ruteo del outbox
+  (`logistics-outbox.routes`) sin tocar la config del outbox, para dejar el conector autocontenido.
+  Records y repos Eloquent con sus mappers,
   factories por modelo, migraciones (`sap_material_mappings`, `sap_stock_transfers` con `event_id`
   único) y `config/logistics-sap-connector.php` (endpoint y credenciales SAP por env; centro/almacén
   por defecto configurable, P2-SAP-06).
@@ -59,9 +65,17 @@ Cuatro capas (ver `docs/architecture.md`), con `Domain` en PHP puro (sin Laravel
 
 ## Estado
 
-Dominio, aplicación (CQRS), infraestructura (Eloquent + adaptador SAP real y stub), presentación (HTTP,
-consola y Filament), factories y seeder implementados. Pendiente:
+Dominio, aplicación (CQRS), infraestructura (Eloquent + adaptador SAP real y stub + adapter del relay
+`SapMessageDispatcher` que cierra evento → outbox → SAP), presentación (HTTP, consola y Filament),
+factories, seeder y tests (Unit del agregado, del mapeo y del dispatcher; Feature del flujo de outbox e
+idempotencia) implementados.
 
-- Verificación contra los containers (tests + PHPStan nivel 8 + Pint): sin Docker disponible en este
-  cambio, queda pendiente (no es "terminado" según `CLAUDE.md`).
+Verificado en este cambio (sin correr la suite completa, por acuerdo del dueño): `php -l` limpio sobre
+lo tocado, PHPStan nivel 8 limpio sobre `packages/logistics/sap-connector/src` (0 errores), Pint limpio
+sobre los archivos tocados, y boot real del container confirmando que la ruta `sap_connector.` queda
+registrada en el ruteo del outbox, que el `MessageDispatcher` es el `RoutingMessageDispatcher`, que el
+`SapMessageDispatcher` resuelve del contenedor y que el `SapClient` por defecto es `NullSapClient`.
+
+Pendiente:
+
 - Credenciales reales de SAP en el gestor de secretos (P1-INFRA-04) para activar `HttpSapClient`.

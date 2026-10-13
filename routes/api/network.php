@@ -7,6 +7,7 @@ use Logistics\Network\Presentation\Http\Controller\DeactivateNodeController;
 use Logistics\Network\Presentation\Http\Controller\DefineLegController;
 use Logistics\Network\Presentation\Http\Controller\IndexLegController;
 use Logistics\Network\Presentation\Http\Controller\IndexNodeController;
+use Logistics\Network\Presentation\Http\Controller\IndexOperationalCorridorController;
 use Logistics\Network\Presentation\Http\Controller\RegisterNodeController;
 use Logistics\Network\Presentation\Http\Controller\RemoveLegController;
 use Logistics\Network\Presentation\Http\Controller\ShowLegController;
@@ -26,6 +27,7 @@ return [
         Route::get('network/nodes/{node}', ShowNodeController::class)->name('network.nodes.show');
         Route::get('network/legs', IndexLegController::class)->name('network.legs.index');
         Route::get('network/legs/{leg}', ShowLegController::class)->name('network.legs.show');
+        Route::get('network/corridors', IndexOperationalCorridorController::class)->name('network.corridors.index');
     },
 
     // Puerta integrations — datos maestros desde SAP (credenciales de servicio).

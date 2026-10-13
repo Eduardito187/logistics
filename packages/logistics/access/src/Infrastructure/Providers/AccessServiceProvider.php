@@ -18,6 +18,8 @@ use Logistics\Access\Application\Command\GrantPermissionToRole\GrantPermissionTo
 use Logistics\Access\Application\Command\GrantPermissionToRole\GrantPermissionToRoleHandler;
 use Logistics\Access\Application\Command\ReactivateUser\ReactivateUser;
 use Logistics\Access\Application\Command\ReactivateUser\ReactivateUserHandler;
+use Logistics\Access\Application\Command\RecordAuditEntry\RecordAuditEntry;
+use Logistics\Access\Application\Command\RecordAuditEntry\RecordAuditEntryHandler;
 use Logistics\Access\Application\Command\RecordTokenUsage\RecordTokenUsage;
 use Logistics\Access\Application\Command\RecordTokenUsage\RecordTokenUsageHandler;
 use Logistics\Access\Application\Command\RecordUserLogin\RecordUserLogin;
@@ -50,6 +52,8 @@ use Logistics\Access\Application\Query\GetRole\GetRole;
 use Logistics\Access\Application\Query\GetRole\GetRoleHandler;
 use Logistics\Access\Application\Query\GetUser\GetUser;
 use Logistics\Access\Application\Query\GetUser\GetUserHandler;
+use Logistics\Access\Application\Query\ListAuditEntries\ListAuditEntries;
+use Logistics\Access\Application\Query\ListAuditEntries\ListAuditEntriesHandler;
 use Logistics\Access\Application\Query\ListIntegrationTokens\ListIntegrationTokens;
 use Logistics\Access\Application\Query\ListIntegrationTokens\ListIntegrationTokensHandler;
 use Logistics\Access\Application\Query\ListPermissions\ListPermissions;
@@ -58,6 +62,7 @@ use Logistics\Access\Application\Query\ListRoles\ListRoles;
 use Logistics\Access\Application\Query\ListRoles\ListRolesHandler;
 use Logistics\Access\Application\Query\ListUsers\ListUsers;
 use Logistics\Access\Application\Query\ListUsers\ListUsersHandler;
+use Logistics\Access\Domain\Contract\AuditLogRepository;
 use Logistics\Access\Domain\Contract\IntegrationTokenRepository;
 use Logistics\Access\Domain\Contract\PasswordHasher;
 use Logistics\Access\Domain\Contract\PermissionRepository;
@@ -65,6 +70,7 @@ use Logistics\Access\Domain\Contract\RoleRepository;
 use Logistics\Access\Domain\Contract\SecretGenerator;
 use Logistics\Access\Domain\Contract\TokenHasher;
 use Logistics\Access\Domain\Contract\UserRepository;
+use Logistics\Access\Infrastructure\Persistence\Eloquent\Repository\EloquentAuditLogRepository;
 use Logistics\Access\Infrastructure\Persistence\Eloquent\Repository\EloquentIntegrationTokenRepository;
 use Logistics\Access\Infrastructure\Persistence\Eloquent\Repository\EloquentPermissionRepository;
 use Logistics\Access\Infrastructure\Persistence\Eloquent\Repository\EloquentRoleRepository;
@@ -122,6 +128,10 @@ final class AccessServiceProvider extends ServiceProvider
         ListIntegrationTokens::class => ListIntegrationTokensHandler::class,
         GetIntegrationToken::class => GetIntegrationTokenHandler::class,
         AuthenticateIntegrationToken::class => AuthenticateIntegrationTokenHandler::class,
+
+        // Bitácora de auditoría de accesos (acciones sensibles del módulo).
+        RecordAuditEntry::class => RecordAuditEntryHandler::class,
+        ListAuditEntries::class => ListAuditEntriesHandler::class,
     ];
 
     public function register(): void
@@ -131,6 +141,7 @@ final class AccessServiceProvider extends ServiceProvider
         $this->app->bind(RoleRepository::class, EloquentRoleRepository::class);
         $this->app->bind(UserRepository::class, EloquentUserRepository::class);
         $this->app->bind(IntegrationTokenRepository::class, EloquentIntegrationTokenRepository::class);
+        $this->app->bind(AuditLogRepository::class, EloquentAuditLogRepository::class);
 
         // Puertos de seguridad: hashing y generación de secretos (detalle de infraestructura).
         $this->app->bind(

@@ -28,6 +28,7 @@ use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Access\Presentation\Filament\Resources\IntegrationTokenResource\Pages\CreateIntegrationToken;
 use Logistics\Access\Presentation\Filament\Resources\IntegrationTokenResource\Pages\ListIntegrationTokens;
 use Logistics\Access\Presentation\Filament\Resources\IntegrationTokenResource\Pages\ViewIntegrationToken;
+use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 use Logistics\Shared\Application\Command\CommandBus;
 
 /**
@@ -263,6 +264,10 @@ final class IntegrationTokenResource extends Resource
                             permissionKeys: $keys,
                         ));
 
+                        AuditRecorder::record('token.permissions_changed', 'access.integration_token', (string) $record->getKey(), [
+                            'permissions' => $keys,
+                        ]);
+
                         Notification::make()
                             ->title(__('Permissions updated'))
                             ->success()
@@ -281,6 +286,8 @@ final class IntegrationTokenResource extends Resource
                             IntegrationTokenId::fromString((string) $record->getKey()),
                         );
 
+                        AuditRecorder::record('token.rotated', 'access.integration_token', (string) $record->getKey());
+
                         self::revealToken($view);
                     }),
                 // Revocar: despacha RevokeIntegrationToken al bus. Irreversible.
@@ -296,6 +303,8 @@ final class IntegrationTokenResource extends Resource
                         app(CommandBus::class)->dispatch(new RevokeIntegrationToken(
                             tokenId: (string) $record->getKey(),
                         ));
+
+                        AuditRecorder::record('token.revoked', 'access.integration_token', (string) $record->getKey());
 
                         Notification::make()
                             ->title(__('Token revoked'))

@@ -424,6 +424,7 @@ final class DeliveryResource extends Resource
                     unitId: (string) $data['unit_id'],
                     confirmation: (string) $data['confirmation'],
                     photoUrl: $photo,
+                    photoPath: null,
                     lat: (float) $data['lat'],
                     lng: (float) $data['lng'],
                     deviceId: (string) $data['device_id'],

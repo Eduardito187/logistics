@@ -42,7 +42,9 @@ final class CsvShipmentSpreadsheetParser implements ShipmentSpreadsheetParser
         fwrite($stream, $this->stripBom($contents));
         rewind($stream);
 
-        $header = fgetcsv($stream);
+        // escape: '' sigue el estándar CSV (sin carácter de escape especial) y evita la deprecación de
+        // PHP 8.3+ por el valor por defecto de $escape, que va a cambiar.
+        $header = fgetcsv($stream, escape: '');
         if (!is_array($header)) {
             fclose($stream);
 
@@ -69,7 +71,7 @@ final class CsvShipmentSpreadsheetParser implements ShipmentSpreadsheetParser
         $orders = [];
 
         $lineNumber = 1; // la fila 1 es el encabezado
-        while (($record = fgetcsv($stream)) !== false) {
+        while (($record = fgetcsv($stream, escape: '')) !== false) {
             $lineNumber++;
             if ($record === [null]) {
                 continue; // fila en blanco

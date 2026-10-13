@@ -3,6 +3,7 @@
 declare(strict_types=1);
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\DomainEventNotificationDispatcher;
+use Logistics\Notifications\Infrastructure\Dispatch\FleetDocumentExpiryNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationDispatcher;
 use Logistics\Outbox\Infrastructure\Dispatch\FanOutMessageDispatcher;
 use Logistics\Outbox\Infrastructure\Dispatch\NullMessageDispatcher;
@@ -47,6 +48,10 @@ return [
         // planificación y notificaciones), así que su nombre EXACTO se rutea al abanico (gana por ser el
         // prefijo más largo frente a 'execution.'). Ver 'fanout' más abajo.
         'execution.vehicle_incident_reported' => FanOutMessageDispatcher::class,
+
+        // Alerta de documentos de flota por vencer / vencidos (P1-FLT-04): el barrido programado emite
+        // este resumen y notificaciones avisa al supervisor con un correo consolidado.
+        'fleet.documents_expiry_alerted' => FleetDocumentExpiryNotificationDispatcher::class,
     ],
 
     // Abanico por evento: eventos que disparan reacciones en varios contextos a la vez. El

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Logistics\Access\Application\Command\DefineRole\DefineRole;
 use Logistics\Access\Infrastructure\Persistence\Eloquent\Model\RoleRecord;
 use Logistics\Access\Presentation\Filament\Resources\RoleResource;
+use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 use Logistics\Shared\Application\Command\CommandBus;
 
 /**
@@ -43,6 +44,13 @@ final class CreateRole extends CreateRecord
         ));
 
         // La clave es única: identifica el rol recién definido para la redirección del admin.
-        return RoleRecord::query()->where('key', $key)->firstOrFail();
+        $record = RoleRecord::query()->where('key', $key)->firstOrFail();
+
+        AuditRecorder::record('role.defined', 'access.role', (string) $record->getKey(), [
+            'key' => $key,
+            'permissions' => $permissionKeys,
+        ]);
+
+        return $record;
     }
 }

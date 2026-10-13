@@ -21,6 +21,8 @@ use Logistics\Network\Application\Query\ListLegs\ListLegsHandler;
 use Logistics\Network\Application\Query\ListLegs\ListLegsQuery;
 use Logistics\Network\Application\Query\ListNodes\ListNodesHandler;
 use Logistics\Network\Application\Query\ListNodes\ListNodesQuery;
+use Logistics\Network\Application\Query\OperationalCorridorsByDepartment\OperationalCorridorsByDepartmentHandler;
+use Logistics\Network\Application\Query\OperationalCorridorsByDepartment\OperationalCorridorsByDepartmentQuery;
 use Logistics\Network\Domain\Contract\LegRepository;
 use Logistics\Network\Domain\Contract\NodeRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentLegRepository;
@@ -58,5 +60,11 @@ final class NetworkServiceProvider extends ServiceProvider
         $registry->register(RemoveLegCommand::class, RemoveLegHandler::class);
         $registry->register(ListLegsQuery::class, ListLegsHandler::class);
         $registry->register(FindLegQuery::class, FindLegHandler::class);
+
+        // Corredores operativos por departamento: insumo de planning/promise.
+        $registry->register(
+            OperationalCorridorsByDepartmentQuery::class,
+            OperationalCorridorsByDepartmentHandler::class,
+        );
     }
 }

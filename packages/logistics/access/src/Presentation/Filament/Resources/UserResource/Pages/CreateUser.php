@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Logistics\Access\Application\Command\RegisterUser\RegisterUser;
 use Logistics\Access\Infrastructure\Persistence\Eloquent\Model\UserRecord;
 use Logistics\Access\Presentation\Filament\Resources\UserResource;
+use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 use Logistics\Shared\Application\Command\CommandBus;
 
 /**
@@ -41,6 +42,14 @@ final class CreateUser extends CreateRecord
         ));
 
         // El email es único: identifica el usuario recién registrado para la redirección del admin.
-        return UserRecord::query()->where('email', $email)->firstOrFail();
+        $record = UserRecord::query()->where('email', $email)->firstOrFail();
+
+        AuditRecorder::record('user.registered', 'access.user', (string) $record->getKey(), [
+            'email' => $email,
+            'roles' => $roleKeys,
+            'status' => (string) ($data['status'] ?? 'active'),
+        ]);
+
+        return $record;
     }
 }

@@ -14,12 +14,15 @@ use Logistics\Notifications\Application\Command\MarkNotificationSent\MarkNotific
 use Logistics\Notifications\Application\Command\MarkNotificationSent\MarkNotificationSentHandler;
 use Logistics\Notifications\Application\Command\QueueNotification\QueueNotification;
 use Logistics\Notifications\Application\Command\QueueNotification\QueueNotificationHandler;
+use Logistics\Notifications\Application\Command\ResetMessageTypeRule\ResetMessageTypeRule;
+use Logistics\Notifications\Application\Command\ResetMessageTypeRule\ResetMessageTypeRuleHandler;
 use Logistics\Notifications\Application\Command\SetMessageTypeRule\SetMessageTypeRule;
 use Logistics\Notifications\Application\Command\SetMessageTypeRule\SetMessageTypeRuleHandler;
 use Logistics\Notifications\Application\Command\SuppressNotification\SuppressNotification;
 use Logistics\Notifications\Application\Command\SuppressNotification\SuppressNotificationHandler;
 use Logistics\Notifications\Application\Command\UpsertMessageTemplate\UpsertMessageTemplate;
 use Logistics\Notifications\Application\Command\UpsertMessageTemplate\UpsertMessageTemplateHandler;
+use Logistics\Notifications\Application\Contract\CascadeRuleSettings;
 use Logistics\Notifications\Application\Contract\NotificationRulesProvider;
 use Logistics\Notifications\Application\Query\GetMessageTemplate\GetMessageTemplate;
 use Logistics\Notifications\Application\Query\GetMessageTemplate\GetMessageTemplateHandler;
@@ -56,6 +59,7 @@ use Logistics\Notifications\Infrastructure\Channel\TelegramChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\WebPushChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\WhatsAppChannelSender;
 use Logistics\Notifications\Infrastructure\Dispatch\DomainEventNotificationDispatcher;
+use Logistics\Notifications\Infrastructure\Dispatch\FleetDocumentExpiryNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\NotificationChannelDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Image\FilesystemCollageImageStore;
@@ -67,7 +71,8 @@ use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentMessageT
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentNotificationRepository;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentSmsBudgetRepository;
 use Logistics\Notifications\Infrastructure\Product\LineItemProductImageResolver;
-use Logistics\Notifications\Infrastructure\Rules\PersistedNotificationRulesProvider;
+use Logistics\Notifications\Infrastructure\Rules\SettingsNotificationRulesProvider;
+use Logistics\Notifications\Infrastructure\Settings\SettingsCascadeRuleGateway;
 use Logistics\Notifications\Infrastructure\Variable\ShipmentNotificationVariableProvider;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\HandlerRegistry;
@@ -93,6 +98,7 @@ final class NotificationsServiceProvider extends ServiceProvider
         MarkNotificationSent::class => MarkNotificationSentHandler::class,
         SuppressNotification::class => SuppressNotificationHandler::class,
         SetMessageTypeRule::class => SetMessageTypeRuleHandler::class,
+        ResetMessageTypeRule::class => ResetMessageTypeRuleHandler::class,
         UpsertMessageTemplate::class => UpsertMessageTemplateHandler::class,
         ListNotificationsByShipment::class => ListNotificationsByShipmentHandler::class,
         ListNotifications::class => ListNotificationsHandler::class,
@@ -115,8 +121,13 @@ final class NotificationsServiceProvider extends ServiceProvider
         $this->app->bind(MessageTypeRuleRepository::class, EloquentMessageTypeRuleRepository::class);
         $this->app->bind(SmsBudgetRepository::class, EloquentSmsBudgetRepository::class);
 
-        // Reglas de cascada: las personalizadas del panel con fallback al default del ADR 006.
-        $this->app->bind(NotificationRulesProvider::class, PersistedNotificationRulesProvider::class);
+        // Reglas de cascada: la FUENTE DE VERDAD es el contexto Configuración (versionado, con historial).
+        // El puerto CascadeRuleSettings traduce a/desde esa configuración por los buses CQRS; se bindea como
+        // `scoped` porque memoiza la lectura dentro del request/job (se reinicia entre requests, Octane-safe).
+        $this->app->scoped(CascadeRuleSettings::class, SettingsCascadeRuleGateway::class);
+
+        // El motor LEE la política efectiva desde Configuración y cae al default del ADR 006 por tipo.
+        $this->app->bind(NotificationRulesProvider::class, SettingsNotificationRulesProvider::class);
 
         // Proveedor de variables de interpolación de plantillas (lee envío + tracking, tolerante).
         $this->app->bind(NotificationVariableProvider::class, function ($app): ShipmentNotificationVariableProvider {
@@ -306,6 +317,24 @@ final class NotificationsServiceProvider extends ServiceProvider
                 $app->make(CommandBus::class),
                 is_string($email) && trim($email) !== '' ? $email : null,
                 is_string($phone) && trim($phone) !== '' ? $phone : null,
+            );
+        });
+
+        // - FleetDocumentExpiryNotificationDispatcher: ante fleet.documents_expiry_alerted, avisa al
+        //   supervisor con un correo consolidado del barrido de documentos por vencer / vencidos. Es una
+        //   alerta interna (no anclada a un envío), así que sale directo por el mailer; si no hay email de
+        //   supervisor, queda en el log. Lleva escalares, así que se arma a mano.
+        $this->app->bind(FleetDocumentExpiryNotificationDispatcher::class, function ($app): FleetDocumentExpiryNotificationDispatcher {
+            $config = $app->make('config');
+            $email = $config->get('logistics-notifications.supervisor.email');
+            $mailer = $config->get('logistics-notifications.email.mailer');
+
+            return new FleetDocumentExpiryNotificationDispatcher(
+                $app->make(LoggerInterface::class),
+                is_string($email) && trim($email) !== '' ? $email : null,
+                (string) $config->get('logistics-notifications.email.from_address', 'no-reply@dismac.test'),
+                (string) $config->get('logistics-notifications.email.from_name', 'Dismac Logistics'),
+                is_string($mailer) && $mailer !== '' ? $mailer : null,
             );
         });
     }

@@ -103,10 +103,15 @@ es compartido, no se modifica desde este contexto; el integrador agrega las entr
 
 ## Reglas por tipo y plantillas
 
-- Reglas de cascada **configurables por tipo de mensaje** (P1-NOT-01): `MessageTypeRuleRepository` +
-  `PersistedNotificationRulesProvider` (regla del panel con fallback al default del ADR 006). Comando
-  `SetMessageTypeRule`, query `ListMessageTypeRules`, Filament `Cascade Rules` (editable) y la página
-  de solo lectura `Message Type Rules` (regla efectiva).
+- Reglas de cascada **configurables por tipo de mensaje** (P1-NOT-01), **versionadas con historial**:
+  la fuente de verdad es el contexto **Configuración** (clave `notifications.cascade_rules`). El puerto
+  `CascadeRuleSettings` (impl. `SettingsCascadeRuleGateway`) traduce a/desde Configuración por los buses
+  CQRS; el motor LEE sus overrides con `SettingsNotificationRulesProvider` (fallback al default del ADR
+  006 por tipo), **no** desde código ni desde una tabla propia. Cada cambio publica una **versión nueva**
+  (nunca pisa el historial). Comandos `SetMessageTypeRule` (upsert) y `ResetMessageTypeRule` (vuelve al
+  default), query `ListMessageTypeRules`, Filament `Cascade Rules` (editable, con acción `Reset to
+  default` y modal `Version history`) y la página de solo lectura `Message Type Rules` (regla efectiva).
+  La tabla `MessageTypeRuleRepository` queda como **proyección de solo-estado** para el listado del admin.
 - **Plantillas** por tipo, canal y locale (P1-NOT-08): agregado `MessageTemplate` con variables
   `{{clave}}`, comando `UpsertMessageTemplate`, queries `ListMessageTemplates`/`GetMessageTemplate`,
   Filament `Message Templates` (CRUD).
@@ -114,7 +119,7 @@ es compartido, no se modifica desde este contexto; el integrador agrega las entr
 ## CQRS del contexto
 
 Comandos: `QueueNotification`, `AdvanceCascade`, `MarkNotificationSent`, `SuppressNotification`,
-`SetMessageTypeRule`, `UpsertMessageTemplate`. Queries: `ListNotificationsByShipment`,
+`SetMessageTypeRule`, `ResetMessageTypeRule`, `UpsertMessageTemplate`. Queries: `ListNotificationsByShipment`,
 `ListNotifications`, `GetNotification`, `ListMessageTypeRules`, `ListMessageTemplates`,
 `GetMessageTemplate`, `GetSmsBudget`. Todos registrados en el `HandlerRegistry`.
 

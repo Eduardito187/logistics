@@ -6,6 +6,7 @@ use Logistics\Network\Domain\Event\NodeDeactivated;
 use Logistics\Network\Domain\Event\NodeRegistered;
 use Logistics\Network\Domain\Exception\NetworkException;
 use Logistics\Network\Domain\Node;
+use Logistics\Network\Domain\ValueObject\Department;
 use Logistics\Network\Domain\ValueObject\GeoPoint;
 use Logistics\Network\Domain\ValueObject\NodeCode;
 use Logistics\Network\Domain\ValueObject\NodeId;
@@ -42,7 +43,41 @@ it('registers an active node and records the NodeRegistered event', function ():
             'type' => 'distribution_center',
             'lat' => -16.5,
             'lng' => -68.15,
+            'department' => null,
         ]);
+});
+
+it('registers a node with a department and carries it in the event payload', function (): void {
+    $node = Node::register(
+        NodeId::generate(),
+        NodeCode::fromString('CD-LP-01'),
+        'Centro La Paz',
+        NodeType::DistributionCenter,
+        GeoPoint::of(-16.5, -68.15),
+        Department::LaPaz,
+    );
+
+    expect($node->department())->toBe(Department::LaPaz);
+
+    $events = $node->releaseEvents();
+    expect($events[0]->payload()['department'])->toBe('la_paz');
+});
+
+it('leaves the department null when none is given', function (): void {
+    expect(registerNode()->department())->toBeNull();
+});
+
+it('assigns and clears the department without recording an event', function (): void {
+    $node = registerNode();
+    $node->releaseEvents();
+
+    $node->assignDepartment(Department::SantaCruz);
+    expect($node->department())->toBe(Department::SantaCruz)
+        ->and($node->releaseEvents())->toHaveCount(0);
+
+    $node->assignDepartment(null);
+    expect($node->department())->toBeNull()
+        ->and($node->releaseEvents())->toHaveCount(0);
 });
 
 it('rejects a blank name', function (): void {

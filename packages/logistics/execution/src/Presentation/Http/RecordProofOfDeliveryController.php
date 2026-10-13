@@ -21,12 +21,14 @@ final class RecordProofOfDeliveryController extends ExecutionController
         $data = $request->validated();
 
         $photoUrl = $data['photo_url'] ?? null;
+        $photoPath = $data['photo_path'] ?? null;
 
         $this->commandBus->dispatch(new RecordProofOfDelivery(
             shipmentId: (string) $data['shipment_id'],
             unitId: (string) $data['unit_id'],
             confirmation: (string) $data['confirmation'],
             photoUrl: is_string($photoUrl) ? $photoUrl : null,
+            photoPath: is_string($photoPath) ? $photoPath : null,
             lat: (float) $data['lat'],
             lng: (float) $data['lng'],
             deviceId: $this->deviceId($request),

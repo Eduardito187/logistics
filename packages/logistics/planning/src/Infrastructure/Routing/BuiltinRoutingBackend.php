@@ -17,7 +17,9 @@ use Logistics\Planning\Domain\ValueObject\DistanceMatrix;
 use Logistics\Planning\Domain\ValueObject\Eta;
 use Logistics\Planning\Domain\ValueObject\GeoPoint;
 use Logistics\Planning\Domain\ValueObject\PlannedRoute;
+use Logistics\Planning\Domain\ValueObject\PlanStrategy;
 use Logistics\Planning\Domain\ValueObject\RoutingResult;
+use Logistics\Planning\Domain\ValueObject\TimeWindow;
 use Logistics\Planning\Domain\ValueObject\VehicleCapacitySpec;
 
 /**
@@ -73,7 +75,13 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
             $points = $this->grouping->pointsFor($depot, $group);
             $matrix = $this->matrixProvider->matrixFor($points);
 
-            [$assignedRoutes, $groupUnassigned] = $this->assignGroup($group, $eligible, $matrix, $ratio, $departAt, $depot, $pool);
+            // En modo slots el ruteador respeta la franja del cliente como restricción (ventanas horarias);
+            // en optimization no hay franja y el orden es solo por cercanía (comportamiento de siempre).
+            $windows = $params->strategy === PlanStrategy::Slots
+                ? $this->buildWindows($group, $departAt)
+                : [];
+
+            [$assignedRoutes, $groupUnassigned] = $this->assignGroup($group, $eligible, $matrix, $ratio, $departAt, $depot, $pool, $windows);
 
             array_push($routes, ...$assignedRoutes);
             array_push($unassigned, ...$groupUnassigned);
@@ -89,6 +97,7 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
      * @param  list<DeliveryCandidate>                                  $group
      * @param  list<VehicleCapacitySpec>                                $eligible
      * @param  list<VehicleCapacitySpec>                                $pool     referencia al pool compartido, del que se quitan los usados
+     * @param  array<int, TimeWindow>                                   $windows  ventana por índice de parada (1..n del grupo); vacío = sin franjas
      * @return array{0: list<PlannedRoute>, 1: list<DeliveryCandidate>}
      */
     private function assignGroup(
@@ -99,6 +108,7 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
         DateTimeImmutable $departAt,
         GeoPoint $depot,
         array &$pool,
+        array $windows,
     ): array {
         $demandsKg = [];
         $demandsM3 = [];
@@ -153,7 +163,7 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
             }
 
             $used[$vehicle->vehicleId] = true;
-            $routes[] = $this->buildRoute($vehicle, $route['stops'], $group, $matrix, $departAt, $depot);
+            $routes[] = $this->buildRoute($vehicle, $route['stops'], $group, $matrix, $departAt, $depot, $windows);
         }
 
         // Quitar del pool compartido los camiones ya usados (los flexibles no se reparten dos veces).
@@ -166,8 +176,9 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
      * Construye la ruta planificada de un camión: afina el orden con 2-opt/Or-opt, fija la ETA acumulada y
      * calcula la geometría por calles.
      *
-     * @param list<int>               $stops índices de parada (1..n) asignados al camión
+     * @param list<int>               $stops   índices de parada (1..n) asignados al camión
      * @param list<DeliveryCandidate> $group
+     * @param array<int, TimeWindow>  $windows ventana por índice de parada; vacío = sin franjas
      */
     private function buildRoute(
         VehicleCapacitySpec $vehicle,
@@ -176,28 +187,48 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
         DistanceMatrix $matrix,
         DateTimeImmutable $departAt,
         GeoPoint $depot,
+        array $windows,
     ): PlannedRoute {
-        $ordered = $this->sequencer->sequence($matrix, $stops);
+        $ordered = $this->sequencer->sequence($matrix, $stops, $windows);
+        // La ETA usa el arribo EFECTIVO: si se llega antes de la apertura de la franja, la ETA es la apertura
+        // (el camión espera). Sin ventanas, el arribo es el tiempo de viaje acumulado de siempre.
+        $arrivals = $this->sequencer->arrivalSeconds($matrix, $ordered, $windows);
 
         $candidates = [];
         $etas = [];
         $geometryPoints = [$depot];
-        $cumulativeSeconds = 0.0;
-        $previous = 0;
 
-        foreach ($ordered as $stopIndex) {
+        foreach ($ordered as $position => $stopIndex) {
             $candidate = $group[$stopIndex - 1];
-            $cumulativeSeconds += $matrix->durationSeconds($previous, $stopIndex);
-            $minutes = (int) round($cumulativeSeconds / 60);
+            $minutes = (int) round($arrivals[$position] / 60);
             $candidates[] = $candidate;
             $etas[$candidate->shipmentId] = Eta::at($departAt->modify("+{$minutes} minutes"), $minutes);
             $geometryPoints[] = GeoPoint::of($candidate->latitude, $candidate->longitude);
-            $previous = $stopIndex;
         }
 
         $geometry = $this->geometryProvider->geometryFor($geometryPoints);
 
         return new PlannedRoute($vehicle->vehicleId, $vehicle->departmentId, $candidates, $etas, $geometry);
+    }
+
+    /**
+     * Arma el mapa de ventanas horarias del grupo, indexado por el índice de parada (1..n) que usa la
+     * matriz. Solo entran los candidatos que traen franja; los demás quedan sin restricción.
+     *
+     * @param  list<DeliveryCandidate> $group
+     * @return array<int, TimeWindow>
+     */
+    private function buildWindows(array $group, DateTimeImmutable $departAt): array
+    {
+        $windows = [];
+        foreach ($group as $index => $candidate) {
+            $window = $candidate->deliveryWindow($departAt);
+            if ($window !== null) {
+                $windows[$index + 1] = $window; // 0 es el depósito
+            }
+        }
+
+        return $windows;
     }
 
     /**

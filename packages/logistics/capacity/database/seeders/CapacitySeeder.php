@@ -8,8 +8,12 @@ use Illuminate\Container\Container;
 use Illuminate\Database\Seeder;
 use Logistics\Capacity\Application\Command\DefineCapacity\DefineCapacityCommand;
 use Logistics\Capacity\Infrastructure\Persistence\Eloquent\CapacityBucketRecord;
+use Logistics\Capacity\Infrastructure\Settings\SettingsCapacityRulesetProvider;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
+use Logistics\Settings\Application\Command\SetSetting\SetSettingCommand;
+use Logistics\Settings\Application\Query\GetSetting\GetSettingQuery;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Application\Query\QueryBus;
 
 /**
  * Seeder propio del contexto Capacity: define cupos de demostración realistas para los próximos días.
@@ -35,6 +39,11 @@ final class CapacitySeeder extends Seeder
     {
         $bus = Container::getInstance()->make(CommandBus::class);
 
+        // Publica las reglas de cupo versionadas (C-CAP-01) si todavía no hay versión: días de servicio,
+        // corte, ventanas, horizonte y cupos por unidad, con los nodos reales como scopes. Desde el admin
+        // se editan publicando versiones nuevas; desde aquí solo se siembra la base.
+        $this->seedRuleset($bus);
+
         foreach ($this->nodeIds() as $nodeId) {
             foreach ($this->dates() as $date) {
                 foreach (self::SLOTS as $slot) {
@@ -44,6 +53,44 @@ final class CapacitySeeder extends Seeder
                 }
             }
         }
+    }
+
+    /**
+     * Publica la versión base de las reglas de cupo si la clave aún no tiene ninguna (idempotente).
+     */
+    private function seedRuleset(CommandBus $bus): void
+    {
+        $query = Container::getInstance()->make(QueryBus::class);
+        $existing = $query->ask(new GetSettingQuery(SettingsCapacityRulesetProvider::SETTING_KEY));
+        if (is_array($existing)) {
+            return;
+        }
+
+        $scopes = array_map(
+            static fn (string $nodeId): array => ['node_id' => $nodeId, 'zone_id' => null],
+            $this->nodeIds(),
+        );
+
+        $bus->dispatch(new SetSettingCommand(
+            key: SettingsCapacityRulesetProvider::SETTING_KEY,
+            value: [
+                'service_days' => [1, 2, 3, 4, 5, 6],
+                'order_cutoff' => '12:00',
+                'horizon_days' => 14,
+                'holidays' => [],
+                'windows' => self::SLOTS,
+                'windows_by_weekday' => [],
+                'totals' => [
+                    'deliveries' => 40.0,
+                    'weight' => 8000.0,
+                    'volume' => 40.0,
+                ],
+                'totals_by_slot' => [],
+                'scopes' => $scopes,
+            ],
+            effectiveFrom: null,
+            createdBy: 'capacity-seeder',
+        ));
     }
 
     /**

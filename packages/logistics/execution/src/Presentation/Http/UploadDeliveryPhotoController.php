@@ -6,18 +6,26 @@ namespace Logistics\Execution\Presentation\Http;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
+use Logistics\Execution\Application\Contract\EvidenceStorage;
+use Logistics\Execution\Domain\Exception\ExecutionException;
+use Logistics\Execution\Domain\ValueObject\EvidenceKind;
 use Logistics\Execution\Presentation\Http\Request\UploadPhotoRequest;
 
 /**
- * POST /app — sube una foto de evidencia (prueba de entrega o daño) y devuelve su URL (puerta app).
+ * POST /app — sube una foto de evidencia (prueba de entrega o daño) y devuelve su referencia (puerta app).
  *
- * La subida de fotos vive detrás de este contrato: el controller persiste el archivo en el
- * almacenamiento S3-compatible (disco `pod`) y devuelve la URL, que luego viaja como photo_url en el
- * escaneo de prueba de entrega. No invoca un bus porque no es un hecho de dominio, solo un adjunto.
+ * La subida vive detrás de la puerta EvidenceStorage (Application): elige el disco S3-compatible según
+ * el tipo (`pod` para prueba de entrega, `damage` para daños), reintenta ante fallos transitorios de
+ * red y devuelve la referencia durable (disco + path). Esa referencia viaja luego como photo_path en el
+ * escaneo de prueba de entrega. No invoca un bus de comandos porque no es un hecho de dominio, solo un
+ * adjunto. No habla con Infrastructure directo: depende de la puerta de Application.
  */
 final class UploadDeliveryPhotoController
 {
+    public function __construct(
+        private readonly EvidenceStorage $storage,
+    ) {}
+
     public function __invoke(UploadPhotoRequest $request): JsonResponse
     {
         /** @var array<string, mixed> $data */
@@ -26,24 +34,19 @@ final class UploadDeliveryPhotoController
         /** @var UploadedFile $photo */
         $photo = $request->file('photo');
 
-        $disk = (string) config('logistics-execution.pod_disk', 's3');
-        $directory = 'pod/'.((string) $data['shipment_id']);
+        $kind = EvidenceKind::fromCode(isset($data['kind']) && is_string($data['kind']) ? $data['kind'] : null);
 
-        $path = $photo->store($directory, ['disk' => $disk]);
-        if ($path === false) {
+        try {
+            $stored = $this->storage->store($kind, (string) $data['shipment_id'], $photo);
+        } catch (ExecutionException $exception) {
             return new JsonResponse([
                 'error' => [
-                    'code' => 'photo_upload_failed',
-                    'message' => 'The photo could not be stored.',
+                    'code' => 'evidence_upload_failed',
+                    'message' => $exception->getMessage(),
                 ],
             ], 500);
         }
 
-        return new JsonResponse([
-            'data' => [
-                'path' => $path,
-                'url' => Storage::disk($disk)->url($path),
-            ],
-        ], 201);
+        return new JsonResponse(['data' => $stored->toArray()], 201);
     }
 }

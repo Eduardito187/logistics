@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Logistics\Access\Application\Service\IntegrationTokenIssuer;
 use Logistics\Access\Infrastructure\Persistence\Eloquent\Model\IntegrationTokenRecord;
 use Logistics\Access\Presentation\Filament\Resources\IntegrationTokenResource;
+use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 
 /**
  * Alta de un token de integración desde el admin.
@@ -44,6 +45,12 @@ final class CreateIntegrationToken extends CreateRecord
 
         // Revela el secreto en claro una sola vez (notificación persistente con botón de copiar).
         IntegrationTokenResource::revealToken($view);
+
+        AuditRecorder::record('token.issued', 'access.integration_token', $view->id, [
+            'name' => (string) $data['name'],
+            'permissions' => $permissionKeys,
+            'expires_at' => $expiresAt?->format(DATE_ATOM),
+        ]);
 
         // El Issuer sí devuelve el id del token recién emitido: con él se localiza el record para redirigir.
         return IntegrationTokenRecord::query()->whereKey($view->id)->firstOrFail();

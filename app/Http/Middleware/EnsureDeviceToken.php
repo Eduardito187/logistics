@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Http\Problem\ErrorCode;
+use App\Http\Problem\ProblemDetails;
 use App\Models\Device;
 use App\Models\PersonalAccessToken;
 use Closure;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -26,23 +27,23 @@ final class EnsureDeviceToken
         $user = $request->user();
 
         if ($user === null) {
-            return $this->unauthorized('Unauthenticated.');
+            return $this->problem($request, ErrorCode::Unauthenticated, 'Unauthenticated.');
         }
 
         $token = $user->currentAccessToken();
 
         if (!$token instanceof PersonalAccessToken || $token->device_id === null) {
-            return $this->unauthorized('Token is not bound to a device.');
+            return $this->problem($request, ErrorCode::Unauthenticated, 'Token is not bound to a device.');
         }
 
         $device = Device::find($token->device_id);
 
         if ($device === null || $device->isRevoked()) {
-            return $this->unauthorized('Device has been revoked.');
+            return $this->problem($request, ErrorCode::DeviceRevoked, 'Device has been revoked.');
         }
 
         if ($device->user_id !== null && $device->user_id !== $user->getKey()) {
-            return $this->unauthorized('Device is bound to another user.');
+            return $this->problem($request, ErrorCode::DeviceRevoked, 'Device is bound to another user.');
         }
 
         $device->touchLastSeen();
@@ -50,8 +51,8 @@ final class EnsureDeviceToken
         return $next($request);
     }
 
-    private function unauthorized(string $message): JsonResponse
+    private function problem(Request $request, ErrorCode $code, string $detail): Response
     {
-        return new JsonResponse(['message' => $message], 401);
+        return ProblemDetails::fromCode($code, $detail)->toResponse($request);
     }
 }

@@ -27,6 +27,19 @@ Cuatro capas, igual que los packages de dis-commerce (ver `docs/architecture.md`
 - Agregado `ShipmentTracking` (id `TrackingId`, `shipmentId` string, `TrackingToken`, `VisibleStatus`,
   `remainingStops`, `?Eta`, `?TruckPosition`, `?routeId` string, `?RoutePosition`). Referencia al envío
   y a la ruta por id string, nunca importando el agregado de otro contexto.
+- Agregado `UnitTracking` (id `UnitTrackingId`, `shipmentId` string, `unitId` string, `UnitStatus`,
+  `?lastLocationId` string, `?lastSeenAt`): proyección PER-BULTO del flujo de eventos de execution. Un
+  seguimiento por bulto (unit_id único). Se autocompleta desde el stream: la primera vez que se ve un
+  bulto (su preparación) se abre su seguimiento. Es monótono por `lastSeenAt` (descarta reportes fuera
+  de orden) y no retrocede desde un estado terminal. `UnitStatus`: Registered, Prepared, Loaded,
+  Unloaded, Received, Delivered, Failed.
+
+### Posición en vivo del camión (GPS)
+
+`ShipmentTracking::updatePosition()` es MONÓTONO: descarta un reporte más viejo que el último conocido
+(buffer offline del dispositivo, reintentos del relay, ingesta ~3 req/s). `TruckPosition::isLiveAt()`
+decide, contra el Clock de la app, si la posición es "en vivo" (ventana de 5 min) o solo la última
+conocida; los read models exponen `position_is_live` (bool|null).
 - Value objects `final readonly`: `TrackingToken` (opaco, no adivinable, base64url de 32 bytes
   aleatorios), `VisibleStatus` (Registered, Prepared, OnTheWay, Arriving, Delivered, Failed), `Eta`,
   `GeoPoint`, `TruckPosition`, `RoutePosition` (posición 1-based en la ruta; `stopsBefore()` deriva las
@@ -49,10 +62,24 @@ Cuatro capas, igual que los packages de dis-commerce (ver `docs/architecture.md`
 ## Aplicación (CQRS)
 
 - Commands: `OpenTracking`, `ProjectExecutionEvent` (puente de proyección de eventos de ejecución; avanza
-  la cascada de paradas), `PlaceShipmentOnRoute` (puente que recibe la secuencia de la ruta publicada),
-  `UpdateTruckPosition`.
+  la cascada de paradas), `ProjectUnitExecutionEvent` (puente per-bulto: proyecta preparado/cargado/
+  descargado/recepción y, sin unit_id, aplica el desenlace del envío en cascada a sus bultos),
+  `PlaceShipmentOnRoute` (puente que recibe la secuencia de la ruta publicada), `UpdateTruckPosition`.
 - Queries: `GetPublicTracking` (por token → `PublicTrackingView`, **sin PII**),
-  `GetShipmentTracking` (por id de envío → `ShipmentTrackingView`, interno).
+  `GetShipmentTracking` (por id de envío → `ShipmentTrackingView`, interno),
+  `GetShipmentUnits` (por id de envío → `list<UnitTrackingView>`, interno, con etiqueta "N/M"),
+  `GetPublicUnits` (por token → `list<PublicUnitView>`, **sin PII**, etiqueta en español).
+
+## HTTP y página pública
+
+- Puerta **channels**: `GET /api/v1/channels/tracking/{token}` (vista pública del envío) y
+  `GET /api/v1/channels/tracking/{token}/units` (desglose de bultos, sin PII).
+- Puerta **app**: `GET /api/v1/app/tracking/shipments/{shipmentId}` y `.../units`;
+  `POST .../position` (ingesta GPS del chofer).
+- Puerta **integrations**: `POST /api/v1/integrations/tracking/shipments/{shipmentId}/position`.
+- Página web pública (sin auth): `GET /t/{token}` → Blade `tracking::public` con estado, mensaje
+  "a N paradas", ETA, mapa Leaflet + OpenStreetMap con la posición del camión y el desglose de bultos.
+  Token inexistente → 404 `tracking::not-found`, sin revelar si el token existe.
 
 ## Integración (pendiente)
 
@@ -63,4 +90,7 @@ dentro de la misma transacción (ADR 002), y `ProjectExecutionEvent` se suscribi
 
 ## Estado
 
-Dominio y aplicación implementados. Sin HTTP/Presentation real todavía.
+Dominio, aplicación y presentación implementados: read model por envío y por bulto, ingesta/exposición
+de la posición en vivo del camión, página pública por token y endpoints en las tres puertas. Pendiente
+solo el cableado del relay (suscribir `ProjectExecutionEvent` / `ProjectUnitExecutionEvent` a los
+eventos de execution vía outbox), hoy marcado donde corresponde.

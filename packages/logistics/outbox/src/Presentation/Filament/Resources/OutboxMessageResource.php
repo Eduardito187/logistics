@@ -9,19 +9,29 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\Textarea;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
+use Filament\Support\Exceptions\Halt;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Collection;
+use Logistics\Outbox\Application\Command\DiscardMessage\DiscardMessageCommand;
+use Logistics\Outbox\Application\Command\RetryMessage\RetryMessageCommand;
+use Logistics\Outbox\Application\Query\GetOutboxStats\GetOutboxStatsQuery;
+use Logistics\Outbox\Application\ReadModel\OutboxStatsView;
+use Logistics\Outbox\Domain\Exception\OutboxException;
 use Logistics\Outbox\Domain\ValueObject\OutboxStatus;
 use Logistics\Outbox\Infrastructure\Persistence\Eloquent\OutboxMessageRecord;
 use Logistics\Outbox\Presentation\Filament\Resources\OutboxMessageResource\Pages\ListOutboxMessages;
 use Logistics\Outbox\Presentation\Filament\Resources\OutboxMessageResource\Pages\ViewOutboxMessage;
+use Logistics\Shared\Application\Command\Command;
+use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Application\Query\QueryBus;
 
 /**
  * Panel de solo lectura del Transactional Outbox: mensajes salientes hacia sistemas externos
@@ -29,13 +39,17 @@ use Logistics\Outbox\Presentation\Filament\Resources\OutboxMessageResource\Pages
  *
  * El outbox NO se edita a mano: cada mensaje lo escribe el productor dentro de su propia transacción
  * de negocio y el relay lo despacha. Por eso el admin solo lista, ve el detalle (incluido el último
- * error y el payload) y ofrece una acción operativa de reintento que vuelve a dejar un mensaje
- * fallido/dead-letter como despachable para que el relay lo retome. Crear, editar y borrar están
- * deshabilitados.
+ * error y el payload) y ofrece dos acciones operativas: reintentar (reencola un mensaje fallido o en
+ * dead-letter para que el relay lo retome) y mover a dead-letter (saca de la cola un mensaje que nunca
+ * va a poder despacharse). Crear, editar y borrar están deshabilitados.
  *
- * Nota de capas: Filament opera sobre el record Eloquent (detalle de Infrastructure) por diseño del
- * framework. Este recurso es la única pieza de Presentation que lo toca; el reintento solo reencola
- * (status Pending + available_at = ahora) para que el relay haga el despacho real por su canal.
+ * Nota de capas: Filament LEE sobre el record Eloquent (detalle de Infrastructure) por diseño del
+ * framework; es la única pieza de Presentation que lo toca y solo para observar/filtrar. Toda ESCRITURA
+ * pasa por el CommandBus (RetryMessageCommand / DiscardMessageCommand): se respeta Presentation →
+ * Application y el dominio valida la transición (p. ej. no se reencola un mensaje ya despachado). El
+ * reintento solo reencola (status Pending + available_at = ahora); el despacho real lo hace el relay por
+ * su canal. El contador de navegación consulta GetOutboxStats por el QueryBus.
+ *
  * Todo texto visible va en inglés (regla CLAUDE.md #5).
  *
  * El integrador registra este Resource en el panel (el package está en dont-discover y no se
@@ -69,6 +83,41 @@ final class OutboxMessageResource extends Resource
     public static function getPluralModelLabel(): string
     {
         return __('outbox messages');
+    }
+
+    /**
+     * Contador de navegación: mensajes que requieren atención operativa, es decir, la cola viva
+     * (pendientes + fallidos esperando su reintento) más los que están en dead-letter. Si hay
+     * dead-letters, el total aparece en rojo (alerta); si solo hay cola viva, en ámbar.
+     */
+    public static function getNavigationBadge(): ?string
+    {
+        $stats = self::stats();
+        $outstanding = $stats->backlog() + $stats->deadLettered;
+
+        return $outstanding > 0 ? (string) $outstanding : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        $stats = self::stats();
+
+        if ($stats->deadLettered > 0) {
+            return 'danger';
+        }
+
+        return $stats->backlog() > 0 ? 'warning' : null;
+    }
+
+    public static function getNavigationBadgeTooltip(): string
+    {
+        $stats = self::stats();
+
+        return __(':pending pending · :failed failed · :dead dead-lettered', [
+            'pending' => $stats->pending,
+            'failed' => $stats->failed,
+            'dead' => $stats->deadLettered,
+        ]);
     }
 
     /**
@@ -152,10 +201,16 @@ final class OutboxMessageResource extends Resource
                     ->label(__('Status'))
                     ->native(false)
                     ->options(self::statusOptions()),
+                SelectFilter::make('aggregate_type')
+                    ->label(__('Aggregate type'))
+                    ->native(false)
+                    ->searchable()
+                    ->options(self::aggregateTypeOptions()),
             ])
             ->recordActions([
                 ViewAction::make(),
                 self::retryAction(),
+                self::discardAction(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
@@ -225,7 +280,8 @@ final class OutboxMessageResource extends Resource
 
     /**
      * Acción de reintento por fila: solo habilitada sobre mensajes despachables (Pending/Failed) o
-     * dead-letter; reencola el mensaje dejándolo disponible de inmediato para el relay.
+     * dead-letter; despacha RetryMessageCommand, que reencola el mensaje dejándolo disponible de
+     * inmediato para el relay.
      */
     private static function retryAction(): Action
     {
@@ -237,19 +293,18 @@ final class OutboxMessageResource extends Resource
             ->modalHeading(__('Retry outbox message'))
             ->modalDescription(__('Requeue this message so the relay dispatches it again.'))
             ->visible(static fn (OutboxMessageRecord $record): bool => self::isRetryable($record))
-            ->action(function (OutboxMessageRecord $record): void {
-                self::requeue($record);
-
-                Notification::make()
-                    ->title(__('Message requeued'))
-                    ->success()
-                    ->send();
+            ->action(static function (OutboxMessageRecord $record): void {
+                self::dispatch(
+                    new RetryMessageCommand((string) $record->getKey()),
+                    __('Message requeued'),
+                );
             });
     }
 
     /**
-     * Acción masiva de reintento: reencola los mensajes seleccionados que estén fallidos o en
-     * dead-letter; ignora los ya despachados (estado terminal exitoso).
+     * Acción masiva de reintento: reencola los mensajes seleccionados que sean reencolables (fallidos o
+     * en dead-letter), despachando un RetryMessageCommand por cada uno. Ignora los ya despachados
+     * (estado terminal exitoso) y reporta cuántos se reencolaron de verdad.
      */
     private static function retryBulkAction(): BulkAction
     {
@@ -261,12 +316,21 @@ final class OutboxMessageResource extends Resource
             ->modalHeading(__('Retry selected messages'))
             ->modalDescription(__('Requeue every selected message that is failed or dead-lettered.'))
             ->deselectRecordsAfterCompletion()
-            ->action(function (Collection $records): void {
+            ->action(static function (Collection $records): void {
+                /** @var CommandBus $bus */
+                $bus = app(CommandBus::class);
+
                 $requeued = 0;
                 foreach ($records as $record) {
-                    if ($record instanceof OutboxMessageRecord && self::isRetryable($record)) {
-                        self::requeue($record);
+                    if (!$record instanceof OutboxMessageRecord || !self::isRetryable($record)) {
+                        continue;
+                    }
+
+                    try {
+                        $bus->dispatch(new RetryMessageCommand((string) $record->getKey()));
                         $requeued++;
+                    } catch (OutboxException) {
+                        // Mensaje no reencolable (p. ej. despachado entre la selección y el click): se omite.
                     }
                 }
 
@@ -278,6 +342,61 @@ final class OutboxMessageResource extends Resource
     }
 
     /**
+     * Acción de descarte por fila: manda a dead-letter un mensaje despachable (Pending/Failed) sin
+     * esperar a agotar los reintentos. Pide un motivo obligatorio y despacha DiscardMessageCommand. No
+     * se ofrece sobre estados terminales (ya despachado o ya en dead-letter).
+     */
+    private static function discardAction(): Action
+    {
+        return Action::make('discard')
+            ->label(__('Move to dead-letter'))
+            ->icon('heroicon-o-archive-box-x-mark')
+            ->color('danger')
+            ->visible(static fn (OutboxMessageRecord $record): bool => self::isDispatchable($record))
+            ->schema([
+                Textarea::make('reason')
+                    ->label(__('Reason'))
+                    ->required()
+                    ->maxLength(1000),
+            ])
+            ->modalHeading(__('Move message to dead-letter'))
+            ->modalDescription(__('Stop retrying this message and move it to dead-letter for manual intervention.'))
+            ->action(static function (OutboxMessageRecord $record, array $data): void {
+                self::dispatch(
+                    new DiscardMessageCommand((string) $record->getKey(), (string) $data['reason']),
+                    __('Message moved to dead-letter'),
+                );
+            });
+    }
+
+    /**
+     * Despacha un comando operativo por el CommandBus y notifica el resultado. Un fallo de dominio
+     * (transición ilegal) se reporta como notificación y detiene el flujo (Halt) para que el modal no se
+     * cierre en silencio.
+     */
+    private static function dispatch(Command $command, string $successTitle): void
+    {
+        try {
+            /** @var CommandBus $bus */
+            $bus = app(CommandBus::class);
+            $bus->dispatch($command);
+        } catch (OutboxException $exception) {
+            Notification::make()
+                ->title(__('Could not complete the operation'))
+                ->body($exception->getMessage())
+                ->danger()
+                ->send();
+
+            throw new Halt;
+        }
+
+        Notification::make()
+            ->title($successTitle)
+            ->success()
+            ->send();
+    }
+
+    /**
      * Un mensaje se puede reintentar salvo que ya esté despachado con éxito (estado terminal exitoso).
      */
     private static function isRetryable(OutboxMessageRecord $record): bool
@@ -286,17 +405,26 @@ final class OutboxMessageResource extends Resource
     }
 
     /**
-     * Reencola un mensaje: lo deja Pending, disponible de inmediato y con los reintentos reiniciados,
-     * limpiando el último error. El despacho real lo hace el relay por el canal correspondiente.
+     * ¿El mensaje sigue en la cola (Pending/Failed)? Solo esos se pueden mandar a dead-letter a mano;
+     * los terminales (despachado / ya en dead-letter) no.
      */
-    private static function requeue(OutboxMessageRecord $record): void
+    private static function isDispatchable(OutboxMessageRecord $record): bool
     {
-        $record->forceFill([
-            'status' => OutboxStatus::Pending->value,
-            'available_at' => now(),
-            'attempts' => 0,
-            'last_error' => null,
-        ])->save();
+        return in_array($record->status, [
+            OutboxStatus::Pending->value,
+            OutboxStatus::Failed->value,
+        ], true);
+    }
+
+    /**
+     * Conteo por estado del outbox (ReadModel) vía QueryBus. Insumo del contador de navegación.
+     */
+    private static function stats(): OutboxStatsView
+    {
+        /** @var OutboxStatsView $stats */
+        $stats = app(QueryBus::class)->ask(new GetOutboxStatsQuery);
+
+        return $stats;
     }
 
     /**
@@ -310,6 +438,25 @@ final class OutboxMessageResource extends Resource
         foreach (OutboxStatus::cases() as $status) {
             $options[$status->value] = self::statusLabel($status->value);
         }
+
+        return $options;
+    }
+
+    /**
+     * Opciones del filtro por tipo de agregado: valores reales presentes en la tabla (p. ej.
+     * "network.node", "shipments.shipment", "sap.transfer"), ordenados alfabéticamente.
+     *
+     * @return array<string, string>
+     */
+    private static function aggregateTypeOptions(): array
+    {
+        /** @var array<string, string> $options */
+        $options = OutboxMessageRecord::query()
+            ->select('aggregate_type')
+            ->distinct()
+            ->orderBy('aggregate_type')
+            ->pluck('aggregate_type', 'aggregate_type')
+            ->all();
 
         return $options;
     }

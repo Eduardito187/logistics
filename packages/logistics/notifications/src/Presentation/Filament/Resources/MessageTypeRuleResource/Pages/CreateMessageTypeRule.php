@@ -32,10 +32,13 @@ final class CreateMessageTypeRule extends CreateRecord
         /** @var list<string> $channels */
         $channels = array_values(array_map('strval', (array) ($data['channels'] ?? [])));
 
+        $actor = auth()->user()?->getAuthIdentifier();
+
         app(CommandBus::class)->dispatch(new SetMessageTypeRule(
             messageType: $messageType,
             channels: $channels,
             escalateWhen: (string) $data['escalate_when'],
+            createdBy: $actor !== null ? (string) $actor : null,
         ));
 
         // El tipo de mensaje es la clave primaria de la regla: identifica la recién definida.

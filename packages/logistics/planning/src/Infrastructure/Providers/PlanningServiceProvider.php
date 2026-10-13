@@ -17,6 +17,8 @@ use Logistics\Planning\Application\Command\GeneratePlanProposal\GeneratePlanProp
 use Logistics\Planning\Application\Command\GeneratePlanProposal\GeneratePlanProposalHandler;
 use Logistics\Planning\Application\Command\PublishPlan\PublishPlan;
 use Logistics\Planning\Application\Command\PublishPlan\PublishPlanHandler;
+use Logistics\Planning\Application\Command\ReassignShipmentToVehicle\ReassignShipmentToVehicle;
+use Logistics\Planning\Application\Command\ReassignShipmentToVehicle\ReassignShipmentToVehicleHandler;
 use Logistics\Planning\Application\Command\ReorderStops\ReorderStops;
 use Logistics\Planning\Application\Command\ReorderStops\ReorderStopsHandler;
 use Logistics\Planning\Application\Command\ScheduleReplan\ScheduleReplan;
@@ -78,6 +80,7 @@ final class PlanningServiceProvider extends ServiceProvider
         GeneratePlanProposal::class => GeneratePlanProposalHandler::class,
         GenerateDailyPlan::class => GenerateDailyPlanHandler::class,
         AssignShipmentToVehicle::class => AssignShipmentToVehicleHandler::class,
+        ReassignShipmentToVehicle::class => ReassignShipmentToVehicleHandler::class,
         ReorderStops::class => ReorderStopsHandler::class,
         ScheduleReplan::class => ScheduleReplanHandler::class,
         PublishPlan::class => PublishPlanHandler::class,

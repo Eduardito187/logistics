@@ -59,6 +59,7 @@ $contextMaps = [
     require __DIR__.'/api/sap-connector.php',
     require __DIR__.'/api/settings.php',
     require __DIR__.'/api/shipments.php',
+    require __DIR__.'/api/telemetry.php',
     require __DIR__.'/api/tracking.php',
 ];
 
@@ -82,10 +83,14 @@ $mountGate = static function (string $gate) use ($contextMaps): void {
     }
 };
 
+// El middleware `idempotency` se aplica a las tres puertas: deduplica reintentos de escritura
+// de la app offline por cabecera `Idempotency-Key` (no-op cuando la cabecera no viaja, así que es
+// inocuo para los clientes que no la envían). Ver App\Http\Middleware\IdempotentRequests.
+
 // ── Puerta 1: app interna Flutter · /api/v1/app/* ──────────────────────────
 // Token Sanctum por usuario ligado a un dispositivo vigente.
 Route::prefix('v1/app')->name('api.v1.app.')
-    ->middleware(['auth:sanctum', 'device'])
+    ->middleware(['auth:sanctum', 'device', 'idempotency'])
     ->group(function () use ($mountGate): void {
         $mountGate('app');
     });
@@ -93,7 +98,7 @@ Route::prefix('v1/app')->name('api.v1.app.')
 // ── Puerta 2: canales (clientes/web/call center) · /api/v1/channels/* ──────
 // Credenciales por canal + rate limit por canal (el limiter lee el canal resuelto).
 Route::prefix('v1/channels')->name('api.v1.channels.')
-    ->middleware(['channel.auth', 'throttle:channels'])
+    ->middleware(['channel.auth', 'throttle:channels', 'idempotency'])
     ->group(function () use ($mountGate): void {
         $mountGate('channels');
     });
@@ -101,7 +106,7 @@ Route::prefix('v1/channels')->name('api.v1.channels.')
 // ── Puerta 3: integraciones (SAP/transportistas/webhooks) · /api/v1/integrations/* ──
 // Credenciales de servicio; el scope, si aplica, se exige por ruta con service.auth:<scope>.
 Route::prefix('v1/integrations')->name('api.v1.integrations.')
-    ->middleware(['service.auth'])
+    ->middleware(['service.auth', 'idempotency'])
     ->group(function () use ($mountGate): void {
         $mountGate('integrations');
     });

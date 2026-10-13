@@ -12,20 +12,22 @@ use Logistics\Coverage\Domain\ValueObject\GeoPoint;
 /**
  * Implementación PostGIS del localizador de departamento.
  *
- * Resuelve todo en la base con una sola consulta: ST_Contains sobre el índice espacial encuentra la
- * zona que contiene el punto, y un CTE recursivo sube por coverage_geo_areas desde el área padre de
- * esa zona (parent_area_id) siguiendo parent_id hasta encontrar el nivel 'department'. De paso captura
- * el nivel 'city' más cercano (el municipio/ciudad del punto).
+ * Resuelve toda la cadena en la base con una sola consulta: ST_Contains sobre el índice espacial
+ * encuentra la zona que contiene el punto, y un CTE recursivo sube por coverage_geo_areas desde el área
+ * padre de esa zona (parent_area_id) siguiendo parent_id hasta el nivel 'department'. De paso captura
+ * CADA nivel administrativo que atraviesa (ciudad, municipio, provincia), el más cercano al punto de
+ * cada uno, para devolver la jerarquía completa resuelta.
  *
  * Tolerante: si ningún polígono contiene el punto, si la zona no cuelga de un área, o si no hay un
- * ancestro de nivel 'department', devuelve null (ubicación desconocida).
+ * ancestro de nivel 'department', devuelve null (ubicación desconocida). Los niveles intermedios que no
+ * existan en la cadena (p. ej. una zona que cuelga directo del departamento) quedan en null.
  */
 final class PostgisDepartmentLocator implements DepartmentLocator
 {
     public function locate(GeoPoint $point): ?AreaLocation
     {
         // ST_MakePoint toma (lng, lat); el CTE recursivo trepa el árbol administrativo desde el área
-        // padre de la zona que contiene el punto hasta el departamento.
+        // padre de la zona que contiene el punto hasta el departamento, recogiendo cada nivel.
         $sql = <<<'SQL'
             WITH RECURSIVE zone_hit AS (
                 SELECT parent_area_id
@@ -44,10 +46,14 @@ final class PostgisDepartmentLocator implements DepartmentLocator
                 JOIN climb c ON g.id = c.parent_id
             )
             SELECT
-                (SELECT id   FROM climb WHERE level = 'department' ORDER BY depth ASC LIMIT 1) AS department_id,
-                (SELECT name FROM climb WHERE level = 'department' ORDER BY depth ASC LIMIT 1) AS department_name,
-                (SELECT id   FROM climb WHERE level = 'city'       ORDER BY depth ASC LIMIT 1) AS city_id,
-                (SELECT name FROM climb WHERE level = 'city'       ORDER BY depth ASC LIMIT 1) AS city_name
+                (SELECT id   FROM climb WHERE level = 'department'   ORDER BY depth ASC LIMIT 1) AS department_id,
+                (SELECT name FROM climb WHERE level = 'department'   ORDER BY depth ASC LIMIT 1) AS department_name,
+                (SELECT id   FROM climb WHERE level = 'province'     ORDER BY depth ASC LIMIT 1) AS province_id,
+                (SELECT name FROM climb WHERE level = 'province'     ORDER BY depth ASC LIMIT 1) AS province_name,
+                (SELECT id   FROM climb WHERE level = 'municipality' ORDER BY depth ASC LIMIT 1) AS municipality_id,
+                (SELECT name FROM climb WHERE level = 'municipality' ORDER BY depth ASC LIMIT 1) AS municipality_name,
+                (SELECT id   FROM climb WHERE level = 'city'         ORDER BY depth ASC LIMIT 1) AS city_id,
+                (SELECT name FROM climb WHERE level = 'city'         ORDER BY depth ASC LIMIT 1) AS city_name
             SQL;
 
         $rows = $this->connection()->select($sql, [$point->lng, $point->lat]);
@@ -63,10 +69,24 @@ final class PostgisDepartmentLocator implements DepartmentLocator
 
         return new AreaLocation(
             (string) $departmentId,
-            isset($row['department_name']) ? (string) $row['department_name'] : null,
-            isset($row['city_id']) ? (string) $row['city_id'] : null,
-            isset($row['city_name']) ? (string) $row['city_name'] : null,
+            $this->stringOrNull($row, 'department_name'),
+            $this->stringOrNull($row, 'city_id'),
+            $this->stringOrNull($row, 'city_name'),
+            $this->stringOrNull($row, 'province_id'),
+            $this->stringOrNull($row, 'province_name'),
+            $this->stringOrNull($row, 'municipality_id'),
+            $this->stringOrNull($row, 'municipality_name'),
         );
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function stringOrNull(array $row, string $key): ?string
+    {
+        $value = $row[$key] ?? null;
+
+        return $value === null ? null : (string) $value;
     }
 
     private function connection(): ConnectionInterface

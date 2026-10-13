@@ -46,23 +46,19 @@ Schedule::command('logistics:shipments:pull-magento')
     ->withoutOverlapping()
     ->runInBackground();
 
-/*
-|--------------------------------------------------------------------------
-| Barridos de estado pendientes de wiring (requieren comando propio del contexto)
-|--------------------------------------------------------------------------
-|
-| Estos dos barridos son necesarios pero aún no tienen un comando de consola que
-| opere en lote dentro de su bounded context (hoy solo existen la vía por id /
-| HTTP para promise y el servicio de alertas de fleet está en el roadmap como
-| pendiente, P1-FLT-04). En cuanto cada contexto exponga su worker en lote
-| (siguiendo el patrón de DispatchStockTransfersCommand), se agregan aquí:
-|
-|   // Expiración de reservas de promesa vencidas: libera el cupo tomado en capacity.
-|   // Schedule::command('logistics:promise:expire-reservations')
-|   //     ->everyMinute()->withoutOverlapping()->runInBackground();
-|
-|   // Alertas de documentos de flota próximos a vencer / vencidos (emite por outbox).
-|   // Schedule::command('logistics:fleet:document-alerts')
-|   //     ->dailyAt('07:00')->withoutOverlapping()->runInBackground();
-|
-*/
+// Alertas de documentos de flota próximos a vencer / vencidos (P1-FLT-04): barre la
+// flota una vez al día y, si hay documentos dentro de la ventana de alerta (umbral
+// configurable en settings), emite el resumen por el outbox para que notificaciones
+// avise al supervisor. A las 07:00, antes del arranque operativo del día.
+Schedule::command('logistics:fleet:document-alerts')
+    ->dailyAt('07:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Expiración de reservas de promesa vencidas: expira las promesas cuya ventana de reserva caducó y
+// libera el cupo que habían tomado en capacity. Corre cada minuto —como el relay del outbox— para que
+// ningún cupo quede retenido por una reserva abandonada por el canal.
+Schedule::command('logistics:promise:expire-reservations')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

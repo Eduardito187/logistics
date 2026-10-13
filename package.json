@@ -15,5 +15,11 @@
     },
     "optionalDependencies": {
         "@laravel/multiplex": "^0.4.1"
+    },
+    "dependencies": {
+        "@inertiajs/vue3": "^3.9.1",
+        "@vitejs/plugin-vue": "^6.0.10",
+        "vue": "^3.5.44",
+        "ziggy-js": "^2.6.5"
     }
 }

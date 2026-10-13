@@ -49,7 +49,7 @@ final class RecordProofOfDeliveryHandler implements CommandHandler
 
         $delivery->recordProofOfDelivery(
             $command->unitId,
-            ProofOfDeliveryVO::of($command->confirmation, $command->photoUrl, $occurredAt),
+            ProofOfDeliveryVO::of($command->confirmation, $command->photoUrl, $occurredAt, $command->photoPath),
             GeoPoint::of($command->lat, $command->lng),
             DeviceContext::of($command->deviceId, $command->userId),
             $occurredAt,

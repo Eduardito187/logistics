@@ -10,6 +10,7 @@ use App\Http\Middleware\AuthenticateServiceClient;
 use App\Http\Middleware\EnsureAbility;
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\EnsureRole;
+use App\Http\Middleware\IdempotentRequests;
 use App\Models\ApiChannel;
 use App\Models\PersonalAccessToken;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -37,6 +38,7 @@ class AuthServiceProvider extends ServiceProvider
 
         $this->registerMiddlewareAliases();
         $this->registerRateLimiters();
+        $this->registerApiThrottling();
         $this->registerGates();
     }
 
@@ -53,6 +55,7 @@ class AuthServiceProvider extends ServiceProvider
         $router->aliasMiddleware('require.ability', EnsureAbility::class);
         $router->aliasMiddleware('channel.auth', AuthenticateChannel::class);
         $router->aliasMiddleware('service.auth', AuthenticateServiceClient::class);
+        $router->aliasMiddleware('idempotency', IdempotentRequests::class);
     }
 
     /**
@@ -71,6 +74,55 @@ class AuthServiceProvider extends ServiceProvider
 
             return Limit::perMinute(30)->by('channel-ip:'.(string) $request->ip());
         });
+    }
+
+    /**
+     * Rate limit por puerta (S-12), aplicado a TODO el grupo `api` sin tocar routes/api.php.
+     *
+     * El limiter `api` se empuja al grupo de rutas `api` desde aquí (pushMiddlewareToGroup), así que
+     * cubre las tres puertas con un tope grueso anti-abuso. La clave se calcula leyendo la credencial
+     * cruda del request (bearer / X-Client-Id), que ya viaja antes de que corra la autenticación de
+     * cada puerta, con reserva por IP:
+     *
+     *   - puerta app          → por token Sanctum (120/min),
+     *   - puerta integraciones → por client_id de servicio (300/min, cargas por lote),
+     *   - puerta canales       → sin tope aquí: ya la limita el limiter `channels` por canal resuelto,
+     *   - resto (health/login) → por IP (60/min); el login además tiene su propio throttle:10,1.
+     */
+    private function registerApiThrottling(): void
+    {
+        RateLimiter::for('api', function (Request $request): Limit {
+            $ip = (string) $request->ip();
+
+            if ($request->is('api/v1/app/*')) {
+                $bearer = $request->bearerToken();
+
+                return Limit::perMinute(120)->by(
+                    $bearer !== null ? 'api-app:'.sha1($bearer) : 'api-app-ip:'.$ip,
+                );
+            }
+
+            if ($request->is('api/v1/integrations/*')) {
+                $clientId = $request->header('X-Client-Id');
+
+                return Limit::perMinute(300)->by(
+                    is_string($clientId) && $clientId !== '' ? 'api-svc:'.$clientId : 'api-svc-ip:'.$ip,
+                );
+            }
+
+            // La puerta de canales ya está limitada por canal (limiter `channels`): no la doblamos.
+            if ($request->is('api/v1/channels/*')) {
+                return Limit::none();
+            }
+
+            return Limit::perMinute(60)->by('api-ip:'.$ip);
+        });
+
+        // Empuja el limiter al grupo `api` sin reescribir las rutas: el grupo lo arma el framework
+        // (ver bootstrap/app.php → withRouting(api: ...)), y aquí solo le agregamos el throttle.
+        /** @var Router $router */
+        $router = $this->app->make(Router::class);
+        $router->pushMiddlewareToGroup('api', 'throttle:api');
     }
 
     /**

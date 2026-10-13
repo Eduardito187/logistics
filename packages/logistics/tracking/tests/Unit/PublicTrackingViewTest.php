@@ -67,7 +67,7 @@ it('does not leak PII nor internal keys in toArray', function (): void {
     $array = PublicTrackingView::fromTracking($tracking)->toArray();
 
     // Solo las claves públicas permitidas.
-    expect(array_keys($array))->toBe(['status', 'remaining_stops', 'route_position', 'eta', 'last_position', 'stops_message']);
+    expect(array_keys($array))->toBe(['status', 'remaining_stops', 'route_position', 'eta', 'last_position', 'position_is_live', 'stops_message']);
 
     // Ni id de seguimiento, ni id de envío, ni token.
     expect($array)->not->toHaveKey('id')
@@ -101,6 +101,7 @@ it('serializes null eta and position when absent', function (): void {
             'route_position' => null,
             'eta' => null,
             'last_position' => null,
+            'position_is_live' => null,
             'stops_message' => 'Recibimos tu pedido y lo estamos preparando.',
         ]);
 });

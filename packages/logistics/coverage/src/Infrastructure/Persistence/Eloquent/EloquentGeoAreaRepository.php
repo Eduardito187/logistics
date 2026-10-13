@@ -39,6 +39,16 @@ final class EloquentGeoAreaRepository implements GeoAreaRepository
         return $record instanceof GeoAreaRecord ? $this->toDomain($record) : null;
     }
 
+    public function findByNameAndLevel(string $name, AdminLevel $level): ?GeoArea
+    {
+        $record = GeoAreaRecord::query()
+            ->where('name', $name)
+            ->where('level', $level->value)
+            ->first();
+
+        return $record instanceof GeoAreaRecord ? $this->toDomain($record) : null;
+    }
+
     /**
      * @return array<int, GeoArea>
      */

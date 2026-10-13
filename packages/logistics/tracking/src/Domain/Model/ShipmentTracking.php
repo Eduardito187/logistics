@@ -135,10 +135,23 @@ final class ShipmentTracking extends AggregateRoot
     /**
      * Actualiza la posición en vivo del camión. No graba evento de dominio: es un dato de alta
      * frecuencia (telemetría), no un hecho de negocio.
+     *
+     * Robustez ante telemetría real: la ingesta llega a ~3 req/s y puede desordenarse (buffer del
+     * dispositivo offline, reintentos del relay, varios reportes casi simultáneos). La proyección es
+     * MONÓTONA: un reporte más viejo que el último conocido se descarta, para no "teletransportar" el
+     * camión hacia atrás en el mapa. Devuelve true si la posición se aplicó, false si se descartó.
      */
-    public function updatePosition(TruckPosition $position): void
+    public function updatePosition(TruckPosition $position): bool
     {
+        if ($this->lastPosition !== null
+            && $position->reportedAt < $this->lastPosition->reportedAt
+        ) {
+            return false;
+        }
+
         $this->lastPosition = $position;
+
+        return true;
     }
 
     /**

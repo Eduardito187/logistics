@@ -27,6 +27,7 @@ use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Access\Presentation\Filament\Resources\UserResource\Pages\CreateUser;
 use Logistics\Access\Presentation\Filament\Resources\UserResource\Pages\ListUsers;
 use Logistics\Access\Presentation\Filament\Resources\UserResource\Pages\ViewUser;
+use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 use Logistics\Shared\Application\Command\CommandBus;
 
 /**
@@ -230,6 +231,8 @@ final class UserResource extends Resource
                             userId: (string) $record->getKey(),
                         ));
 
+                        AuditRecorder::record('user.suspended', 'access.user', (string) $record->getKey());
+
                         Notification::make()
                             ->title(__('User suspended'))
                             ->success()
@@ -248,6 +251,8 @@ final class UserResource extends Resource
                         app(CommandBus::class)->dispatch(new ReactivateUser(
                             userId: (string) $record->getKey(),
                         ));
+
+                        AuditRecorder::record('user.reactivated', 'access.user', (string) $record->getKey());
 
                         Notification::make()
                             ->title(__('User reactivated'))
@@ -283,18 +288,29 @@ final class UserResource extends Resource
                         $userId = (string) $record->getKey();
                         $bus = app(CommandBus::class);
 
-                        foreach (array_diff($next, $current) as $roleKey) {
+                        $added = array_values(array_diff($next, $current));
+                        $removed = array_values(array_diff($current, $next));
+
+                        foreach ($added as $roleKey) {
                             $bus->dispatch(new AssignRoleToUser(
                                 userId: $userId,
                                 roleKey: (string) $roleKey,
                             ));
                         }
 
-                        foreach (array_diff($current, $next) as $roleKey) {
+                        foreach ($removed as $roleKey) {
                             $bus->dispatch(new RemoveRoleFromUser(
                                 userId: $userId,
                                 roleKey: (string) $roleKey,
                             ));
+                        }
+
+                        // Solo se audita si hubo cambios reales (delta no vacío).
+                        if ($added !== [] || $removed !== []) {
+                            AuditRecorder::record('user.roles_changed', 'access.user', $userId, [
+                                'added' => $added,
+                                'removed' => $removed,
+                            ]);
                         }
 
                         Notification::make()
@@ -322,6 +338,9 @@ final class UserResource extends Resource
                             userId: (string) $record->getKey(),
                             newPlainPassword: (string) $data['password'],
                         ));
+
+                        // La contraseña nunca se audita: solo el hecho de que cambió y para quién.
+                        AuditRecorder::record('user.password_changed', 'access.user', (string) $record->getKey());
 
                         Notification::make()
                             ->title(__('Password changed'))

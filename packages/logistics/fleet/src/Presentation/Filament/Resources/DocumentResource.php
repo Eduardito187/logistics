@@ -20,6 +20,10 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Storage;
+use Logistics\Fleet\Application\Query\ListExpiringDocuments\ListExpiringDocuments;
+use Logistics\Fleet\Application\ReadModel\ExpiringDocumentView;
+use Logistics\Fleet\Domain\Contract\DocumentExpiryPolicy;
 use Logistics\Fleet\Domain\ValueObject\DocumentOwnerType;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\DriverModel;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\FleetDocumentModel;
@@ -28,6 +32,8 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource\Pages\CreateDocument;
 use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource\Pages\ListDocuments;
 use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource\Pages\ViewDocument;
+use Logistics\Shared\Application\Query\QueryBus;
+use Throwable;
 
 /**
  * Resource de administración de documentos de flota (con vencimiento y archivo en S3).
@@ -60,6 +66,66 @@ final class DocumentResource extends Resource
     public static function getPluralModelLabel(): string
     {
         return __('Documents');
+    }
+
+    /**
+     * Indicador automático en la navegación: cuántos documentos (de las cuatro fuentes) están dentro de
+     * la ventana de alerta —por vencer o ya vencidos— a la fecha de hoy. Reusa exactamente la consulta
+     * ListExpiringDocuments con el umbral configurado, para que el badge y la alerta programada cuenten
+     * lo mismo. Tolerante a fallos: nunca rompe la navegación.
+     */
+    public static function getNavigationBadge(): ?string
+    {
+        $count = count(self::expiringDocuments());
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    /**
+     * Rojo si hay algún documento ya vencido; ámbar si solo hay por vencer.
+     */
+    public static function getNavigationBadgeColor(): string
+    {
+        foreach (self::expiringDocuments() as $view) {
+            if ($view->expired) {
+                return 'danger';
+            }
+        }
+
+        return 'warning';
+    }
+
+    /**
+     * Cache por request del barrido de vencimientos (el badge y su color lo piden en la misma pintada).
+     *
+     * @var list<ExpiringDocumentView>|null
+     */
+    private static ?array $expiringCache = null;
+
+    /**
+     * Documentos dentro de la ventana de alerta hoy, vía el bus de consultas. Lista vacía ante cualquier
+     * error (no debe tumbar el panel por un problema de lectura o de configuración).
+     *
+     * @return list<ExpiringDocumentView>
+     */
+    private static function expiringDocuments(): array
+    {
+        if (self::$expiringCache !== null) {
+            return self::$expiringCache;
+        }
+
+        try {
+            /** @var QueryBus $bus */
+            $bus = app(QueryBus::class);
+            $days = app(DocumentExpiryPolicy::class)->alertWindowDays();
+
+            /** @var list<ExpiringDocumentView> $views */
+            $views = $bus->ask(new ListExpiringDocuments($days));
+
+            return self::$expiringCache = $views;
+        } catch (Throwable) {
+            return self::$expiringCache = [];
+        }
     }
 
     // Título legible del registro: el tipo de documento, nunca el UUID.
@@ -156,6 +222,12 @@ final class DocumentResource extends Resource
                     // Badge por vencimiento: rojo si ya venció, ámbar si vence pronto, verde si vigente.
                     ->badge()
                     ->color(static fn (?string $state): string => self::expiryColor($state)),
+                // Indica si el documento tiene el archivo escaneado cargado en S3.
+                TextColumn::make('file_path')
+                    ->label(__('File'))
+                    ->badge()
+                    ->formatStateUsing(static fn (?string $state): string => self::hasFile($state) ? __('Attached') : __('Missing'))
+                    ->color(static fn (?string $state): string => self::hasFile($state) ? 'success' : 'gray'),
             ])
             ->filters([
                 SelectFilter::make('owner_type')
@@ -186,7 +258,15 @@ final class DocumentResource extends Resource
                 ->badge()
                 ->color(static fn (?string $state): string => self::expiryColor($state)),
             TextEntry::make('issued_on')->label(__('Issued on'))->date('Y-m-d')->placeholder('—'),
-            TextEntry::make('file_path')->label(__('File'))->placeholder('—'),
+            // Visor del archivo: enlace a una URL temporal firmada del disco S3 (los documentos son
+            // privados). Abre el PDF o la imagen en una pestaña nueva; si no hay archivo, muestra guion.
+            TextEntry::make('file_path')
+                ->label(__('File'))
+                ->placeholder('—')
+                ->formatStateUsing(static fn (?string $state): ?string => self::hasFile($state) ? (string) __('Open file') : null)
+                ->url(static fn (?string $state): ?string => self::fileUrl($state), shouldOpenInNewTab: true)
+                ->icon('heroicon-o-arrow-top-right-on-square')
+                ->color('primary'),
             TextEntry::make('note')->label(__('Note'))->placeholder('—'),
         ]);
     }
@@ -296,5 +376,41 @@ final class DocumentResource extends Resource
         $disk = config('fleet.documents_disk');
 
         return is_string($disk) && $disk !== '' ? $disk : 'local';
+    }
+
+    /**
+     * ¿El documento tiene archivo cargado?
+     */
+    private static function hasFile(?string $path): bool
+    {
+        return $path !== null && $path !== '';
+    }
+
+    /**
+     * URL para ver/descargar el archivo del documento. Prefiere una URL temporal firmada (disco S3
+     * privado, válida por 10 minutos); si el disco no soporta URLs temporales (p. ej. `local`), cae a la
+     * URL pública del disco. Devuelve null si no hay archivo o si no se puede construir ninguna URL, para
+     * que el visor no rompa la vista por un problema de almacenamiento.
+     */
+    private static function fileUrl(?string $path): ?string
+    {
+        if (!self::hasFile($path)) {
+            return null;
+        }
+
+        /** @var string $path */
+        $disk = Storage::disk(self::documentsDisk());
+
+        try {
+            return $disk->temporaryUrl($path, now()->addMinutes(10));
+        } catch (Throwable) {
+            // El disco no soporta URLs temporales: intenta una URL normal.
+        }
+
+        try {
+            return $disk->url($path);
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

@@ -12,7 +12,8 @@ use Logistics\Shared\Domain\Event\BaseDomainEvent;
 final readonly class CrewAssembled extends BaseDomainEvent
 {
     /**
-     * @param list<string> $helperIds
+     * @param list<string>                                   $helperIds
+     * @param array{starts_at: string, ends_at: string}|null $shift
      */
     public function __construct(
         string $aggregateId,
@@ -20,6 +21,7 @@ final readonly class CrewAssembled extends BaseDomainEvent
         public array $helperIds,
         public string $vehicleId,
         public string $assembledFor,
+        public ?array $shift = null,
     ) {
         parent::__construct($aggregateId);
     }
@@ -36,6 +38,7 @@ final readonly class CrewAssembled extends BaseDomainEvent
             'helper_ids' => $this->helperIds,
             'vehicle_id' => $this->vehicleId,
             'assembled_for' => $this->assembledFor,
+            'shift' => $this->shift,
         ];
     }
 }

@@ -21,6 +21,7 @@ use Logistics\SapConnector\Infrastructure\Providers\SapConnectorServiceProvider;
 use Logistics\Settings\Infrastructure\Providers\SettingsServiceProvider;
 use Logistics\Shared\Infrastructure\Providers\SharedServiceProvider;
 use Logistics\Shipments\Infrastructure\Providers\ShipmentsServiceProvider;
+use Logistics\Telemetry\Infrastructure\Providers\TelemetryServiceProvider;
 use Logistics\Tracking\Infrastructure\Providers\TrackingServiceProvider;
 
 // Única fuente de verdad del orden de registro: todos los logistics/* están en
@@ -61,6 +62,7 @@ return [
 
     // Visibilidad
     TrackingServiceProvider::class,
+    TelemetryServiceProvider::class,
     NotificationsServiceProvider::class,
 
     // Fase 2 — Prometer: cupos, promesa, conector SAP y transportistas

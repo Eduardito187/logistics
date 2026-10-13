@@ -48,6 +48,8 @@ tags:
   description: Shipment lifecycle
 - name: tracking
   description: Shipment tracking and events
+- name: telemetry
+  description: Vehicle GPS telemetry, live fleet, trips, geofences and misuse alerts
 - name: outbox
 - name: settings
 - name: Access
@@ -532,7 +534,7 @@ paths:
       tags:
       - execution
       operationId: uploadDeliveryPhoto
-      summary: Upload an evidence photo and get its URL for the proof of delivery
+      summary: Upload an evidence photo (proof of delivery or damage) and get its storage reference
       requestBody:
         required: true
         content:
@@ -549,9 +551,16 @@ paths:
                 photo:
                   type: string
                   format: binary
+                kind:
+                  type: string
+                  enum:
+                  - pod
+                  - damage
+                  default: pod
+                  description: Tipo de evidencia; elige el disco (pod = prueba de entrega, damage = daños). Por defecto pod.
       responses:
         '201':
-          description: The stored photo
+          description: The stored evidence reference
           content:
             application/json:
               schema:
@@ -562,14 +571,33 @@ paths:
                   data:
                     type: object
                     required:
+                    - kind
+                    - disk
                     - path
                     - url
                     properties:
+                      kind:
+                        type: string
+                        enum:
+                        - pod
+                        - damage
+                      disk:
+                        type: string
+                        description: Disco de evidencia donde quedó la foto
                       path:
                         type: string
+                        description: Referencia durable (relativa al disco); viaja como photo_path en la prueba de entrega
                       url:
                         type: string
                         format: uri
+                        nullable: true
+                        description: URL de acceso si el disco la expone; null en discos privados
+        '500':
+          description: The evidence could not be stored after retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionError'
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
@@ -633,6 +661,104 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/DeliveryState'
+        '422':
+          $ref: '#/components/responses/ExecutionValidationError'
+      security:
+      - appBearer: *id001
+  /app/node-receptions:
+    post:
+      tags:
+      - execution
+      operationId: openNodeReception
+      summary: Open a node reception for a shipment at a destination node (all internal corridors)
+      description: |
+        Abre la recepción de un envío que llega a un nodo destino por un corredor interno (CD→CD,
+        CD→tienda, tienda→tienda, tienda→CD). Anuncia los bultos esperados. Idempotente por el par
+        envío+nodo destino.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenNodeReceptionRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/NodeReceptionState'
+        '422':
+          $ref: '#/components/responses/ExecutionValidationError'
+      security:
+      - appBearer: *id001
+  /app/node-receptions/{shipmentId}/{nodeId}:
+    get:
+      tags:
+      - execution
+      operationId: getNodeReception
+      summary: Current state of a shipment reception at a node (expected, received, discrepancies)
+      parameters:
+      - $ref: '#/components/parameters/ExecutionShipmentId'
+      - name: nodeId
+        in: path
+        required: true
+        description: Destination node UUID
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/NodeReceptionState'
+        '404':
+          description: No reception has been opened for this shipment at this node yet
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    nullable: true
+      security:
+      - appBearer: *id001
+  /app/node-receptions/units:
+    post:
+      tags:
+      - execution
+      operationId: receiveUnitAtNode
+      summary: Record the scan of a unit received at a node (immutable, idempotent)
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiveUnitAtNodeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/NodeReceptionState'
+        '422':
+          $ref: '#/components/responses/ExecutionValidationError'
+      security:
+      - appBearer: *id001
+  /app/node-receptions/reconcile:
+    post:
+      tags:
+      - execution
+      operationId: reconcileNodeReception
+      summary: Reconcile a node reception (compare received against expected, record missing/surplus)
+      description: |
+        Cierra la recepción conciliando lo recibido contra lo esperado y graba las discrepancias
+        (faltantes/sobrantes). El evento de conciliación alimenta tracking y el conector SAP por el
+        outbox. Idempotente: reconciliar dos veces no re-emite el evento.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconcileNodeReceptionRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/NodeReceptionState'
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
@@ -1164,6 +1290,32 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: *id001
+  /app/network/corridors:
+    get:
+      tags:
+      - network
+      operationId: listOperationalCorridors
+      summary: List operational corridors in a department (internal app gate)
+      description: |
+        Devuelve los corredores operativos de un departamento: el insumo con el que planning/promise
+        saben qué puede salir (y entrar) por ese departamento. Combina los tramos entre nodos activos
+        y los corredores terminales (última milla desde un CD, recojo en tienda) que cada nodo ofrece.
+      parameters:
+      - name: department
+        in: query
+        required: true
+        description: Department to resolve corridors for
+        schema:
+          $ref: '#/components/schemas/Department'
+      responses:
+        '200':
+          description: Operational corridors in the department
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationalCorridorCollection'
       security:
       - appBearer: *id001
   /app/network/nodes:
@@ -2282,6 +2434,41 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       security:
       - appBearer: *id001
+  /app/tracking/shipments/{shipmentId}/units:
+    get:
+      tags:
+      - tracking
+      operationId: getShipmentUnits
+      summary: Internal per-parcel tracking detail by shipment id
+      description: |
+        Puerta app (personal interno). Devuelve el detalle per-bulto del seguimiento del envío: estado, última ubicación (nodo) y último escaneo de cada bulto. Alimenta la reconciliación de bultos.
+      parameters:
+      - $ref: '#/components/parameters/TrackingShipmentId'
+      responses:
+        '200':
+          description: Detalle de bultos (la lista puede estar vacía)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                    - shipment_id
+                    - units
+                    properties:
+                      shipment_id:
+                        type: string
+                        format: uuid
+                      units:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/UnitTracking'
+      security:
+      - appBearer: *id001
   /app/tracking/shipments/{shipmentId}/position:
     post:
       tags:
@@ -2558,6 +2745,48 @@ paths:
           $ref: '#/components/responses/PromiseValidationError'
       security:
       - channelApiKey: *id002
+  /channels/promises/offers:
+    get:
+      operationId: listDeliveryPromiseOffers
+      summary: List deliverable dates and slots for a zone (coverage + capacity + corridor)
+      description: |
+        Integrated delivery-promise calculation. For a coverage zone, returns the dates and time slots that can actually be promised, combining the zone's service days and base lead time (coverage), the free capacity per slot (capacity) and whether an operational corridor reaches the zone (network). Returns an empty collection when the zone is unknown/inactive or no corridor serves it.
+      tags:
+      - Promise
+      parameters:
+      - name: zone_id
+        in: query
+        required: true
+        schema:
+          type: string
+          maxLength: 64
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: First day of the horizon in Y-m-d format. Defaults to today.
+      - name: horizon_days
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 14
+        description: How many days ahead to explore (the start day included).
+      responses:
+        '200':
+          description: Deliverable promise options for the zone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromiseOfferCollection'
+        '422':
+          $ref: '#/components/responses/PromiseValidationError'
+      security:
+      - channelApiKey: *id002
   /channels/promises/{promiseId}:
     get:
       operationId: getPromise
@@ -2706,6 +2935,49 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/PublicTracking'
+        '404':
+          description: Ningún seguimiento corresponde al token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      security:
+      - channelApiKey: *id002
+  /channels/tracking/{token}/units:
+    get:
+      tags:
+      - tracking
+      operationId: getPublicUnits
+      summary: Public per-parcel breakdown by opaque token (no PII)
+      description: |
+        Puerta channels. Devuelve el desglose de bultos del envío (etiqueta humana, estado y un mensaje en español por bulto), sin datos personales ni claves internas. Mismo token que la página pública del envío.
+      parameters:
+      - name: token
+        in: path
+        required: true
+        description: Token opaco del enlace de rastreo
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
+      responses:
+        '200':
+          description: Seguimiento encontrado (la lista puede estar vacía)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                    - units
+                    properties:
+                      units:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PublicUnit'
         '404':
           description: Ningún seguimiento corresponde al token
           content:
@@ -4622,6 +4894,502 @@ paths:
           $ref: '#/components/responses/BusinessRuleError'
       security:
       - channelApiKey: *id002
+  /app/telemetry/pings:
+    post:
+      tags:
+      - telemetry
+      summary: Ingest a batch of vehicle GPS pings from the internal app
+      operationId: recordAppVehiclePings
+      description: |
+        El app agrupa lecturas GPS para ahorrar batería/datos y las envía en lote. El origen queda fijado como 'app' por la puerta. La respuesta es un acuse 202 (el procesamiento es asíncrono vía outbox).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - vehicle_id
+              - pings
+              properties:
+                vehicle_id:
+                  type: string
+                driver_id:
+                  type: string
+                  nullable: true
+                route_id:
+                  type: string
+                  nullable: true
+                pings:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/VehiclePing'
+      responses:
+        '202':
+          description: Pings accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/telemetry/fleet/live:
+    get:
+      tags:
+      - telemetry
+      summary: Live positions of the whole fleet
+      operationId: getLiveFleetPositions
+      responses:
+        '200':
+          description: Live fleet positions
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VehicleLive'
+      security:
+      - appBearer: *id001
+  /app/telemetry/vehicles/{vehicleId}/track:
+    get:
+      tags:
+      - telemetry
+      summary: Track (path) of a vehicle between two instants
+      operationId: getVehicleTrack
+      description: |
+        Devuelve la traza del vehículo entre `from` y `to` (fechas ISO 8601). Si faltan, se asume la última ventana de 24 horas.
+      parameters:
+      - name: vehicleId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: Vehicle track
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VehiclePing'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/telemetry/vehicles/{vehicleId}/summary:
+    get:
+      tags:
+      - telemetry
+      summary: Daily telemetry summary of a vehicle
+      operationId: getVehicleTelemetrySummary
+      parameters:
+      - name: vehicleId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: date
+        in: query
+        required: false
+        description: Day to summarize (YYYY-MM-DD). Defaults to today.
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Vehicle telemetry summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VehicleTelemetrySummary'
+      security:
+      - appBearer: *id001
+  /app/telemetry/trips:
+    get:
+      tags:
+      - telemetry
+      summary: List trips
+      operationId: listTelemetryTrips
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: date
+        in: query
+        required: false
+        description: Day filter (YYYY-MM-DD).
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Trip list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Trip'
+      security:
+      - appBearer: *id001
+  /app/telemetry/alerts:
+    get:
+      tags:
+      - telemetry
+      summary: List misuse alerts
+      operationId: listTelemetryAlerts
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: type
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/AlertType'
+      - name: acknowledged
+        in: query
+        required: false
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Alert list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Alert'
+      security:
+      - appBearer: *id001
+  /app/telemetry/alerts/{alertId}/acknowledge:
+    post:
+      tags:
+      - telemetry
+      summary: Acknowledge an alert
+      operationId: acknowledgeTelemetryAlert
+      parameters:
+      - name: alertId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Acknowledgement accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/telemetry/geofences:
+    get:
+      tags:
+      - telemetry
+      summary: List geofences
+      operationId: listGeofences
+      parameters:
+      - name: type
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/GeofenceType'
+      responses:
+        '200':
+          description: Geofence list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Geofence'
+      security:
+      - appBearer: *id001
+    post:
+      tags:
+      - telemetry
+      summary: Define a geofence
+      operationId: defineGeofence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - type
+              - polygon
+              properties:
+                name:
+                  type: string
+                type:
+                  $ref: '#/components/schemas/GeofenceType'
+                polygon:
+                  type: array
+                  minItems: 3
+                  items:
+                    $ref: '#/components/schemas/GeoPoint'
+                node_ref:
+                  type: string
+                  nullable: true
+      responses:
+        '202':
+          description: Geofence accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/telemetry/geofences/{geofenceId}/rename:
+    post:
+      tags:
+      - telemetry
+      summary: Rename a geofence
+      operationId: renameGeofence
+      parameters:
+      - $ref: '#/components/parameters/GeofenceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+      responses:
+        '202':
+          description: Rename accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/telemetry/geofences/{geofenceId}/redraw:
+    post:
+      tags:
+      - telemetry
+      summary: Redraw a geofence polygon
+      operationId: redrawGeofence
+      parameters:
+      - $ref: '#/components/parameters/GeofenceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - polygon
+              properties:
+                polygon:
+                  type: array
+                  minItems: 3
+                  items:
+                    $ref: '#/components/schemas/GeoPoint'
+      responses:
+        '202':
+          description: Redraw accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/telemetry/geofences/{geofenceId}/activate:
+    post:
+      tags:
+      - telemetry
+      summary: Activate a geofence
+      operationId: activateGeofence
+      parameters:
+      - $ref: '#/components/parameters/GeofenceId'
+      responses:
+        '202':
+          description: Activation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/telemetry/geofences/{geofenceId}/deactivate:
+    post:
+      tags:
+      - telemetry
+      summary: Deactivate a geofence
+      operationId: deactivateGeofence
+      parameters:
+      - $ref: '#/components/parameters/GeofenceId'
+      responses:
+        '202':
+          description: Deactivation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/telemetry/geofences/{geofenceId}:
+    delete:
+      tags:
+      - telemetry
+      summary: Delete a geofence
+      operationId: deleteGeofence
+      parameters:
+      - $ref: '#/components/parameters/GeofenceId'
+      responses:
+        '202':
+          description: Deletion accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/telemetry/streets:
+    get:
+      tags:
+      - telemetry
+      summary: Aggregated street traffic for the congestion map
+      operationId: getStreetTraffic
+      parameters:
+      - name: bbox
+        in: query
+        required: false
+        description: Bounding box as `min_lat,min_lng,max_lat,max_lng` to limit the result to the visible map area.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Street traffic segments
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StreetTraffic'
+      security:
+      - appBearer: *id001
+  /integrations/telemetry/pings:
+    post:
+      tags:
+      - telemetry
+      summary: Ingest a batch of vehicle GPS pings from an external provider
+      operationId: recordIntegrationVehiclePings
+      description: |
+        Ingesta de lecturas GPS de proveedores externos (dispositivos de terceros). El origen queda fijado como 'integration' por la puerta. La respuesta es un acuse 202.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - vehicle_id
+              - pings
+              properties:
+                vehicle_id:
+                  type: string
+                driver_id:
+                  type: string
+                  nullable: true
+                route_id:
+                  type: string
+                  nullable: true
+                pings:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/VehiclePing'
+      responses:
+        '202':
+          description: Pings accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: *id003
 components:
   securitySchemes:
     appBearer:
@@ -5074,6 +5842,43 @@ components:
           properties:
             count:
               type: integer
+    PromiseOffer:
+      type: object
+      required:
+      - slot_date
+      - weekday
+      - time_slot
+      - available
+      properties:
+        slot_date:
+          type: string
+          format: date
+        weekday:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: ISO-8601 weekday (1 = Monday … 7 = Sunday).
+        time_slot:
+          type: string
+        available:
+          type: number
+          format: float
+          description: Remaining delivery capacity for the slot.
+    PromiseOfferCollection:
+      type: object
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromiseOffer'
+        meta:
+          type: object
+          properties:
+            count:
+              type: integer
     CapacityAmountRequest:
       type: object
       required:
@@ -5432,6 +6237,19 @@ components:
           type: number
           format: float
           minimum: 0
+    Department:
+      type: string
+      description: One of Bolivia's nine departments.
+      enum:
+      - la_paz
+      - santa_cruz
+      - cochabamba
+      - oruro
+      - potosi
+      - chuquisaca
+      - tarija
+      - beni
+      - pando
     DefineLegRequest:
       type: object
       required:
@@ -5497,6 +6315,10 @@ components:
         pod_photo_url:
           type: string
           nullable: true
+        pod_photo_path:
+          type: string
+          nullable: true
+          description: Referencia durable de la foto en el disco de evidencia (privado)
         failure_reason:
           allOf:
           - $ref: '#/components/schemas/FailureReason'
@@ -5949,8 +6771,9 @@ components:
           description: Puede inyectarlo el token de Auth; opcional en el cuerpo
         idempotency_key:
           type: string
+          minLength: 1
           maxLength: 128
-          description: Alternativa al header Idempotency-Key
+          description: Clave de idempotencia; alternativa al header Idempotency-Key. Obligatoria por una de las dos vías; no puede ir vacía.
     Health:
       type: object
       required:
@@ -6293,6 +7116,11 @@ components:
           format: float
         status:
           $ref: '#/components/schemas/NodeStatus'
+        department:
+          allOf:
+          - $ref: '#/components/schemas/Department'
+          nullable: true
+          description: Department the node sits in, or null when unassigned.
     NodeCollection:
       type: object
       required:
@@ -6327,6 +7155,159 @@ components:
           node_id:
             type: string
             format: uuid
+    OpenNodeReceptionRequest:
+      type: object
+      description: Abre la recepción de un envío en un nodo destino por un corredor interno.
+      required:
+      - shipment_id
+      - origin_node_id
+      - destination_node_id
+      - origin_node_kind
+      - destination_node_kind
+      - expected_unit_ids
+      - occurred_at
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        origin_node_id:
+          type: string
+          format: uuid
+        destination_node_id:
+          type: string
+          format: uuid
+          description: Debe ser distinto del nodo de origen
+        origin_node_kind:
+          type: string
+          enum:
+          - CD
+          - STORE
+        destination_node_kind:
+          type: string
+          enum:
+          - CD
+          - STORE
+        expected_unit_ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            maxLength: 64
+          description: Bultos esperados en este nodo
+        occurred_at:
+          type: string
+          format: date-time
+    ReceiveUnitAtNodeRequest:
+      allOf:
+      - $ref: '#/components/schemas/GeoScanBase'
+      - type: object
+        required:
+        - destination_node_id
+        properties:
+          destination_node_id:
+            type: string
+            format: uuid
+            description: Nodo destino donde se recibe el bulto
+    ReconcileNodeReceptionRequest:
+      type: object
+      description: Cierra la recepción conciliando lo recibido contra lo esperado.
+      required:
+      - shipment_id
+      - destination_node_id
+      - occurred_at
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        destination_node_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+          maxLength: 128
+          description: Puede inyectarlo el token de Auth; opcional en el cuerpo
+        user_id:
+          type: string
+          maxLength: 128
+          description: Puede inyectarlo el token de Auth; opcional en el cuerpo
+    NodeReceptionView:
+      type: object
+      description: Read model of a node reception (flat primitives) with the reconciliation result.
+      required:
+      - id
+      - shipment_id
+      - origin_node_id
+      - destination_node_id
+      - corridor
+      - status
+      - expected_unit_ids
+      - received_unit_ids
+      - missing_unit_ids
+      - surplus_unit_ids
+      - expected_count
+      - received_count
+      - complete
+      - opened_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        shipment_id:
+          type: string
+          format: uuid
+        origin_node_id:
+          type: string
+          format: uuid
+        destination_node_id:
+          type: string
+          format: uuid
+        corridor:
+          type: string
+          enum:
+          - CD_TO_CD
+          - CD_TO_STORE
+          - STORE_TO_STORE
+          - STORE_TO_CD
+        status:
+          type: string
+          enum:
+          - OPEN
+          - RECONCILED
+        expected_unit_ids:
+          type: array
+          items:
+            type: string
+        received_unit_ids:
+          type: array
+          items:
+            type: string
+        missing_unit_ids:
+          type: array
+          description: Bultos esperados que no se recibieron
+          items:
+            type: string
+        surplus_unit_ids:
+          type: array
+          description: Bultos recibidos que no se esperaban
+          items:
+            type: string
+        expected_count:
+          type: integer
+        received_count:
+          type: integer
+        complete:
+          type: boolean
+          description: Verdadero si no hay faltantes ni sobrantes
+        opened_at:
+          type: string
+          format: date-time
+        reconciled_at:
+          type: string
+          format: date-time
+          nullable: true
     NodeStatus:
       type: string
       enum:
@@ -6338,6 +7319,69 @@ components:
       - distribution_center
       - store
       - pickup_point
+    OperationalCorridor:
+      type: object
+      description: |
+        An operational corridor in a department: the insumo planning/promise use to know what can
+        leave (and enter) that department. Inter-node corridors (cd_to_cd, cd_to_store,
+        store_to_store, store_to_cd) carry an origin and a destination node; terminal corridors
+        (cd_to_customer, store_pickup) end at the customer, so the destination fields are null.
+      required:
+      - corridor_type
+      - department
+      - origin_node_id
+      - origin_node_code
+      - origin_node_name
+      - origin_node_type
+      - destination_node_id
+      - destination_node_code
+      - destination_node_name
+      - destination_node_type
+      properties:
+        corridor_type:
+          $ref: '#/components/schemas/CorridorType'
+        department:
+          $ref: '#/components/schemas/Department'
+        origin_node_id:
+          type: string
+          format: uuid
+        origin_node_code:
+          type: string
+        origin_node_name:
+          type: string
+        origin_node_type:
+          $ref: '#/components/schemas/NodeType'
+        destination_node_id:
+          type: string
+          format: uuid
+          nullable: true
+        destination_node_code:
+          type: string
+          nullable: true
+        destination_node_name:
+          type: string
+          nullable: true
+        destination_node_type:
+          allOf:
+          - $ref: '#/components/schemas/NodeType'
+          nullable: true
+    OperationalCorridorCollection:
+      type: object
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalCorridor'
+        meta:
+          type: object
+          required:
+          - count
+          properties:
+            count:
+              type: integer
     NotificationListEnvelope:
       type: object
       required:
@@ -6818,19 +7862,66 @@ components:
             description: Si la entrega aún no existe, se abre con este vehículo
     Problem:
       type: object
-      description: RFC 7807 problem+json
+      description: |
+        RFC 7807 problem+json. Forma uniforme de error de las tres puertas de la API. Los
+        clientes deben ramificar por `code` (legible por máquina y estable), no por `title`.
       required:
       - title
       - status
+      - code
       properties:
         type:
           type: string
+          format: uri-reference
+          description: URI de referencia del tipo de problema; "<base>/<code>".
         title:
           type: string
+          description: Resumen corto y estable legible por humanos.
         status:
           type: integer
+          description: Mismo valor que el estado HTTP de la respuesta.
         detail:
           type: string
+          description: Explicación específica de esta ocurrencia.
+        instance:
+          type: string
+          format: uri-reference
+          description: Ruta de la petición que produjo el error.
+        code:
+          $ref: '#/components/schemas/ProblemCode'
+        errors:
+          type: object
+          description: Errores por campo; presente solo en fallos de validación (code=validation_failed).
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    ProblemCode:
+      type: string
+      description: |
+        Código del catálogo de errores de la API (App\Http\Problem\ErrorCode). Valor
+        estable, legible por máquina, que los clientes usan para ramificar su lógica.
+      enum:
+      - bad_request
+      - invalid_idempotency_key
+      - unauthenticated
+      - missing_credentials
+      - invalid_credentials
+      - device_revoked
+      - forbidden
+      - insufficient_role
+      - insufficient_scope
+      - not_found
+      - method_not_allowed
+      - conflict
+      - idempotency_key_in_progress
+      - idempotency_key_reused
+      - payload_too_large
+      - unsupported_media_type
+      - validation_failed
+      - rate_limited
+      - server_error
+      - service_unavailable
     Promise:
       type: object
       required:
@@ -6904,7 +7995,12 @@ components:
             format: uri
             maxLength: 2048
             nullable: true
-            description: URL devuelta por el endpoint de subida de fotos
+            description: URL de acceso devuelta por el endpoint de subida de fotos (conveniencia)
+          photo_path:
+            type: string
+            maxLength: 1024
+            nullable: true
+            description: Referencia durable (path en el disco de evidencia) devuelta por la subida de fotos; es la que se guarda en la prueba de entrega
     PublicKey:
       type: object
       required:
@@ -6940,6 +8036,7 @@ components:
       - route_position
       - eta
       - last_position
+      - position_is_live
       - stops_message
       properties:
         status:
@@ -6963,6 +8060,11 @@ components:
           oneOf:
           - $ref: '#/components/schemas/TruckPosition'
           - type: 'null'
+        position_is_live:
+          type:
+          - boolean
+          - 'null'
+          description: True si la última posición es fresca (ventana en vivo), false si es solo la última conocida, null si no hay posición.
         stops_message:
           type: string
           description: Mensaje al cliente en español, p. ej. "Tu pedido está a 3 paradas."
@@ -7270,6 +8372,11 @@ components:
           format: float
           minimum: -180
           maximum: 180
+        department:
+          allOf:
+          - $ref: '#/components/schemas/Department'
+          nullable: true
+          description: Department the node sits in. Optional; may be assigned later.
     RegisterVehicleRequest:
       type: object
       required:
@@ -7716,6 +8823,7 @@ components:
       - route_position
       - eta
       - last_position
+      - position_is_live
       properties:
         id:
           type: string
@@ -7723,6 +8831,11 @@ components:
         shipment_id:
           type: string
           format: uuid
+        shipment_external_id:
+          type:
+          - string
+          - 'null'
+          description: Referencia externa humana del envío (shipments.external_id)
         token:
           type: string
         status:
@@ -7746,6 +8859,11 @@ components:
           oneOf:
           - $ref: '#/components/schemas/TruckPosition'
           - type: 'null'
+        position_is_live:
+          type:
+          - boolean
+          - 'null'
+          description: True si la última posición es fresca, false si es solo la última conocida, null si no hay posición.
     ShipmentsError:
       type: object
       required:
@@ -8089,7 +9207,408 @@ components:
       - ARRIVING
       - DELIVERED
       - FAILED
+    UnitStatus:
+      type: string
+      description: Estado visible de un bulto (unidad física) dentro del seguimiento
+      enum:
+      - REGISTERED
+      - PREPARED
+      - LOADED
+      - UNLOADED
+      - RECEIVED
+      - DELIVERED
+      - FAILED
+    PublicUnit:
+      type: object
+      description: Vista pública de un bulto (sin PII)
+      required:
+      - label
+      - status
+      - status_message
+      properties:
+        label:
+          type: string
+          description: Etiqueta humana del bulto, p. ej. "Bulto 1 de 2"
+        status:
+          $ref: '#/components/schemas/UnitStatus'
+        status_message:
+          type: string
+          description: Mensaje por bulto en español, p. ej. "Cargado en el camión."
+    UnitTracking:
+      type: object
+      description: Vista interna del seguimiento de un bulto
+      required:
+      - id
+      - unit_id
+      - shipment_id
+      - status
+      - last_location_id
+      - last_seen_at
+      - label
+      properties:
+        id:
+          type: string
+          format: uuid
+        unit_id:
+          type: string
+          format: uuid
+        shipment_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/UnitStatus'
+        last_location_id:
+          type:
+          - string
+          - 'null'
+          description: Nodo/parada donde se vio por última vez el bulto
+        last_seen_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        label:
+          type:
+          - string
+          - 'null'
+          description: Etiqueta humana del bulto ("N/M")
+    GeoPoint:
+      type: object
+      required:
+      - lat
+      - lng
+      properties:
+        lat:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+    GeofenceType:
+      type: string
+      enum:
+      - distribution_center
+      - store
+      - authorized_zone
+      - forbidden_zone
+      - rest_area
+      - fuel_station
+      - customer
+    AlertType:
+      type: string
+      enum:
+      - after_hours_movement
+      - excessive_idle
+      - geofence_violation
+      - unauthorized_use
+      - speeding
+    VehiclePing:
+      type: object
+      description: Una lectura GPS de un vehículo. Posición e instante obligatorios; el resto de la telemetría es opcional.
+      required:
+      - lat
+      - lng
+      - recorded_at
+      properties:
+        lat:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+        recorded_at:
+          type: string
+          format: date-time
+        speed_kph:
+          type: number
+          format: float
+          nullable: true
+        heading:
+          type: integer
+          minimum: 0
+          maximum: 359
+          nullable: true
+        accuracy_m:
+          type: number
+          format: float
+          nullable: true
+        ignition:
+          type: boolean
+          nullable: true
+        odometer_m:
+          type: integer
+          nullable: true
+        device_id:
+          type: string
+          nullable: true
+    VehicleLive:
+      type: object
+      description: Posición en vivo de un vehículo (última lectura conocida).
+      required:
+      - vehicle_id
+      - lat
+      - lng
+      - moving
+      - recorded_at
+      properties:
+        vehicle_id:
+          type: string
+        lat:
+          type: number
+          format: float
+        lng:
+          type: number
+          format: float
+        speed_kph:
+          type: number
+          format: float
+          nullable: true
+        heading:
+          type: integer
+          nullable: true
+        ignition:
+          type: boolean
+          nullable: true
+        moving:
+          type: boolean
+        route_id:
+          type: string
+          nullable: true
+        recorded_at:
+          type: string
+          format: date-time
+    VehicleTelemetrySummary:
+      type: object
+      description: Resumen diario de telemetría de un vehículo.
+      required:
+      - vehicle_id
+      - date
+      - distance_m
+      - moving_s
+      - idle_s
+      - trips
+      - max_speed_kph
+      properties:
+        vehicle_id:
+          type: string
+        date:
+          type: string
+          format: date
+        distance_m:
+          type: number
+          format: float
+        moving_s:
+          type: integer
+        idle_s:
+          type: integer
+        trips:
+          type: integer
+        max_speed_kph:
+          type: number
+          format: float
+        first_recorded_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_recorded_at:
+          type: string
+          format: date-time
+          nullable: true
+    Trip:
+      type: object
+      description: Un recorrido (trip) de un vehículo con sus métricas crudas y legibles.
+      required:
+      - id
+      - vehicle_id
+      - status
+      - started_at
+      - distance_m
+      - duration_s
+      - moving_s
+      - idle_s
+      - max_speed_kph
+      - ping_count
+      - distance_km
+      - duration_min
+      - moving_min
+      - idle_min
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+        driver_id:
+          type: string
+          nullable: true
+        route_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+          - active
+          - completed
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        distance_m:
+          type: number
+          format: float
+        duration_s:
+          type: integer
+        moving_s:
+          type: integer
+        idle_s:
+          type: integer
+        max_speed_kph:
+          type: number
+          format: float
+        ping_count:
+          type: integer
+        distance_km:
+          type: number
+          format: float
+        duration_min:
+          type: integer
+        moving_min:
+          type: integer
+        idle_min:
+          type: integer
+    Geofence:
+      type: object
+      description: Una geocerca (polígono) con su tipo y estado.
+      required:
+      - id
+      - name
+      - type
+      - polygon
+      - active
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/GeofenceType'
+        polygon:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeoPoint'
+        active:
+          type: boolean
+        node_ref:
+          type: string
+          nullable: true
+    Alert:
+      type: object
+      description: Una alerta de mal uso de un vehículo.
+      required:
+      - id
+      - vehicle_id
+      - type
+      - severity
+      - detail
+      - occurred_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+        driver_id:
+          type: string
+          nullable: true
+        type:
+          $ref: '#/components/schemas/AlertType'
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - critical
+        lat:
+          type: number
+          format: float
+          nullable: true
+        lng:
+          type: number
+          format: float
+          nullable: true
+        detail:
+          type: object
+          additionalProperties: true
+        occurred_at:
+          type: string
+          format: date-time
+        acknowledged_at:
+          type: string
+          format: date-time
+          nullable: true
+        acknowledged_by:
+          type: string
+          nullable: true
+    StreetTraffic:
+      type: object
+      description: Estadística agregada de un segmento de calle para el mapa de tráfico.
+      required:
+      - segment_key
+      - geometry
+      - sample_count
+      - avg_speed_kph
+      - min_speed_kph
+      - congestion_level
+      - hour_histogram
+      properties:
+        segment_key:
+          type: string
+        name:
+          type: string
+          nullable: true
+        geometry:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeoPoint'
+        sample_count:
+          type: integer
+        avg_speed_kph:
+          type: number
+          format: float
+        min_speed_kph:
+          type: number
+          format: float
+        congestion_level:
+          type: string
+          enum:
+          - free
+          - moderate
+          - congested
+        hour_histogram:
+          type: array
+          items:
+            type: integer
   parameters:
+    GeofenceId:
+      name: geofenceId
+      in: path
+      required: true
+      description: UUID v7 de la geocerca
+      schema:
+        type: string
+        format: uuid
     CapacityDate:
       name: date
       in: query
@@ -8150,7 +9669,10 @@ components:
       name: Idempotency-Key
       in: header
       required: false
-      description: Offline idempotency key for the scan; a resend with the same key does not duplicate the fact
+      description: >-
+        Offline idempotency key for the scan; a resend with the same key does not duplicate the fact.
+        REQUIRED for every write scan: send it here or in the body field idempotency_key. A write with
+        neither is rejected with 422.
       schema:
         type: string
         maxLength: 128
@@ -8281,6 +9803,17 @@ components:
             properties:
               data:
                 $ref: '#/components/schemas/Delivery'
+    NodeReceptionState:
+      description: The resulting node reception state with the reconciliation result
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - data
+            properties:
+              data:
+                $ref: '#/components/schemas/NodeReceptionView'
     DomainError:
       description: Business rule violated
       content:

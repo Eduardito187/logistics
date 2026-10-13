@@ -6,6 +6,7 @@ namespace Logistics\Network\Presentation\Http\Request;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Logistics\Network\Domain\ValueObject\Department;
 use Logistics\Network\Domain\ValueObject\NodeType;
 
 /**
@@ -32,6 +33,7 @@ final class RegisterNodeRequest extends FormRequest
             'type' => ['required', 'string', Rule::in(array_column(NodeType::cases(), 'value'))],
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
+            'department' => ['sometimes', 'nullable', 'string', Rule::in(array_column(Department::cases(), 'value'))],
         ];
     }
 }

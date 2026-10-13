@@ -41,18 +41,24 @@ final readonly class DefineLegHandler implements CommandHandler
         $corridor = CorridorType::tryFrom($command->corridorType)
             ?? throw NetworkException::because("tipo de corredor desconocido: {$command->corridorType}");
 
-        if ($this->nodes->findById($from) === null) {
-            throw NetworkException::because("no existe el nodo de origen {$command->fromNodeId}");
-        }
-        if ($this->nodes->findById($to) === null) {
-            throw NetworkException::because("no existe el nodo de destino {$command->toNodeId}");
-        }
+        $fromNode = $this->nodes->findById($from)
+            ?? throw NetworkException::because("no existe el nodo de origen {$command->fromNodeId}");
+        $toNode = $this->nodes->findById($to)
+            ?? throw NetworkException::because("no existe el nodo de destino {$command->toNodeId}");
 
         if ($this->legs->findByEndpoints($from, $to, $corridor) !== null) {
             throw NetworkException::because('ya existe un tramo con ese origen, destino y corredor');
         }
 
-        $leg = Leg::define($this->legs->nextIdentity(), $from, $to, $corridor);
+        // El agregado valida que los tipos de nodo calcen con el corredor; acá solo se los pasamos.
+        $leg = Leg::define(
+            $this->legs->nextIdentity(),
+            $from,
+            $fromNode->type(),
+            $to,
+            $toNode->type(),
+            $corridor,
+        );
 
         $this->legs->save($leg);
 

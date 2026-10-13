@@ -26,6 +26,7 @@ use Logistics\SapConnector\Application\Query\ListPendingTransfers\ListPendingTra
 use Logistics\SapConnector\Domain\Contract\MaterialMappingRepository;
 use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Contract\StockTransferRepository;
+use Logistics\SapConnector\Infrastructure\Outbox\SapMessageDispatcher;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\EloquentMaterialMappingRepository;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\EloquentStockTransferRepository;
 use Logistics\SapConnector\Infrastructure\Sap\HttpSapClient;
@@ -112,6 +113,29 @@ final class SapConnectorServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([DispatchStockTransfersCommand::class]);
+        }
+
+        $this->registerOutboxRoute();
+    }
+
+    /**
+     * Cierra la cadena evento → outbox → SAP (ADR 002): registra el adapter del conector en el ruteo del
+     * relay del outbox para el prefijo de sus eventos (`sap_connector.`). Así los hechos del conector
+     * dejan de caer al dispatcher por defecto (Null) y pasan a empujarse a SAP por SapMessageDispatcher.
+     *
+     * Se hace desde el provider del propio contexto (no editando la config del outbox) para mantener el
+     * conector autocontenido: el relay lee estas rutas de forma perezosa, bastante después del boot.
+     */
+    private function registerOutboxRoute(): void
+    {
+        /** @var Config $config */
+        $config = $this->app->make(Config::class);
+
+        /** @var array<string, class-string> $routes */
+        $routes = (array) $config->get('logistics-outbox.routes', []);
+        if (!array_key_exists('sap_connector.', $routes)) {
+            $routes['sap_connector.'] = SapMessageDispatcher::class;
+            $config->set('logistics-outbox.routes', $routes);
         }
     }
 }

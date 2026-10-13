@@ -171,7 +171,7 @@ paths:
     post:
       tags: [execution]
       operationId: uploadDeliveryPhoto
-      summary: Upload an evidence photo and get its URL for the proof of delivery
+      summary: Upload an evidence photo (proof of delivery or damage) and get its storage reference
       requestBody:
         required: true
         content:
@@ -186,9 +186,14 @@ paths:
                 photo:
                   type: string
                   format: binary
+                kind:
+                  type: string
+                  enum: [pod, damage]
+                  default: pod
+                  description: Tipo de evidencia; elige el disco (pod = prueba de entrega, damage = daños). Por defecto pod.
       responses:
         '201':
-          description: The stored photo
+          description: The stored evidence reference
           content:
             application/json:
               schema:
@@ -197,13 +202,28 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [path, url]
+                    required: [kind, disk, path, url]
                     properties:
+                      kind:
+                        type: string
+                        enum: [pod, damage]
+                      disk:
+                        type: string
+                        description: Disco de evidencia donde quedó la foto
                       path:
                         type: string
+                        description: Referencia durable (relativa al disco); viaja como photo_path en la prueba de entrega
                       url:
                         type: string
                         format: uri
+                        nullable: true
+                        description: URL de acceso si el disco la expone; null en discos privados
+        '500':
+          description: The evidence could not be stored after retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '422':
           $ref: '#/components/responses/ValidationError'
   /app/labels/verify:
@@ -355,7 +375,10 @@ components:
       name: Idempotency-Key
       in: header
       required: false
-      description: Offline idempotency key for the scan; a resend with the same key does not duplicate the fact
+      description: >-
+        Offline idempotency key for the scan; a resend with the same key does not duplicate the fact.
+        REQUIRED for every write scan: send it here or in the body field idempotency_key. A write with
+        neither is rejected with 422.
       schema:
         type: string
         maxLength: 128
@@ -425,8 +448,9 @@ components:
           description: Puede inyectarlo el token de Auth; opcional en el cuerpo
         idempotency_key:
           type: string
+          minLength: 1
           maxLength: 128
-          description: Alternativa al header Idempotency-Key
+          description: Clave de idempotencia; alternativa al header Idempotency-Key. Obligatoria por una de las dos vías; no puede ir vacía.
     ScanRequest:
       allOf:
         - $ref: '#/components/schemas/GeoScanBase'
@@ -499,7 +523,12 @@ components:
               format: uri
               maxLength: 2048
               nullable: true
-              description: URL devuelta por el endpoint de subida de fotos
+              description: URL de acceso devuelta por el endpoint de subida de fotos (conveniencia)
+            photo_path:
+              type: string
+              maxLength: 1024
+              nullable: true
+              description: Referencia durable (path en el disco de evidencia) devuelta por la subida de fotos; es la que se guarda en la prueba de entrega
     FailedDeliveryRequest:
       allOf:
         - $ref: '#/components/schemas/GeoScanBase'
@@ -567,6 +596,10 @@ components:
         pod_photo_url:
           type: string
           nullable: true
+        pod_photo_path:
+          type: string
+          nullable: true
+          description: Referencia durable de la foto en el disco de evidencia (privado)
         failure_reason:
           allOf:
             - $ref: '#/components/schemas/FailureReason'

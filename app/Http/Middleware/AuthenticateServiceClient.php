@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Http\Problem\ErrorCode;
+use App\Http\Problem\ProblemDetails;
 use App\Models\ServiceClient;
 use Closure;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -28,7 +29,10 @@ final class AuthenticateServiceClient
         $clientSecret = $request->header('X-Client-Secret');
 
         if (!is_string($clientId) || !is_string($clientSecret) || $clientId === '' || $clientSecret === '') {
-            return $this->unauthorized('Service credentials are missing.');
+            return ProblemDetails::fromCode(
+                ErrorCode::MissingCredentials,
+                'Service credentials are missing.',
+            )->toResponse($request);
         }
 
         $client = ServiceClient::query()
@@ -37,24 +41,22 @@ final class AuthenticateServiceClient
             ->first();
 
         if ($client === null || !$client->verifySecret($clientSecret)) {
-            return $this->unauthorized('Invalid service credentials.');
+            return ProblemDetails::fromCode(
+                ErrorCode::InvalidCredentials,
+                'Invalid service credentials.',
+            )->toResponse($request);
         }
 
         if ($scope !== null && !$client->hasScope($scope)) {
-            return new JsonResponse(
-                ['message' => 'Service client lacks the required scope: '.$scope],
-                403,
-            );
+            return ProblemDetails::fromCode(
+                ErrorCode::InsufficientScope,
+                'Service client lacks the required scope: '.$scope,
+            )->toResponse($request);
         }
 
         $client->markUsed();
         $request->attributes->set(self::ATTRIBUTE, $client);
 
         return $next($request);
-    }
-
-    private function unauthorized(string $message): JsonResponse
-    {
-        return new JsonResponse(['message' => $message], 401);
     }
 }

@@ -7,6 +7,7 @@ namespace Logistics\Network\Application\Command\RegisterNode;
 use Logistics\Network\Domain\Contract\NodeRepository;
 use Logistics\Network\Domain\Exception\NetworkException;
 use Logistics\Network\Domain\Node;
+use Logistics\Network\Domain\ValueObject\Department;
 use Logistics\Network\Domain\ValueObject\GeoPoint;
 use Logistics\Network\Domain\ValueObject\NodeCode;
 use Logistics\Network\Domain\ValueObject\NodeType;
@@ -41,12 +42,19 @@ final readonly class RegisterNodeHandler implements CommandHandler
         $type = NodeType::tryFrom($command->type)
             ?? throw NetworkException::because("tipo de nodo desconocido: {$command->type}");
 
+        $department = null;
+        if ($command->department !== null) {
+            $department = Department::tryFrom($command->department)
+                ?? throw NetworkException::because("departamento desconocido: {$command->department}");
+        }
+
         $node = Node::register(
             $this->nodes->nextIdentity(),
             $code,
             $command->name,
             $type,
             GeoPoint::of($command->latitude, $command->longitude),
+            $department,
         );
 
         $this->nodes->save($node);

@@ -26,6 +26,7 @@ use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Access\Presentation\Filament\Resources\RoleResource\Pages\CreateRole;
 use Logistics\Access\Presentation\Filament\Resources\RoleResource\Pages\ListRoles;
 use Logistics\Access\Presentation\Filament\Resources\RoleResource\Pages\ViewRole;
+use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 use Logistics\Shared\Application\Command\CommandBus;
 
 /**
@@ -200,6 +201,11 @@ final class RoleResource extends Resource
                             description: $description,
                         ));
 
+                        AuditRecorder::record('role.renamed', 'access.role', (string) $record->getKey(), [
+                            'name' => (string) $data['name'],
+                            'description' => $description,
+                        ]);
+
                         Notification::make()
                             ->title(__('Role renamed'))
                             ->success()
@@ -233,6 +239,10 @@ final class RoleResource extends Resource
                             permissionKeys: $keys,
                         ));
 
+                        AuditRecorder::record('role.permissions_changed', 'access.role', (string) $record->getKey(), [
+                            'permissions' => $keys,
+                        ]);
+
                         Notification::make()
                             ->title(__('Permissions updated'))
                             ->success()
@@ -251,6 +261,11 @@ final class RoleResource extends Resource
                         app(CommandBus::class)->dispatch(new DeleteRole(
                             roleId: (string) $record->getKey(),
                         ));
+
+                        AuditRecorder::record('role.deleted', 'access.role', (string) $record->getKey(), [
+                            'key' => $record->key,
+                            'name' => $record->name,
+                        ]);
 
                         Notification::make()
                             ->title(__('Role deleted'))

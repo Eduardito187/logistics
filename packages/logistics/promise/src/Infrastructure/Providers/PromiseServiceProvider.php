@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Promise\Infrastructure\Providers;
 
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Promise\Application\Command\ConfirmPromise\ConfirmPromise;
 use Logistics\Promise\Application\Command\ConfirmPromise\ConfirmPromiseHandler;
@@ -15,18 +16,30 @@ use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlo
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlotHandler;
 use Logistics\Promise\Application\Command\ReservePromise\ReservePromise;
 use Logistics\Promise\Application\Command\ReservePromise\ReservePromiseHandler;
+use Logistics\Promise\Application\Query\CalculateDeliveryPromise\CalculateDeliveryPromise;
+use Logistics\Promise\Application\Query\CalculateDeliveryPromise\CalculateDeliveryPromiseHandler;
 use Logistics\Promise\Application\Query\GetPromise\GetPromise;
 use Logistics\Promise\Application\Query\GetPromise\GetPromiseHandler;
 use Logistics\Promise\Application\Query\ListAvailableSlots\ListAvailableSlots;
 use Logistics\Promise\Application\Query\ListAvailableSlots\ListAvailableSlotsHandler;
 use Logistics\Promise\Domain\Contract\AvailabilityProvider;
+use Logistics\Promise\Domain\Contract\CapacityCalendar;
+use Logistics\Promise\Domain\Contract\CorridorAvailabilityProvider;
+use Logistics\Promise\Domain\Contract\CoverageProfileProvider;
 use Logistics\Promise\Domain\Contract\OrderDeliverySlotGateway;
 use Logistics\Promise\Domain\Contract\PromiseRepository;
 use Logistics\Promise\Domain\Contract\SlotReserver;
+use Logistics\Promise\Infrastructure\Availability\CachingAvailabilityProvider;
 use Logistics\Promise\Infrastructure\Availability\CapacityBackedAvailabilityProvider;
+use Logistics\Promise\Infrastructure\Availability\CapacityBackedCapacityCalendar;
 use Logistics\Promise\Infrastructure\Availability\CapacityBackedSlotReserver;
+use Logistics\Promise\Infrastructure\Cache\CacheInvalidatingPromiseRepository;
+use Logistics\Promise\Infrastructure\Cache\CachingGetPromiseHandler;
+use Logistics\Promise\Infrastructure\Coverage\CoverageBackedProfileProvider;
+use Logistics\Promise\Infrastructure\Network\NetworkBackedCorridorProvider;
 use Logistics\Promise\Infrastructure\Persistence\Eloquent\EloquentPromiseRepository;
 use Logistics\Promise\Infrastructure\Shipments\ShipmentsOrderDeliverySlotGateway;
+use Logistics\Promise\Presentation\Console\ExpireReservationsCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 
 /**
@@ -49,18 +62,51 @@ final class PromiseServiceProvider extends ServiceProvider
         ConfirmPromise::class => ConfirmPromiseHandler::class,
         ExpireReservation::class => ExpireReservationHandler::class,
         ListAvailableSlots::class => ListAvailableSlotsHandler::class,
-        GetPromise::class => GetPromiseHandler::class,
+        CalculateDeliveryPromise::class => CalculateDeliveryPromiseHandler::class,
+        GetPromise::class => CachingGetPromiseHandler::class,
     ];
 
     public function register(): void
     {
-        $this->app->bind(PromiseRepository::class, EloquentPromiseRepository::class);
+        // Repositorio de promesas envuelto por el decorador que invalida el cache del modelo de lectura
+        // (frente E — escala): guarda igual que el Eloquent y, al guardar, olvida la vista cacheada de esa
+        // promesa. No cachea lecturas, así los comandos que cargan-mutan-guardan siguen leyendo de la base.
+        $this->app->bind(PromiseRepository::class, function ($app): PromiseRepository {
+            return new CacheInvalidatingPromiseRepository(
+                $app->make(EloquentPromiseRepository::class),
+                $app->make(CacheRepository::class),
+            );
+        });
+
+        // Lectura de promesa por id con cache (Valkey) de su modelo de lectura en forma primitiva (regla #7),
+        // invalidado por evento desde el repositorio. El handler plano queda como dependencia interna.
+        $this->app->bind(CachingGetPromiseHandler::class, function ($app): CachingGetPromiseHandler {
+            return new CachingGetPromiseHandler(
+                $app->make(GetPromiseHandler::class),
+                $app->make(CacheRepository::class),
+            );
+        });
 
         // Puertos hacia capacity: disponibilidad y reserva de cupo apoyadas en el contexto de capacidad
         // (cupos reales por zona/fecha/franja, con lock pesimista en el consumo). Reemplazan a los stubs
         // en memoria; el cruce es por el QueryBus/CommandBus, así promise no importa infraestructura ajena.
-        $this->app->bind(AvailabilityProvider::class, CapacityBackedAvailabilityProvider::class);
+        // La disponibilidad se sirve con cache (Valkey) de las franjas en forma primitiva (regla #7),
+        // invalidado por la generación de cupos del día que sube capacity.
+        $this->app->bind(AvailabilityProvider::class, function ($app): AvailabilityProvider {
+            return new CachingAvailabilityProvider(
+                $app->make(CapacityBackedAvailabilityProvider::class),
+                $app->make(CacheRepository::class),
+            );
+        });
         $this->app->bind(SlotReserver::class, CapacityBackedSlotReserver::class);
+
+        // Puertos del cálculo integrado de promesa (CalculateDeliveryPromise): cobertura (perfil de la
+        // zona), corredor (red) y calendario de capacidad (cupo libre por franja). Cada uno lee de solo
+        // consulta su contexto; el servicio de dominio los combina. El cruce es por el bus y por Records,
+        // así promise no agrega dependencia composer a coverage/network.
+        $this->app->bind(CoverageProfileProvider::class, CoverageBackedProfileProvider::class);
+        $this->app->bind(CorridorAvailabilityProvider::class, NetworkBackedCorridorProvider::class);
+        $this->app->bind(CapacityCalendar::class, CapacityBackedCapacityCalendar::class);
 
         // Puerto hacia shipments: leer y fijar la franja de entrega del pedido vía su comando/consulta.
         $this->app->bind(OrderDeliverySlotGateway::class, ShipmentsOrderDeliverySlotGateway::class);
@@ -69,6 +115,11 @@ final class PromiseServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
+
+        if ($this->app->runningInConsole()) {
+            // Worker del barrido de reservas vencidas; el scheduler lo corre cada minuto (ver routes/console.php).
+            $this->commands([ExpireReservationsCommand::class]);
+        }
 
         /** @var HandlerRegistry $registry */
         $registry = $this->app->make(HandlerRegistry::class);

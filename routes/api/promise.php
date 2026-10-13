@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Logistics\Promise\Presentation\Http\Controllers\CalculateDeliveryPromiseController;
 use Logistics\Promise\Presentation\Http\Controllers\ConfirmPromiseController;
 use Logistics\Promise\Presentation\Http\Controllers\ExpireReservationController;
 use Logistics\Promise\Presentation\Http\Controllers\GetPromiseController;
@@ -23,6 +24,10 @@ return [
     // Puerta channels.
     'channels' => static function (): void {
         Route::name('promise.')->group(function (): void {
+            // Promesas disponibles: cálculo integrado (cobertura + capacidad + corredor) de fechas y
+            // franjas que se pueden prometer para una zona en un horizonte de días.
+            Route::get('promises/offers', CalculateDeliveryPromiseController::class)->name('offers.index');
+
             // Franjas disponibles para ofrecer antes de cotizar (cupo real por zona/fecha en capacity).
             Route::get('promises/available-slots', ListAvailableSlotsController::class)->name('slots.index');
 

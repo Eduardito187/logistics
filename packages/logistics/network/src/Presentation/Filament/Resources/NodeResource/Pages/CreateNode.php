@@ -29,6 +29,9 @@ final class CreateNode extends CreateRecord
     protected function handleRecordCreation(array $data): Model
     {
         $code = (string) $data['code'];
+        $department = isset($data['department']) && $data['department'] !== ''
+            ? (string) $data['department']
+            : null;
 
         app(CommandBus::class)->dispatch(new RegisterNodeCommand(
             code: $code,
@@ -36,6 +39,7 @@ final class CreateNode extends CreateRecord
             type: (string) $data['type'],
             latitude: (float) $data['lat'],
             longitude: (float) $data['lng'],
+            department: $department,
         ));
 
         // El código es único: identifica el agregado recién registrado para la redirección del admin.
