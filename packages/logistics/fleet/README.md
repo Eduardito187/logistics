@@ -19,4 +19,33 @@ Cuatro capas, igual que los packages de dis-commerce (ver `docs/architecture.md`
 
 ## Estado
 
-Esqueleto creado. Sin modelo de dominio todavía.
+Dominio y casos de uso base implementados (DDD + CQRS sobre `logistics/shared`).
+
+### Dominio
+
+- IDs tipados: `VehicleId`, `DriverId`, `CrewId` (UUID v7).
+- Value objects: `Capacity` (kg entero + m³), `PlateNumber`, `LicenseNumber`,
+  `DocumentExpiry` (`isExpiredAt`, `expiresWithin`), `PreTripChecklist`.
+- Enums: `VehicleStatus` (available / in_service / maintenance / inactive), `CrewRole` (driver / helper).
+- Agregados: `Vehicle` (mantenimiento, documentos por vencer), `Driver` (licencia, habilitación por
+  vehículo), `Crew` (tripulación chofer + ayudantes + vehículo).
+- Eventos: `VehicleRegistered`, `VehicleStatusChanged`, `DriverRegistered`, `CrewAssembled`.
+- Contratos de repositorio: `VehicleRepository`, `DriverRepository`, `CrewRepository`.
+
+### Aplicación (CQRS)
+
+- Commands: `RegisterVehicle`, `ChangeVehicleStatus`, `RegisterDriver`, `AssembleCrew`.
+- Queries: `ListVehicles`, `ListDrivers`, `ListExpiringDocuments`.
+- Read models: `VehicleView`, `DriverView`, `ExpiringDocumentView`.
+
+### Infraestructura
+
+- Modelos Eloquent, mappers y repositorios para las tablas `fleet_vehicles`, `fleet_drivers`,
+  `fleet_crews` (PK UUID en texto, no autoincremental).
+- `FleetServiceProvider` bindea los repositorios y registra los handlers en el `HandlerRegistry`.
+
+### Pendiente
+
+- Publicar los eventos liberados vía outbox al integrar el package correspondiente (hoy se liberan y
+  se descartan; ver los `TODO(outbox)` en los handlers).
+- Presentación (HTTP / Filament / consola) y checklist pre-salida persistido.
