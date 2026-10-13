@@ -1,0 +1,6 @@
+order_external_id,source,customer_name,customer_phone,address_text,address_reference,lat,lng,delivery_date,sku,product_name,quantity,pieces_per_unit
+PED-1001,manual,Juana Mamani Quispe,+591 71234567,"Av. 6 de Agosto 2145, Sopocachi, La Paz","Edificio Torre Azul, piso 3, puerta negra",-16.509300,-68.123200,2026-10-20,SKU-ROP-001,Ropero 2 puertas melamina,1,3
+PED-1002,excel,Carlos Gutiérrez Rojas,+591 78900011,"Calle Warnes esq. 3er Anillo, Santa Cruz de la Sierra","Frente a la farmacia Chávez, portón verde",,,2026-10-21,SKU-COL-050,Colchón 2 plazas resortado,2,1
+PED-1002,excel,Carlos Gutiérrez Rojas,+591 78900011,"Calle Warnes esq. 3er Anillo, Santa Cruz de la Sierra","Frente a la farmacia Chávez, portón verde",,,2026-10-21,SKU-VEL-012,Velador de madera,1,1
+PED-1003,store,María Fernanda Villca,+591 70011223,"Av. América 1450, Cochabamba","Casi esquina Pando, casa de reja blanca",-17.383800,-66.156800,2026-10-22,SKU-MES-007,Mesa de comedor 6 sillas,1,2
+PED-1004,magento,Roberto Flores Apaza,+591 67889900,"Av. 16 de Julio 890, El Alto, La Paz",,,,2026-10-23,SKU-LAV-030,Lavadora automática 12kg,1,1
