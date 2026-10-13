@@ -24,7 +24,10 @@
         "logistics/labels": "^0.1",
         "logistics/network": "^0.1",
         "logistics/notifications": "^0.1",
+        "logistics/outbox": "^0.1",
         "logistics/planning": "^0.1",
+        "logistics/settings": "^0.1",
+        "logistics/shared": "^0.1",
         "logistics/shipments": "^0.1",
         "logistics/tracking": "^0.1"
     },
@@ -112,7 +115,10 @@
                 "logistics/labels",
                 "logistics/network",
                 "logistics/notifications",
+                "logistics/outbox",
                 "logistics/planning",
+                "logistics/settings",
+                "logistics/shared",
                 "logistics/shipments",
                 "logistics/tracking"
             ]
