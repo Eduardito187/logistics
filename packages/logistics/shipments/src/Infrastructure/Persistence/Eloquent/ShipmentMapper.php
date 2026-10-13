@@ -1,0 +1,126 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Logistics\Shipments\Infrastructure\Persistence\Eloquent;
+
+use Logistics\Shipments\Domain\Model\PhysicalUnit;
+use Logistics\Shipments\Domain\Model\Shipment;
+use Logistics\Shipments\Domain\Model\ShipmentLine;
+use Logistics\Shipments\Domain\ValueObject\Address;
+use Logistics\Shipments\Domain\ValueObject\AddressConfidence;
+use Logistics\Shipments\Domain\ValueObject\Fraction;
+use Logistics\Shipments\Domain\ValueObject\GeoPoint;
+use Logistics\Shipments\Domain\ValueObject\OrderSource;
+use Logistics\Shipments\Domain\ValueObject\PhysicalUnitId;
+use Logistics\Shipments\Domain\ValueObject\ProductName;
+use Logistics\Shipments\Domain\ValueObject\ShipmentId;
+use Logistics\Shipments\Domain\ValueObject\ShipmentLineId;
+use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
+use Logistics\Shipments\Domain\ValueObject\Sku;
+use Logistics\Shipments\Domain\ValueObject\SourceReference;
+
+/**
+ * Traduce entre el agregado Shipment y sus filas Eloquent. Toda la conversión a/desde primitivos vive
+ * acá, para que ni el dominio ni el repositorio conozcan la forma de las tablas.
+ */
+final class ShipmentMapper
+{
+    /**
+     * @return array<string, mixed>
+     */
+    public function toShipmentRow(Shipment $shipment): array
+    {
+        $geoPoint = $shipment->address()->geoPoint;
+
+        return [
+            'id' => $shipment->id()->toString(),
+            'source' => $shipment->source()->value,
+            'external_id' => $shipment->sourceReference()->externalId,
+            'customer_name' => $shipment->customerName(),
+            'address_text' => $shipment->address()->text,
+            'address_reference' => $shipment->address()->reference,
+            'lat' => $geoPoint?->lat,
+            'lng' => $geoPoint?->lng,
+            'address_confidence' => $shipment->addressConfidence()->score,
+            'address_confidence_level' => $shipment->addressConfidence()->level->value,
+            'status' => $shipment->status()->value,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toLineRow(Shipment $shipment, ShipmentLine $line): array
+    {
+        return [
+            'id' => $line->id()->toString(),
+            'shipment_id' => $shipment->id()->toString(),
+            'sku' => (string) $line->sku(),
+            'product_name' => (string) $line->productName(),
+            'quantity' => $line->quantity(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toUnitRow(Shipment $shipment, PhysicalUnit $unit): array
+    {
+        return [
+            'id' => $unit->id()->toString(),
+            'shipment_id' => $shipment->id()->toString(),
+            'line_id' => $unit->lineId()->toString(),
+            'unit_index' => $unit->unit()->index,
+            'unit_total' => $unit->unit()->total,
+            'piece_index' => $unit->piece()->index,
+            'piece_total' => $unit->piece()->total,
+        ];
+    }
+
+    /**
+     * Reconstruye el agregado completo (líneas y bultos) desde sus filas.
+     */
+    public function toDomain(ShipmentRecord $record): Shipment
+    {
+        $source = OrderSource::from($record->source);
+
+        $geoPoint = $record->lat !== null && $record->lng !== null
+            ? GeoPoint::of((float) $record->lat, (float) $record->lng)
+            : null;
+
+        $address = Address::of($record->address_text, $record->address_reference, $geoPoint);
+
+        $lines = [];
+        foreach ($record->lines as $lineRecord) {
+            $lines[] = ShipmentLine::create(
+                ShipmentLineId::fromString($lineRecord->id),
+                Sku::of($lineRecord->sku),
+                ProductName::of($lineRecord->product_name),
+                $lineRecord->quantity,
+            );
+        }
+
+        $units = [];
+        foreach ($record->units as $unitRecord) {
+            $units[] = PhysicalUnit::create(
+                PhysicalUnitId::fromString($unitRecord->id),
+                ShipmentLineId::fromString($unitRecord->line_id),
+                Fraction::of($unitRecord->unit_index, $unitRecord->unit_total),
+                Fraction::of($unitRecord->piece_index, $unitRecord->piece_total),
+            );
+        }
+
+        return Shipment::reconstitute(
+            ShipmentId::fromString($record->id),
+            $source,
+            SourceReference::of($source, $record->external_id),
+            $record->customer_name,
+            $address,
+            AddressConfidence::of($record->address_confidence),
+            ShipmentStatus::from($record->status),
+            $lines,
+            $units,
+        );
+    }
+}
