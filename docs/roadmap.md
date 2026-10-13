@@ -16,6 +16,18 @@ completa (CD→cliente, CD→CD, CD→tienda, tienda→tienda, tienda→CD y rec
 - `[~]` parcial / en progreso.
 - `[ ]` pendiente.
 
+## Avance 2026-10-13 (DDD + CQRS + UUID v7 + outbox)
+
+Construido en esta tanda, **compilado (`php -l` limpio) con tests escritos**, pero **sin verificar en
+containers** (Docker/vendor no disponibles en la sesión): por la regla #1 de `CLAUDE.md` no cuenta como
+"terminado" hasta correr `pest` + `phpstan` 8 + `pint` + verificación real. Marcado `[~]`.
+
+- `[~]` Núcleo `logistics/shared`: UUID v7, `AbstractId`, `AggregateRoot` + eventos inmutables, buses CQRS (`CommandBus`/`QueryBus` + `HandlerRegistry`), `Clock`. ADR 008.
+- `[~]` `logistics/outbox`: transactional outbox (idempotencia por `event_id`, `SKIP LOCKED` + lease, backoff, dead-letter, comando relay).
+- `[~]` `logistics/settings`: configuración versionada por clave (CQRS).
+- `[~]` `logistics/network`, `logistics/fleet`, `logistics/coverage`, `logistics/shipments`: dominio + CQRS + repos Eloquent + migraciones (PostGIS en network/coverage).
+- Pendiente inmediato de estos contextos: **wiring del outbox** en los handlers (hoy `releaseEvents()` con TODO), **Filament**, **endpoints HTTP** + `openapi`, geocodificador real, y la **verificación en containers**.
+
 ## Estado actual (línea base, 2026-10)
 
 - `[x]` Scaffold Laravel 13 (PHP 8.4), estructura de monolito modular.
@@ -87,15 +99,15 @@ Base que todos los packages usan. Bloquea casi todo lo demás; hacer temprano.
 ### P1-PLAT — Patrones base (outbox, settings, eventos)
 
 - `[ ]` P1-PLAT-01 Decidir: extraer `dismac/outbox` y `dismac/settings` a repo compartido **o** copiarlos a `packages/` (ADR nuevo).
-- `[ ]` P1-PLAT-02 Portar/crear package `outbox`: tabla, modelo, encolado, worker de despacho, reintentos con backoff, idempotencia por `event_id`, dead-letter.
+- `[~]` P1-PLAT-02 Package `outbox`: tabla, modelo, encolado (`RecordDomainEvents`), relay con reintentos/backoff, idempotencia por `event_id`, dead-letter. **(código; falta verificación en containers y wiring en los contextos)**
 - `[ ]` P1-PLAT-03 Panel Filament de outbox: ver pendientes, fallidos, reintentar, dead-letter.
-- `[ ]` P1-PLAT-04 Portar/crear package `settings`: reglas configurables y **versionadas** (coberturas, cupos, cortes, tarifas) con historial y auditoría.
-- `[ ]` P1-PLAT-05 Infraestructura de **eventos de dominio inmutables**: contrato común `DomainEvent`, almacén append-only (hora, GPS, usuario, dispositivo), publicación a listeners y a outbox.
-- `[ ]` P1-PLAT-06 Bus/dispatcher interno de eventos entre bounded contexts (sin acoplar Infrastructure de un context con otro).
-- `[ ]` P1-PLAT-07 Convención de IDs públicos (ULID/UUID) y separación de IDs internos; helper compartido.
-- `[ ]` P1-PLAT-08 Librería compartida de Value Objects geográficos (`Coordinate`, `Distance`) reutilizable por coverage/planning/tracking.
+- `[~]` P1-PLAT-04 Package `settings`: reglas configurables y **versionadas** con historial (CQRS). **(código; falta verificación)**
+- `[~]` P1-PLAT-05 **Eventos de dominio inmutables**: `DomainEvent`/`BaseDomainEvent`, grabados por `AggregateRoot`; almacén append-only vía outbox. **(código; falta el wiring agregado→outbox en los handlers)**
+- `[~]` P1-PLAT-06 CQRS: `CommandBus`/`QueryBus` + `HandlerRegistry` para desacoplar Presentation de los handlers de cada contexto. **(código; falta verificación)**
+- `[~]` P1-PLAT-07 Identidad: `Uuid` (v7, ordenable) + `AbstractId` para IDs tipados por contexto. ADR 008. **(código; falta verificación)**
+- `[ ]` P1-PLAT-08 Librería compartida de Value Objects geográficos (`Coordinate`, `Distance`) reutilizable por coverage/planning/tracking. (Hoy cada contexto tiene su `GeoPoint`; unificar.)
 - `[ ]` P1-PLAT-09 Manejo de errores de API uniforme (RFC 7807 problem+json) y catálogo de códigos de error.
-- `[ ]` P1-PLAT-10 Base de reglas de cache: cachear forma primitiva (array), nunca el objeto de dominio (regla CLAUDE.md #7); helpers y tests.
+- `[~]` P1-PLAT-10 Base de reglas de cache: cachear forma primitiva (array) vía ReadModels, nunca el objeto de dominio (regla CLAUDE.md #7). **(patrón aplicado en los ReadModels; faltan helpers y tests)**
 
 ### P1-AUTH — Autenticación, autorización y dispositivos
 
@@ -165,7 +177,9 @@ network → coverage → fleet → shipments → planning → execution → trac
 
 ### P1-NET — `logistics/network` (nodos y tramos)
 
-- `[ ]` P1-NET-01 Domain: `Node` (CD, tienda, punto de recojo) con tipo, capacidades, ubicación, estado.
+> **Avance 2026-10-13:** NET-01..05, 07, 08 en código `[~]` (dominio `Node` con UUID v7, CQRS, Eloquent + PostGIS, migraciones, tests). Falta Filament (NET-06), wiring del outbox y verificación en containers.
+
+- `[~]` P1-NET-01 Domain: `Node` (CD, tienda, punto de recojo) con tipo, capacidades, ubicación, estado.
 - `[ ]` P1-NET-02 Domain: `Leg`/tramo entre nodos y los 6 tipos de corredor (CD→cliente, CD→CD, CD→tienda, tienda→tienda, tienda→CD, recojo en tienda).
 - `[ ]` P1-NET-03 Domain: `Shipment` como **secuencia de tramos** entre nodos (modelo de ruta lógica, no física).
 - `[ ]` P1-NET-04 Infrastructure: persistencia Eloquent + migraciones (nodos, tramos) con PostGIS para ubicación.
@@ -176,7 +190,9 @@ network → coverage → fleet → shipments → planning → execution → trac
 
 ### P1-COV — `logistics/coverage` (cobertura geográfica)
 
-- `[ ]` P1-COV-01 Domain: jerarquía Departamento > Provincia > Municipio > Ciudad > Zona (polígono) > Microzona.
+> **Avance 2026-10-13:** COV-01..06, 08 en código `[~]` (jerarquía, `Zone` con `Polygon` PostGIS, punto→zona vía `ST_Contains`, parser GeoJSON, CQRS, migraciones, tests; el test punto→zona es Feature y requiere PostGIS). Falta Filament/visor (COV-07) y verificación en containers.
+
+- `[~]` P1-COV-01 Domain: jerarquía Departamento > Provincia > Municipio > Ciudad > Zona (polígono) > Microzona.
 - `[ ]` P1-COV-02 Domain: `Zone` como polígono PostGIS; `CoverageRule` por zona (nodo que atiende, servicios, tiempos base, límites por producto, restricciones horarias, días de servicio).
 - `[ ]` P1-COV-03 Infrastructure: resolución **punto→zona** con índice espacial PostGIS.
 - `[ ]` P1-COV-04 Infrastructure: importador del **mapa de cobertura actual** (KML/GeoJSON) por departamento, idempotente.
@@ -187,7 +203,9 @@ network → coverage → fleet → shipments → planning → execution → trac
 
 ### P1-FLT — `logistics/fleet` (flota y tripulación)
 
-- `[ ]` P1-FLT-01 Domain: `Vehicle` (capacidad kg/m³, CD base, estado, documentos con vencimiento).
+> **Avance 2026-10-13:** FLT-01..06, 08 en código `[~]` (agregados `Vehicle`/`Driver`/`Crew` con UUID v7, documentos con vencimiento, CQRS, Eloquent, migraciones, tests). Falta Filament (FLT-07), wiring del outbox y verificación en containers.
+
+- `[~]` P1-FLT-01 Domain: `Vehicle` (capacidad kg/m³, CD base, estado, documentos con vencimiento).
 - `[ ]` P1-FLT-02 Domain: `Driver` (licencia, vencimiento, vehículos habilitados) y `Helper`/ayudante.
 - `[ ]` P1-FLT-03 Domain: `Crew`/tripulación, turnos y descansos; `PreTripChecklist`.
 - `[ ]` P1-FLT-04 Domain: alertas por documentos próximos a vencer / vencidos.
@@ -198,7 +216,9 @@ network → coverage → fleet → shipments → planning → execution → trac
 
 ### P1-SHP — `logistics/shipments` (recepción de pedidos)
 
-- `[ ]` P1-SHP-01 Domain: `Shipment`, `ShipmentLine`, `PhysicalUnit`/bulto (unidad N de M, pieza N de M).
+> **Avance 2026-10-13:** SHP-01..05, 09 en código `[~]` (agregado `Shipment` con líneas y bultos N de M, UUID v7, ingesta única idempotente por `SourceReference`, score de dirección, CQRS, Eloquent, migraciones, tests). Falta ingesta Excel/Magento reales (SHP-06/07), Filament/HTTP + `openapi` (SHP-08), geocodificador real, wiring del outbox y verificación en containers.
+
+- `[~]` P1-SHP-01 Domain: `Shipment`, `ShipmentLine`, `PhysicalUnit`/bulto (unidad N de M, pieza N de M).
 - `[ ]` P1-SHP-02 Domain: normalización al modelo propio desde múltiples fuentes (sin materiales SAP, sin validar stock).
 - `[ ]` P1-SHP-03 Domain: dirección + **score de confianza** de la dirección.
 - `[ ]` P1-SHP-04 Infrastructure: **geocodificación** detrás de interfaz (Google primero) con cache y cuota.
