@@ -15,7 +15,7 @@ use Logistics\Shipments\Domain\ValueObject\AddressConfidence;
  * HTTP síncrono a terceros (regla del proyecto: todo I/O externo pasa por outbox). Por eso al recibir
  * NO se llama al geocodificador real: se asigna una confianza provisional por heurística —si la fuente
  * trajo coordenadas, se confía más; si no, queda baja y candidata a geocodificar— y la geocodificación
- * real (Google/Nominatim) la hace después, asíncrona, el comando GeocodeShipmentAddress vía el worker.
+ * real (Nominatim/OSM) la hace después, asíncrona, el comando GeocodeShipmentAddress vía el worker.
  *
  * Los dos umbrales son configurables (geocoder.provisional).
  */

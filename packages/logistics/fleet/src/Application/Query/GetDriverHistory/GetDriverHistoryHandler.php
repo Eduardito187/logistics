@@ -69,9 +69,10 @@ final readonly class GetDriverHistoryHandler implements QueryHandler
         $plates = $this->plates(array_values(array_unique($vehicleIds)));
         $helperNames = $this->helperNames(array_values(array_unique($helperIds)));
 
-        // 3. Rutas del rango del chofer: por driver_id si está poblado, o por el camión de la tripulación.
-        $routesByDriverDate = [];
-        $routesByVehicleDate = [];
+        // 3. Rutas candidatas del rango, indexadas por (camión, fecha): las confirmadas de este chofer
+        //    (driver_id) tienen prioridad; las que no tienen chofer asignado son atribuibles por el camión
+        //    de la tripulación; las que ya pertenecen a OTRO chofer se descartan.
+        $routesByVehDate = [];
         $routes = VehicleRouteRecord::query()
             ->whereBetween('route_date', [$from, $to])
             ->where(function (Builder $builder) use ($driverId, $vehicleIds): void {
@@ -82,22 +83,29 @@ final readonly class GetDriverHistoryHandler implements QueryHandler
             ->get();
         foreach ($routes as $route) {
             $date = substr($route->route_date, 0, 10);
+            $key = $route->vehicle_id.'|'.$date;
             if ($route->driver_id === $driverId) {
-                $routesByDriverDate[$date] = $route;
+                $routesByVehDate[$key] = $route;
+            } elseif ($route->driver_id === null && !isset($routesByVehDate[$key])) {
+                $routesByVehDate[$key] = $route;
             }
-            $routesByVehicleDate[$route->vehicle_id.'|'.$date] = $route;
         }
 
-        // 4. Empareja cada tripulación con su ruta y junta los ids para la carga en lote.
+        // 4. Empareja cada tripulación con su ruta por (camión, fecha). Cada ruta se cuenta UNA sola vez
+        //    aunque el chofer tenga dos tripulaciones el mismo día (evita el doble conteo de paradas).
         /** @var list<array{crew: CrewModel, route: VehicleRouteRecord|null, date: string}> $matched */
         $matched = [];
         $routeIds = [];
+        $consumedRouteIds = [];
         foreach ($crews as $crew) {
             $date = substr($crew->assembled_for, 0, 10);
-            $route = $routesByDriverDate[$date]
-                ?? ($routesByVehicleDate[$crew->vehicle_id.'|'.$date] ?? null);
-            if ($route !== null) {
+            $route = $routesByVehDate[$crew->vehicle_id.'|'.$date] ?? null;
+            if ($route !== null && !isset($consumedRouteIds[$route->id])) {
+                $consumedRouteIds[$route->id] = true;
                 $routeIds[] = $route->id;
+            } else {
+                // Sin ruta propia ese día, o ruta ya contada por otra tripulación: fila de día en cero.
+                $route = null;
             }
             $matched[] = ['crew' => $crew, 'route' => $route, 'date' => $date];
         }

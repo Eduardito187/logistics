@@ -91,9 +91,8 @@ final class MessageTypeRuleResource extends Resource
     private static function channels(): array
     {
         return [
-            'PUSH_FCM' => __('Push'),
+            'PUSH_NTFY' => __('Push'),
             'WEB_PUSH' => __('Web push'),
-            'WHATSAPP' => __('WhatsApp'),
             'TELEGRAM' => __('Telegram'),
             'EMAIL' => __('Email'),
             'SMS' => __('SMS'),

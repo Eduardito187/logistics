@@ -57,11 +57,10 @@ final class NotificationsSeeder extends Seeder
             [MessageType::ConfirmLocation, 'Confirma tu ubicación', 'Necesitamos que confirmes tu dirección para entregar el pedido {{order}}.'],
         ];
 
-        // Todos los canales: push, web push, WhatsApp, Telegram, email y SMS.
+        // Todos los canales (open-source): push ntfy, web push VAPID, Telegram, email y SMS.
         $channels = [
-            Channel::PushFcm,
+            Channel::PushNtfy,
             Channel::WebPush,
-            Channel::WhatsApp,
             Channel::Telegram,
             Channel::Email,
             Channel::Sms,
@@ -95,7 +94,7 @@ final class NotificationsSeeder extends Seeder
             ['message_type' => MessageType::ConfirmLocation->value],
             [
                 'channels' => [
-                    Channel::PushFcm->value,
+                    Channel::PushNtfy->value,
                     Channel::WebPush->value,
                     Channel::Email->value,
                     Channel::Sms->value,

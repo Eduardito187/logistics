@@ -9,7 +9,7 @@ use Logistics\Shipments\Domain\ValueObject\GeocodeResult;
 
 /**
  * Geocodificador de direcciones: resuelve una dirección a un punto geográfico más su confianza y tipo
- * de coincidencia (ver GeocodeResult). El dominio define QUÉ necesita; el CÓMO (Google, Nominatim/OSM,
+ * de coincidencia (ver GeocodeResult). El dominio define QUÉ necesita; el CÓMO (Nominatim/OSM,
  * heurística) es decisión de Infrastructure, así el dominio no se acopla a ningún proveedor.
  *
  * Extiende AddressConfidenceScorer: todo geocodificador sabe, además, puntuar una dirección (el score

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Infrastructure\Providers;
 
-use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Support\ServiceProvider;
@@ -49,15 +48,12 @@ use Logistics\Notifications\Domain\Contract\ProductImageResolver;
 use Logistics\Notifications\Domain\Contract\SmsBudgetRepository;
 use Logistics\Notifications\Domain\ValueObject\Channel;
 use Logistics\Notifications\Infrastructure\Channel\EmailChannelSender;
-use Logistics\Notifications\Infrastructure\Channel\Fcm\FcmAccessTokenProvider;
-use Logistics\Notifications\Infrastructure\Channel\Fcm\ServiceAccountFcmAccessTokenProvider;
-use Logistics\Notifications\Infrastructure\Channel\FcmChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\NotificationContentRenderer;
+use Logistics\Notifications\Infrastructure\Channel\NtfyChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\RoutingChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\SmsChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\TelegramChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\WebPushChannelSender;
-use Logistics\Notifications\Infrastructure\Channel\WhatsAppChannelSender;
 use Logistics\Notifications\Infrastructure\Dispatch\DomainEventNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\FleetDocumentExpiryNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\NotificationChannelDispatcher;
@@ -217,43 +213,31 @@ final class NotificationsServiceProvider extends ServiceProvider
     }
 
     /**
-     * Arma los seis canales reales detrás del contrato ChannelSender y el dispatcher del outbox.
+     * Arma los canales reales (todos open-source) detrás del contrato ChannelSender y el dispatcher del
+     * outbox: push por ntfy/UnifiedPush, web push por VAPID (vía ntfy), Telegram, email y SMS por gateway
+     * open-source. Sin Firebase/FCM ni WhatsApp de pago.
      */
     private function registerChannels(): void
     {
-        // Proveedor de access token de FCM (service account del proyecto Firebase).
-        $this->app->singleton(FcmAccessTokenProvider::class, function ($app): ServiceAccountFcmAccessTokenProvider {
-            /** @var array<string, mixed> $fcm */
-            $fcm = $app['config']->get('logistics-notifications.fcm');
-
-            return new ServiceAccountFcmAccessTokenProvider(
-                is_string($fcm['credentials'] ?? null) ? $fcm['credentials'] : null,
-                (string) ($fcm['scope'] ?? ''),
-                (int) ($fcm['timeout'] ?? 5),
-                $app->make(CacheRepository::class),
-            );
-        });
-
         // Binding de producción del ChannelSender: enruta por canal a los senders reales.
         $this->app->singleton(ChannelSender::class, function ($app): RoutingChannelSender {
             /** @var array<string, mixed> $config */
             $config = $app['config']->get('logistics-notifications');
-            /** @var array{project_id: ?string, endpoint: string, timeout: int} $fcmConfig */
-            $fcmConfig = [
-                'project_id' => $config['fcm']['project_id'] ?? null,
-                'endpoint' => (string) ($config['fcm']['endpoint'] ?? ''),
-                'timeout' => (int) ($config['fcm']['timeout'] ?? 5),
-            ];
-            $tokens = $app->make(FcmAccessTokenProvider::class);
             $pushImages = $app->make(PushImageResolver::class);
 
-            /** @var array{endpoint: string, token: ?string, phone_id: ?string, api_version: string, timeout: int} $whatsappConfig */
-            $whatsappConfig = [
-                'endpoint' => (string) ($config['whatsapp']['endpoint'] ?? 'https://graph.facebook.com'),
-                'token' => $config['whatsapp']['token'] ?? null,
-                'phone_id' => $config['whatsapp']['phone_id'] ?? null,
-                'api_version' => (string) ($config['whatsapp']['api_version'] ?? 'v21.0'),
-                'timeout' => (int) ($config['whatsapp']['timeout'] ?? 5),
+            /** @var array{url: ?string, token: ?string, priority: string, timeout: int} $ntfyConfig */
+            $ntfyConfig = [
+                'url' => $config['ntfy']['url'] ?? null,
+                'token' => $config['ntfy']['token'] ?? null,
+                'priority' => (string) ($config['ntfy']['priority'] ?? 'default'),
+                'timeout' => (int) ($config['ntfy']['timeout'] ?? 5),
+            ];
+            /** @var array{url: ?string, token: ?string, vapid_public_key: ?string, timeout: int} $webPushConfig */
+            $webPushConfig = [
+                'url' => $config['web_push']['url'] ?? null,
+                'token' => $config['web_push']['token'] ?? null,
+                'vapid_public_key' => $config['web_push']['vapid_public_key'] ?? null,
+                'timeout' => (int) ($config['web_push']['timeout'] ?? 5),
             ];
             /** @var array{endpoint: string, bot_token: ?string, timeout: int} $telegramConfig */
             $telegramConfig = [
@@ -263,9 +247,8 @@ final class NotificationsServiceProvider extends ServiceProvider
             ];
 
             return new RoutingChannelSender([
-                Channel::PushFcm->value => new FcmChannelSender($tokens, $fcmConfig, $pushImages),
-                Channel::WebPush->value => new WebPushChannelSender($tokens, $fcmConfig, $pushImages),
-                Channel::WhatsApp->value => new WhatsAppChannelSender($whatsappConfig, $pushImages),
+                Channel::PushNtfy->value => new NtfyChannelSender($ntfyConfig, $pushImages),
+                Channel::WebPush->value => new WebPushChannelSender($webPushConfig, $pushImages),
                 Channel::Telegram->value => new TelegramChannelSender($telegramConfig, $pushImages),
                 Channel::Email->value => new EmailChannelSender(
                     is_string($config['email']['mailer'] ?? null) ? $config['email']['mailer'] : null,
@@ -278,8 +261,10 @@ final class NotificationsServiceProvider extends ServiceProvider
                     $app->make(SmsBudgetRepository::class),
                     $app->make(Clock::class),
                     [
-                        'endpoint' => $config['sms']['endpoint'] ?? null,
+                        'url' => $config['sms']['url'] ?? null,
                         'token' => $config['sms']['token'] ?? null,
+                        'username' => $config['sms']['username'] ?? null,
+                        'password' => $config['sms']['password'] ?? null,
                         'sender' => (string) ($config['sms']['sender'] ?? 'Dismac'),
                         'monthly_cap' => (int) ($config['sms']['monthly_cap'] ?? 0),
                         'timeout' => (int) ($config['sms']['timeout'] ?? 5),

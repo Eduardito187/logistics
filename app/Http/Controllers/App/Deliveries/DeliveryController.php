@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\App\Deliveries;
 
+use App\Http\Controllers\App\Concerns\ResolvesRouteMapData;
 use App\Http\Controllers\Controller;
 use Inertia\Inertia;
 use Inertia\Response;
+use Logistics\Execution\Domain\ValueObject\ScanType;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\DeliveryRecord;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\ScanEventRecord;
 
@@ -18,6 +20,8 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\ScanEventRecord;
  */
 final class DeliveryController extends Controller
 {
+    use ResolvesRouteMapData;
+
     /**
      * Listado de entregas en ejecución. Resuelve pedido (external_id) y vehículo (placa) legibles,
      * con eager-load para evitar N+1.
@@ -95,7 +99,13 @@ final class DeliveryController extends Controller
                     'customer' => $scan->unit_id,
                     'status' => (string) $scan->type,
                 ];
-                $track[] = [$lat, $lng];
+
+                // El recorrido real (línea roja) usa SOLO los escaneos de tránsito (IN_TRANSIT): los demás
+                // tipos (preparación, carga, descarga, prueba de entrega) ocurren parados y, mezclados,
+                // dibujaban una traza sin sentido. Mismo criterio que el mapa del admin (actualTrack).
+                if ((string) $scan->type === ScanType::InTransit->value) {
+                    $track[] = [$lat, $lng];
+                }
             }
         }
 
@@ -115,9 +125,11 @@ final class DeliveryController extends Controller
             'scans' => $scans,
             'map' => [
                 'stops' => $mapStops,
-                // El recorrido real se traza con los puntos de los escaneos, en orden cronológico.
+                // El recorrido real se traza con los puntos de tránsito (IN_TRANSIT), en orden cronológico.
                 'actual' => $track,
                 'planned' => [],
+                'geometry' => [],
+                'osrmHost' => $this->osrmHost(),
             ],
         ]);
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\App\Planning;
 
+use App\Http\Controllers\App\Concerns\ResolvesRouteMapData;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -21,6 +22,8 @@ use Logistics\Planning\Infrastructure\Persistence\Eloquent\PlanRecord;
  */
 final class PlanningController extends Controller
 {
+    use ResolvesRouteMapData;
+
     /**
      * Listado de planes de reparto (fecha, vehículo/placa, nº de paradas, estado).
      */
@@ -126,7 +129,12 @@ final class PlanningController extends Controller
             'map' => [
                 'stops' => $mapStops,
                 'planned' => $planned,
+                // Geometría planificada persistida en este mismo plan (planning_plans.route_geometry);
+                // sigue calles reales. Si está vacía, el mapa la traza con OSRM y, si falla, línea recta.
+                'geometry' => $this->normalizeGeometry($record->route_geometry),
+                // Un plan aún no se ejecuta: no hay recorrido GPS real que mostrar todavía.
                 'actual' => [],
+                'osrmHost' => $this->osrmHost(),
             ],
         ];
     }

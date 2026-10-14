@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\App\Operations;
 
+use App\Http\Controllers\App\Concerns\ResolvesRouteMapData;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,6 +19,8 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\VehicleRouteRecord;
  */
 final class RouteController extends Controller
 {
+    use ResolvesRouteMapData;
+
     /**
      * Listado de rutas de reparto.
      */
@@ -55,12 +58,17 @@ final class RouteController extends Controller
         $stops = [];
         $mapStops = [];
         $planned = [];
+        $shipmentIds = [];
 
         /** @var RouteStopRecord $stop */
         foreach ($record->stops as $stop) {
             $lat = $this->coord($stop->lat ?? $stop->shipment?->lat);
             $lng = $this->coord($stop->lng ?? $stop->shipment?->lng);
             $hasPoint = $lat !== null && $lng !== null;
+
+            if ($stop->shipment_id !== null) {
+                $shipmentIds[] = (string) $stop->shipment_id;
+            }
 
             $stops[] = [
                 'seq' => (int) $stop->sequence,
@@ -96,7 +104,11 @@ final class RouteController extends Controller
             'map' => [
                 'stops' => $mapStops,
                 'planned' => $planned,
-                'actual' => [],
+                // Geometría planificada persistida por Planning (sigue calles); si no hay, el mapa cae a OSRM.
+                'geometry' => $this->plannedGeometryForVehicleDay((string) $record->vehicle_id, (string) $record->route_date),
+                // Recorrido real del camión: puntos GPS de tránsito (escaneos IN_TRANSIT) de esta ruta.
+                'actual' => $this->actualTrackForShipments((string) $record->vehicle_id, array_values(array_unique($shipmentIds))),
+                'osrmHost' => $this->osrmHost(),
             ],
         ]);
     }

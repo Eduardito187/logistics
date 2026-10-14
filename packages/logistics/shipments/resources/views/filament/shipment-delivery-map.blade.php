@@ -41,9 +41,10 @@
 
     if (el && lat !== null && lng !== null) {
         const map = L.map(el).setView([lat, lng], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap',
-            maxZoom: 19,
+        // Teselas self-host (tileserver OSM del proyecto); si MAP_TILE_URL está vacío, cae al tile público de OSM.
+        L.tileLayer(@js(config('maps.tile_url') ?: config('maps.tile_fallback_url')), {
+            attribution: @js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
+            maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
         }).addTo(map);
 
         const parts = [];

@@ -22,7 +22,7 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * escala al siguiente, y al agotarse la cascada queda fallida.
  *
  * El envío real es asíncrono (por outbox): el agregado solo registra el estado y los hechos; no habla
- * con FCM, email ni SMS.
+ * con ntfy, email ni SMS.
  */
 final class Notification extends AggregateRoot
 {

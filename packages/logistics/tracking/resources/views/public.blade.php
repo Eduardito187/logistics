@@ -156,9 +156,10 @@
 
         if (pos && typeof L !== 'undefined') {
             var map = L.map('map', { scrollWheelZoom: false }).setView([pos.lat, pos.lng], 14);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap',
-                maxZoom: 19,
+            {{-- Teselas self-host (tileserver OSM del proyecto); si MAP_TILE_URL está vacío, cae al tile público de OSM. --}}
+            L.tileLayer(@js(config('maps.tile_url') ?: config('maps.tile_fallback_url')), {
+                attribution: @js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
+                maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
             }).addTo(map);
             L.marker([pos.lat, pos.lng]).addTo(map);
             L.circle([pos.lat, pos.lng], { radius: 180, color: '#E2231A', weight: 1, fillOpacity: 0.12 }).addTo(map);

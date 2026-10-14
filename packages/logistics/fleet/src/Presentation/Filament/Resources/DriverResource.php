@@ -34,6 +34,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\DriverResource\Pages\EditDri
 use Logistics\Fleet\Presentation\Filament\Resources\DriverResource\Pages\ListDrivers;
 use Logistics\Fleet\Presentation\Filament\Resources\DriverResource\Pages\ViewDriver;
 use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
+use Logistics\Shared\Presentation\Filament\ImageFallback;
 
 /**
  * Resource de administración de choferes de la flota.
@@ -215,10 +216,14 @@ final class DriverResource extends Resource
                 // Foto cuadrada pequeña (nunca un círculo gigante — ver gotcha 20 de la skill).
                 ImageColumn::make('photo_path')
                     ->label(__('Photo'))
-                    ->disk(self::documentsDisk())
                     ->square()
                     ->imageSize(40)
-                    ->checkFileExistence(false),
+                    ->checkFileExistence(false)
+                    // La foto vive en disco (s3/privado): puede faltar o el disco no ser alcanzable. Se
+                    // resuelve a una URL servible o null; con null, el defaultImageUrl pinta un avatar.
+                    ->getStateUsing(static fn ($record): ?string => ImageFallback::diskUrl(self::documentsDisk(), $record->photo_path))
+                    ->defaultImageUrl(ImageFallback::placeholder('avatar'))
+                    ->extraImgAttributes(ImageFallback::onError('avatar')),
                 TextColumn::make('name')
                     ->label(__('Name'))
                     ->searchable()
@@ -267,11 +272,12 @@ final class DriverResource extends Resource
                     // Foto cuadrada pequeña (ver gotcha 20 de la skill): nunca circular gigante.
                     ImageEntry::make('photo_path')
                         ->label(__('Photo'))
-                        ->disk(self::documentsDisk())
                         ->square()
                         ->imageSize(56)
                         ->checkFileExistence(false)
-                        ->placeholder('—'),
+                        ->getStateUsing(static fn ($record): ?string => ImageFallback::diskUrl(self::documentsDisk(), $record->photo_path))
+                        ->defaultImageUrl(ImageFallback::placeholder('avatar'))
+                        ->extraImgAttributes(ImageFallback::onError('avatar')),
                     TextEntry::make('name')->label(__('Name')),
                     TextEntry::make('national_id')->label(__('National ID'))->placeholder('—'),
                     TextEntry::make('birth_date')

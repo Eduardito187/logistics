@@ -21,7 +21,7 @@ function queueNotification(?CascadePolicy $policy = null): Notification
         NotificationId::generate(),
         'f8c3de3d-1fea-4d7c-a8b0-29f63c4c3454',
         MessageType::EnRoute,
-        $policy ?? CascadePolicy::of([Channel::PushFcm, Channel::WebPush, Channel::Email, Channel::Sms]),
+        $policy ?? CascadePolicy::of([Channel::PushNtfy, Channel::WebPush, Channel::Email, Channel::Sms]),
     );
 }
 
@@ -29,7 +29,7 @@ it('queues a notification in Queued status pointing at the first channel', funct
     $notification = queueNotification();
 
     expect($notification->status())->toBe(NotificationStatus::Queued)
-        ->and($notification->currentChannel())->toBe(Channel::PushFcm)
+        ->and($notification->currentChannel())->toBe(Channel::PushNtfy)
         ->and($notification->attempts())->toBe([])
         ->and($notification->fcmTopic()->value)->toBe('shipment_f8c3de3d-1fea-4d7c-a8b0-29f63c4c3454');
 });
@@ -45,8 +45,8 @@ it('records a NotificationQueued event with the cascade channels', function (): 
     /** @var NotificationQueued $event */
     $event = $events[0];
     expect($event->eventName())->toBe('notifications.notification_queued')
-        ->and($event->firstChannel)->toBe('PUSH_FCM')
-        ->and($event->channels)->toBe(['PUSH_FCM', 'WEB_PUSH', 'EMAIL', 'SMS'])
+        ->and($event->firstChannel)->toBe('PUSH_NTFY')
+        ->and($event->channels)->toBe(['PUSH_NTFY', 'WEB_PUSH', 'EMAIL', 'SMS'])
         ->and($event->payload()['fcm_topic'])->toBe('shipment_f8c3de3d-1fea-4d7c-a8b0-29f63c4c3454');
 });
 
@@ -71,7 +71,7 @@ it('marks sent via a channel, counting the attempt and recording the event', fun
 });
 
 it('rejects marking sent via a channel outside the policy', function (): void {
-    $notification = queueNotification(CascadePolicy::of([Channel::PushFcm, Channel::Email]));
+    $notification = queueNotification(CascadePolicy::of([Channel::PushNtfy, Channel::Email]));
 
     expect(fn () => $notification->markSentVia(Channel::Sms))
         ->toThrow(NotificationsException::class, 'no pertenece a la política');
@@ -81,7 +81,7 @@ it('escalate walks the full cascade in order and then fails', function (): void 
     $notification = queueNotification();
     $notification->releaseEvents();
 
-    expect($notification->currentChannel())->toBe(Channel::PushFcm);
+    expect($notification->currentChannel())->toBe(Channel::PushNtfy);
 
     $notification->escalate();
     expect($notification->currentChannel())->toBe(Channel::WebPush);
@@ -97,7 +97,7 @@ it('escalate walks the full cascade in order and then fails', function (): void 
     $notification->escalate();
     expect($notification->status())->toBe(NotificationStatus::Failed)
         ->and($notification->attempts())->toBe([
-            'PUSH_FCM' => 1,
+            'PUSH_NTFY' => 1,
             'WEB_PUSH' => 1,
             'EMAIL' => 1,
             'SMS' => 1,
@@ -106,7 +106,7 @@ it('escalate walks the full cascade in order and then fails', function (): void 
 
 it('does not escalate a notification that is not queued', function (): void {
     $notification = queueNotification();
-    $notification->markSentVia(Channel::PushFcm);
+    $notification->markSentVia(Channel::PushNtfy);
 
     expect(fn () => $notification->escalate())
         ->toThrow(NotificationsException::class, 'solo se escala');
@@ -122,7 +122,7 @@ it('suppresses a queued notification', function (): void {
 
 it('rejects suppressing an already sent notification', function (): void {
     $notification = queueNotification();
-    $notification->markSentVia(Channel::PushFcm);
+    $notification->markSentVia(Channel::PushNtfy);
 
     expect(fn () => $notification->suppress())
         ->toThrow(NotificationsException::class, 'ya enviada');
@@ -132,6 +132,6 @@ it('rejects sending a suppressed notification', function (): void {
     $notification = queueNotification();
     $notification->suppress();
 
-    expect(fn () => $notification->markSentVia(Channel::PushFcm))
+    expect(fn () => $notification->markSentVia(Channel::PushNtfy))
         ->toThrow(NotificationsException::class, 'suprimida');
 });

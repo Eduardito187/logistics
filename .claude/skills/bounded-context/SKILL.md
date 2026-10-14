@@ -197,7 +197,57 @@ Al generar presentación/datos de un package, respetar esto o el admin/seed romp
     dependencia composer entre contextos. CUIDADO con casts `datetime`: el atributo es Carbon, usar
     `->toDateTimeImmutable()` (no `new DateTimeImmutable($record->campo)`, que revienta con 500). Ver [[api-readmodel-enrichment]].
 
+## Gotchas al correr la suite (Pest, verificados 2026-10-13; de 201+9+5 errores a 0)
+
+20. **Colisión de helpers globales entre tests**: Pest carga TODOS los `*Test.php` en un proceso, así que
+    una `function foo()` top-level en el test de un package choca con la misma en otro (`fixedClock` fue el
+    caso). Nombra los helpers de test con prefijo del package (`capacityFixedClock`) o chequéalos:
+    `grep -rhoE "^function [a-z]+" packages/*/tests | sort | uniq -d`.
+21. **`->toThrow(Throwable::class)` NO funciona** en Pest (Throwable es interface → lo trata como substring
+    del mensaje y falla). Usa la clase concreta de la excepción (`->toThrow(AccessException::class)`).
+22. **UUID en columnas**: un test que mete un id legible (`"REC-7001"`) en una columna `uuid` revienta con
+    `SQLSTATE[22P02] invalid input syntax for type uuid`. Usa UUIDs válidos en los fixtures (los event_id
+    de dominio SON UUIDs).
+23. **PHPStan `Collection::all()` NO es `list`**: `$coll->map(...)->all()` es `array<int,T>`, no `list<T>`.
+    Para un `@return list<...>` envuelve en `array_values(...)` o declara `@return array<int, ...>`. Y
+    `Model::query()->with(...)->find($id)` tipa a `Model|null` (pierde el genérico): tras el null-guard,
+    `assert($x instanceof FooRecord);` para angostar.
+
+## Gotchas de read-models de agregación cross-context (historial/analítica, 2026-10-13)
+
+- Un ReadModel que AGREGA cruzando contextos por una **clave implícita** (no hay FK ni entidad "jornada")
+  debe indexar por la clave COMPUESTA completa y **deduplicar**. Caso real `GetDriverHistory`: unía
+  `fleet_crews` ↔ `execution_driver_routes` por fecha sola → un chofer con dos tripulaciones el mismo día
+  contaba la misma ruta/paradas DOS veces (total_stops x2). Fix: indexar rutas por `(vehicle_id, fecha)`,
+  preferir la ruta confirmada por `driver_id`, descartar las de otro chofer, y marcar cada ruta como
+  consumida (set de ids) para no recontar. Verificar el total contra una sola ruta conocida.
+- La atribución fuerte (poblar `driver_id`/`helper_ids` en la ruta de execution) requeriría meter el
+  concepto de tripulación (Fleet) en el Domain de Execution; se dejó como columna aditiva opcional y el
+  read-model cae al join por vehículo+fecha. En DEMO se alinea con un paso idempotente en el seeder
+  (`alignDriverRoutesWithCrews`). Ver [[fleet-personnel-expansion]], [[seed-data-cross-refs]].
+- Resolver nombres/placas EN LOTE (whereIn + keyBy), nunca por fila (N+1), igual que el enriquecimiento de FKs.
+
+## Patrones reusables de un contexto (verificados 2026-10-14 en telemetry y fleetops)
+
+- **Alerta periódica por barrido → outbox** (vencimientos, mantenimiento por vencer, etc.): un
+  `XScanner` de Application reúne las vistas candidatas (reusado por la query del tablero Y por la alerta,
+  mismo criterio), un `CommandHandler` (NO readonly: guarda contadores de la última corrida) emite UN solo
+  evento resumen al outbox si hay algo, y un `Command` de consola lo dispara e imprime el resumen. Lo
+  agenda el propio ServiceProvider: en `boot()`, dentro de `if ($this->app->runningInConsole())`,
+  `$this->commands([...])` + `$this->app->booted(fn () => $this->app->make(Schedule::class)->command('...')->dailyAt('..')->withoutOverlapping())`.
+  Molde: `fleet/AlertExpiringDocuments` → copiado a `fleetops/AlertDueMaintenance` y `telemetry:aggregate-streets`.
+- **Query transversal/analítica que cruza contextos** (TCO, costo/km): el QueryHandler suma varios repos
+  del propio contexto y, para datos de OTRO contexto, lee su TABLA read-only con `DB::table('otra_tabla')`
+  envuelto en `try/catch` (degrada a 0 si no existe), no una dependencia composer. Caso: `fleetops`
+  `GetVehicleCostSummary` suma combustible+mantenimiento+gastos y divide por `telemetry_trips.distance_m`.
+- **VO Money por contexto**: replicar `carriers/Money` (centavos int + currency, `of/add/subtract/multiply/toArray`)
+  con la Exception propia del contexto; guardar `*_cents` + `currency`, nunca float. Default BOB en Dismac.
+- **Nombre real del Record de otro contexto**: NO asumir `XRecord`; verificar (p. ej. el vehículo de fleet
+  es `Logistics\Fleet\...\Model\VehicleModel`, no `VehicleRecord`). Para mostrar su placa, lectura cruzada
+  read-only EN LOTE (helper/trait memoizado), nunca belongsTo que obligue a tocar el otro contexto.
+
 ## Referencia
 
 `packages/logistics/network`, `fleet`, `coverage`, `shipments` ya siguen este patrón; `labels` para el
-estilo de VOs y comandos; `outbox` y `settings` para persistencia e idempotencia.
+estilo de VOs y comandos; `outbox` y `settings` para persistencia e idempotencia. `fleetops` (mantenimiento/
+gastos/perfil de vehículo) es un contexto nuevo agregado en esta fase.

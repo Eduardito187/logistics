@@ -31,13 +31,25 @@ Módulo Operaciones/Rutas (el piloto):
 
 El controlador devuelve `Inertia::render('<Modulo>/<Pagina>', [ ...props ])`. Navegación con `<Link :href="route('app.<modulo>.<x>')">` o `router.visit(route(...))`. `route()` es Ziggy (global).
 
-## Datos
+## Datos — LECTURA
 
-- SOLO LECTURA. Lee el read-side: los `*Record` Eloquent del contexto (igual que hacen los Filament
-  Resources — míralos para conocer campos/relaciones reales) o, mejor, el QueryBus si hay query. Nada de
-  escrituras de negocio (eso sigue en admin/API). Resuelve los valores legibles (no UUIDs crudos): placa,
-  external_id, nombre de cliente, etc. Evita N+1 con `->with([...])`.
+- Lee el read-side: los `*Record` Eloquent del contexto (igual que hacen los Filament Resources — míralos
+  para conocer campos/relaciones reales) o, mejor, el QueryBus si hay query. Resuelve los valores legibles
+  (no UUIDs crudos): placa, external_id, nombre de cliente, etc. Evita N+1 con `->with([...])`.
 - Reusa la lógica de coordenadas/mapa del `RouteController` del piloto para pantallas con mapa.
+
+## Datos — ESCRITURA (acciones del operador)
+
+Las escrituras de negocio van SIEMPRE por el dominio (Presentation → Application), nunca escribiendo el
+Record a mano. Patrón ya usado en planning y deliveries:
+- Un controlador `App\Http\Controllers\App\<Modulo>\<X>WriteController`: valida el input, resuelve el id,
+  `app(\Logistics\Shared\Application\Command\CommandBus::class)->dispatch(new XxxCommand(...))`, captura la
+  excepción de dominio y hace `back()->with('success'|'error', '...')`.
+- Rutas de escritura en archivo PROPIO `routes/app/<modulo>-writes.php` (POST/PUT; no mezclar con el de lectura).
+- Vue: `useForm`/`router.post|put` de Inertia; el **flash global de AppLayout** muestra success/error (no hace
+  falta renderizarlo por página). Gatea la UI por estado del dominio (ej. acciones solo si la entrega está
+  LOADED/IN_TRANSIT). Si un Command que necesitas NO existe, NO inventes la escritura: repórtalo (ej. "mover
+  parada entre camiones" requirió el Command nuevo `ReassignShipmentToVehicle` en planning).
 
 ## Reglas duras (del dueño)
 

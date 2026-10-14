@@ -26,6 +26,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddress;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
@@ -352,7 +353,11 @@ final class ShipmentResource extends Resource
                                 ->label(__('Image'))
                                 ->square()
                                 ->imageSize(56)
-                                ->checkFileExistence(false),
+                                ->checkFileExistence(false)
+                                // Sin URL → placeholder; URL externa que responde 404 → onerror la cambia
+                                // por el placeholder. Nunca una imagen rota ni un hueco en blanco.
+                                ->defaultImageUrl(ImageFallback::placeholder('box'))
+                                ->extraImgAttributes(ImageFallback::onError('box')),
                             TextEntry::make('sku')
                                 ->label(__('SKU')),
                             TextEntry::make('product_name')

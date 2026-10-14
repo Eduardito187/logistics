@@ -11,6 +11,7 @@ use Logistics\Carriers\Infrastructure\Providers\CarriersServiceProvider;
 use Logistics\Coverage\Infrastructure\Providers\CoverageServiceProvider;
 use Logistics\Execution\Infrastructure\Providers\ExecutionServiceProvider;
 use Logistics\Fleet\Infrastructure\Providers\FleetServiceProvider;
+use Logistics\FleetOps\Infrastructure\Providers\FleetOpsServiceProvider;
 use Logistics\Labels\Infrastructure\Providers\LabelsServiceProvider;
 use Logistics\Network\Infrastructure\Providers\NetworkServiceProvider;
 use Logistics\Notifications\Infrastructure\Providers\NotificationsServiceProvider;
@@ -53,6 +54,7 @@ return [
     NetworkServiceProvider::class,
     CoverageServiceProvider::class,
     FleetServiceProvider::class,
+    FleetOpsServiceProvider::class,
 
     // Flujo de un envío
     ShipmentsServiceProvider::class,

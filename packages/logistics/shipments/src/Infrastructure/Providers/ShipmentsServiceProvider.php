@@ -29,7 +29,6 @@ use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
 use Logistics\Shipments\Domain\Contract\Geocoder;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
 use Logistics\Shipments\Infrastructure\Geocoding\GeocodeScoring;
-use Logistics\Shipments\Infrastructure\Geocoding\GoogleGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\NominatimGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\NullGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\ProvisionalAddressConfidenceScorer;
@@ -99,9 +98,10 @@ final class ShipmentsServiceProvider extends ServiceProvider
             );
         });
 
-        // Geocodificador de direcciones: Google (si hay clave), Nominatim/OSM (sin clave) o el stub
-        // neutro, según config (driver) con AUTO por defecto, para que la app arranque y se desarrolle
-        // sin credenciales (ADR: I/O externo configurable y degradable). Se resuelve lazy, al primer uso.
+        // Geocodificador de direcciones: Nominatim/OSM (open-source self-host, sin clave) o el stub
+        // neutro, según config (driver) con 'nominatim' por defecto, para que la app arranque y se
+        // desarrolle sin servicios de pago (ADR: I/O externo configurable y degradable). Se resuelve
+        // lazy, al primer uso.
         $this->app->singleton(Geocoder::class, function ($app): Geocoder {
             /** @var Config $config */
             $config = $app->make(Config::class);
@@ -132,18 +132,11 @@ final class ShipmentsServiceProvider extends ServiceProvider
         $driver = $config->get('logistics-shipments.geocoder.driver');
         $driver = is_string($driver) && $driver !== '' ? strtolower($driver) : null;
 
-        $googleKey = $config->get('logistics-shipments.geocoder.google.key');
-        $hasGoogleKey = is_string($googleKey) && $googleKey !== '';
-
         $nominatimEnabled = (bool) $config->get('logistics-shipments.geocoder.nominatim.enabled', true);
 
-        // AUTO: Google si hay clave; si no, Nominatim si está habilitado; si no, el stub neutro.
+        // AUTO: Nominatim si está habilitado; si no, el stub neutro. (Sin servicios de pago.)
         if ($driver === null) {
-            $driver = match (true) {
-                $hasGoogleKey => 'google',
-                $nominatimEnabled => 'nominatim',
-                default => 'null',
-            };
+            $driver = $nominatimEnabled ? 'nominatim' : 'null';
         }
 
         $store = $config->get('logistics-shipments.geocoder.cache_store');
@@ -153,21 +146,6 @@ final class ShipmentsServiceProvider extends ServiceProvider
         $scoring = GeocodeScoring::fromConfig(is_array($scoringConfig) ? $scoringConfig : []);
 
         $cacheTtl = (int) $config->get('logistics-shipments.geocoder.cache_ttl', 2592000);
-
-        if ($driver === 'google' && $hasGoogleKey) {
-            return new GoogleGeocoder(
-                $http,
-                $cache,
-                $scoring,
-                (string) $googleKey,
-                (string) $config->get('logistics-shipments.geocoder.google.endpoint'),
-                (string) $config->get('logistics-shipments.geocoder.google.region', 'bo'),
-                (string) $config->get('logistics-shipments.geocoder.google.language', 'es'),
-                (int) $config->get('logistics-shipments.geocoder.google.timeout', 5),
-                $cacheTtl,
-                (int) $config->get('logistics-shipments.geocoder.google.daily_quota', 40000),
-            );
-        }
 
         if ($driver === 'nominatim') {
             return new NominatimGeocoder(

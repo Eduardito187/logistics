@@ -39,7 +39,7 @@ it('ignora tipos desconocidos y entradas malformadas sin reventar', function ():
             'TIPO_INEXISTENTE' => ['channels' => ['EMAIL']],
             'EN_ROUTE' => ['channels' => ['CANAL_FALSO']],       // canal inválido -> se descarta
             'DELIVERED' => ['sin_channels' => true],              // sin channels -> se descarta
-            'ARRIVING' => ['channels' => ['PUSH_FCM']],           // válida
+            'ARRIVING' => ['channels' => ['PUSH_NTFY']],           // válida
         ],
     ];
 
@@ -47,18 +47,18 @@ it('ignora tipos desconocidos y entradas malformadas sin reventar', function ():
 
     expect($policies)->toHaveCount(1)
         ->and($policies)->toHaveKey('ARRIVING')
-        ->and($policies['ARRIVING']->channels)->toBe([Channel::PushFcm]);
+        ->and($policies['ARRIVING']->channels)->toBe([Channel::PushNtfy]);
 });
 
 it('hace upsert del override de un tipo preservando los demás', function (): void {
     $current = ['rules' => ['EN_ROUTE' => ['channels' => ['EMAIL'], 'escalate_when' => 'NO_OPEN']]];
-    $policy = CascadePolicy::of([Channel::PushFcm, Channel::Sms], EscalateCondition::OnFailure);
+    $policy = CascadePolicy::of([Channel::PushNtfy, Channel::Sms], EscalateCondition::OnFailure);
 
     $next = CascadeRuleCodec::upsert($current, MessageType::Delivered, $policy);
 
     expect($next['rules'])->toHaveKeys(['EN_ROUTE', 'DELIVERED'])
         ->and($next['rules']['DELIVERED'])->toBe([
-            'channels' => ['PUSH_FCM', 'SMS'],
+            'channels' => ['PUSH_NTFY', 'SMS'],
             'escalate_when' => 'ON_FAILURE',
         ]);
 });

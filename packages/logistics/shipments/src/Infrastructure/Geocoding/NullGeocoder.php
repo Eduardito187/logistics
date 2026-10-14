@@ -13,8 +13,9 @@ use Logistics\Shipments\Domain\ValueObject\GeocodeResult;
  * Geocodificador neutro (stub): no llama a ningún proveedor. Devuelve una confianza media fija y sin
  * coordenada, para que la app arranque y se pueda desarrollar sin credenciales ni acceso a internet.
  *
- * Es el fallback cuando no hay ni clave de Google ni Nominatim habilitado (ADR: I/O externo configurable
- * y degradable). La integración real llega como otro Geocoder, sin tocar el dominio.
+ * Es el fallback cuando Nominatim está deshabilitado (entornos sin servicio ni salida a internet;
+ * ADR: I/O externo configurable y degradable). La integración real llega como otro Geocoder, sin
+ * tocar el dominio.
  */
 final class NullGeocoder extends AbstractGeocoder
 {

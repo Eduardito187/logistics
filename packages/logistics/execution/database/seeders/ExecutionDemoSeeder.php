@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Database\Seeders;
 
 use DateTimeImmutable;
+use Illuminate\Container\Container;
 use Illuminate\Database\Seeder;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
@@ -18,8 +19,14 @@ use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
 use Logistics\Execution\Domain\ValueObject\RouteDate;
 use Logistics\Execution\Domain\ValueObject\RouteStopId;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\DeliveryRecord;
+use Logistics\Execution\Infrastructure\Persistence\Eloquent\VehicleRouteRecord;
+use Logistics\Fleet\Application\Command\AssembleCrew\AssembleCrew;
+use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\CrewModel;
+use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\DriverModel;
+use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\HelperModel;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
+use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
@@ -52,37 +59,149 @@ final class ExecutionDemoSeeder extends Seeder
 
     public function run(): void
     {
-        // Idempotente: si ya hay entregas de demo sembradas, no se vuelve a sembrar nada (las entregas
-        // de muestra usan shipment_id único y un segundo run rompería esa restricción). El contexto
-        // Ejecución es dueño exclusivo de execution_deliveries, así que basta con que la tabla tenga filas.
-        if (DeliveryRecord::query()->exists()) {
+        // Idempotente: si ya hay entregas de demo sembradas, no se vuelve a sembrar la muestra (las
+        // entregas de muestra usan shipment_id único y un segundo run rompería esa restricción). El
+        // contexto Ejecución es dueño exclusivo de execution_deliveries, así que basta con que la tabla
+        // tenga filas. La alineación de tripulaciones corre SIEMPRE más abajo, también sobre bases ya
+        // sembradas.
+        if (!DeliveryRecord::query()->exists()) {
+            // IDs reales ya sembrados (upstream): cada entrega referencia un envío distinto (la tabla
+            // execution_deliveries exige shipment_id único) y un vehículo válido de la flota. Si faltan
+            // datos reales, se cae en uuids generados para no romper el seed.
+            $vehicleIds = $this->vehicleIds();
+            $nodeId = $this->nodeId();
+
+            // Ruta de demo del chofer: pedidos de reparto DENTRO de La Paz (un solo departamento),
+            // ordenados por cercanía. Se resuelve PRIMERO para excluir sus pedidos de las entregas de
+            // muestra y así no violar la unicidad de shipment_id en execution_deliveries.
+            $routeVehicleId = $vehicleIds[0] ?? Uuid::generate()->value;
+            $routeShipments = $this->laPazRouteShipments();
+            $routeShipmentIds = array_map(static fn (ShipmentRecord $shipment): string => (string) $shipment->id, $routeShipments);
+
+            // Entregas de muestra (un desenlace de cada tipo) con pedidos que NO son de la ruta del chofer.
+            $sampleShipmentIds = array_values(array_filter(
+                $this->shipmentIds(),
+                static fn (string $id): bool => !in_array($id, $routeShipmentIds, true),
+            ));
+
+            $this->deliveries->save($this->deliveredSample($sampleShipmentIds[0] ?? Uuid::generate()->value, $vehicleIds[0] ?? Uuid::generate()->value));
+            $this->deliveries->save($this->inTransitSample($sampleShipmentIds[1] ?? Uuid::generate()->value, $vehicleIds[1] ?? Uuid::generate()->value, $nodeId));
+            $this->deliveries->save($this->failedSample($sampleShipmentIds[2] ?? Uuid::generate()->value, $vehicleIds[2] ?? Uuid::generate()->value));
+
+            $this->seedDriverRoute($routeVehicleId, $routeShipments);
+        }
+
+        // Alineación idempotente flota ↔ ejecución: para cada ruta del día, garantiza que exista una
+        // tripulación real (fleet_crews) con su MISMO (vehicle_id, fecha) y copia chofer + ayudantes a las
+        // columnas aditivas de la ruta. Sin esto, el join (vehicle_id, route_date == assembled_for) del
+        // historial operativo del chofer no cruza y el panel sale en cero. Corre siempre, incluso cuando
+        // las entregas ya estaban sembradas (Fleet se siembra antes que Ejecución en el DatabaseSeeder).
+        $this->alignDriverRoutesWithCrews();
+    }
+
+    /**
+     * Alinea las rutas de reparto con las tripulaciones de flota para que el historial operativo del
+     * chofer cruce datos. Para cada `execution_driver_routes` (vehículo, fecha): si no hay un
+     * `fleet_crews` con ese mismo (vehicle_id, assembled_for), arma uno con un chofer real —habilitado
+     * para el vehículo si se puede, si no cualquiera activo— y 1–2 ayudantes reales, vía el comando de
+     * dominio AssembleCrew (Fleet es dueño de fleet_crews). Luego puebla `driver_id` y `helper_ids` de la
+     * ruta desde ese crew con un UPDATE idempotente (columnas aditivas nullable).
+     *
+     * Re-ejecutable sin duplicar: la existencia previa de crew por (vehículo, fecha) actúa de guardia y
+     * el UPDATE deja los mismos valores.
+     */
+    private function alignDriverRoutesWithCrews(): void
+    {
+        /** @var list<VehicleRouteRecord> $routes */
+        $routes = VehicleRouteRecord::query()->get()->all();
+        if ($routes === []) {
             return;
         }
 
-        // IDs reales ya sembrados (upstream): cada entrega referencia un envío distinto (la tabla
-        // execution_deliveries exige shipment_id único) y un vehículo válido de la flota. Si faltan
-        // datos reales, se cae en uuids generados para no romper el seed.
-        $vehicleIds = $this->vehicleIds();
-        $nodeId = $this->nodeId();
+        $bus = Container::getInstance()->make(CommandBus::class);
+        assert($bus instanceof CommandBus);
 
-        // Ruta de demo del chofer: pedidos de reparto DENTRO de La Paz (un solo departamento), ordenados
-        // por cercanía. Se resuelve PRIMERO para excluir sus pedidos de las entregas de muestra y así no
-        // violar la unicidad de shipment_id en execution_deliveries.
-        $routeVehicleId = $vehicleIds[0] ?? Uuid::generate()->value;
-        $routeShipments = $this->laPazRouteShipments();
-        $routeShipmentIds = array_map(static fn (ShipmentRecord $shipment): string => (string) $shipment->id, $routeShipments);
+        foreach ($routes as $route) {
+            $vehicleId = (string) $route->vehicle_id;
+            $date = substr((string) $route->route_date, 0, 10);
 
-        // Entregas de muestra (un desenlace de cada tipo) con pedidos que NO son de la ruta del chofer.
-        $sampleShipmentIds = array_values(array_filter(
-            $this->shipmentIds(),
-            static fn (string $id): bool => !in_array($id, $routeShipmentIds, true),
-        ));
+            $crew = $this->crewFor($vehicleId, $date);
+            if ($crew === null) {
+                $crew = $this->assembleCrewFor($bus, $vehicleId, $date);
+            }
 
-        $this->deliveries->save($this->deliveredSample($sampleShipmentIds[0] ?? Uuid::generate()->value, $vehicleIds[0] ?? Uuid::generate()->value));
-        $this->deliveries->save($this->inTransitSample($sampleShipmentIds[1] ?? Uuid::generate()->value, $vehicleIds[1] ?? Uuid::generate()->value, $nodeId));
-        $this->deliveries->save($this->failedSample($sampleShipmentIds[2] ?? Uuid::generate()->value, $vehicleIds[2] ?? Uuid::generate()->value));
+            // Sin choferes reales no se puede alinear: se deja la ruta tal cual (no se inventa un chofer).
+            if ($crew === null) {
+                continue;
+            }
 
-        $this->seedDriverRoute($routeVehicleId, $routeShipments);
+            // UPDATE idempotente de las columnas aditivas nullable (chofer + ayudantes de la tripulación).
+            $route->driver_id = $crew->driver_id;
+            $route->helper_ids = $crew->helper_ids;
+            $route->save();
+        }
+    }
+
+    /**
+     * Tripulación existente para ese vehículo y día (clave de negocio del join), o null si todavía no hay.
+     */
+    private function crewFor(string $vehicleId, string $date): ?CrewModel
+    {
+        return CrewModel::query()
+            ->where('vehicle_id', $vehicleId)
+            ->whereDate('assembled_for', $date)
+            ->first();
+    }
+
+    /**
+     * Arma una tripulación real para (vehículo, fecha) vía el comando de dominio AssembleCrew y devuelve
+     * el registro resultante. Devuelve null si no hay ningún chofer real que asignar.
+     */
+    private function assembleCrewFor(CommandBus $bus, string $vehicleId, string $date): ?CrewModel
+    {
+        $driverId = $this->driverForVehicle($vehicleId);
+        if ($driverId === null) {
+            return null;
+        }
+
+        $bus->dispatch(new AssembleCrew($driverId, $this->availableHelperIds(), $vehicleId, $date));
+
+        return $this->crewFor($vehicleId, $date);
+    }
+
+    /**
+     * Elige un chofer real para el vehículo: de preferencia uno activo habilitado para ese vehículo; si
+     * no hay, cualquier chofer activo. Null si no hay choferes activos sembrados.
+     */
+    private function driverForVehicle(string $vehicleId): ?string
+    {
+        $enabled = DriverModel::query()
+            ->where('active', true)
+            ->whereJsonContains('enabled_vehicle_ids', $vehicleId)
+            ->orderBy('id')
+            ->value('id');
+        if ($enabled !== null) {
+            return (string) $enabled;
+        }
+
+        $any = DriverModel::query()->where('active', true)->orderBy('id')->value('id');
+
+        return $any !== null ? (string) $any : null;
+    }
+
+    /**
+     * Hasta dos ayudantes reales activos para acompañar la ruta.
+     *
+     * @return list<string>
+     */
+    private function availableHelperIds(): array
+    {
+        $ids = [];
+        foreach (HelperModel::query()->where('active', true)->orderBy('id')->limit(2)->get(['id']) as $helper) {
+            $ids[] = (string) $helper->id;
+        }
+
+        return $ids;
     }
 
     /**

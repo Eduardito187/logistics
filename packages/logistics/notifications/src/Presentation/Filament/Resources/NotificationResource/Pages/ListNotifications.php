@@ -41,7 +41,7 @@ final class ListNotifications extends ListRecords
             ->label(__('Queue notification'))
             ->icon('heroicon-o-paper-airplane')
             ->modalHeading(__('Queue a customer notification'))
-            ->modalDescription(__('Pick the shipment and message type. Backup contacts are optional; the primary channel uses the shipment FCM topic.'))
+            ->modalDescription(__('Pick the shipment and message type. Backup contacts are optional; the primary channel uses the shipment push topic.'))
             ->schema([
                 Select::make('shipment_id')
                     ->label(__('Shipment'))

@@ -24,7 +24,7 @@ final class MessageTypeRuleRecordFactory extends Factory
         return [
             'message_type' => MessageType::ConfirmLocation->value,
             'channels' => [
-                Channel::PushFcm->value,
+                Channel::PushNtfy->value,
                 Channel::WebPush->value,
                 Channel::Email->value,
                 Channel::Sms->value,

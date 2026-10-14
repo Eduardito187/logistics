@@ -18,7 +18,7 @@ import PlanStopCard from '@/Components/Planning/PlanStopCard.vue';
 const props = defineProps({
     plan: { type: Object, required: true },
     stops: { type: Array, default: () => [] },
-    map: { type: Object, default: () => ({ stops: [], planned: [], actual: [] }) },
+    map: { type: Object, default: () => ({ stops: [], planned: [], actual: [], geometry: [] }) },
 });
 
 const mapRef = ref(null);
@@ -200,7 +200,7 @@ const autoPlan = () => {
     </AppCard>
 
     <AppCard title="Mapa del plan" class="mb-5">
-        <RouteMap ref="mapRef" :stops="map.stops" :planned="map.planned" :actual="map.actual" />
+        <RouteMap ref="mapRef" :stops="map.stops" :planned="map.planned" :actual="map.actual" :geometry="map.geometry" :osrm-host="map.osrmHost" />
         <div class="mt-3 flex flex-wrap items-center gap-4 text-xs text-neutral-400">
             <span class="inline-flex items-center gap-2">
                 <span class="inline-block w-5" style="border-top:3px dashed #2563eb"></span> Ruta planificada

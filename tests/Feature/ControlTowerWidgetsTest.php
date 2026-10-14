@@ -79,9 +79,11 @@ it('reads outbox counts by status from the database', function (): void {
         'created_at' => now(),
     ]);
 
+    // El admin se muestra en español: se afirma la etiqueta traducida (no el literal inglés), para que
+    // la aserción no dependa del locale ni se rompa cuando es.json traduce "Dead-letter".
     Livewire::test(OutboxHealthWidget::class)
         ->assertOk()
-        ->assertSee('Dead-letter');
+        ->assertSee(__('Dead-letter'));
 });
 
 it('lists recent auto-plan runs from the database', function (): void {

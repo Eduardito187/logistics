@@ -1,6 +1,6 @@
 # ADR 010 — Habilitar WhatsApp y Telegram como canales de notificación
 
-**Status:** Accepted
+**Status:** Superado en parte por el **ADR 015**. La regla open-source del ADR 013 (cero servicios de pago) **deshabilita WhatsApp Business API** (es de pago). **Telegram se conserva** (gratis) y se promueve a canal de cliente; el SMS pasa a **gateway open-source**. El resto de esta ADR (cascada + reglas versionadas + outbox) sigue vigente.
 **Fecha:** 2026-10-13
 **Deciders:** Eduard Huallata
 

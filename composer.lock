@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "ee45be333f5fd3adf8f2b050352ae722",
+    "content-hash": "53b85a5f45f7da1c77ee01095eb6fad2",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -3812,6 +3812,41 @@
                 "proprietary"
             ],
             "description": "Flota y tripulación — plataforma logística Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "logistics/fleetops",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/logistics/fleetops",
+                "reference": "f1d7e2d73c648cf00d321d017132c99d72fa3d40"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Logistics\\FleetOps\\Infrastructure\\Providers\\FleetOpsServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Logistics\\FleetOps\\": "src/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Operación y costos de la flota propia: combustible, mantenimiento, salidas/cargas, odómetro, perfil técnico, gastos y TCO — plataforma logística Dismac",
             "transport-options": {
                 "symlink": true,
                 "relative": true

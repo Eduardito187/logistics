@@ -12,6 +12,7 @@ use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
@@ -42,6 +43,7 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
@@ -200,7 +202,19 @@ final class DeliveryResource extends Resource
                     ->formatStateUsing(static fn (string $state): string => self::statusLabel($state))
                     ->color(static fn (string $state): string => self::statusColor($state)),
                 TextEntry::make('pod_confirmation')->label(__('Proof of delivery'))->placeholder('—'),
-                TextEntry::make('pod_photo_url')->label(__('Photo'))->url(fn (?string $state): ?string => $state)->placeholder('—'),
+                // Foto del POD como IMAGEN visible (no solo la URL). Es una URL externa (CDN): no se
+                // verifica en disco. Si la imagen no existe o fue eliminada, el onerror oculta el <img>
+                // y muestra un mensaje; si no hay URL, el placeholder evita dejar el campo en blanco.
+                ImageEntry::make('pod_photo_url')
+                    ->label(__('Photo'))
+                    ->checkFileExistence(false)
+                    ->height(160)
+                    // Sin URL → placeholder; URL que responde 404 → onerror la cambia por el placeholder.
+                    // Nunca una imagen rota ni un hueco en blanco.
+                    ->defaultImageUrl(ImageFallback::placeholder('box'))
+                    ->extraImgAttributes(ImageFallback::onError('box', [
+                        'class' => 'rounded-md object-contain bg-gray-50',
+                    ])),
                 TextEntry::make('pod_captured_at')->label(__('Delivered at'))->dateTime()->placeholder('—'),
                 TextEntry::make('failure_reason')
                     ->label(__('Failure reason'))

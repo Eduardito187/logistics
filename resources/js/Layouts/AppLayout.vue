@@ -22,6 +22,7 @@ const nav = [
     { label: 'Entregas', routeName: 'app.deliveries.index', roles: [] },
     { label: 'Pedidos', routeName: 'app.shipments.index', roles: [] },
     { label: 'Seguimiento', routeName: 'app.tracking.index', roles: [] },
+    { label: 'Personal', routeName: 'app.personnel.index', roles: [] },
 ];
 
 // Solo muestra ítems cuya ruta ya exista en Ziggy (módulos aún no construidos no aparecen rotos).

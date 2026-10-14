@@ -114,9 +114,8 @@ final class NotificationResource extends Resource
     public static function channels(): array
     {
         return [
-            'PUSH_FCM' => __('Push'),
+            'PUSH_NTFY' => __('Push'),
             'WEB_PUSH' => __('Web push'),
-            'WHATSAPP' => __('WhatsApp'),
             'TELEGRAM' => __('Telegram'),
             'EMAIL' => __('Email'),
             'SMS' => __('SMS'),
@@ -409,7 +408,7 @@ final class NotificationResource extends Resource
     }
 
     /**
-     * Destinatario legible: email o teléfono de respaldo, o el topic FCM del envío (canal primario).
+     * Destinatario legible: email o teléfono de respaldo, o el topic del envío (canal primario push).
      */
     private static function formatRecipient(NotificationRecord $record): string
     {
@@ -421,7 +420,7 @@ final class NotificationResource extends Resource
             return $record->phone;
         }
 
-        return __('App push (FCM topic)');
+        return __('App push (ntfy topic)');
     }
 
     /**

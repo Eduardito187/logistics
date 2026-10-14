@@ -1,6 +1,6 @@
 # ADR 006 — Notificaciones sin WhatsApp
 
-**Status:** Accepted (revisado por ADR 010: se habilitan WhatsApp y Telegram, acotados por regla y tope)
+**Status:** Accepted, revisado. El ADR 010 habilitó WhatsApp/Telegram; luego la regla open-source del ADR 013 lo cambió: el **push ya no usa FCM/Firebase** (ver **ADR 014**: Web Push VAPID + ntfy/UnifiedPush) y la cascada es **100% sin pago** (ver **ADR 015**: sin WhatsApp de pago, Telegram como canal, SMS por gateway libre). Las menciones a FCM/Firebase de abajo quedan sustituidas por el ADR 014.
 **Fecha:** 2026-10-02
 **Deciders:** Eduard Huallata
 

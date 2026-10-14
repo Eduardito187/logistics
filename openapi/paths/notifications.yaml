@@ -305,8 +305,8 @@ components:
 
     Channel:
       type: string
-      enum: [PUSH_FCM, WEB_PUSH, EMAIL, SMS]
-      description: Delivery channel; the cascade walks them in cost order.
+      enum: [PUSH_NTFY, WEB_PUSH, TELEGRAM, EMAIL, SMS]
+      description: Delivery channel; the cascade walks them in cost order (all open-source transports).
 
     NotificationStatus:
       type: string

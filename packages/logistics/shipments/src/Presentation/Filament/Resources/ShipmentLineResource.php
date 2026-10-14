@@ -18,6 +18,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentLineResource\Pages\CreateShipmentLine;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentLineResource\Pages\EditShipmentLine;
@@ -122,6 +123,10 @@ final class ShipmentLineResource extends Resource
                     ->square()
                     ->imageSize(40)
                     ->checkFileExistence(false)
+                    // Sin URL → placeholder; URL externa que responde 404 → onerror la cambia por el
+                    // placeholder. Nunca una celda en blanco ni una imagen rota.
+                    ->defaultImageUrl(ImageFallback::placeholder('box'))
+                    ->extraImgAttributes(ImageFallback::onError('box'))
                     ->toggleable(),
                 TextColumn::make('shipment.external_id')
                     ->label(__('Order'))

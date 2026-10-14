@@ -16,7 +16,7 @@ import { deliveryStatus, failureReason } from '@/Components/Deliveries/status.js
 const props = defineProps({
     delivery: { type: Object, required: true },
     scans: { type: Array, default: () => [] },
-    map: { type: Object, default: () => ({ stops: [], planned: [], actual: [] }) },
+    map: { type: Object, default: () => ({ stops: [], planned: [], actual: [], geometry: [] }) },
 });
 
 const mapRef = ref(null);
@@ -125,7 +125,7 @@ const focusScan = (scan) => {
 
     <!-- Mapa opcional con los puntos de los escaneos -->
     <AppCard v-if="hasMap" title="Ubicaciones de los escaneos" class="mt-5">
-        <RouteMap ref="mapRef" :stops="map.stops" :planned="map.planned" :actual="map.actual" />
+        <RouteMap ref="mapRef" :stops="map.stops" :planned="map.planned" :actual="map.actual" :geometry="map.geometry" :osrm-host="map.osrmHost" />
         <div class="mt-3 flex flex-wrap items-center gap-4 text-xs text-neutral-400">
             <span class="inline-flex items-center gap-2">
                 <span class="inline-block w-5" style="border-top:3px solid #E2231A"></span> Recorrido por escaneos (GPS)

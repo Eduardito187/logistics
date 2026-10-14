@@ -14,6 +14,7 @@ use Logistics\Carriers\Infrastructure\Persistence\Seeder\CarriersDemoSeeder;
 use Logistics\Coverage\Infrastructure\Seeder\CoverageSeeder;
 use Logistics\Execution\Database\Seeders\ExecutionDemoSeeder;
 use Logistics\Fleet\Database\Seeders\FleetSeeder;
+use Logistics\FleetOps\Infrastructure\Seeder\FleetOpsDemoSeeder;
 use Logistics\Labels\Database\Seeders\LabelsSeeder;
 use Logistics\Network\Database\Seeders\NetworkSeeder;
 use Logistics\Notifications\Database\Seeders\NotificationsSeeder;
@@ -73,6 +74,10 @@ class DatabaseSeeder extends Seeder
             // 3) Recursos de transporte: flota propia y transportistas externos.
             FleetSeeder::class,
             CarriersDemoSeeder::class,
+
+            // 3b) Operación y costos de la flota propia (combustible, mantenimiento, salidas, gastos).
+            // Depende de los vehículos de FleetSeeder (lee vehicle_ids reales).
+            FleetOpsDemoSeeder::class,
 
             // 4) Capacidad: buckets por nodo/zona (dependen de red y cobertura).
             CapacitySeeder::class,

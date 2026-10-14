@@ -7,8 +7,12 @@ import { onMounted, onBeforeUnmount, ref } from 'vue';
 
 const props = defineProps({
     stops: { type: Array, default: () => [] }, // [{ seq, lat, lng, order, customer, status }]
-    planned: { type: Array, default: () => [] }, // [[lat, lng], ...]
-    actual: { type: Array, default: () => [] }, // [[lat, lng], ...]
+    planned: { type: Array, default: () => [] }, // [[lat, lng], ...] paradas en orden (para trazar)
+    actual: { type: Array, default: () => [] }, // [[lat, lng], ...] recorrido real (GPS)
+    // Geometría ya calculada de la ruta planificada ([[lat,lng], ...]); tiene prioridad sobre OSRM.
+    geometry: { type: Array, default: () => [] },
+    // Host de OSRM (ruteo OpenStreetMap, sin API key) para trazar la planificada siguiendo calles.
+    osrmHost: { type: String, default: 'https://router.project-osrm.org' },
 });
 
 const mapEl = ref(null);
@@ -54,10 +58,41 @@ function render(L) {
     }).addTo(map);
 
     const group = L.featureGroup().addTo(map);
+    const plannedStyle = { color: '#2563eb', weight: 3, opacity: 0.85, dashArray: '6,8' };
+    const fit = () => {
+        if (group.getLayers().length) {
+            try { map.fitBounds(group.getBounds().pad(0.2)); } catch (e) { /* vacío */ }
+        }
+    };
 
-    if (props.planned.length > 1) {
-        L.polyline(props.planned, { color: '#2563eb', weight: 3, opacity: 0.85, dashArray: '6,8' }).addTo(group);
+    // Ruta planificada: 1) geometría ya calculada (server-side); 2) OSRM siguiendo calles reales;
+    // 3) línea recta de respaldo si OSRM falla. Así SIEMPRE se ve la ruta planificada.
+    const drawPlannedStraight = () => {
+        if (props.planned.length > 1) {
+            L.polyline(props.planned, plannedStyle).addTo(group);
+            fit();
+        }
+    };
+    if (props.geometry.length > 1) {
+        L.polyline(props.geometry, plannedStyle).addTo(group);
+    } else if (props.planned.length >= 2) {
+        const coords = props.planned.map((p) => p[1] + ',' + p[0]).join(';');
+        const url = props.osrmHost.replace(/\/+$/, '') + '/route/v1/driving/' + coords + '?overview=full&geometries=geojson';
+        fetch(url)
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error('osrm http'))))
+            .then((data) => {
+                const line = data && data.routes && data.routes[0] && data.routes[0].geometry
+                    && data.routes[0].geometry.coordinates;
+                if (!Array.isArray(line) || line.length < 2) {
+                    throw new Error('osrm sin geometría');
+                }
+                // GeoJSON entrega [lng, lat]; Leaflet dibuja con [lat, lng].
+                L.polyline(line.map((c) => [c[1], c[0]]), plannedStyle).addTo(group);
+                fit();
+            })
+            .catch(() => drawPlannedStraight());
     }
+
     if (props.actual.length > 1) {
         L.polyline(props.actual, { color: '#E2231A', weight: 4, opacity: 0.9 }).addTo(group);
     }
@@ -75,9 +110,7 @@ function render(L) {
         markersBySeq[String(s.seq)] = marker;
     });
 
-    if (group.getLayers().length) {
-        try { map.fitBounds(group.getBounds().pad(0.2)); } catch (e) { /* vacío */ }
-    }
+    fit();
     setTimeout(() => map && map.invalidateSize(), 300);
 }
 

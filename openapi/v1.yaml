@@ -1186,6 +1186,1044 @@ paths:
           $ref: '#/components/responses/FleetValidationError'
       security:
       - appBearer: *id001
+  /app/fleetops/fuel-prices:
+    get:
+      tags:
+      - Fleet Ops
+      summary: List fuel prices
+      operationId: listFleetFuelPrices
+      parameters:
+      - name: fuel_type
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/FuelType'
+      responses:
+        '200':
+          description: Fuel price list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FuelPrice'
+      security:
+      - appBearer: *id001
+    post:
+      tags:
+      - Fleet Ops
+      summary: Set a fuel price effective from a date
+      operationId: setFleetFuelPrice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetFuelPriceRequest'
+      responses:
+        '202':
+          description: Fuel price accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/fuel-prices/current:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get the current fuel price for a fuel type
+      operationId: getCurrentFleetFuelPrice
+      parameters:
+      - name: fuel_type
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/FuelType'
+      responses:
+        '200':
+          description: Current fuel price
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FuelPrice'
+        '404':
+          description: No current price for the fuel type
+      security:
+      - appBearer: *id001
+  /app/fleetops/refuels:
+    get:
+      tags:
+      - Fleet Ops
+      summary: List refuels
+      operationId: listFleetRefuels
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Refuel list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Refuel'
+      security:
+      - appBearer: *id001
+    post:
+      tags:
+      - Fleet Ops
+      summary: Record a refuel
+      operationId: recordFleetRefuel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordRefuelRequest'
+      responses:
+        '202':
+          description: Refuel accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/fuel/consumption:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get fuel consumption of a vehicle in a date range
+      operationId: getFleetFuelConsumption
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Fuel consumption summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+      security:
+      - appBearer: *id001
+  /app/fleetops/fuel/daily-spend:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get fuel spend for a day
+      operationId: getFleetDailyFuelSpend
+      parameters:
+      - name: date
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Daily fuel spend
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/orders:
+    get:
+      tags:
+      - Fleet Ops
+      summary: List maintenance orders
+      operationId: listFleetMaintenanceOrders
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/MaintenanceStatus'
+      responses:
+        '200':
+          description: Maintenance order list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MaintenanceOrder'
+      security:
+      - appBearer: *id001
+    post:
+      tags:
+      - Fleet Ops
+      summary: Schedule a maintenance order
+      operationId: scheduleFleetMaintenance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleMaintenanceRequest'
+      responses:
+        '202':
+          description: Maintenance order accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/orders/{orderId}:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get a maintenance order
+      operationId: getFleetMaintenanceOrder
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Maintenance order
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MaintenanceOrder'
+        '404':
+          description: No maintenance order for the id
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/orders/{orderId}/start:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Start a scheduled maintenance order
+      operationId: startFleetMaintenance
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Start accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/orders/{orderId}/complete:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Complete a maintenance order with its items
+      operationId: completeFleetMaintenance
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteMaintenanceRequest'
+      responses:
+        '202':
+          description: Completion accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/orders/{orderId}/cancel:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Cancel a maintenance order
+      operationId: cancelFleetMaintenance
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/plans:
+    get:
+      tags:
+      - Fleet Ops
+      summary: List maintenance plans
+      operationId: listFleetMaintenancePlans
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Maintenance plan list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MaintenancePlan'
+      security:
+      - appBearer: *id001
+    post:
+      tags:
+      - Fleet Ops
+      summary: Define a preventive maintenance plan
+      operationId: defineFleetMaintenancePlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefineMaintenancePlanRequest'
+      responses:
+        '202':
+          description: Maintenance plan accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/plans/{planId}/service-done:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Record a plan service as done
+      operationId: recordFleetServiceDone
+      parameters:
+      - name: planId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordServiceDoneRequest'
+      responses:
+        '202':
+          description: Service done accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/plans/{planId}/activate:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Activate a maintenance plan
+      operationId: activateFleetMaintenancePlan
+      parameters:
+      - name: planId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Activation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/plans/{planId}/deactivate:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Deactivate a maintenance plan
+      operationId: deactivateFleetMaintenancePlan
+      parameters:
+      - name: planId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Deactivation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/cost:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get maintenance cost of a vehicle in a date range
+      operationId: getFleetMaintenanceCost
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Maintenance cost summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+      security:
+      - appBearer: *id001
+  /app/fleetops/maintenance/due:
+    get:
+      tags:
+      - Fleet Ops
+      summary: List due or overdue preventive maintenance
+      operationId: listFleetDueMaintenance
+      responses:
+        '200':
+          description: Due maintenance list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+      security:
+      - appBearer: *id001
+  /app/fleetops/departures:
+    get:
+      tags:
+      - Fleet Ops
+      summary: List departures
+      operationId: listFleetDepartures
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/DepartureStatus'
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Departure list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Departure'
+      security:
+      - appBearer: *id001
+    post:
+      tags:
+      - Fleet Ops
+      summary: Register a vehicle departure
+      operationId: registerFleetDeparture
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDepartureRequest'
+      responses:
+        '202':
+          description: Departure accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/departures/{departureId}:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get a departure
+      operationId: getFleetDeparture
+      parameters:
+      - name: departureId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Departure
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Departure'
+        '404':
+          description: No departure for the id
+      security:
+      - appBearer: *id001
+  /app/fleetops/departures/{departureId}/close:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Close a departure on vehicle return
+      operationId: closeFleetDeparture
+      parameters:
+      - name: departureId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseDepartureRequest'
+      responses:
+        '202':
+          description: Close accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/odometer:
+    get:
+      tags:
+      - Fleet Ops
+      summary: List odometer readings
+      operationId: listFleetOdometerReadings
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Odometer reading list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OdometerReading'
+      security:
+      - appBearer: *id001
+    post:
+      tags:
+      - Fleet Ops
+      summary: Record an odometer reading
+      operationId: recordFleetOdometer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordOdometerRequest'
+      responses:
+        '202':
+          description: Odometer reading accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/utilization:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get vehicle utilization in a date range
+      operationId: getFleetVehicleUtilization
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Vehicle utilization summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+      security:
+      - appBearer: *id001
+  /app/fleetops/vehicle-profiles:
+    get:
+      tags:
+      - Fleet Ops
+      summary: List vehicle technical profiles
+      operationId: listFleetVehicleProfiles
+      responses:
+        '200':
+          description: Vehicle profile list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VehicleProfile'
+      security:
+      - appBearer: *id001
+    post:
+      tags:
+      - Fleet Ops
+      summary: Define a vehicle technical profile (upsert)
+      operationId: defineFleetVehicleProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefineVehicleProfileRequest'
+      responses:
+        '202':
+          description: Vehicle profile accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/vehicle-profiles/{vehicleId}:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get a vehicle technical profile
+      operationId: getFleetVehicleProfile
+      parameters:
+      - name: vehicleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Vehicle profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VehicleProfile'
+        '404':
+          description: No vehicle profile for the vehicle
+      security:
+      - appBearer: *id001
+  /app/fleetops/vehicle-profiles/{vehicleId}/odometer:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Set the current odometer of a vehicle
+      operationId: updateFleetVehicleOdometer
+      parameters:
+      - name: vehicleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVehicleOdometerRequest'
+      responses:
+        '202':
+          description: Odometer update accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/expenses:
+    get:
+      tags:
+      - Fleet Ops
+      summary: List fleet expenses
+      operationId: listFleetExpenses
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: category
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ExpenseCategory'
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Expense list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Expense'
+      security:
+      - appBearer: *id001
+    post:
+      tags:
+      - Fleet Ops
+      summary: Record a fleet expense
+      operationId: recordFleetExpense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordExpenseRequest'
+      responses:
+        '202':
+          description: Expense accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: *id001
+  /app/fleetops/expenses/total:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get the total expenses of a vehicle
+      operationId: getFleetVehicleExpenseTotal
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Expense total
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+      security:
+      - appBearer: *id001
+  /app/fleetops/cost-summary:
+    get:
+      tags:
+      - Fleet Ops
+      summary: Get the cost summary (TCO + cost per km) of a vehicle
+      operationId: getFleetVehicleCostSummary
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Vehicle cost summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VehicleCostSummary'
+      security:
+      - appBearer: *id001
   /app/labels/public-keys:
     get:
       tags:
@@ -3213,6 +4251,56 @@ paths:
       responses:
         '202':
           description: Tariff accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: *id003
+  /integrations/fleetops/refuels:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Record a refuel from a fuel-card or station system
+      operationId: integrationRecordFleetRefuel
+      description: |
+        Ingesta de una carga de combustible desde sistemas de tarjeta/estación (credenciales de servicio).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordRefuelRequest'
+      responses:
+        '202':
+          description: Refuel accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: *id003
+  /integrations/fleetops/odometer:
+    post:
+      tags:
+      - Fleet Ops
+      summary: Record an odometer reading from telemetry
+      operationId: integrationRecordFleetOdometer
+      description: |
+        Ingesta de una lectura de odómetro desde telemetría o sistemas externos (credenciales de servicio).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordOdometerRequest'
+      responses:
+        '202':
+          description: Odometer reading accepted
           content:
             application/json:
               schema:
@@ -5416,6 +6504,754 @@ components:
       description: Token de integración de la plataforma (prefix.secret) enviado como Bearer y validado por
         el middleware access.token. Convive con serviceCredential en la puerta /integrations/*.
   schemas:
+    FuelType:
+      type: string
+      description: Fuel type of the fleet
+      enum:
+      - gasoline_special
+      - gasoline_premium
+      - diesel
+      - gnv
+    MaintenanceStatus:
+      type: string
+      description: Maintenance order state
+      enum:
+      - scheduled
+      - in_progress
+      - completed
+      - cancelled
+    DepartureStatus:
+      type: string
+      description: Departure state
+      enum:
+      - out
+      - returned
+    ExpenseCategory:
+      type: string
+      description: Fleet expense category
+      enum:
+      - toll
+      - fine
+      - tires
+      - parts
+      - wash
+      - parking
+      - insurance
+      - other
+    FuelPrice:
+      type: object
+      description: A fuel price per liter effective from a date
+      required:
+      - id
+      - fuel_type
+      - price_cents
+      - currency
+      - effective_from
+      properties:
+        id:
+          type: string
+          format: uuid
+        fuel_type:
+          $ref: '#/components/schemas/FuelType'
+        price_cents:
+          type: integer
+        currency:
+          type: string
+        effective_from:
+          type: string
+          format: date
+        source:
+          type: string
+          nullable: true
+    Refuel:
+      type: object
+      description: A fuel refuel of an owned-fleet vehicle (total = price per liter x liters)
+      required:
+      - id
+      - vehicle_id
+      - fuel_type
+      - liters
+      - price_per_liter_cents
+      - total_cost_cents
+      - currency
+      - full_tank
+      - refueled_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        driver_id:
+          type: string
+          format: uuid
+          nullable: true
+        fuel_type:
+          $ref: '#/components/schemas/FuelType'
+        liters:
+          type: number
+          format: float
+        price_per_liter_cents:
+          type: integer
+        total_cost_cents:
+          type: integer
+        currency:
+          type: string
+        odometer_km:
+          type: integer
+          nullable: true
+        station:
+          type: string
+          nullable: true
+        full_tank:
+          type: boolean
+        refueled_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+    MaintenanceItem:
+      type: object
+      description: A maintenance line item (part + labor)
+      required:
+      - description
+      - qty
+      - part_cost_cents
+      - labor_cost_cents
+      properties:
+        description:
+          type: string
+        qty:
+          type: integer
+        part_cost_cents:
+          type: integer
+        labor_cost_cents:
+          type: integer
+    MaintenanceOrder:
+      type: object
+      description: A maintenance order of a vehicle
+      required:
+      - id
+      - vehicle_id
+      - type
+      - status
+      - items
+      - total_cost_cents
+      - currency
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+          - preventive
+          - corrective
+          - inspection
+        status:
+          $ref: '#/components/schemas/MaintenanceStatus'
+        odometer_km:
+          type: integer
+          nullable: true
+        workshop:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceItem'
+        total_cost_cents:
+          type: integer
+        currency:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        note:
+          type: string
+          nullable: true
+    MaintenancePlan:
+      type: object
+      description: A preventive maintenance plan of a vehicle (by km and/or days)
+      required:
+      - id
+      - vehicle_id
+      - service_kind
+      - active
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        service_kind:
+          type: string
+          enum:
+          - oil_change
+          - tires
+          - brakes
+          - filters
+          - battery
+          - general
+          - inspection
+        interval_km:
+          type: integer
+          nullable: true
+        interval_days:
+          type: integer
+          nullable: true
+        last_done_km:
+          type: integer
+          nullable: true
+        last_done_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_due_km:
+          type: integer
+          nullable: true
+        next_due_at:
+          type: string
+          format: date-time
+          nullable: true
+        active:
+          type: boolean
+    Departure:
+      type: object
+      description: A vehicle departure/dispatch of the owned fleet
+      required:
+      - id
+      - vehicle_id
+      - helper_ids
+      - load
+      - status
+      - departed_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        driver_id:
+          type: string
+          format: uuid
+          nullable: true
+        helper_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        destination:
+          type: string
+          nullable: true
+        route_ref:
+          type: string
+          nullable: true
+        load:
+          type: object
+          properties:
+            description:
+              type: string
+              nullable: true
+            weight_kg:
+              type: number
+              format: float
+              nullable: true
+            items:
+              type: array
+              items:
+                type: object
+                required:
+                - name
+                - qty
+                properties:
+                  name:
+                    type: string
+                  qty:
+                    type: integer
+        odometer_out_km:
+          type: integer
+          nullable: true
+        odometer_in_km:
+          type: integer
+          nullable: true
+        km_traveled:
+          type: integer
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DepartureStatus'
+        departed_at:
+          type: string
+          format: date-time
+        returned_at:
+          type: string
+          format: date-time
+          nullable: true
+        note:
+          type: string
+          nullable: true
+    OdometerReading:
+      type: object
+      description: An odometer reading of a vehicle
+      required:
+      - id
+      - vehicle_id
+      - km
+      - source
+      - read_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        km:
+          type: integer
+        source:
+          type: string
+          enum:
+          - manual
+          - telemetry
+          - refuel
+          - maintenance
+          - departure
+        read_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+    VehicleProfile:
+      type: object
+      description: The technical profile of a vehicle (1:1 by vehicle)
+      required:
+      - id
+      - vehicle_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        brand:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        year:
+          type: integer
+          nullable: true
+        fuel_type:
+          allOf:
+          - $ref: '#/components/schemas/FuelType'
+          nullable: true
+        tank_liters:
+          type: number
+          format: float
+          nullable: true
+        vin:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        current_odometer_km:
+          type: integer
+          nullable: true
+    Expense:
+      type: object
+      description: A fleet expense charged to a vehicle
+      required:
+      - id
+      - vehicle_id
+      - category
+      - amount_cents
+      - currency
+      - incurred_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        category:
+          $ref: '#/components/schemas/ExpenseCategory'
+        amount_cents:
+          type: integer
+        currency:
+          type: string
+        description:
+          type: string
+          nullable: true
+        incurred_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+    VehicleCostSummary:
+      type: object
+      description: Cost summary of a vehicle in a period (TCO + cost per km)
+      required:
+      - vehicle_id
+      - from
+      - to
+      - fuel_cents
+      - maintenance_cents
+      - expenses_cents
+      - total_cents
+      - currency
+      - kilometers
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        fuel_cents:
+          type: integer
+        maintenance_cents:
+          type: integer
+        expenses_cents:
+          type: integer
+        total_cents:
+          type: integer
+        currency:
+          type: string
+        kilometers:
+          type: integer
+        cost_per_km_cents:
+          type: integer
+          nullable: true
+    SetFuelPriceRequest:
+      type: object
+      required:
+      - fuel_type
+      - price_cents
+      - currency
+      - effective_from
+      properties:
+        fuel_type:
+          $ref: '#/components/schemas/FuelType'
+        price_cents:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        effective_from:
+          type: string
+          format: date
+        source:
+          type: string
+          nullable: true
+    RecordRefuelRequest:
+      type: object
+      required:
+      - vehicle_id
+      - fuel_type
+      - liters
+      - price_per_liter_cents
+      - currency
+      - full_tank
+      - refueled_at
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        driver_id:
+          type: string
+          format: uuid
+          nullable: true
+        fuel_type:
+          $ref: '#/components/schemas/FuelType'
+        liters:
+          type: number
+          format: float
+        price_per_liter_cents:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        odometer_km:
+          type: integer
+          nullable: true
+        station:
+          type: string
+          nullable: true
+        full_tank:
+          type: boolean
+        refueled_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+    ScheduleMaintenanceRequest:
+      type: object
+      required:
+      - vehicle_id
+      - type
+      - scheduled_at
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+          - preventive
+          - corrective
+          - inspection
+        odometer_km:
+          type: integer
+          nullable: true
+        workshop:
+          type: string
+          nullable: true
+        scheduled_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+    CompleteMaintenanceRequest:
+      type: object
+      required:
+      - items
+      - currency
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/MaintenanceItem'
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+    DefineMaintenancePlanRequest:
+      type: object
+      required:
+      - vehicle_id
+      - service_kind
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        service_kind:
+          type: string
+          enum:
+          - oil_change
+          - tires
+          - brakes
+          - filters
+          - battery
+          - general
+          - inspection
+        interval_km:
+          type: integer
+          nullable: true
+        interval_days:
+          type: integer
+          nullable: true
+    RecordServiceDoneRequest:
+      type: object
+      properties:
+        odometer_km:
+          type: integer
+          nullable: true
+    RegisterDepartureRequest:
+      type: object
+      required:
+      - vehicle_id
+      - departed_at
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        driver_id:
+          type: string
+          format: uuid
+          nullable: true
+        helper_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        destination:
+          type: string
+          nullable: true
+        route_ref:
+          type: string
+          nullable: true
+        load:
+          type: object
+          properties:
+            description:
+              type: string
+              nullable: true
+            weight_kg:
+              type: number
+              format: float
+              nullable: true
+            items:
+              type: array
+              items:
+                type: object
+                required:
+                - name
+                - qty
+                properties:
+                  name:
+                    type: string
+                  qty:
+                    type: integer
+        odometer_out_km:
+          type: integer
+          nullable: true
+        departed_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+    CloseDepartureRequest:
+      type: object
+      required:
+      - odometer_in_km
+      - returned_at
+      properties:
+        odometer_in_km:
+          type: integer
+          minimum: 0
+        returned_at:
+          type: string
+          format: date-time
+    RecordOdometerRequest:
+      type: object
+      required:
+      - vehicle_id
+      - km
+      - source
+      - read_at
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        km:
+          type: integer
+          minimum: 0
+        source:
+          type: string
+          enum:
+          - manual
+          - telemetry
+          - refuel
+          - maintenance
+          - departure
+        read_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+    DefineVehicleProfileRequest:
+      type: object
+      required:
+      - vehicle_id
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        brand:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        year:
+          type: integer
+          nullable: true
+        fuel_type:
+          allOf:
+          - $ref: '#/components/schemas/FuelType'
+          nullable: true
+        tank_liters:
+          type: number
+          format: float
+          nullable: true
+        vin:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+    UpdateVehicleOdometerRequest:
+      type: object
+      required:
+      - km
+      properties:
+        km:
+          type: integer
+          minimum: 0
+    RecordExpenseRequest:
+      type: object
+      required:
+      - vehicle_id
+      - category
+      - amount_cents
+      - currency
+      - incurred_at
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        category:
+          $ref: '#/components/schemas/ExpenseCategory'
+        amount_cents:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        incurred_at:
+          type: string
+          format: date-time
+        description:
+          type: string
+          nullable: true
+        note:
+          type: string
+          nullable: true
     DriverRouteStopStatus:
       type: string
       description: Stop state within the driver route
@@ -6046,11 +7882,12 @@ components:
     Channel:
       type: string
       enum:
-      - PUSH_FCM
+      - PUSH_NTFY
       - WEB_PUSH
+      - TELEGRAM
       - EMAIL
       - SMS
-      description: Delivery channel; the cascade walks them in cost order.
+      description: Delivery channel; the cascade walks them in cost order (all open-source transports).
     CollectionMeta:
       type: object
       properties:

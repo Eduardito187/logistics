@@ -10,68 +10,74 @@ use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Notifications\Domain\Model\Notification;
 use Logistics\Notifications\Domain\ValueObject\Channel;
 use Logistics\Notifications\Domain\ValueObject\RenderedMessage;
-use Logistics\Notifications\Infrastructure\Channel\Fcm\FcmAccessTokenProvider;
 use Logistics\Notifications\Infrastructure\Image\PushImageResolver;
 
 /**
- * Canal web push de la página de tracking (P1-NOT-03): publica en el MISMO topic FCM del envío, pero
- * con la sección `webpush` del mensaje FCM HTTP v1. El navegador del cliente se suscribe al topic desde
- * la página de tracking, así que la plataforma tampoco conoce su token.
+ * Canal web push de la página de tracking (P1-NOT-03) sobre el protocolo estándar **Web Push (VAPID)**,
+ * 100% open-source y sin Google. La entrega la hace el servidor ntfy self-host, que soporta Web Push de
+ * forma nativa: se configura con un par de claves VAPID (`web-push-public-key`/`web-push-private-key`) y
+ * el navegador del cliente se suscribe al topic del envío desde la página de tracking usando la clave
+ * pública VAPID. La plataforma solo publica al topic (`shipment_<id>`); ntfy firma y entrega el web push
+ * a cada navegador suscrito con su propia clave VAPID, así que la plataforma tampoco conoce su endpoint.
  *
- * Adjunta el collage de productos (campo `image` de la notificación web push) cuando se puede armar; si
- * no, sale sin imagen. Corre en el relay del outbox. Si FCM no está configurado o la publicación falla,
- * lanza.
+ * A diferencia del push de la app (ntfy/UnifiedPush), este canal marca el mensaje como web (`X-Web-Push`)
+ * para que el service worker de la página de tracking lo distinga. Adjunta el collage de productos cuando
+ * se puede armar. Corre en el relay del outbox. Si ntfy no está configurado (sin `NTFY_URL`) o no hay
+ * clave pública VAPID (el web push no estaría operativo), lanza para que el relay escale.
  */
 final readonly class WebPushChannelSender implements ChannelSender
 {
     /**
-     * @param array{project_id: ?string, endpoint: string, timeout: int} $config
+     * @param array{url: ?string, token: ?string, vapid_public_key: ?string, timeout: int} $config
      */
     public function __construct(
-        private FcmAccessTokenProvider $tokens,
         private array $config,
         private ?PushImageResolver $images = null,
     ) {}
 
     public function send(Notification $notification, Channel $channel, RenderedMessage $message): void
     {
-        $projectId = $this->config['project_id'] ?? null;
-        $token = $this->tokens->token();
-        if ($projectId === null || $projectId === '' || $token === null) {
-            throw NotificationsException::because('el canal web push no está configurado (falta project_id o credenciales)');
+        $url = $this->config['url'] ?? null;
+        if ($url === null || trim($url) === '') {
+            throw NotificationsException::because('el canal web push no está configurado (falta NTFY_URL)');
         }
 
-        $url = str_replace('{project}', $projectId, $this->config['endpoint']);
+        $vapidPublicKey = $this->config['vapid_public_key'] ?? null;
+        if ($vapidPublicKey === null || trim($vapidPublicKey) === '') {
+            throw NotificationsException::because('el canal web push no está configurado (falta la clave pública VAPID)');
+        }
+
+        // Mismo topic por envío que el push de la app; ntfy lo entrega a los navegadores suscritos.
+        $topic = $notification->fcmTopic()->value;
+        $endpoint = rtrim($url, '/').'/'.$topic;
+
+        $headers = [
+            'Title' => $message->subject ?? $notification->messageType()->value,
+            'Tags' => 'package',
+            'X-Web-Push' => '1',
+            'X-Shipment-Id' => $notification->shipmentId(),
+            'X-Message-Type' => $notification->messageType()->value,
+        ];
 
         // Collage de productos (hasta 4, con "+N" si hay más). Null = web push sin imagen.
         $imageUrl = $this->images?->imageUrlForShipment($notification->shipmentId());
-
-        $webpushNotification = [
-            'title' => $message->subject ?? $notification->messageType()->value,
-            'body' => $message->body,
-        ];
         if ($imageUrl !== null) {
-            $webpushNotification['image'] = $imageUrl;
+            $headers['Attach'] = $imageUrl;
+            $headers['Icon'] = $imageUrl;
         }
 
-        $response = Http::withToken($token)
-            ->timeout($this->config['timeout'])
-            ->post($url, [
-                'message' => [
-                    'topic' => $notification->fcmTopic()->value,
-                    'webpush' => [
-                        'notification' => $webpushNotification,
-                    ],
-                    'data' => [
-                        'shipment_id' => $notification->shipmentId(),
-                        'message_type' => $notification->messageType()->value,
-                    ],
-                ],
-            ]);
+        $request = Http::withHeaders($headers)->timeout($this->config['timeout']);
+
+        $token = $this->config['token'] ?? null;
+        if ($token !== null && $token !== '') {
+            $request = $request->withToken($token);
+        }
+
+        $response = $request->withBody($message->body, 'text/plain')->post($endpoint);
 
         if ($response->failed()) {
             throw NotificationsException::because(
-                "FCM rechazó el web push al topic {$notification->fcmTopic()->value}: HTTP {$response->status()}",
+                "ntfy rechazó el web push al topic {$topic}: HTTP {$response->status()}",
             );
         }
     }

@@ -3,20 +3,30 @@
 ## Responsabilidad
 
 Capa de notificaciones con cascada de canales y reglas configurables por tipo de mensaje: push de la
-app de clientes y web push por **topic FCM por envío** (`shipment_<id>`), WhatsApp, Telegram, email y
-SMS (respaldo crítico con tope). La plataforma publica al topic y NO guarda tokens de la app de
-clientes.
+app de clientes por **ntfy/UnifiedPush** y web push por **VAPID**, ambos por **topic por envío**
+(`shipment_<id>`), más Telegram, email y SMS (respaldo crítico con tope). La plataforma publica al topic
+y NO guarda tokens ni endpoints de los dispositivos.
 
-## Cambio sobre el ADR 006 (decisión del dueño, 2026-10)
+## Todo open-source y gratis (decisión del dueño, 2026-10)
 
-El ADR 006 original fijaba la cascada **"PushFcm → WebPush → Email → Sms, sin WhatsApp por costo"**.
-El dueño del producto pidió habilitar **WhatsApp** (y sumar **Telegram**) como canales más. Se agregan
-ambos al enum `Channel`, a los adapters, a la cascada por defecto y al admin. Mientras no se actualice
-el ADR formal en `docs/adr/006`, este README es el registro del cambio (este contexto no toca los ADR).
-Nueva cascada por defecto: `PushFcm → WebPush → Telegram → Email → WhatsApp → Sms`.
+El stack de notificaciones es **100% open-source y sin servicios de pago ni de Google**:
+
+- **Push de la app** → **ntfy** self-host (compatible con **UnifiedPush**). Reemplaza a Firebase/FCM,
+  que exigía cuenta y proyecto de Google. Es un simple `HTTP POST` al topic del envío (`NTFY_URL`).
+- **Web push** → protocolo estándar **Web Push (VAPID)**, entregado por el mismo servidor ntfy (soporte
+  nativo de Web Push con claves VAPID, `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`). Open-source.
+- **WhatsApp eliminado**: la Meta WhatsApp Cloud API (y Twilio) son de pago; se quitó el canal del enum,
+  los adapters, la cascada y el admin.
+- **Telegram** (Bot API, gratis/open) **queda** como canal de mensajería del cliente.
+- **SMS** → por un **gateway open-source self-host** (android-sms-gateway / Jasmin / Kannel, vía
+  `SMS_GATEWAY_URL`), no un SaaS de pago. Sigue siendo el último recurso por su costo de operador (tope
+  mensual atómico).
+
+Nueva cascada por defecto: `PushNtfy → WebPush → Telegram → Email → Sms`. Mientras no se actualice el
+ADR formal en `docs/adr/006`, este README es el registro del cambio (este contexto no toca los ADR).
 
 El envío real es asíncrono (por outbox): este contexto define el dominio, el estado de la cascada y los
-contratos de canal; el despacho a FCM/email/SMS corre en el relay.
+contratos de canal; el despacho a ntfy/email/SMS corre en el relay.
 
 ## No es responsable de
 
@@ -43,31 +53,36 @@ Cuatro capas (Clean Architecture), igual que el resto de los packages:
   migración y `NotificationsServiceProvider`.
 - `src/Presentation`: sin UI por ahora.
 
-## Cascada por defecto (ADR 006)
+## Cascada por defecto
 
-`PushFcm → WebPush → Email → Sms`, escalando cuando no hubo apertura (`EscalateCondition::NoOpen`).
-La resuelve `DefaultNotificationRulesProvider`; se puede reemplazar por reglas en base o panel sin
-tocar el dominio.
+`PushNtfy → WebPush → Telegram → Email → Sms`, escalando cuando no hubo apertura
+(`EscalateCondition::NoOpen`). La resuelve `DefaultNotificationRulesProvider`; se puede reemplazar por
+reglas en base o panel sin tocar el dominio.
 
 ## Canales reales (detrás de contrato)
 
 El despacho real corre en el relay del outbox por el `NotificationChannelDispatcher`, que al consumir
 `notifications.notification_queued` reconstruye la notificación, renderiza el contenido del canal actual
 (`NotificationContentRenderer`: plantilla o default por tipo) y lo envía por el `RoutingChannelSender`,
-que enruta a un sender real por canal:
+que enruta a un sender real por canal (todos open-source):
 
-- `FcmChannelSender` (P1-NOT-02): publica en el topic `shipment_<id>` vía FCM HTTP v1; token OAuth2 de
-  la service account (`ServiceAccountFcmAccessTokenProvider`, cacheado).
-- `WebPushChannelSender` (P1-NOT-03): mismo topic, sección `webpush` del mensaje FCM.
-- `WhatsAppChannelSender`: Meta WhatsApp Cloud API (Graph `/{phone_id}/messages`); `sendText`/imagen con
-  caption. Config `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`. Usa el teléfono del destinatario.
+- `NtfyChannelSender` (P1-NOT-02): push de la app al topic `shipment_<id>` del servidor **ntfy**
+  self-host (`HTTP POST` a `{NTFY_URL}/{topic}`), compatible con **UnifiedPush**. Sin Google.
+- `WebPushChannelSender` (P1-NOT-03): **Web Push (VAPID)** sobre el mismo topic, entregado por el soporte
+  nativo de Web Push de ntfy. Requiere `NTFY_URL` + `VAPID_PUBLIC_KEY`.
 - `TelegramChannelSender`: Bot API (`sendMessage`/`sendPhoto`). Config `TELEGRAM_BOT_TOKEN`. Resuelve el
   `chat_id` del destinatario (columna `telegram_chat_id`).
 - `EmailChannelSender` (P1-NOT-04): mailer de Laravel (Mailpit en dev). Arma el HTML con la vista
   `notifications::email.order`, que muestra el **listado de productos con imagen, nombre y cantidad**.
-- `SmsChannelSender` (P1-NOT-05): proveedor HTTP, con **tope mensual** atómico (`SmsBudgetRepository`).
+- `SmsChannelSender` (P1-NOT-05): gateway de SMS **open-source** vía `SMS_GATEWAY_URL`, con **tope
+  mensual** atómico (`SmsBudgetRepository`). Opciones recomendadas:
+  - **android-sms-gateway** (REST con Basic auth; envía por un teléfono Android propio) — define
+    `SMS_GATEWAY_USERNAME`/`SMS_GATEWAY_PASSWORD`; el payload por defecto (`message` + `phoneNumbers`)
+    es el suyo.
+  - **Jasmin** o **Kannel** (SMPP/SMS gateways clásicos) expuestos por su endpoint HTTP de envío; usar
+    `SMS_GATEWAY_TOKEN` (Bearer) o el shim HTTP correspondiente.
 
-Sin credenciales, cada canal queda "no configurado" y lanza (el relay reintenta/escala); el email de
+Sin configuración, cada canal queda "no configurado" y lanza (el relay reintenta/escala); el email de
 dev sí sale por Mailpit. La configuración vive en `config/logistics-notifications.php` (env).
 
 ## Contenido rico (email + push)
@@ -75,7 +90,7 @@ dev sí sale por Mailpit. La configuración vive en `config/logistics-notificati
 - **Email**: vista Blade `resources/views/email/order.blade.php` con el listado de productos del pedido
   (thumbnail + nombre + cantidad). Los productos los da el contrato `ProductImageResolver`
   (`LineItemProductImageResolver` lee `shipment_lines.product_image_url`; placeholder si no hay imagen).
-- **Push (FCM y web push), WhatsApp y Telegram**: imagen **collage** de los productos. `CollageImageBuilder`
+- **Push (ntfy y web push) y Telegram**: imagen **collage** de los productos. `CollageImageBuilder`
   (`GdCollageImageBuilder`, extensión GD) arma una grilla de **hasta 4 productos**; con más de 4 muestra
   3 + una celda **"+N"**. `PushImageResolver` compone resolutor + armador + `CollageImageStore`
   (`FilesystemCollageImageStore`, disco `public`/S3) y pone la URL en el campo `image` del payload. Si GD

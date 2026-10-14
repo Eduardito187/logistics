@@ -22,6 +22,7 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Logistics\Capacity\Presentation\Filament\Pages\DispatchCalendar;
 use Logistics\Fleet\Presentation\Filament\Pages\DriverHistory;
+use Logistics\FleetOps\Presentation\Filament\Pages\FleetCostDashboard;
 use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
 
 /**
@@ -61,6 +62,7 @@ final class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('Operations'),
                 NavigationGroup::make('Network'),
                 NavigationGroup::make('Fleet'),
+                NavigationGroup::make('Fleet Ops'),
                 NavigationGroup::make('Shipments'),
                 NavigationGroup::make('Capacity'),
                 NavigationGroup::make('Promise'),
@@ -146,6 +148,10 @@ final class AdminPanelProvider extends PanelProvider
                 in: base_path('packages/logistics/telemetry/src/Presentation/Filament'),
                 for: 'Logistics\Telemetry\Presentation\Filament',
             )
+            ->discoverResources(
+                in: base_path('packages/logistics/fleetops/src/Presentation/Filament'),
+                for: 'Logistics\FleetOps\Presentation\Filament',
+            )
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,
@@ -153,6 +159,8 @@ final class AdminPanelProvider extends PanelProvider
                 DispatchCalendar::class,
                 // Mapa de flota en vivo (telemetría GPS): todos los camiones en tiempo real.
                 LiveFleetMap::class,
+                // Tablero de costos de flota propia (TCO, costo/km, mantenimiento vencido) del contexto FleetOps.
+                FleetCostDashboard::class,
                 // Historial operativo del chofer (desempeño cuantificable) del contexto Fleet.
                 DriverHistory::class,
             ])

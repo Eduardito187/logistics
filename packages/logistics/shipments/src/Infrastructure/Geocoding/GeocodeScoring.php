@@ -12,7 +12,7 @@ use Logistics\Shipments\Domain\ValueObject\GeocodeMatchType;
  * Traduce el tipo de coincidencia de dominio (match exacto vs aproximado) a un score 0..100, aplica la
  * penalización por coincidencia parcial y define el score de "sin resultado". Vive en Infrastructure
  * porque son knobs operativos (se calibran contra la realidad boliviana), no reglas de negocio puras.
- * Los adaptadores (Google, Nominatim) comparten estos criterios para puntuar de forma homogénea.
+ * Los adaptadores (Nominatim/OSM) comparten estos criterios para puntuar de forma homogénea.
  */
 final readonly class GeocodeScoring
 {

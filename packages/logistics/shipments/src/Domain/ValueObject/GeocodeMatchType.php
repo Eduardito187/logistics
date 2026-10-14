@@ -9,7 +9,7 @@ namespace Logistics\Shipments\Domain\ValueObject;
  *
  * Es el criterio de dominio detrás del score de confianza: una coincidencia EXACTA (sobre el predio)
  * merece confianza alta; una APROXIMADA (centro de manzana o localidad) es candidata a confirmarse con
- * el cliente antes de salir a ruta. Cada proveedor (Google, Nominatim) traduce sus señales propias a
+ * el cliente antes de salir a ruta. Cada proveedor (Nominatim/OSM) traduce sus señales propias a
  * uno de estos tipos; el dominio solo conoce este vocabulario, no al proveedor.
  */
 enum GeocodeMatchType: string

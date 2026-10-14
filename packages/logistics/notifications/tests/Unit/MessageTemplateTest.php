@@ -17,7 +17,7 @@ function sampleTemplate(string $body = 'Tu pedido {{shipment_id}} va en camino')
     return MessageTemplate::define(
         MessageTemplateId::generate(),
         MessageType::EnRoute,
-        Channel::PushFcm,
+        Channel::PushNtfy,
         'ES',
         'On the way',
         $body,

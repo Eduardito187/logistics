@@ -14,15 +14,16 @@ use Logistics\Shipments\Domain\ValueObject\GeoPoint;
 use Throwable;
 
 /**
- * Adaptador sobre Nominatim (OpenStreetMap), alternativa sin clave a Google.
+ * Adaptador sobre Nominatim (OpenStreetMap), el geocoder open-source self-host del proyecto.
  *
- * Es gratis y no requiere API key, a cambio de respetar la política de uso de OSM:
+ * Es gratis y no requiere API key, a cambio de respetar la política de uso de OSM (aplica igual
+ * contra la instancia self-host, para no saturarla):
  *  - User-Agent identificable obligatorio (si no, OSM bloquea; va por configuración).
  *  - Máximo ~1 request por segundo: se auto-limita con un throttle best-effort apoyado en la caché
  *    (clave compartida del último request), para no gastar llamadas innecesarias en reprocesos masivos.
  *
  * Traduce los campos del resultado (addresstype/class/type) al tipo de coincidencia de dominio y puntúa
- * con los mismos criterios configurables que Google (GeocodeScoring). Cachea la forma primitiva (array),
+ * con los criterios configurables de GeocodeScoring. Cachea la forma primitiva (array),
  * nunca el objeto de dominio (regla 7 del proyecto).
  */
 final class NominatimGeocoder extends AbstractGeocoder

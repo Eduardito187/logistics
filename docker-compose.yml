@@ -152,6 +152,62 @@ services:
         networks:
             - dismac_lg
 
+    # -------------------- Nominatim (geocoder OpenStreetMap self-host) --------------------
+    # Geocoder open-source (OSM) que resuelve direcciones → coordenada. Reemplaza a Google: cero
+    # servicios de pago, cero claves, y las direcciones de clientes no salen a un tercero. Siempre
+    # encendido (sin `profiles`): shipments apunta aquí vía NOMINATIM_URL=http://nominatim:8080 y, si
+    # está caído/sin datos, el geocoder cae al stub neutro (NullGeocoder) sin romper el ingreso.
+    #
+    # Requiere importar el extracto OSM de Bolivia (bolivia-latest.osm.pbf en `.docker/nominatim/data`).
+    # El import es MUY pesado y NO corre aquí automáticamente sin el PBF: ver docs/maps-geocoder-selfhost.md.
+    # Mientras no exista el PBF / no termine el import, el contenedor reinicia en bucle a propósito: es la
+    # señal de que falta correr el runbook, no un fallo de configuración.
+    nominatim:
+        image: mediagis/nominatim:4.4
+        container_name: dismac_lg_nominatim
+        restart: unless-stopped
+        environment:
+            # Extracto OSM a importar (montado abajo). Geofabrik publica `bolivia-latest.osm.pbf`.
+            PBF_PATH: /nominatim/data/bolivia-latest.osm.pbf
+            # Actualizaciones incrementales de Bolivia (opcional; el runbook explica cómo activarlas).
+            REPLICATION_URL: https://download.geofabrik.de/south-america/bolivia-updates/
+            # Contraseña de la base interna de Nominatim (solo dentro del contenedor).
+            NOMINATIM_PASSWORD: nominatim
+        ports:
+            - "${DOCKER_NOMINATIM_PORT:-8081}:8080"
+        volumes:
+            # Base PostgreSQL del índice de Nominatim (persiste el import, fuera de git).
+            - nominatim_data:/var/lib/postgresql/14/main
+            # Extracto OSM de Bolivia y artefactos del import (fuera de git).
+            - ./.docker/nominatim/data:/nominatim/data
+        # El import de Nominatim usa memoria compartida intensiva; sin esto, PostgreSQL falla.
+        shm_size: 1g
+        networks:
+            - dismac_lg
+
+    # -------------------- Tileserver (teselas de mapa OpenStreetMap self-host) --------------------
+    # Sirve las teselas raster del estilo osm-bright a los mapas Leaflet (admin + seguimiento público).
+    # Reemplaza a tile.openstreetmap.org / tiles de pago: todo OSM self-host. Siempre encendido (sin
+    # `profiles`): las vistas apuntan aquí vía MAP_TILE_URL=http://localhost:8082/styles/osm-bright/{z}/{x}/{y}.png
+    # (puerto del host, porque las teselas las pide el navegador). Si no hay self-host configurado, las
+    # vistas caen al tile público de OSM (solo demo).
+    #
+    # Requiere el mbtiles/pmtiles de Bolivia y la config del estilo en `.docker/tileserver/data` (config.json
+    # + estilo osm-bright + el .mbtiles). La generación es pesada y NO corre aquí: ver
+    # docs/maps-geocoder-selfhost.md. Sin esos datos el contenedor reinicia en bucle a propósito.
+    tileserver:
+        image: maptiler/tileserver-gl:latest
+        container_name: dismac_lg_tileserver
+        restart: unless-stopped
+        command: --config /data/config.json --port 8080
+        ports:
+            - "${DOCKER_TILESERVER_PORT:-8082}:8080"
+        volumes:
+            # config.json, estilo osm-bright y el .mbtiles de Bolivia (fuera de git).
+            - ./.docker/tileserver/data:/data
+        networks:
+            - dismac_lg
+
     # -------------------- Queue worker (siempre encendido) --------------------
     # Sin `profiles` a propósito: en dis-commerce un worker opcional que nadie levantó dejó
     # jobs sin procesar por más de 1 h. `--max-time` recicla el proceso para no correr código viejo.
@@ -213,6 +269,47 @@ services:
         profiles:
             - node
 
+    # ============================================================
+    # AÑADIDO — frente notificaciones (2026-10): servidor ntfy self-host.
+    # ------------------------------------------------------------
+    # Push de la app de clientes (UnifiedPush) y, opcionalmente, Web Push (VAPID) del
+    # contexto `notifications`. Es 100% open-source y gratis; reemplaza a Firebase/FCM.
+    # La plataforma publica con un simple HTTP POST a http://ntfy:80/shipment_<id>.
+    #
+    # NOTA: este bloque agrega SOLO el servicio `ntfy` (otra oleada también edita este
+    # compose). Usa un bind-mount para la caché (no toca el bloque `volumes:`) y la red
+    # `dismac_lg` ya existente. Por defecto, anónimo (dev): publicar/suscribir sin auth.
+    #
+    # Web Push (VAPID) — opcional, para la página de tracking web. ntfy lo soporta nativo
+    # pero exige las CUATRO variables juntas (si falta una, el server no arranca), así que
+    # queda COMENTADO hasta generar las claves:
+    #   docker compose exec ntfy ntfy webpush keys   # imprime VAPID_PUBLIC_KEY/PRIVATE_KEY
+    # y luego descomentar las líneas NTFY_WEB_PUSH_* de abajo (con las claves en .env).
+    # --------------------------------------------------------------
+    ntfy:
+        image: binwiederhier/ntfy:latest
+        container_name: dismac_lg_ntfy
+        restart: unless-stopped
+        command: serve
+        environment:
+            TZ: America/La_Paz
+            NTFY_BASE_URL: ${NTFY_URL:-http://ntfy:80}
+            NTFY_LISTEN_HTTP: ":80"
+            NTFY_BEHIND_PROXY: "true"
+            NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+            NTFY_ATTACHMENT_CACHE_DIR: /var/cache/ntfy/attachments
+            # --- Web Push (VAPID): descomentar las cuatro juntas tras generar las claves ---
+            # NTFY_WEB_PUSH_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+            # NTFY_WEB_PUSH_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+            # NTFY_WEB_PUSH_EMAIL_ADDRESS: ${VAPID_SUBJECT:-mailto:no-reply@dismac.test}
+            # NTFY_WEB_PUSH_FILE: /var/cache/ntfy/webpush.db
+        volumes:
+            - ./.docker/ntfy/cache:/var/cache/ntfy
+        ports:
+            - "${DOCKER_NTFY_PORT:-8120}:80"
+        networks:
+            - dismac_lg
+
 volumes:
     postgres_data:
     valkey_data:
@@ -220,6 +317,7 @@ volumes:
     node_modules:
     composer_cache:
     mailpit_data:
+    nominatim_data:
 
 networks:
     dismac_lg:

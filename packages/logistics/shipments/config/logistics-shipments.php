@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-// Configuración del contexto Recepción de envíos. Los secretos (clave de Google) van en .env /
-// gestor de secretos, nunca en settings editables ni en el repo.
+// Configuración del contexto Recepción de envíos. Todo el geocoding es open-source y self-host
+// (Nominatim/OpenStreetMap): sin Google, sin servicios de pago ni claves de API.
 return [
     // Geocodificador: resuelve una dirección a coordenada + confianza (contrato Geocoder).
     'geocoder' => [
-        // Proveedor a usar: 'google', 'nominatim' o 'null'. Vacío = AUTO: Google si hay clave, si no
-        // Nominatim (no necesita clave), y si Nominatim está deshabilitado, el stub neutro (null).
-        'driver' => env('SHIPMENTS_GEOCODER_DRIVER'),
+        // Proveedor a usar: 'nominatim' (OSM, por defecto) o 'null' (stub neutro). Vacío = AUTO:
+        // Nominatim si está habilitado, y si se deshabilita (entornos sin salida), el stub neutro.
+        'driver' => env('SHIPMENTS_GEOCODER_DRIVER', 'nominatim'),
 
         // Caché de resultados: store de Valkey/Redis y TTL en segundos (por defecto 30 días).
         // Las direcciones casi no cambian; cachear evita gastar cuota/llamadas y acelera reprocesos.
@@ -37,39 +37,19 @@ return [
             'no_result_score' => (int) env('SHIPMENTS_GEOCODER_NO_RESULT_SCORE', 10),
         ],
 
-        // Google Geocoding API. Sin clave, el AUTO cae a Nominatim. El secreto va en .env / gestor de
-        // secretos, nunca en settings editables ni en el repo.
-        'google' => [
-            // Clave de la Google Geocoding API (variable estándar GOOGLE_GEOCODING_KEY; se acepta el
-            // nombre histórico SHIPMENTS_GEOCODER_GOOGLE_KEY por compatibilidad).
-            'key' => env('GOOGLE_GEOCODING_KEY', env('SHIPMENTS_GEOCODER_GOOGLE_KEY')),
-
-            // Endpoint (configurable para pruebas y proxies corporativos).
-            'endpoint' => env(
-                'SHIPMENTS_GEOCODER_ENDPOINT',
-                'https://maps.googleapis.com/maps/api/geocode/json',
-            ),
-
-            // Sesgo geográfico: Bolivia y español, para desambiguar direcciones locales.
-            'region' => env('SHIPMENTS_GEOCODER_REGION', 'bo'),
-            'language' => env('SHIPMENTS_GEOCODER_LANGUAGE', 'es'),
-
-            // Timeout por request en segundos. Geocodificar nunca debe colgar un worker.
-            'timeout' => (int) env('SHIPMENTS_GEOCODER_TIMEOUT', 5),
-
-            // Cuota diaria de requests reales (no cacheados). Protege el presupuesto de la API: al
-            // superarla se corta con una excepción en vez de seguir facturando. 0 = sin límite.
-            'daily_quota' => (int) env('SHIPMENTS_GEOCODER_DAILY_QUOTA', 40000),
-        ],
-
-        // Nominatim (OpenStreetMap): alternativa sin clave. Respeta la política de uso de OSM.
+        // Nominatim (OpenStreetMap): geocoder open-source self-host, sin clave ni cuota de pago.
         'nominatim' => [
-            // Habilitado por defecto: es el fallback cuando no hay clave de Google. Se puede apagar
-            // (entornos sin salida a internet) para caer directo al stub neutro.
+            // Habilitado por defecto. Se puede apagar (entornos sin salida ni servicio) para caer
+            // directo al stub neutro (null).
             'enabled' => (bool) env('SHIPMENTS_GEOCODER_NOMINATIM_ENABLED', true),
 
-            // Endpoint del servicio /search (se puede apuntar a una instancia self-hosted).
-            'endpoint' => env('SHIPMENTS_GEOCODER_NOMINATIM_ENDPOINT', 'https://nominatim.openstreetmap.org/search'),
+            // Endpoint del servicio /search. Por defecto apunta a la instancia Nominatim self-host del
+            // docker-compose (NOMINATIM_URL=http://nominatim:8080); SHIPMENTS_GEOCODER_NOMINATIM_ENDPOINT
+            // permite fijar la URL /search completa (p. ej. detrás de un proxy o en otro host).
+            'endpoint' => env(
+                'SHIPMENTS_GEOCODER_NOMINATIM_ENDPOINT',
+                rtrim((string) env('NOMINATIM_URL', 'http://nominatim:8080'), '/').'/search',
+            ),
 
             // User-Agent identificable: OBLIGATORIO por la política de OSM (sin él, bloquean).
             'user_agent' => env('SHIPMENTS_GEOCODER_NOMINATIM_USER_AGENT', 'DismacLogistics/1.0 (logistica@dismac.com.bo)'),
