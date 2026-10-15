@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Logistics\Settings\Infrastructure\Persistence\Eloquent;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Logistics\Settings\Database\Factories\SettingVersionFactory;
 
 /**
  * Modelo Eloquent de una fila de `settings_versions`.
@@ -19,9 +21,14 @@ use Illuminate\Database\Eloquent\Model;
  * @property string               $effective_from
  * @property string               $created_at
  * @property string|null          $created_by
+ *
+ * @use HasFactory<SettingVersionFactory>
  */
 final class SettingVersionRecord extends Model
 {
+    /** @use HasFactory<SettingVersionFactory> */
+    use HasFactory;
+
     protected $table = 'settings_versions';
 
     protected $keyType = 'string';
@@ -38,4 +45,13 @@ final class SettingVersionRecord extends Model
         'value' => 'array',
         'version' => 'integer',
     ];
+
+    /**
+     * El package está en dont-discover y la factory vive en su propio namespace, así que se enlaza
+     * explícitamente en vez de dejar que Laravel adivine `Database\Factories\...`.
+     */
+    protected static function newFactory(): SettingVersionFactory
+    {
+        return SettingVersionFactory::new();
+    }
 }

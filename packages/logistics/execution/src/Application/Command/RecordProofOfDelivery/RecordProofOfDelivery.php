@@ -18,6 +18,7 @@ final readonly class RecordProofOfDelivery implements Command
         public string $unitId,
         public string $confirmation,
         public ?string $photoUrl,
+        public ?string $photoPath,
         public float $lat,
         public float $lng,
         public string $deviceId,

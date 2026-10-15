@@ -1,458 +1,428 @@
-# Roadmap — Plataforma logística Dismac
+# Roadmap detallado — Plataforma logística Dismac
 
-Roadmap completo y exhaustivo de todo lo pendiente para llegar a la visión de `docs/vision.md`:
-una plataforma propia (fuera de SAP) que **planifica, ejecuta y hace visible** cada entrega de la red
-completa (CD→cliente, CD→CD, CD→tienda, tienda→tienda, tienda→CD y recojo en tienda), a escala de
-~100 camiones y ~300 entregas diarias.
+Roadmap vivo y exhaustivo del camino de "backend construido en desarrollo" a **producción operando**
+(visión en `docs/vision.md`, arquitectura en `docs/architecture.md`, stack libre en
+`docs/opensource-stack.md`).
 
-> **Cómo leer este documento.** Cada ítem es una casilla `[ ]`. Agrupados por **fase** (0→3, de
-> `docs/vision.md`) y por **workstream**. Un ítem no está "hecho" hasta cumplir la **Definición de
-> Terminado** (DoD) del final. Los IDs (`P1-SHP-03`) son estables para citarlos en commits, PRs e issues.
-> El orden dentro de cada fase respeta dependencias; entre workstreams hay paralelismo posible.
+Reemplaza al roadmap inicial de arranque (cuyos ítems de scaffolding ya están hechos). Reorganizado
+alrededor del estado real al **2026-10-13**: tras las oleadas de refinamiento, **todo lo que un agente
+puede completar por código está hecho y verde** (pest + PHPStan 8 + Pint). Lo que queda son
+**desbloqueos del mundo real**: desplegar, credenciales/servicios externos, datos reales (Fase 0), la
+app Flutter, el tablero interactivo y el piloto.
+
+**Regla transversal (del dueño):** todo el stack es **100% open-source y gratuito, sin Google ni
+servicios de pago** (ADR 013 mapas/geocoder/ruteo, ADR 014 push, ADR 015 notificaciones). Los ítems de
+este roadmap ya asumen esa regla.
 
 ## Leyenda de estado
+- `[x]` hecho y verificado (funcional + pest + PHPStan 8 + Pint verdes contra containers).
+- `[ ]` pendiente por una razón de **mundo real**: desplegar, credenciales/servicios externos, datos
+  reales (Fase 0), app Flutter, tablero interactivo o piloto. No es trabajo de código bloqueado.
 
-- `[x]` hecho y verificado contra containers.
-- `[~]` parcial / en progreso.
-- `[ ]` pendiente.
-
-## Avance 2026-10-13 (DDD + CQRS + Clean Architecture + UUID v7 + outbox)
-
-Construido en esta sesión, **compilado (`php -l` limpio) con tests escritos**, pero **sin verificar en
-containers** (Docker/vendor no disponibles): por la regla #1 de `CLAUDE.md` no cuenta como "terminado"
-hasta correr `pest` + `phpstan` 8 + `pint` + verificación real. Marcado `[~]`. Total: **16 packages,
-572 archivos PHP, 53 de tests**, todos con `php -l` limpio.
-
-**Fundación (`[~]` código):**
-- `logistics/shared`: UUID v7, `AbstractId`, `AggregateRoot` + eventos inmutables, buses CQRS (`CommandBus`/`QueryBus` + `HandlerRegistry`), `Clock`. ADR 008.
-- `logistics/outbox`: transactional outbox (idempotencia por `event_id`, `SKIP LOCKED` + lease, backoff, dead-letter, relay).
-- `logistics/settings`: configuración versionada por clave (CQRS).
-
-**Fase 1 — bounded contexts (`[~]` código): los 9 con dominio + CQRS + repos Eloquent + migraciones.**
-- `network`, `coverage` (PostGIS punto→zona), `fleet`, `shipments`, `labels` (ZPL + pre-emisión + claves públicas), `planning` (tablero vía RouteOptimizer stub), `execution` (escaneos inmutables, POD, offline idempotente), `tracking` (página pública sin PII, proyección), `notifications` (cascada FCM/web push/email/SMS, ADR 006).
-
-**Fase 2 — packages nuevos (`[~]` código), registrados en raíz:**
-- `capacity` (cupos), `promise` (promesa + reserva), `sap-connector` (ACL SAP, traspasos idempotentes), `carriers` (tarifas por corredor).
-
-**Fase 0 — Discovery toolkit (`[x]` entregado, scripts verificados ejecutándolos):**
-- `docs/discovery/` (plan, KPIs, ingreso de pedidos, calidad de coordenadas, inventarios, satisfacción, accesos) + `tools/discovery/` (validador de pedidos y analizador de coordenadas en PHP stdlib).
-
-**Pendiente inmediato (lo que falta para cerrar lo `[~]`):** **verificación en containers** (pest/phpstan 8/pint — necesita Docker), **wiring del outbox** en los handlers (hoy `releaseEvents()` con `// TODO(outbox)`), **Filament/HTTP + `openapi`**, geocodificador real, auth/API gates, app Flutter, tableros React, infra/deploy.
-
-## Estado actual (línea base, 2026-10)
-
-- `[x]` Scaffold Laravel 13 (PHP 8.4), estructura de monolito modular.
-- `[x]` Docker: nginx, php-fpm, PostgreSQL 17 + PostGIS, Valkey, Mailpit; `queue-worker` y `scheduler` siempre encendidos.
-- `[x]` Makefile (`install`, `test`, `lint`, `ci`, `shell`, `reload`), `.env.example`, `.editorconfig`.
-- `[x]` CI GitHub Actions: `ci.yml` (test + lint) y `branch-policy.yml`. PR template.
-- `[x]` Filament 4 instalado (`AdminPanelProvider`).
-- `[x]` Endpoint `/api/v1/health` + su contrato en `openapi/v1.yaml`.
-- `[x]` Package `labels` **completo**: `LabelPayload`, `Fraction`, `LabelType`, `SignedLabel`, `VerificationResult`, firma/verificación Ed25519 (libsodium), comando `logistics:labels:keygen`, vector de prueba compartido y tests Unit.
-- `[~]` 8 packages de Fase 1 **solo esqueleto** (composer.json + ServiceProvider vacío): `network`, `coverage`, `fleet`, `shipments`, `planning`, `execution`, `tracking`, `notifications`.
-- `[ ]` 4 packages de Fase 2 **sin crear**: `capacity`, `promise`, `sap-connector`, `carriers`.
-- `[ ]` Patrones compartidos `outbox` y `settings` (reutilizar/portar de dis-commerce) **sin crear**.
-- `[ ]` App interna Flutter (`logistics-app`): repo aparte, sin trabajo reflejado aquí.
+Los IDs (`V-03`, `P1-EXE-12`) son estables para citarlos en commits/PRs/issues.
 
 ---
 
-# FASE 0 — Discovery (línea base, antes/junto al MVP)
+## 0. Snapshot del estado actual (2026-10-13)
 
-Objetivo: tener números y materia prima reales antes de prometer nada. No requiere código de producto,
-pero sí instrumentación y análisis.
+Construido con oleadas de agentes, **verificado verde en esta sesión** (pest + PHPStan 8 + Pint),
+pendiente de commit/push autorizado por el dueño:
 
-## F0-KPI — Línea base de KPIs del piloto
+- `[x]` 16 bounded contexts DDD/CQRS + `logistics/access` (RBAC) **refinados**. Outbox wireado en los
+  handlers de escritura (TransactionalCommandBus).
+- `[x]` API de 3 puertas (app/channels/integrations) con Sanctum + roles; `openapi/v1.yaml` re-fusionado
+  y validado (OpenAPI 3); errores RFC 7807; rate-limit por puerta.
+- `[x]` Admin Filament (~36 resources) con datos legibles + flujos transaccionales (acciones→CommandBus),
+  i18n (texto visible en inglés vía `__()`, catálogo `lang/es.json`), tema de marca (Tailwind v4),
+  dashboard con widgets, auditoría de accesos.
+- `[x]` SPA operativa Vue 3 + Inertia en `/app` (ADR 009-app-web); mapas Leaflet + OpenStreetMap:
+  editor de coberturas (PostGIS), mapa de ruta (OSRM server-side + GPS road-snap), perfil de cliente,
+  ubicación de pedido, página pública de tracking per-bulto + GPS.
+- `[x]` Ruteo VRP (Clarke-Wright + 2-opt sobre matriz OSRM `/table`), backend enchufable
+  (builtin/osrm/vroom), VRPTW con VROOM, persistencia de geometría; auto-planner 2 modos
+  (optimization/slots) async por colas; calendario de despacho + reserva de slots; promesa de entrega.
+- `[x]` Notificaciones multicanal (push, Telegram, email, SMS de respaldo) con 14 tipos de mensaje,
+  plantillas + interpolación de variables, reglas versionadas por tipo, collage GD en push. Transporte
+  **sin Firebase** (Web Push VAPID + ntfy/UnifiedPush) y **sin WhatsApp de pago** (ADR 014/015).
+- `[x]` Geocoder OSM self-host detrás de contrato (Nominatim/Photon, ADR 013), con cache; índices de BD
+  en accesos calientes; cache de ReadModels en forma primitiva (regla #7).
+- `[x]` Fleet (turnos de tripulación, documentos con alertas de vencimiento, estados de vehículo);
+  incidentes de camión (avería/accidente) con reprogramación automática.
+- `[x]` SAP ACL (conector anti-corrupción con stub), carriers (tarifas/desempeño/asignación),
+  coverage (jerarquía completa + importador KML/GeoJSON), recepción en nodos por corredor.
+- `[x]` Infra como código: Dockerfile prod, 4 colas supervisadas + scheduler, OSRM/VROOM self-host,
+  almacenamiento S3-compatible (MinIO), CI, observabilidad (logs JSON, métricas, healthchecks,
+  runbooks), backups + prueba de restauración, cabeceras de seguridad (CSP/HSTS/CORS), zona horaria
+  configurable (America/La_Paz, ADR 011), panel de outbox.
 
-- `[ ]` F0-KPI-01 Definir fórmula y fuente de cada KPI del piloto (ver `vision.md`): llamadas chofer→cliente, consultas "¿dónde está mi pedido?", % entregas a tiempo/fallidas con motivo, bultos descargados por error/faltantes, satisfacción post-entrega.
-- `[ ]` F0-KPI-02 Medir la línea base **actual** (sin plataforma) de cada KPI, con el método que se usará luego, para comparar.
-- `[ ]` F0-KPI-03 Definir metas numéricas de salida del piloto por KPI.
-- `[ ]` F0-KPI-04 Acordar instrumento de "satisfacción post-entrega" (canal, pregunta, escala) y su captura.
-- `[ ]` F0-KPI-05 Tablero de seguimiento de KPIs del piloto (puede ser manual al inicio).
+**Lo que NO existe aún (mundo real):** deploy a staging/producción, credenciales de servicios externos
+(VAPID/ntfy/SMS gateway/Telegram/SMTP prod/SAP/Magento), app Flutter (`logistics-app`, repo aparte),
+datos reales de Fase 0, piloto y Fase 3 avanzada.
 
-## F0-GEO — Calidad de coordenadas y mapa
+### Actualización 2026-10-14 — backlog agent-doable CERRADO (3 commits: 840ad01, 58c19dc, a4d2606)
+Verificado verde: **Pest 1153 passed (3341 aserciones), PHPStan 8 limpio, Pint limpio (2550 archivos)**.
+Completado esta sesión (antes `[ ]`, ahora hecho):
+- **Flota ampliada**: vehículos (marca/modelo/año/VIN/fotos 4 lados + docs SOAT/Inspección Técnica con
+  nº de póliza y vencimiento) y choferes (ciudad); **sistema de alertas de vencimiento 30d/7d/vencido**
+  (widget + scheduler + notificación) para licencias y documentos.
+- **Calendario de despacho por municipio** (7 días, feriados/bloqueos global o por municipio, activación
+  de cupos por rango de fechas asíncrona, horizonte activo, enforcement en promise/planning).
+- **R-04/R-05/R-06** (restricciones de vehículo en el solver, re-opt incremental, métricas de ruta +
+  comparación de backends). **K-03/K-05** (reserva de slot por el cliente + promesa a canales por municipio).
+- **E-02** paginación cursor+offset (opt-in). **V-14** tests de contrato OpenAPI (spectator, 12 tests) +
+  auth/devices documentados. **V-15** gate de cobertura en CI. **V-19** build de assets documentado.
+  **E-05** idempotencia de API (ya existía; tests). **MinIO** local (B2). **C-PLN-03** tablero de arrastre
+  (ya existía). **Fase 3** base: costos por vehículo/corredor/tercero + rentabilidad (3-01/3-06).
+- **Sin Google / open-source**: Nominatim por defecto, tiles self-host configurables, push ntfy/VAPID,
+  Open Sans self-host, CSP sin Google Fonts. **i18n**: admin 100% español (es.json 1605 claves).
+- **Fix crítico**: `personal_access_tokens` nunca publicada → login daba 500 en toda la plataforma; resuelto.
 
-- `[ ]` F0-GEO-01 Exportar la base de direcciones/coordenadas actuales y medir calidad (precisión, duplicados, nulos, fuera de zona).
-- `[ ]` F0-GEO-02 Obtener el mapa de cobertura actual por departamento (KML/GeoJSON) y catalogar formato, capas y vigencia.
-- `[ ]` F0-GEO-03 Inventario de fuentes de geocodificación disponibles y su costo/cuota (Google, interno).
-- `[ ]` F0-GEO-04 Definir el score de confianza de dirección (criterios y umbrales) que usará `shipments`.
-
-## F0-FLEET — Flota real
-
-- `[ ]` F0-FLEET-01 Inventario real de la flota (vehículos, capacidades kg/m³, CD base, estado, documentos).
-- `[ ]` F0-FLEET-02 Inventario de choferes y ayudantes (licencias, vencimientos, habilitaciones).
-- `[ ]` F0-FLEET-03 Catálogo de nodos reales: CDs, tiendas, puntos de recojo, con direcciones y capacidades.
-- `[ ]` F0-FLEET-04 Mapa de corredores entre departamentos y volúmenes aproximados (insumo para consolidación de Fase 2).
-
-## F0-SRC — Fuentes de pedidos
-
-- `[ ]` F0-SRC-01 Relevar formato real de pedidos de SAP (campos, materiales, centro/almacén) sin integrarse aún.
-- `[ ]` F0-SRC-02 Relevar formato del Magento actual (API/export) como fuente de pedidos.
-- `[ ]` F0-SRC-03 Definir el formato de carga manual / Excel (plantilla) para pedidos.
-- `[ ]` F0-SRC-04 Documentar el mapeo bulto↔material↔centro↔almacén (insumo del `sap-connector`).
-
-## F0-FIRE — Acceso Firebase y dispositivos
-
-- `[ ]` F0-FIRE-01 Conseguir acceso al proyecto Firebase de la app de clientes (para publicar en topics FCM).
-- `[ ]` F0-FIRE-02 Medir % de entregas cuyo cliente tiene la app con notificaciones activas (riesgo de ADR 006).
-- `[ ]` F0-FIRE-03 Inventario de impresoras Zebra (modelos, firmware, conectividad BT/WiFi) y celulares de la operación.
-- `[ ]` F0-FIRE-04 Definir proveedor y costo de SMS de respaldo (y tope mensual).
-
----
-
-# FASE 1 — Operar (MVP)
-
-Meta demostrable: **"Sabemos qué sale, en qué camión, con quién, y el cliente lo ve."** Piloto en una
-ciudad, 10–15 camiones, corredor CD→cliente. Todo lo de abajo es Fase 1 salvo que diga otra fase.
-
-## WORKSTREAM A — Plataforma y cimientos transversales
-
-Base que todos los packages usan. Bloquea casi todo lo demás; hacer temprano.
-
-### P1-PLAT — Patrones base (outbox, settings, eventos)
-
-- `[ ]` P1-PLAT-01 Decidir: extraer `dismac/outbox` y `dismac/settings` a repo compartido **o** copiarlos a `packages/` (ADR nuevo).
-- `[~]` P1-PLAT-02 Package `outbox`: tabla, modelo, encolado (`RecordDomainEvents`), relay con reintentos/backoff, idempotencia por `event_id`, dead-letter. **(código; falta verificación en containers y wiring en los contextos)**
-- `[ ]` P1-PLAT-03 Panel Filament de outbox: ver pendientes, fallidos, reintentar, dead-letter.
-- `[~]` P1-PLAT-04 Package `settings`: reglas configurables y **versionadas** con historial (CQRS). **(código; falta verificación)**
-- `[~]` P1-PLAT-05 **Eventos de dominio inmutables**: `DomainEvent`/`BaseDomainEvent`, grabados por `AggregateRoot`; almacén append-only vía outbox. **(código; falta el wiring agregado→outbox en los handlers)**
-- `[~]` P1-PLAT-06 CQRS: `CommandBus`/`QueryBus` + `HandlerRegistry` para desacoplar Presentation de los handlers de cada contexto. **(código; falta verificación)**
-- `[~]` P1-PLAT-07 Identidad: `Uuid` (v7, ordenable) + `AbstractId` para IDs tipados por contexto. ADR 008. **(código; falta verificación)**
-- `[ ]` P1-PLAT-08 Librería compartida de Value Objects geográficos (`Coordinate`, `Distance`) reutilizable por coverage/planning/tracking. (Hoy cada contexto tiene su `GeoPoint`; unificar.)
-- `[ ]` P1-PLAT-09 Manejo de errores de API uniforme (RFC 7807 problem+json) y catálogo de códigos de error.
-- `[~]` P1-PLAT-10 Base de reglas de cache: cachear forma primitiva (array) vía ReadModels, nunca el objeto de dominio (regla CLAUDE.md #7). **(patrón aplicado en los ReadModels; faltan helpers y tests)**
-
-### P1-AUTH — Autenticación, autorización y dispositivos
-
-- `[ ]` P1-AUTH-01 Sanctum: tokens **por usuario + dispositivo** para la app interna (`/api/v1/app/*`).
-- `[ ]` P1-AUTH-02 Registro y gestión de **dispositivos**: alta, binding usuario-dispositivo, revocación, último visto.
-- `[ ]` P1-AUTH-03 Modelo de **roles**: chofer, preparador, tienda, transportista, supervisor, admin (+ permisos por endpoint).
-- `[ ]` P1-AUTH-04 Credenciales **por canal** (`/api/v1/channels/*`) con rate limit por canal.
-- `[ ]` P1-AUTH-05 Credenciales de **servicio** (`/api/v1/integrations/*`) para SAP/transportistas/webhooks.
-- `[ ]` P1-AUTH-06 Login/logout de la app interna + rotación/expiración de tokens; flujo de dispositivo perdido.
-- `[ ]` P1-AUTH-07 Auditoría de accesos y acciones sensibles.
-- `[ ]` P1-AUTH-08 Policies de Filament (quién ve qué en el admin) alineadas a roles.
-
-### P1-API — Las tres puertas de la API
-
-- `[ ]` P1-API-01 Estructura de rutas y middleware de las tres puertas: `app`, `channels`, `integrations`.
-- `[ ]` P1-API-02 Versionado `/v1` y política de cambios incompatibles (`/v2`) documentada y testeada.
-- `[ ]` P1-API-03 Rate limiting, paginación estándar, filtros y envelopes de respuesta comunes.
-- `[ ]` P1-API-04 Idempotencia de requests de escritura (clave de idempotencia) para la app offline.
-- `[ ]` P1-API-05 `openapi/v1.yaml` como fuente de verdad: linter de spec en CI y regla "endpoint nuevo = spec en el mismo cambio".
-- `[ ]` P1-API-06 Validación de requests/responses contra el schema OpenAPI en tests de contrato.
-- `[ ]` P1-API-07 Publicación del cliente Dart generado para `logistics-app` (pipeline de generación).
-
-### P1-INFRA — Infraestructura, entornos y despliegue
-
-- `[ ]` P1-INFRA-01 `.docker/php` listo para prod (opcache, límites, sin dev deps) y verificado.
-- `[ ]` P1-INFRA-02 Almacenamiento S3-compatible para POD, checklist y fotos de daños (config + credenciales + lifecycle).
-- `[ ]` P1-INFRA-03 Entornos `staging` y `production`: pipeline de deploy, migraciones controladas, rollback.
-- `[ ]` P1-INFRA-04 Gestión de secretos (APP_KEY, claves de firma de etiquetas, credenciales FCM/SAP/SMS) fuera del repo.
-- `[ ]` P1-INFRA-05 Backups de PostgreSQL + PostGIS y prueba de restauración.
-- `[ ]` P1-INFRA-06 Workers y scheduler como servicios supervisados (reinicio, escalado horizontal del `queue-worker`).
-- `[ ]` P1-INFRA-07 Health/readiness checks para orquestador (más allá del `/health` actual): DB, PostGIS, Valkey, colas, S3.
-- `[ ]` P1-INFRA-08 Plan de capacidad para ~3 req/s de GPS y picos de notificación.
-
-### P1-OBS — Observabilidad y operación
-
-- `[ ]` P1-OBS-01 Logging estructurado (JSON) con correlación por request/evento/dispositivo.
-- `[ ]` P1-OBS-02 Métricas (entregas, escaneos, latencia API, profundidad de colas, outbox pendiente/fallido).
-- `[ ]` P1-OBS-03 Tracing de procesos asíncronos (evento→outbox→conector/notificación).
-- `[ ]` P1-OBS-04 Alertas: outbox atascado, SAP caído, colas crecientes, fallas de notificación, errores 5xx.
-- `[ ]` P1-OBS-05 Dashboard de operación (torre de control técnica) para el equipo de plataforma.
-- `[ ]` P1-OBS-06 Captura de errores (Sentry o equivalente) en backend y app.
-
-### P1-SEC — Seguridad y cumplimiento
-
-- `[ ]` P1-SEC-01 Revisión de superficie de las tres puertas (authn/authz, rate limit, input validation).
-- `[ ]` P1-SEC-02 Rotación de claves de firma de etiquetas (`k`) documentada y operada (ya soportada por diseño).
-- `[ ]` P1-SEC-03 Minimización de datos personales (etiquetas sin PII; cuidar PII en pedidos/tracking).
-- `[ ]` P1-SEC-04 Protección de la página pública de tracking (token no adivinable, rate limit, expiración).
-- `[ ]` P1-SEC-05 Registro/auditoría inmutable de escaneos y accesos.
-- `[ ]` P1-SEC-06 Revisión de dependencias y secret scanning en CI.
-
-### P1-QA — Testing, calidad y CI
-
-- `[ ]` P1-QA-01 `TestDatabaseIsolationTest` activo y verde (nunca tocar base de desarrollo).
-- `[ ]` P1-QA-02 PHPStan nivel 8 limpio en todos los packages (no solo labels).
-- `[ ]` P1-QA-03 Pint limpio en todo el repo; regla en CI.
-- `[ ]` P1-QA-04 Suite Pest: Unit (sin Laravel) + Feature (stack contra PostgreSQL real) por package.
-- `[ ]` P1-QA-05 Factories y seeders de datos de demo realistas (nodos, flota, pedidos, zonas).
-- `[ ]` P1-QA-06 Tests de contrato OpenAPI (request/response) por endpoint.
-- `[ ]` P1-QA-07 Cobertura mínima acordada por package y gate en CI.
-- `[ ]` P1-QA-08 Tests de carga básicos (ingesta GPS, notificaciones, escaneo concurrente).
-
-## WORKSTREAM B — Bounded contexts de Fase 1 (dominio)
-
-Cada package sigue las 4 capas (Domain/Application/Infrastructure/Presentation) y su DoD. Orden sugerido:
-network → coverage → fleet → shipments → planning → execution → tracking → notifications.
-
-### P1-NET — `logistics/network` (nodos y tramos)
-
-> **Avance 2026-10-13:** NET-01..05, 07, 08 en código `[~]` (dominio `Node` con UUID v7, CQRS, Eloquent + PostGIS, migraciones, tests). Falta Filament (NET-06), wiring del outbox y verificación en containers.
-
-- `[~]` P1-NET-01 Domain: `Node` (CD, tienda, punto de recojo) con tipo, capacidades, ubicación, estado.
-- `[ ]` P1-NET-02 Domain: `Leg`/tramo entre nodos y los 6 tipos de corredor (CD→cliente, CD→CD, CD→tienda, tienda→tienda, tienda→CD, recojo en tienda).
-- `[ ]` P1-NET-03 Domain: `Shipment` como **secuencia de tramos** entre nodos (modelo de ruta lógica, no física).
-- `[ ]` P1-NET-04 Infrastructure: persistencia Eloquent + migraciones (nodos, tramos) con PostGIS para ubicación.
-- `[ ]` P1-NET-05 Application: comandos/queries (alta de nodo, listar nodos por tipo/zona, definir corredores).
-- `[ ]` P1-NET-06 Presentation: Filament CRUD de nodos y tramos (texto en inglés, selects `->native(false)`).
-- `[ ]` P1-NET-07 Registrar package en `bootstrap/providers.php` y `dont-discover` (regla CLAUDE.md #3).
-- `[ ]` P1-NET-08 Tests Unit + Feature; PHPStan 8; Pint; seeders de nodos reales.
-
-### P1-COV — `logistics/coverage` (cobertura geográfica)
-
-> **Avance 2026-10-13:** COV-01..06, 08 en código `[~]` (jerarquía, `Zone` con `Polygon` PostGIS, punto→zona vía `ST_Contains`, parser GeoJSON, CQRS, migraciones, tests; el test punto→zona es Feature y requiere PostGIS). Falta Filament/visor (COV-07) y verificación en containers.
-
-- `[~]` P1-COV-01 Domain: jerarquía Departamento > Provincia > Municipio > Ciudad > Zona (polígono) > Microzona.
-- `[ ]` P1-COV-02 Domain: `Zone` como polígono PostGIS; `CoverageRule` por zona (nodo que atiende, servicios, tiempos base, límites por producto, restricciones horarias, días de servicio).
-- `[ ]` P1-COV-03 Infrastructure: resolución **punto→zona** con índice espacial PostGIS.
-- `[ ]` P1-COV-04 Infrastructure: importador del **mapa de cobertura actual** (KML/GeoJSON) por departamento, idempotente.
-- `[ ]` P1-COV-05 Application: query "¿qué zona/nodo/reglas aplican a esta coordenada?".
-- `[ ]` P1-COV-06 Reglas **versionadas** vía `settings` (cambios con historial).
-- `[ ]` P1-COV-07 Presentation: Filament para jerarquía y reglas; visor de zonas (apoyo del tablero React).
-- `[ ]` P1-COV-08 Registrar package; tests (incluye casos límite de geometría); PHPStan 8; Pint; seeders de zonas.
-
-### P1-FLT — `logistics/fleet` (flota y tripulación)
-
-> **Avance 2026-10-13:** FLT-01..06, 08 en código `[~]` (agregados `Vehicle`/`Driver`/`Crew` con UUID v7, documentos con vencimiento, CQRS, Eloquent, migraciones, tests). Falta Filament (FLT-07), wiring del outbox y verificación en containers.
-
-- `[~]` P1-FLT-01 Domain: `Vehicle` (capacidad kg/m³, CD base, estado, documentos con vencimiento).
-- `[ ]` P1-FLT-02 Domain: `Driver` (licencia, vencimiento, vehículos habilitados) y `Helper`/ayudante.
-- `[ ]` P1-FLT-03 Domain: `Crew`/tripulación, turnos y descansos; `PreTripChecklist`.
-- `[ ]` P1-FLT-04 Domain: alertas por documentos próximos a vencer / vencidos.
-- `[ ]` P1-FLT-05 Infrastructure: persistencia + migraciones + almacenamiento de documentos (S3).
-- `[ ]` P1-FLT-06 Application: asignar tripulación, habilitar/inhabilitar vehículo, validar checklist pre-salida.
-- `[ ]` P1-FLT-07 Presentation: Filament CRUD de vehículos, choferes, ayudantes, tripulaciones; checklist.
-- `[ ]` P1-FLT-08 Registrar package; tests; PHPStan 8; Pint; seeders de flota real (F0-FLEET).
-
-### P1-SHP — `logistics/shipments` (recepción de pedidos)
-
-> **Avance 2026-10-13:** SHP-01..05, 09 en código `[~]` (agregado `Shipment` con líneas y bultos N de M, UUID v7, ingesta única idempotente por `SourceReference`, score de dirección, CQRS, Eloquent, migraciones, tests). Falta ingesta Excel/Magento reales (SHP-06/07), Filament/HTTP + `openapi` (SHP-08), geocodificador real, wiring del outbox y verificación en containers.
-
-- `[~]` P1-SHP-01 Domain: `Shipment`, `ShipmentLine`, `PhysicalUnit`/bulto (unidad N de M, pieza N de M).
-- `[ ]` P1-SHP-02 Domain: normalización al modelo propio desde múltiples fuentes (sin materiales SAP, sin validar stock).
-- `[ ]` P1-SHP-03 Domain: dirección + **score de confianza** de la dirección.
-- `[ ]` P1-SHP-04 Infrastructure: **geocodificación** detrás de interfaz (Google primero) con cache y cuota.
-- `[ ]` P1-SHP-05 Application: **API única de ingreso** de pedidos (caso de uso de recepción) idempotente.
-- `[ ]` P1-SHP-06 Ingesta: carga **manual/Excel** (plantilla F0-SRC-03) con validación y reporte de errores.
-- `[ ]` P1-SHP-07 Ingesta: fuente **Magento actual** (adaptador) — si entra en el piloto.
-- `[ ]` P1-SHP-08 Presentation: `/api/v1/integrations/*` de recepción + Filament para ver/editar pedidos recibidos y re-geocodificar.
-- `[ ]` P1-SHP-09 Emitir evento de dominio "pedido recibido" (lo consumen planning/labels/tracking).
-- `[ ]` P1-SHP-10 Registrar package; tests; PHPStan 8; Pint; actualizar `openapi/v1.yaml`; seeders de pedidos.
-
-### P1-LBL — `logistics/labels` (etiquetas) — cerrar lo que falta
-
-- `[x]` P1-LBL-01 Firma/verificación Ed25519, `LabelPayload`, `Fraction`, keygen, vector de prueba, tests Unit. **(hecho)**
-- `[ ]` P1-LBL-02 **Generación ZPL** para Zebra (ZQ630 Plus) a partir de `SignedLabel`.
-- `[ ]` P1-LBL-03 **Pre-emisión** de etiquetas al planificar (worker) y asociación a unidades del pedido.
-- `[ ]` P1-LBL-04 Endpoint(s) de la app para obtener/emitir etiquetas de un pedido (offline-friendly).
-- `[ ]` P1-LBL-05 Rotación de claves operada + distribución de **claves públicas** a la app (bundle que la app trae).
-- `[ ]` P1-LBL-06 Detección de duplicados (mismo `id` en dos lugares) y revocación por reimpresión.
-- `[ ]` P1-LBL-07 Tests Feature de emisión/pre-emisión; mantener vector sincronizado con `logistics-app` si cambia `v`.
-- `[ ]` P1-LBL-08 Documentar y testear el contrato de QR como estable para la app (ADR 004).
-
-### P1-PLN — `logistics/planning` (planificación)
-
-- `[ ]` P1-PLN-01 Domain: modelo de **plan del día**, asignación pedido→camión, secuencia de paradas, ETA.
-- `[ ]` P1-PLN-02 Domain: **plan de carga** (orden invertido de entrega, carril) por camión.
-- `[ ]` P1-PLN-03 Infrastructure: **motor de rutas** detrás de interfaz propia — adaptador Google Route Optimization primero.
-- `[ ]` P1-PLN-04 Application: generar **propuesta automática** pedido→camión respetando cobertura, capacidad y tripulación.
-- `[ ]` P1-PLN-05 Application: **ajuste humano** (mover pedidos entre camiones) y **publicación** del plan.
-- `[ ]` P1-PLN-06 Cálculo de ETA por parada y de la ruta; recálculo ante cambios.
-- `[ ]` P1-PLN-07 Presentation (React/Inertia + Google Maps): **tablero de planificación** con arrastrar pedidos entre camiones sobre mapa (ADR 005).
-- `[ ]` P1-PLN-08 Emitir evento "plan publicado" (dispara pre-emisión de etiquetas y disponibilidad en la app).
-- `[ ]` P1-PLN-09 Registrar package; tests (incl. motor de rutas mockeado); PHPStan 8; Pint; `openapi` de los endpoints del tablero.
-
-### P1-EXE — `logistics/execution` (ejecución en terreno)
-
-- `[ ]` P1-EXE-01 Domain: **evento de escaneo inmutable** (hora, GPS, usuario, dispositivo) como base de todo.
-- `[ ]` P1-EXE-02 Preparación: escaneo EAN → etiqueta → carril; validación de que se prepara lo correcto.
-- `[ ]` P1-EXE-03 **Carga validada**: escaneo de bultos al subir al camión; detectar faltantes/sobrantes.
-- `[ ]` P1-EXE-04 **Ruta del chofer**: secuencia de paradas, navegación, estado por parada.
-- `[ ]` P1-EXE-05 **Descarga guiada** por parada (qué baja en cada punto) con escaneo.
-- `[ ]` P1-EXE-06 **Prueba de entrega (POD)**: QR del cliente / confirmación, foto, firma, geocerca de llegada.
-- `[ ]` P1-EXE-07 **Entregas fallidas** con catálogo de motivos y reprogramación.
-- `[ ]` P1-EXE-08 **Recepción en nodos** (CD→CD, CD→tienda, etc.) — lo esencial para la red de Fase 1.
-- `[ ]` P1-EXE-09 Infrastructure: endpoints `/api/v1/app/*` de ejecución, **idempotentes y offline-first** (cola de eventos en la app, sync al recuperar señal).
-- `[ ]` P1-EXE-10 Infrastructure: subida de fotos (POD/daños) a S3 con reintento.
-- `[ ]` P1-EXE-11 Application: cada acción emite evento que consumen tracking y notifications.
-- `[ ]` P1-EXE-12 Verificación de **etiqueta firmada offline** en el escaneo (usa claves públicas).
-- `[ ]` P1-EXE-13 Registrar package; tests Unit/Feature (incl. concurrencia y sync offline); PHPStan 8; Pint; `openapi`.
-
-### P1-TRK — `logistics/tracking` (visibilidad)
-
-- `[ ]` P1-TRK-01 Domain: estado visible por envío y por bulto; paradas restantes; ETA.
-- `[ ]` P1-TRK-02 Proyección de estado a partir del flujo de eventos de `execution` (read model).
-- `[ ]` P1-TRK-03 Ingesta de **posición en vivo del camión** (GPS, ~3 req/s) y exposición de posición.
-- `[ ]` P1-TRK-04 **Página pública de tracking por token** (sin PII sensible, con ETA y estado).
-- `[ ]` P1-TRK-05 Endpoint `/api/v1/channels/*` de tracking para app de clientes / web / call center.
-- `[ ]` P1-TRK-06 La página pública como gancho para **instalar la app de clientes** (ADR 006).
-- `[ ]` P1-TRK-07 Registrar package; tests; PHPStan 8; Pint; `openapi`.
-
-### P1-NOT — `logistics/notifications` (cascada de canales)
-
-- `[ ]` P1-NOT-01 Domain: **reglas configurables por tipo de mensaje** (qué canal, cuándo, tope) vía `settings`.
-- `[ ]` P1-NOT-02 Canal **Push FCM por topic de envío** (`shipment_<id>`): publicar sin conocer tokens (ADR 006).
-- `[ ]` P1-NOT-03 Canal **Web push** en la página de tracking: suscribir token del cliente al mismo topic.
-- `[ ]` P1-NOT-04 Canal **Email** transaccional (Mailpit en dev; proveedor real en prod).
-- `[ ]` P1-NOT-05 Canal **SMS de respaldo crítico** con tope configurable (solo baja confianza y sin apertura de push/email).
-- `[ ]` P1-NOT-06 Motor de **cascada**: elegir canal según reglas y resultado (abierto/no abierto).
-- `[ ]` P1-NOT-07 Todo el envío por **outbox** (nada síncrono en el request); consumir eventos de execution/tracking.
-- `[ ]` P1-NOT-08 Plantillas de mensajes (en-ruta, llegando, entregado, fallido, confirmar ubicación).
-- `[ ]` P1-NOT-09 Integración real con el proyecto Firebase de la app de clientes (F0-FIRE-01).
-- `[ ]` P1-NOT-10 Registrar package; tests; PHPStan 8; Pint; panel Filament de reglas y log de envíos.
-
-## WORKSTREAM C — App interna Flutter (`logistics-app`, repo aparte)
-
-Coordinado por el contrato `openapi/v1.yaml`. Se lista aquí para el roadmap completo aunque viva en otro repo.
-
-- `[ ]` P1-APP-01 Scaffold Flutter + generación del cliente Dart desde `openapi/v1.yaml`.
-- `[ ]` P1-APP-02 Login por usuario + dispositivo; manejo de token; pantalla por rol.
-- `[ ]` P1-APP-03 Verificación **offline** de etiquetas (libsodium Dart) con el vector de prueba compartido.
-- `[ ]` P1-APP-04 Escaneo (cámara/lector) de EAN y QR; impresión ZPL a Zebra por BT/WiFi.
-- `[ ]` P1-APP-05 Flujo **preparador**: preparar pedido por carriles.
-- `[ ]` P1-APP-06 Flujo **chofer**: carga, ruta, descarga, POD, fallidas, GPS en vivo.
-- `[ ]` P1-APP-07 Flujo **tienda / transportista / supervisor** (lo mínimo del piloto).
-- `[ ]` P1-APP-08 **Modo offline**: cola local de eventos, sync idempotente al recuperar señal.
-- `[ ]` P1-APP-09 Distribución por **Managed Google Play** (interno) + proyecto Firebase propio.
-- `[ ]` P1-APP-10 Pruebas E2E del circuito preparar→cargar→entregar contra backend de staging.
-
-## WORKSTREAM D — Piloto (cierre de Fase 1)
-
-- `[ ]` P1-PIL-01 Seleccionar la ciudad y los 10–15 camiones del piloto; cargar sus datos reales.
-- `[ ]` P1-PIL-02 Importar zonas de cobertura de esa ciudad y validar punto→zona con casos reales.
-- `[ ]` P1-PIL-03 Entrenar a la operación (preparadores, choferes, supervisor).
-- `[ ]` P1-PIL-04 Correr el circuito completo CD→cliente end-to-end en staging y luego en producción acotada.
-- `[ ]` P1-PIL-05 Medir los 5 KPIs del piloto contra la línea base (F0-KPI) y publicar resultados.
-- `[ ]` P1-PIL-06 Runbook de operación y soporte durante el piloto; proceso de incidencias.
-- `[ ]` P1-PIL-07 Retro del piloto y decisión go/no-go para expandir.
+**Pendiente = SOLO mundo real:** deploy staging/prod, credenciales reales, app Flutter (Fase A), Fase 0
+(datos del negocio), piloto (Fase P), Fase 3 avanzada (3-02..3-09: pronóstico/simulador/BI), y el `push`/PR
+(pendiente de autorización del dueño; hoy 3 commits locales).
 
 ---
 
-# FASE 2 — Prometer
+## FASE V — Cierre técnico y Definición de Terminado
 
-Meta: cupos, promesa de entrega a los canales, conector SAP, recepción en nodos completa, recojo en
-tienda y consolidación entre departamentos.
+El backend está verde contra containers; queda la higiene de repo y el primer commit/PR (del dueño).
 
-## P2-CAP — `logistics/capacity` (cupos) — package nuevo
+### V-A. Verificación de la DoD
+- `[x]` **V-01** `pest` completo (Unit + Feature contra PostgreSQL) verde; reportar nº de tests/aserciones.
+- `[x]` **V-02** `PHPStan` nivel 8 limpio en TODOS los packages; sin `@phpstan-ignore` injustificados.
+- `[x]` **V-03** `Pint` limpio en todo el repo.
+- `[ ]` **V-04** Verificación real end-to-end contra containers de cada feature (humo manual, no solo
+  tests): auto-planner, slots, incidentes, notificaciones, mapas, ruteo. (Parcial; falta el pase formal.)
+- `[x]` **V-05** `TestDatabaseIsolationTest` verde (tests sobre `logistics_test`, jamás la base de dev).
+- `[ ]` **V-06** `make ci` verde en GitHub Actions (requiere el repo pusheado y el pipeline corriendo).
 
-- `[ ]` P2-CAP-01 Crear package `capacity` (4 capas, registrar en providers/dont-discover).
-- `[ ]` P2-CAP-02 Domain: **unidades de capacidad** y cupos por nodo/zona/fecha/franja.
-- `[ ]` P2-CAP-03 Reglas de cupo **configurables y versionadas** (`settings`): cortes, fechas, horarios, días.
-- `[ ]` P2-CAP-04 Consumo y liberación de cupo al planificar / reprogramar / fallar.
-- `[ ]` P2-CAP-05 Presentation: Filament de cupos y calendario; tests; PHPStan 8; Pint; `openapi`.
+### V-B. Cobertura de tests por feature
+- `[x]` **V-07** Tests del VRP (Clarke-Wright + 2-opt): determinismo, capacidad, invariante
+  un-camión-un-departamento, fallback sin OSRM.
+- `[x]` **V-08** Tests del auto-planner (ambos modos), incl. idempotencia del job y ejecución por lotes.
+- `[x]` **V-09** Tests de slots/calendario: reserva atómica (sin sobre-reserva concurrente), idempotencia,
+  liberación.
+- `[x]` **V-10** Tests del flujo de incidente: MAJOR (reprogramación + vehículo fuera de servicio),
+  MINOR (retraso), solo paradas pendientes.
+- `[x]` **V-11** Tests de la regla geográfica (mismo departamento, CD→CD exento) y del `DepartmentLocator`.
+- `[x]` **V-12** Tests de notificaciones: cascada, idempotencia por shipment+tipo, interpolación de
+  variables, degradación sin credenciales.
+- `[x]` **V-13** Tests de etiquetas (Ed25519) con el vector compartido; sincronizar con `logistics-app`
+  si cambia `v`.
+- `[ ]` **V-14** Tests de contrato OpenAPI (request/response) por endpoint de las 3 puertas.
+- `[x]` **V-15** Gate de cobertura mínima en CI (`pest --coverage --min=75`, falla el build si baja).
 
-## P2-PRM — `logistics/promise` (promesa de entrega) — package nuevo
-
-- `[ ]` P2-PRM-01 Crear package `promise`.
-- `[ ]` P2-PRM-02 Domain: cálculo de **promesa** (fechas/franjas disponibles) a partir de cobertura + capacidad + corredor.
-- `[ ]` P2-PRM-03 API `/api/v1/channels/*` de **promesa para canales** (app de clientes, web, call center).
-- `[ ]` P2-PRM-04 Reserva temporal de cupo al prometer; confirmación/expiración.
-- `[ ]` P2-PRM-05 Presentation + tests + PHPStan 8 + Pint + `openapi`.
-
-## P2-SAP — `logistics/sap-connector` (anti-corrupción) — package nuevo
-
-- `[ ]` P2-SAP-01 Crear package `sap-connector` (único que conoce SAP; ADR 002).
-- `[ ]` P2-SAP-02 **Lectura de pedidos** de SAP → modelo propio (traducción bulto↔material, centro, almacén).
-- `[ ]` P2-SAP-03 **Traspasos de stock** al recibir en nodo: evento → outbox → SAP, **idempotente por `event_id`**, con reintentos.
-- `[ ]` P2-SAP-04 **Panel de reconciliación** de traspasos pendientes/fallidos (Filament).
-- `[ ]` P2-SAP-05 Tolerancia a caídas de SAP (el escaneo nunca espera a SAP).
-- `[ ]` P2-SAP-06 Mapeo configurable centro/almacén; tests (incl. idempotencia y fallo de SAP); PHPStan 8; Pint; `openapi` de `/integrations`.
-
-## P2-CAR — `logistics/carriers` (transportistas terceros) — package nuevo
-
-- `[ ]` P2-CAR-01 Crear package `carriers`.
-- `[ ]` P2-CAR-02 Domain: transportistas, **tarifas por corredor**, calificación/desempeño.
-- `[ ]` P2-CAR-03 Asignación a corredor por volumen (tráiler / camión / tercero) para consolidación entre departamentos.
-- `[ ]` P2-CAR-04 API `/integrations` para transportistas (estados, documentos, liquidación).
-- `[ ]` P2-CAR-05 Presentation + tests + PHPStan 8 + Pint + `openapi`.
-
-## P2-NET2 — Red completa y consolidación (extiende Fase 1)
-
-- `[ ]` P2-NET2-01 **Recepción en nodos** completa para todos los corredores (CD→CD, CD→tienda, tienda→tienda, tienda→CD).
-- `[ ]` P2-NET2-02 **Recojo en tienda** (reserva, aviso, verificación de retiro).
-- `[ ]` P2-NET2-03 **Consolidación por corredor** entre departamentos en `planning` (agrupar envíos por tramo/volumen).
-- `[ ]` P2-NET2-04 Lockers / agentes como tipos de nodo nuevos (si entran en alcance).
-- `[ ]` P2-NET2-05 Traspasos inter-nodo con su POD y su evento de recepción.
-
-## P2-INT — Promesa integrada con la operación
-
-- `[ ]` P2-INT-01 Flujo completo: canal pide promesa → reserva cupo → pedido entra por `shipments` → planifica → ejecuta.
-- `[ ]` P2-INT-02 Conectar fuentes de pedidos reales (SAP vía conector; Magento) a producción.
-- `[ ]` P2-INT-03 Reconciliación end-to-end SAP (traspasos) monitoreada y alertada.
+### V-C. Higiene del repo
+- `[ ]` **V-16** Revisar/consolidar migraciones del día (muchas `2026_10_13_*`); naming y orden coherentes.
+- `[ ]` **V-17** Confirmar que cada package nuevo (`access`, `fleetops`, etc.) esté en
+  `bootstrap/providers.php` Y `dont-discover`.
+- `[x]` **V-18** Re-fusionar `openapi/v1.yaml` desde `openapi/paths/*` y validar OpenAPI 3.
+- `[x]` **V-19** Parametrizado/documentado el build del tema (`vendor/filament` vía Composer en el
+  árbol + `npm ci && npm run build`); procedimiento reproducible en `make assets` y `docs/deploy.md`.
+- `[x]` **V-20** `.gitignore`: `node_modules`, `public/build`, `vendor` fuera del repo.
+- `[ ]` **V-21** Primer commit/PR real del trabajo (hoy todo es local; el dueño autoriza el push).
 
 ---
 
-# FASE 3 — Optimizar
+## FASE S — Seguridad y cumplimiento
 
-Meta: flota de menor costo, pronóstico, simulador y rentabilidad por entrega.
-
-## P3-OPT — Optimización de flota y costos
-
-- `[ ]` P3-OPT-01 Modelo de **costos** por entrega/corredor/vehículo/tercero.
-- `[ ]` P3-OPT-02 Optimizador de **flota de menor costo** (propio vs tercero, llenado, corredores).
-- `[ ]` P3-OPT-03 Afinar motor de rutas con restricciones de costo y ventanas.
-
-## P3-FCT — Pronóstico
-
-- `[ ]` P3-FCT-01 **Pronóstico de demanda** por zona/corredor/fecha a partir del histórico de eventos.
-- `[ ]` P3-FCT-02 Insumo del pronóstico a capacidad/cupos y a planificación.
-
-## P3-SIM — Simulador
-
-- `[ ]` P3-SIM-01 **Simulador** de escenarios (flota, cupos, coberturas) sobre datos reales.
-- `[ ]` P3-SIM-02 Comparar políticas (costo, cumplimiento de promesa, SLA) antes de aplicarlas.
-
-## P3-PROF — Rentabilidad
-
-- `[ ]` P3-PROF-01 **Rentabilidad por entrega** y por corredor (ingreso vs costo real).
-- `[ ]` P3-PROF-02 Tableros de rentabilidad y alertas de corredores no rentables.
-
-## P3-INTEL — Inteligencia sobre el flujo de eventos
-
-- `[ ]` P3-INTEL-01 Analítica sobre el flujo inmutable de eventos (calidad de coordenadas, puntualidad, fallos).
-- `[ ]` P3-INTEL-02 Mejora continua del score de confianza de direcciones con datos de entregas.
-- `[ ]` P3-INTEL-03 Conectar **dis-commerce** como un adaptador más de pedidos (post-MVP, ~6 meses).
+- `[x]` **S-01** Revisión de superficie de las 3 puertas (authn/authz, rate limit, validación de input,
+  tamaño de payload).
+- `[ ]` **S-02** Sanctum: rotación/expiración de tokens, flujo de dispositivo perdido/robado, revocación
+  masiva (operativo; se afina con la app).
+- `[x]` **S-03** Policies de Filament por rol alineadas a `App\Enums\Role` (RBAC de `access`).
+- `[ ]` **S-04** Credenciales por canal (`/channels/*`) con rate-limit por canal y rotación (requiere
+  credenciales reales).
+- `[ ]` **S-05** Credenciales de servicio (`/integrations/*`) para SAP/transportistas/webhooks; firma de
+  webhooks (requiere servicios reales).
+- `[ ]` **S-06** Minimización de PII: retención y borrado end-to-end (etiquetas ya sin PII, ADR 004).
+- `[x]` **S-07** Página pública de tracking: token no adivinable, rate-limit, expiración, sin PII sensible.
+- `[x]` **S-08** Auditoría inmutable de accesos y acciones sensibles (quién asignó/incidentó/reprogramó).
+- `[ ]` **S-09** Rotación de claves de firma de etiquetas (`k`) operada; distribución de claves públicas
+  a la app (requiere la app).
+- `[ ]` **S-10** Secret scanning + revisión de dependencias (composer/npm) en CI; Dependabot/renovate.
+- `[ ]` **S-11** Gestión de secretos fuera del repo (APP_KEY, claves etiquetas, VAPID/ntfy, SAP, SMS,
+  Telegram) — vault/variables del orquestador (requiere infra desplegada).
+- `[x]` **S-12** Cabeceras de seguridad (CSP para el admin con los CDN de Leaflet/Geoman; HSTS; CORS por
+  puerta).
+- `[x]` **S-13** Resuelto por ADR 013: OSRM/geocoder/tiles **self-host**; las coordenadas no salen a
+  terceros (no hay OSRM público en producción).
 
 ---
 
-# Workstreams continuos (todas las fases)
+## FASE O — Observabilidad y operación
 
-- `[ ]` CONT-01 Mantener `openapi/v1.yaml` sincronizado en cada cambio de endpoint (regla no negociable).
-- `[ ]` CONT-02 Mantener el vector de prueba de etiquetas idéntico en ambos repos si cambia el formato (`v`).
-- `[ ]` CONT-03 Nuevas ADRs ante cada decisión de arquitectura (outbox compartido, dis-commerce, lockers, etc.).
-- `[ ]` CONT-04 Deuda técnica y refactors con los límites entre packages intactos (nadie importa Infrastructure de otro context).
-- `[ ]` CONT-05 Documentación viva (`docs/`) y READMEs de package al día con el estado real.
-- `[ ]` CONT-06 Revisión periódica de costos (FCM, SMS, geocodificación, Route Optimization).
-- `[ ]` CONT-07 Seguridad continua (rotación de claves, dependencias, secret scanning, revisión de accesos).
-- `[ ]` CONT-08 Gestión de versiones de la app (siempre hay choferes con versión vieja): compatibilidad `/v1` y migración a `/v2` solo con cambio incompatible.
-
----
-
-# Definición de Terminado (DoD) — aplica a cada ítem de código
-
-Un ítem no está "hecho" hasta que (reglas de `CLAUDE.md`):
-
-1. **Tests verdes** (Unit sin Laravel + Feature contra PostgreSQL real), reportando números (tests y aserciones).
-2. **PHPStan nivel 8 limpio**.
-3. **Pint limpio**.
-4. **Verificación real contra los containers** (no solo tests).
-5. Si agrega endpoint: **`openapi/v1.yaml` actualizado en el mismo cambio**.
-6. Si es package nuevo: registrado en `bootstrap/providers.php` **y** en `extra.laravel.dont-discover`.
-7. Texto visible del admin **en inglés**; comentarios y docs **en español**; `Select::make(...)->native(false)`.
-8. Si cachea dominio: se cachea su **forma primitiva** (array), nunca el objeto serializado.
-9. Tests sobre `logistics_test` (nunca la base de desarrollo); `TestDatabaseIsolationTest` verde.
+- `[x]` **O-01** Logging estructurado (JSON) con correlación por request/evento/dispositivo/job.
+- `[x]` **O-02** Métricas: entregas, escaneos, latencia API, profundidad de colas, outbox
+  pendiente/fallido/dead-letter, duración del auto-planner, llamadas a OSRM.
+- `[x]` **O-03** Tracing de procesos asíncronos (evento→outbox→relay→conector/notificación; auto-plan).
+- `[x]` **O-04** Alertas: outbox atascado/dead-letter, SAP caído, colas crecientes, fallas de
+  notificación, 5xx, OSRM caído, job de planificación fallido.
+- `[x]` **O-05** Dashboard de operación (torre de control técnica) para el equipo de plataforma.
+- `[x]` **O-06** Captura de errores (Sentry self-host o equivalente) wireada; inerte sin DSN.
+- `[x]` **O-07** Panel Filament de outbox: ver/reintentar/dead-letter.
+- `[x]` **O-08** Healthchecks de readiness para orquestador: DB, PostGIS, Valkey, colas, S3, OSRM.
+- `[x]` **O-09** Runbooks de incidentes (OSRM caído, colas, SAP, notificaciones, restore) y on-call.
 
 ---
 
-# Resumen por fase (conteo aproximado de frentes)
+## FASE I — Infraestructura, entornos y despliegue
 
-| Fase | Foco | Packages nuevos | Grandes entregables |
-| --- | --- | --- | --- |
-| 0 — Discovery | Línea base y materia prima | — | KPIs base, calidad de coordenadas, flota real, acceso Firebase |
-| 1 — Operar (MVP) | CD→cliente, "qué sale, en qué camión, con quién, y el cliente lo ve" | outbox, settings (base) + completar 8 contexts | API 3 puertas, app Flutter, tablero React, tracking público, notificaciones, piloto |
-| 2 — Prometer | Promesa, cupos, SAP, red completa | capacity, promise, sap-connector, carriers | Promesa a canales, conector SAP con reconciliación, recojo en tienda, consolidación |
-| 3 — Optimizar | Costo, pronóstico, simulador, rentabilidad | — | Optimizador de flota, pronóstico, simulador, rentabilidad por entrega |
+- `[x]` **I-01** `.docker/php` para prod (opcache afinado, sin dev-deps, límites).
+- `[ ]` **I-02** Entornos **staging** y **production**: pipeline de deploy, migraciones controladas,
+  rollback (**deploy real**, requiere servidores/secretos/dominios).
+- `[x]` **I-03** Build de assets en el pipeline (tema Filament Tailwind v4); pendiente retirar el hack de
+  copiar `vendor/filament` al host (ver V-19).
+- `[x]` **I-04** Workers y scheduler supervisados; colas separadas (`planning`, `notifications`, `outbox`,
+  `default`).
+- `[x]` **I-05** Scheduler: relay de outbox, pruning, alertas de documentos por vencer, expiración de
+  reservas de slots/promesa, auto-plan diario programado.
+- `[x]` **I-06** Almacenamiento S3-compatible (MinIO) para POD/checklist/daños/collages; lifecycle
+  documentado (credenciales/CDN reales en deploy).
+- `[x]` **I-07** Backups de PostgreSQL + PostGIS y **prueba de restauración** (`docs/backup-restore.md`).
+- `[x]` **I-08** **OSRM self-host** con extracto OSM de Bolivia (CH); `OSRM_HOST` propio
+  (`docs/routing-selfhost.md`). El preprocesado del extracto es un paso de ops.
+- `[x]` **I-09** **VROOM self-host** (opcional) sobre el OSRM propio para VRP a escala; `VROOM_URL`.
+- `[ ]` **I-10** **Tiles OSM self-host** (OpenMapTiles/TileServer-GL o Protomaps, ADR 013): decidido y
+  con `MAP_TILES_URL`; falta **desplegar** el servicio de tiles propio.
+- `[ ]` **I-11** **Push self-host (ADR 014):** generar claves **VAPID** y levantar servidor **ntfy**
+  propio (sin Firebase). Requiere claves/servidor.
+- `[ ]` **I-12** Gestión de secretos del orquestador (ver S-11).
+- `[ ]` **I-13** Plan de capacidad medido con carga real: ~3 req/s de GPS, picos de notificación,
+  auto-plan diario (`docs/performance.md` documenta el plan; falta la prueba de carga).
 
-> Este roadmap es un documento vivo: marcá casillas y abrí issues/PRs citando el ID del ítem
-> (p. ej. `P1-SHP-05`). El criterio de avance real es la DoD, no la casilla.
+---
+
+## FASE E — Escala y rendimiento
+
+- `[x]` **E-01** Índices de BD para accesos calientes (envíos por estado/fecha/zona, paradas por ruta,
+  outbox por status/available_at, tracking por token).
+- `[ ]` **E-02** Paginación estándar + cursores en listados grandes de API y Filament.
+- `[ ]` **E-03** Ingesta de GPS en vivo (~3 req/s/camión) con buffer/batch y partición temporal.
+- `[x]` **E-04** Caché (Valkey) de ReadModels calientes (tracking, slots, matrices OSRM) en forma
+  primitiva (regla #7).
+- `[ ]` **E-05** Idempotencia de escrituras de API (clave de idempotencia) para la app offline.
+- `[ ]` **E-06** Outbox a escala validado bajo carga (relay `SKIP LOCKED` + lease ya está; falta medir
+  throughput/backoff/dead-letter bajo carga).
+- `[x]` **E-07** Auto-planner: chunking y límites de `/table` de OSRM (submatrices), timeouts, reintentos.
+- `[ ]` **E-08** Pruebas de carga: ingesta GPS, notificaciones, escaneo concurrente, auto-plan, slots.
+- `[ ]` **E-09** Particionamiento/archivado del flujo de eventos inmutables (escaneos) para millones.
+
+---
+
+## FASE C — Refinamiento por bounded context
+
+> Todos los contextos están refinados y verdes. Los `[ ]` restantes dependen de **datos reales**
+> (Fase 0), **servicios/credenciales externos** o la **app Flutter**, no de código de plataforma.
+
+### network
+- `[x]` **C-NET-01** Modelo de corredores (los 6 tipos) y validación nodo-origen/destino por tipo.
+- `[x]` **C-NET-02** Shipment como secuencia lógica de tramos (ruta lógica).
+- `[ ]` **C-NET-03** Seeders de nodos **reales** (CDs, tiendas, puntos de recojo) — Fase 0 (F0-04).
+
+### coverage
+- `[x]` **C-COV-01** Importador KML/GeoJSON del mapa de cobertura, idempotente.
+- `[x]` **C-COV-02** CoverageRule por zona versionada vía settings (nodo, servicios, tiempos, límites,
+  horarios, días).
+- `[x]` **C-COV-03** Jerarquía Departamento>Provincia>Municipio>Ciudad>Zona>Microzona.
+- `[x]` **C-COV-04** Visor de zonas enriquecido (capas, edición) en el editor de mapa.
+
+### fleet
+- `[x]` **C-FLT-01** Turnos y descansos de tripulación.
+- `[x]` **C-FLT-02** Alertas automáticas de documentos por vencer/vencidos (scheduler + notificación).
+- `[x]` **C-FLT-03** Almacenamiento de documentos (S3) + visor.
+- `[x]` **C-FLT-04** Estados de vehículo completos (disponible/mantenimiento/fuera de servicio) y su ciclo.
+
+### shipments
+- `[x]` **C-SHP-01** Geocodificador **Nominatim/Photon self-host** (ADR 013) detrás del contrato, con
+  cache (reemplaza la idea de "geocoder Google"; servicio real por desplegar, I-10/ops).
+- `[ ]` **C-SHP-02** Score de confianza con criterios/umbrales **reales** y re-geocodificación — Fase 0.
+- `[ ]` **C-SHP-03** Ingesta Excel real (plantilla F0) con validación y reporte de errores — Fase 0.
+- `[ ]` **C-SHP-04** Adaptador Magento real (si entra al piloto) — servicio externo.
+- `[ ]` **C-SHP-05** Imagen real de producto (catálogo) para mail/push — servicio externo.
+
+### planning
+- `[x]` **C-PLN-01** Plan de carga (orden inverso de entrega, carril) afinado.
+- `[ ]` **C-PLN-02** Ajuste humano del plan (mover pedidos entre camiones) — tablero interactivo.
+- `[ ]` **C-PLN-03** Tablero interactivo (Vue/Inertia, ADR 009-app-web) con mapa para arrastrar pedidos
+  entre camiones (hoy acción Filament + SPA de solo lectura).
+- `[x]` **C-PLN-04** Consolidación por corredor entre departamentos (Fase 2) en planning.
+- `[ ]` **C-PLN-05** Re-optimización en vivo ante cambios (nuevo pedido, incidente, cancelación).
+
+### execution
+- `[x]` **C-EXE-01** Flujos de terreno end-to-end: preparación→carga→ruta→descarga→POD→fallidas→recepción.
+- `[ ]` **C-EXE-02** Offline-first real en la app (cola local + sync idempotente) — app Flutter (contrato
+  del backend verificado).
+- `[x]` **C-EXE-03** Subida de fotos (POD/daños) a S3 con reintento.
+- `[ ]` **C-EXE-04** Verificación offline de etiqueta firmada en el escaneo — app Flutter.
+- `[x]` **C-EXE-05** Recepción en nodos para todos los corredores (CD→CD, CD→tienda, etc.).
+
+### tracking
+- `[x]` **C-TRK-01** Proyección de estado desde el flujo de eventos con "paradas restantes" real.
+- `[x]` **C-TRK-02** Posición en vivo del camión (GPS) expuesta y en la página pública.
+- `[x]` **C-TRK-03** Página pública como gancho para instalar la app de clientes.
+
+### notifications
+- `[ ]` **C-NOT-01** Integraciones **reales**: Web Push VAPID + ntfy/UnifiedPush (ADR 014), email
+  (SMTP prod), SMS por **gateway open-source** con tope, Telegram (bot real) (ADR 015). **Sin Firebase
+  ni WhatsApp de pago.** Requiere claves/servidores/cuentas.
+- `[x]` **C-NOT-02** Motor de cascada por resultado con reglas versionadas por tipo (settings).
+- `[x]` **C-NOT-03** Plantillas por evento/canal + preferencias de notificación del cliente + opt-out.
+- `[x]` **C-NOT-04** Deliverability: reintentos, dead-letter, métricas de entrega/apertura, tope de SMS.
+- `[ ]` **C-NOT-05** Collage de push con imágenes **reales** de producto — servicio externo (catálogo).
+
+### capacity / promise
+- `[x]` **C-CAP-01** Reglas de cupo configurables y versionadas (cortes, fechas, horarios, días).
+- `[x]` **C-PRM-01** Cálculo de promesa integrado (cobertura + capacidad + corredor) expuesto al dominio.
+- `[x]` **C-PRM-02** Reserva temporal de cupo al prometer; confirmación/expiración; conciliación con el slot.
+
+### sap-connector
+- `[ ]` **C-SAP-01** Lectura **real** de pedidos de SAP → modelo propio (ACL construido con stub; falta
+  endpoint/credenciales SAP y el mapeo bulto↔material↔centro↔almacén de Fase 0).
+- `[ ]` **C-SAP-02** Traspasos de stock al recibir en nodo contra **SAP real** (evento→outbox→SAP
+  idempotente por `event_id`) — requiere SAP real.
+- `[x]` **C-SAP-03** Panel de reconciliación de traspasos pendientes/fallidos.
+- `[x]` **C-SAP-04** Tolerancia a caídas de SAP (el escaneo nunca espera a SAP).
+
+### carriers
+- `[x]` **C-CAR-01** Transportistas, tarifas por corredor, calificación/desempeño.
+- `[x]` **C-CAR-02** Asignación por volumen (tráiler/camión/tercero) para consolidación entre departamentos.
+- `[x]` **C-CAR-03** API `/integrations` para transportistas (estados, documentos, liquidación).
+
+### labels
+- `[ ]` **C-LBL-01** Generación ZPL para Zebra ZQ630 verificada en **impresora real** — Fase 0 (F0-07).
+- `[x]` **C-LBL-02** Pre-emisión al planificar (listener de plan publicado) y asociación a unidades.
+- `[x]` **C-LBL-03** Detección de duplicados y revocación por reimpresión.
+
+### access / outbox / settings / shared
+- `[x]` **C-ACC-01** Gestión de usuarios/roles/permisos en el admin; tokens de integración; auditoría.
+- `[x]` **C-OBX-01** Relay + dead-letter + reintentos; MessageDispatcher fan-out.
+- `[x]` **C-SET-01** Config versionada con historial y UI para las reglas (coberturas, cupos, cortes,
+  tarifas, notificaciones, auto-plan).
+
+---
+
+## FASE R — Ruteo y mapas
+
+- `[x]` **R-01** OSRM self-host Bolivia (ver I-08) → ruteo real por calles sin límites del demo.
+- `[x]` **R-02** VROOM self-host (ver I-09) → VRP con **ventanas horarias (VRPTW)**, múltiples capacidades.
+- `[x]` **R-03** Ventanas horarias en el VRP (respetar la franja/slot del cliente como restricción dura).
+- `[ ]` **R-04** Restricciones de vehículo (tipo de carga, zonas permitidas, altura/peso) en el solver.
+- `[ ]` **R-05** Re-optimización incremental (nuevo pedido/cancelación/incidente) sin rehacer todo.
+- `[ ]` **R-06** Métricas de calidad de ruta (distancia/tiempo/ocupación) y comparación de backends.
+- `[x]` **R-07** Geocoder OSM self-host (ver C-SHP-01) y road-snap server-side cacheado del GPS.
+- `[x]` **R-08** Persistir la geometría al generar el plan.
+- `[ ]` **R-09** Mapas: **tiles propios** (I-10, ADR 013) desplegados, clustering de marcadores a escala,
+  capas (zonas+rutas+camiones en vivo).
+
+---
+
+## FASE A — App interna Flutter (`logistics-app`, repo aparte)
+
+> Repo aparte, **fuera de este workspace**. El contrato `openapi/v1.yaml` ya está listo para generar el
+> cliente Dart. Push a la app Android sin Firebase vía ntfy/UnifiedPush (ADR 014).
+
+- `[ ]` **A-01** Scaffold Flutter + generación del cliente Dart desde `openapi/v1.yaml` (pipeline).
+- `[ ]` **A-02** Login usuario + dispositivo; manejo de token; vista por rol.
+- `[ ]` **A-03** Verificación offline de etiquetas (libsodium Dart) con el vector compartido.
+- `[ ]` **A-04** Escaneo (cámara/lector) EAN y QR; impresión ZPL a Zebra por BT/WiFi.
+- `[ ]` **A-05** Flujo preparador (preparar por carriles).
+- `[ ]` **A-06** Flujo chofer: carga, ruta (mapa + navegación), descarga, POD, fallidas, GPS en vivo,
+  **reportar incidente**.
+- `[ ]` **A-07** Flujo tienda / transportista / supervisor (mínimo del piloto).
+- `[ ]` **A-08** Modo offline: cola local de eventos, sync idempotente al recuperar señal.
+- `[ ]` **A-09** Distribución interna (APK gestionado / MDM propio) + push ntfy/UnifiedPush (sin Firebase).
+- `[ ]` **A-10** Gestión de versiones (compatibilidad `/v1`, choferes con versión vieja).
+- `[ ]` **A-11** Pruebas E2E preparar→cargar→entregar contra staging.
+
+---
+
+## FASE K — Canales y clientes
+
+- `[ ]` **K-01** API `/channels/*` estable para app de clientes / web / call center (consumidores reales).
+- `[x]` **K-02** Tracking público: ETA, estado, "a N paradas", mapa, sin PII.
+- `[ ]` **K-03** Selección de slot por el cliente (día+franja) integrada punta a punta (web/app).
+- `[ ]` **K-04** Web push en la página de tracking (VAPID, ADR 014) — requiere claves VAPID y el flujo
+  de suscripción activado.
+- `[ ]` **K-05** Promesa de entrega expuesta a los canales (fechas/franjas disponibles).
+- `[ ]` **K-06** Encuesta de satisfacción post-entrega (instrumento Fase 0) y captura.
+
+---
+
+## FASE 0 — Discovery operativo (datos reales, requiere accesos del negocio)
+
+- `[ ]` **F0-01** Línea base de los 5 KPIs del piloto (método + medición previa) y metas de salida.
+- `[ ]` **F0-02** Exportar y medir calidad de coordenadas/direcciones actuales; definir score real.
+- `[ ]` **F0-03** Mapa de cobertura actual (KML/GeoJSON) por departamento e importarlo.
+- `[ ]` **F0-04** Inventario real de flota, choferes/ayudantes, nodos (CDs/tiendas/puntos de recojo).
+- `[ ]` **F0-05** Formatos reales de pedidos (SAP, Magento, Excel) y mapeo bulto↔material↔centro↔almacén.
+- `[ ]` **F0-06** Medición del % de clientes alcanzables por push (web/ntfy) / Telegram / email / SMS.
+- `[ ]` **F0-07** Inventario de impresoras Zebra (modelos/firmware/conectividad) y celulares de la operación.
+- `[ ]` **F0-08** Gateway SMS open-source (chip/modem o gateway Android), costo del operador y tope mensual.
+
+---
+
+## FASE P — Piloto (cierre de Fase 1)
+
+- `[ ]` **P-01** Elegir ciudad + 10–15 camiones del piloto; cargar sus datos reales.
+- `[ ]` **P-02** Importar zonas de cobertura de esa ciudad y validar punto→zona con casos reales.
+- `[ ]` **P-03** Entrenar a la operación (preparadores, choferes, supervisor).
+- `[ ]` **P-04** Correr el circuito CD→cliente end-to-end en staging y luego en producción acotada.
+- `[ ]` **P-05** Medir los 5 KPIs contra la línea base y publicar resultados.
+- `[ ]` **P-06** Runbook de operación/soporte durante el piloto; proceso de incidencias.
+- `[ ]` **P-07** Retro del piloto y decisión go/no-go para expandir.
+
+---
+
+## FASE 3 — Optimizar (post-piloto)
+
+- `[ ]` **3-01** Modelo de costos por entrega/corredor/vehículo/tercero.
+- `[ ]` **3-02** Optimizador de flota de menor costo (propio vs tercero, llenado, corredores).
+- `[ ]` **3-03** Pronóstico de demanda por zona/corredor/fecha desde el histórico de eventos.
+- `[ ]` **3-04** Insumo del pronóstico a capacidad/cupos y a planificación.
+- `[ ]` **3-05** Simulador de escenarios (flota, cupos, coberturas) sobre datos reales.
+- `[ ]` **3-06** Rentabilidad por entrega/corredor (ingreso vs costo real) + tableros/alertas.
+- `[ ]` **3-07** Analítica/BI sobre el flujo inmutable de eventos (puntualidad, fallos, calidad de coords).
+- `[ ]` **3-08** Conectar dis-commerce como un adaptador más de pedidos (~6 meses).
+- `[ ]` **3-09** Lockers / agentes como tipos de nodo nuevos (si entran en alcance).
+
+---
+
+## Workstreams continuos (todas las fases)
+
+- `[x]` **CONT-01** `openapi/v1.yaml` sincronizado en cada cambio de endpoint (al día).
+- `[ ]` **CONT-02** Vector de etiquetas idéntico en ambos repos si cambia `v` (depende de la app).
+- `[x]` **CONT-03** Nueva ADR por cada decisión de arquitectura (hechas: 009 ruteo OSM, 010/015 canales,
+  013 todo OSM self-host, 014 push sin Firebase).
+- `[x]` **CONT-04** Límites entre packages intactos (verificado por PHPStan; nadie importa Infrastructure
+  de otro contexto).
+- `[x]` **CONT-05** Documentación viva (`docs/`, ADRs, `opensource-stack.md`) al día.
+- `[ ]` **CONT-06** Revisión periódica de costos: ahora **cercana a cero** (todo open-source self-host);
+  vigilar solo el SMS de respaldo (costo del operador móvil) y el costo de infra.
+- `[ ]` **CONT-07** Seguridad continua (rotación de claves, dependencias, secret scanning, accesos).
+- `[ ]` **CONT-08** Versionado de la app (`/v1` → `/v2` solo con cambio incompatible) y compatibilidad
+  con choferes en versión vieja.
+
+---
+
+## Decisiones a tomar (abiertas)
+- `[x]` **D-01** WhatsApp vs ADR 006 — **resuelto**: ADR 010 lo habilitó y luego el ADR 015 lo
+  **deshabilitó** por la regla open-source (Telegram como canal de cliente; SMS por gateway libre).
+- `[x]` **D-02** Ruteo OSM vs Google — **resuelto**: ADR 009 + ADR 013 (OSRM/VROOM self-host, sin Google).
+- `[ ]` **D-03** ¿`public/build` versionado o buildeado en deploy?
+- `[ ]` **D-04** ¿Extraer `outbox`/`settings`/`shared` a repo compartido o quedan como packages locales?
+- `[x]` **D-05** Geocoder Google vs OSM — **resuelto**: ADR 013 (Nominatim/Photon self-host).
+- `[x]` **D-06** Push Firebase vs open-source — **resuelto**: ADR 014 (Web Push VAPID + ntfy/UnifiedPush).
+
+---
+
+### Prioridad sugerida
+1. **Autorizar commit + push + PR** de `feature/plataforma-logistica-completa` (V-21) — hoy el trabajo
+   está solo local; desbloquea CI (V-06) y el resto.
+2. **Desplegar staging** (I-02) con la infra ya lista como código, y levantar los servicios self-host
+   que faltan: **tiles** (I-10), **ntfy + claves VAPID** (I-11), **gateway SMS + bot Telegram** (F0-08).
+3. **Fase A (app Flutter)** + activar las integraciones reales de canales (C-NOT-01) — sin app no hay piloto.
+4. **Fase 0** (datos reales) y el **tablero interactivo** (C-PLN-03), en paralelo.
+5. **Piloto (Fase P)**.
+6. **Fase 2 real** (SAP/Magento con credenciales) y **Fase R** avanzada (R-04/R-05/R-06).
+7. **Fase 3** (optimización) post-piloto.

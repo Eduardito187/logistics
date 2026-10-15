@@ -19,6 +19,7 @@ final readonly class NodeRegistered extends BaseDomainEvent
         private string $type,
         private float $latitude,
         private float $longitude,
+        private ?string $department = null,
     ) {
         parent::__construct($aggregateId);
     }
@@ -29,7 +30,7 @@ final readonly class NodeRegistered extends BaseDomainEvent
     }
 
     /**
-     * @return array{code: string, name: string, type: string, lat: float, lng: float}
+     * @return array{code: string, name: string, type: string, lat: float, lng: float, department: string|null}
      */
     public function payload(): array
     {
@@ -39,6 +40,7 @@ final readonly class NodeRegistered extends BaseDomainEvent
             'type' => $this->type,
             'lat' => $this->latitude,
             'lng' => $this->longitude,
+            'department' => $this->department,
         ];
     }
 }

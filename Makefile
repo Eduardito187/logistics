@@ -12,7 +12,7 @@
 .DEFAULT_GOAL := help
 .PHONY: help install up down restart build rebuild status logs shell root-shell \
         composer artisan tinker migrate fresh seed test test-unit coverage \
-        lint pint pint-fix stan ci db-shell valkey-shell reload npm-install npm-dev
+        lint pint pint-fix stan ci db-shell valkey-shell reload npm-install npm-dev assets
 
 DC := docker compose
 APP := $(DC) exec app
@@ -126,7 +126,7 @@ stan: ## Análisis estático (PHPStan nivel 8)
 lint: ## Pint + PHPStan
 	$(APP) composer lint
 
-ci: ## Lo mismo que corre el CI: lint + tests
+ci: ## Lo mismo que corre el CI (dentro del container): lint + tests
 	$(APP) composer ci
 
 # ------------------------------------------------------------
@@ -137,3 +137,39 @@ npm-install: ## npm install en el container node
 
 npm-dev: ## Vite dev server
 	$(DC) --profile node up node
+
+assets: ## Compila el tema del admin + assets (igual que el job `assets` del CI)
+	# ----------------------------------------------------------------------------------------
+	# Build del tema Filament (V-19) — procedimiento reproducible, sin copiar a mano.
+	#
+	# El tema custom del panel (`resources/css/filament/admin/theme.css`) hace
+	# `@import '../../../../vendor/filament/filament/resources/css/theme.css'` y Tailwind
+	# escanea las vistas Blade que viven bajo `vendor/filament/**`. Por eso el build necesita
+	# tener `vendor/filament` presente en el árbol del proyecto, NO solo dentro del container
+	# app (donde `vendor/` vive en un volumen que el container `node` no monta).
+	#
+	# Procedimiento reproducible (mismo que el job `assets` del CI, ver docs/deploy.md §2):
+	#   1. Instalar las dependencias PHP para que exista `vendor/filament` en el árbol.
+	#      En CI esto es `composer install` nativo; en dev reutilizamos el composer del
+	#      container app y materializamos `vendor/filament` en el host con un `composer install`
+	#      destinado al build (idempotente: si ya existe, no hace nada costoso).
+	#   2. `npm ci` — dependencias JS desde package-lock.json.
+	#   3. `npm run build` — Vite compila app.css/app.js + el tema del admin a public/build.
+	#
+	# En producción NO se corre este target: el tema se compila dentro del build de la imagen
+	# (stage `assets` del Dockerfile), donde `vendor/filament` ya está instalado. Ver docs/deploy.md.
+	# ----------------------------------------------------------------------------------------
+	@echo "→ Asegurando vendor/filament en el árbol del proyecto (lo necesita el build del tema)..."
+	@mkdir -p vendor
+	@# Si vendor/filament no está en el host, traerlo del container app (que ya lo tiene instalado).
+	@# Es idempotente: solo copia cuando falta, no pisa un vendor/filament ya presente.
+	@if [ ! -d vendor/filament ]; then \
+		echo "  vendor/filament ausente → copiando desde el container app..."; \
+		$(DC) cp app:/var/www/html/vendor/filament ./vendor/filament; \
+	else \
+		echo "  vendor/filament ya presente → se reutiliza."; \
+	fi
+	$(NODE) npm ci
+	$(NODE) npm run build
+	@echo ""
+	@echo "  ✓ Assets compilados en public/build"

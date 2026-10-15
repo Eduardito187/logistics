@@ -19,5 +19,6 @@ final readonly class DefineCapacityCommand implements Command
         public string $timeSlot,
         public string $unit,
         public float $total,
+        public ?string $municipalityId = null,
     ) {}
 }

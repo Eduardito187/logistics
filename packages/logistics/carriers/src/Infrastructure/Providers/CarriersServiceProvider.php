@@ -5,23 +5,43 @@ declare(strict_types=1);
 namespace Logistics\Carriers\Infrastructure\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Logistics\Carriers\Application\Command\ApproveSettlement\ApproveSettlement;
+use Logistics\Carriers\Application\Command\ApproveSettlement\ApproveSettlementHandler;
+use Logistics\Carriers\Application\Command\AttachSettlementDocument\AttachSettlementDocument;
+use Logistics\Carriers\Application\Command\AttachSettlementDocument\AttachSettlementDocumentHandler;
+use Logistics\Carriers\Application\Command\DisputeSettlement\DisputeSettlement;
+use Logistics\Carriers\Application\Command\DisputeSettlement\DisputeSettlementHandler;
+use Logistics\Carriers\Application\Command\MarkSettlementPaid\MarkSettlementPaid;
+use Logistics\Carriers\Application\Command\MarkSettlementPaid\MarkSettlementPaidHandler;
 use Logistics\Carriers\Application\Command\RateCarrier\RateCarrier;
 use Logistics\Carriers\Application\Command\RateCarrier\RateCarrierHandler;
+use Logistics\Carriers\Application\Command\ReactivateCarrier\ReactivateCarrier;
+use Logistics\Carriers\Application\Command\ReactivateCarrier\ReactivateCarrierHandler;
 use Logistics\Carriers\Application\Command\RegisterCarrier\RegisterCarrier;
 use Logistics\Carriers\Application\Command\RegisterCarrier\RegisterCarrierHandler;
 use Logistics\Carriers\Application\Command\SetTariff\SetTariff;
 use Logistics\Carriers\Application\Command\SetTariff\SetTariffHandler;
+use Logistics\Carriers\Application\Command\SubmitSettlement\SubmitSettlement;
+use Logistics\Carriers\Application\Command\SubmitSettlement\SubmitSettlementHandler;
 use Logistics\Carriers\Application\Command\SuspendCarrier\SuspendCarrier;
 use Logistics\Carriers\Application\Command\SuspendCarrier\SuspendCarrierHandler;
+use Logistics\Carriers\Application\Query\AssignCarrierForVolume\AssignCarrierForVolume;
+use Logistics\Carriers\Application\Query\AssignCarrierForVolume\AssignCarrierForVolumeHandler;
 use Logistics\Carriers\Application\Query\CheapestCarrierForCorridor\CheapestCarrierForCorridor;
 use Logistics\Carriers\Application\Query\CheapestCarrierForCorridor\CheapestCarrierForCorridorHandler;
+use Logistics\Carriers\Application\Query\GetSettlement\GetSettlement;
+use Logistics\Carriers\Application\Query\GetSettlement\GetSettlementHandler;
 use Logistics\Carriers\Application\Query\GetTariffForCorridor\GetTariffForCorridor;
 use Logistics\Carriers\Application\Query\GetTariffForCorridor\GetTariffForCorridorHandler;
 use Logistics\Carriers\Application\Query\ListCarriers\ListCarriers;
 use Logistics\Carriers\Application\Query\ListCarriers\ListCarriersHandler;
+use Logistics\Carriers\Application\Query\ListSettlements\ListSettlements;
+use Logistics\Carriers\Application\Query\ListSettlements\ListSettlementsHandler;
 use Logistics\Carriers\Domain\Contract\CarrierRepository;
+use Logistics\Carriers\Domain\Contract\SettlementRepository;
 use Logistics\Carriers\Domain\Contract\TariffRepository;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentCarrierRepository;
+use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentSettlementRepository;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentTariffRepository;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -41,17 +61,27 @@ final class CarriersServiceProvider extends ServiceProvider
     private const HANDLERS = [
         RegisterCarrier::class => RegisterCarrierHandler::class,
         SuspendCarrier::class => SuspendCarrierHandler::class,
+        ReactivateCarrier::class => ReactivateCarrierHandler::class,
         SetTariff::class => SetTariffHandler::class,
         RateCarrier::class => RateCarrierHandler::class,
+        SubmitSettlement::class => SubmitSettlementHandler::class,
+        ApproveSettlement::class => ApproveSettlementHandler::class,
+        MarkSettlementPaid::class => MarkSettlementPaidHandler::class,
+        DisputeSettlement::class => DisputeSettlementHandler::class,
+        AttachSettlementDocument::class => AttachSettlementDocumentHandler::class,
         ListCarriers::class => ListCarriersHandler::class,
         GetTariffForCorridor::class => GetTariffForCorridorHandler::class,
         CheapestCarrierForCorridor::class => CheapestCarrierForCorridorHandler::class,
+        AssignCarrierForVolume::class => AssignCarrierForVolumeHandler::class,
+        ListSettlements::class => ListSettlementsHandler::class,
+        GetSettlement::class => GetSettlementHandler::class,
     ];
 
     public function register(): void
     {
         $this->app->bind(CarrierRepository::class, EloquentCarrierRepository::class);
         $this->app->bind(TariffRepository::class, EloquentTariffRepository::class);
+        $this->app->bind(SettlementRepository::class, EloquentSettlementRepository::class);
     }
 
     public function boot(): void

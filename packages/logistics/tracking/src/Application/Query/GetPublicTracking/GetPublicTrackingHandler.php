@@ -6,6 +6,7 @@ namespace Logistics\Tracking\Application\Query\GetPublicTracking;
 
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Tracking\Application\ReadModel\PublicTrackingView;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
@@ -21,6 +22,7 @@ final class GetPublicTrackingHandler implements QueryHandler
 {
     public function __construct(
         private readonly TrackingRepository $trackings,
+        private readonly Clock $clock,
     ) {}
 
     public function handle(Query $query): ?PublicTrackingView
@@ -36,7 +38,13 @@ final class GetPublicTrackingHandler implements QueryHandler
         }
 
         $tracking = $this->trackings->findByToken($token);
+        if ($tracking === null) {
+            return null;
+        }
 
-        return $tracking === null ? null : PublicTrackingView::fromTracking($tracking);
+        $position = $tracking->lastPosition();
+        $positionIsLive = $position?->isLiveAt($this->clock->now());
+
+        return PublicTrackingView::fromTracking($tracking, $positionIsLive);
     }
 }

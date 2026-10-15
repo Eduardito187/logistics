@@ -1,0 +1,407 @@
+# Fragmento OpenAPI del contexto shipments (recepción de pedidos).
+#
+# NO es un documento OpenAPI completo: son los paths y schemas de este contexto, para que el
+# integrador los una a openapi/v1.yaml (bajo `paths:` y `components.schemas:`). Las rutas van con
+# el prefijo /api/v1 ya resuelto por el servidor declarado en v1.yaml.
+#
+# Puertas:
+#   /integrations/shipments            → SAP / Magento / webhooks (credenciales de servicio)
+#   /app/shipments*                    → app interna Flutter (token usuario + dispositivo)
+
+paths:
+  /integrations/shipments:
+    post:
+      tags: [shipments]
+      operationId: receiveShipment
+      summary: Receive an order into the platform (idempotent by source + external reference)
+      description: >
+        Único punto de ingreso de pedidos desde fuentes externas. Es idempotente por la pareja
+        (source, external_id): reenviar el mismo pedido no crea un envío nuevo y responde 202.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiveShipmentRequest'
+      responses:
+        '202':
+          description: Order accepted (newly received or already present by idempotency)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiveShipmentAccepted'
+        '422':
+          description: Validation error in the payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /integrations/shipments/import:
+    post:
+      tags: [shipments]
+      operationId: importShipments
+      summary: Bulk-load orders from a CSV/Excel spreadsheet (idempotent per row)
+      description: >
+        Carga masiva de pedidos desde una planilla (plantilla F0-SRC-03, CSV UTF-8). Cada fila se
+        ingresa por la API única de recepción, idempotente por (source, external_id). Devuelve un
+        reporte fila por fila (importados, duplicados, fallidos con su motivo); una fila mala no tumba
+        a las demás, por eso responde 200 aunque haya filas fallidas.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Spreadsheet file (CSV), up to 10 MB
+      responses:
+        '200':
+          description: Import processed; the report details each row
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ImportReport'
+        '422':
+          description: Missing or invalid file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /app/shipments:
+    get:
+      tags: [shipments]
+      operationId: listShipments
+      summary: List received orders, optionally filtered by status and source
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ShipmentStatus'
+        - name: source
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/OrderSource'
+      responses:
+        '200':
+          description: Orders matching the filters
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Shipment'
+
+  /app/shipments/low-confidence-addresses:
+    get:
+      tags: [shipments]
+      operationId: listLowConfidenceAddresses
+      summary: List orders whose delivery address has low confidence
+      responses:
+        '200':
+          description: Orders flagged for address confirmation before dispatch
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Shipment'
+
+  /app/shipments/{shipment}:
+    get:
+      tags: [shipments]
+      operationId: getShipment
+      summary: Get a received order by id
+      parameters:
+        - name: shipment
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Shipment'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /app/shipments/{shipment}/geocode:
+    post:
+      tags: [shipments]
+      operationId: geocodeShipmentAddress
+      summary: Re-geocode (recalculate the confidence of) an order's delivery address
+      parameters:
+        - name: shipment
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The order with the recalculated address confidence
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Shipment'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    OrderSource:
+      type: string
+      enum: [SAP, MAGENTO, STORE, MANUAL, EXCEL]
+
+    ShipmentStatus:
+      type: string
+      enum: [RECEIVED, PLANNED, IN_EXECUTION, DELIVERED, FAILED, CANCELLED]
+
+    AddressConfidenceLevel:
+      type: string
+      enum: [HIGH, MEDIUM, LOW]
+
+    ReceiveShipmentLine:
+      type: object
+      required: [sku, product_name, quantity]
+      properties:
+        sku:
+          type: string
+          maxLength: 255
+        product_name:
+          type: string
+          maxLength: 255
+        quantity:
+          type: integer
+          minimum: 1
+
+    ReceiveShipmentRequest:
+      type: object
+      required: [source, external_id, customer_name, address_text, lines]
+      properties:
+        source:
+          $ref: '#/components/schemas/OrderSource'
+        external_id:
+          type: string
+          maxLength: 255
+          description: External reference of the order in its source system
+        customer_name:
+          type: string
+          maxLength: 255
+        address_text:
+          type: string
+          maxLength: 1000
+        address_reference:
+          type: string
+          maxLength: 1000
+          nullable: true
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          nullable: true
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          nullable: true
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ReceiveShipmentLine'
+
+    ReceiveShipmentAccepted:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [source, external_id, status]
+          properties:
+            source:
+              $ref: '#/components/schemas/OrderSource'
+            external_id:
+              type: string
+            status:
+              type: string
+              enum: [accepted]
+
+    ShipmentLine:
+      type: object
+      required: [id, sku, product_name, quantity]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        product_name:
+          type: string
+        quantity:
+          type: integer
+
+    Shipment:
+      type: object
+      required:
+        - id
+        - source
+        - external_id
+        - customer_name
+        - address_text
+        - address_confidence_score
+        - address_confidence_level
+        - status
+        - lines
+      properties:
+        id:
+          type: string
+          format: uuid
+        source:
+          $ref: '#/components/schemas/OrderSource'
+        external_id:
+          type: string
+        customer_name:
+          type: string
+        address_text:
+          type: string
+        address_reference:
+          type: string
+          nullable: true
+        lat:
+          type: number
+          format: double
+          nullable: true
+        lng:
+          type: number
+          format: double
+          nullable: true
+        address_confidence_score:
+          type: integer
+        address_confidence_level:
+          $ref: '#/components/schemas/AddressConfidenceLevel'
+        status:
+          $ref: '#/components/schemas/ShipmentStatus'
+        delivery_date:
+          type: string
+          format: date
+          nullable: true
+          description: Committed delivery day, or null if no slot is reserved yet.
+        delivery_window_start:
+          type: string
+          nullable: true
+          description: Delivery window start in HH:MM (24h), or null.
+        delivery_window_end:
+          type: string
+          nullable: true
+          description: Delivery window end in HH:MM (24h), or null.
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShipmentLine'
+
+    ImportRowOutcome:
+      type: string
+      enum: [IMPORTED, DUPLICATE, FAILED]
+
+    ImportReportRow:
+      type: object
+      required: [row, outcome, external_id, shipment_id, error]
+      properties:
+        row:
+          type: integer
+          description: 1-based row number in the uploaded file (1 is the header)
+        outcome:
+          $ref: '#/components/schemas/ImportRowOutcome'
+        external_id:
+          type: string
+          nullable: true
+        shipment_id:
+          type: string
+          format: uuid
+          nullable: true
+        error:
+          type: string
+          nullable: true
+
+    ImportReport:
+      type: object
+      required: [total, imported, duplicates, failed, rows]
+      properties:
+        total:
+          type: integer
+        imported:
+          type: integer
+        duplicates:
+          type: integer
+        failed:
+          type: integer
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportReportRow'
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message:
+              type: string
+
+    ValidationError:
+      type: object
+      required: [message, errors]
+      properties:
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string

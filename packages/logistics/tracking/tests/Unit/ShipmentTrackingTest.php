@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use Logistics\Tracking\Domain\Event\ShipmentPlacedOnRoute;
 use Logistics\Tracking\Domain\Event\TrackingOpened;
 use Logistics\Tracking\Domain\Event\TrackingStatusChanged;
 use Logistics\Tracking\Domain\Exception\TrackingException;
 use Logistics\Tracking\Domain\Model\ShipmentTracking;
 use Logistics\Tracking\Domain\ValueObject\Eta;
 use Logistics\Tracking\Domain\ValueObject\GeoPoint;
+use Logistics\Tracking\Domain\ValueObject\RoutePosition;
 use Logistics\Tracking\Domain\ValueObject\TrackingId;
 use Logistics\Tracking\Domain\ValueObject\TrackingToken;
 use Logistics\Tracking\Domain\ValueObject\TruckPosition;
@@ -141,6 +143,46 @@ it('decrements remaining stops and never goes below zero', function (): void {
     // No baja de cero.
     $tracking->decrementStops();
     expect($tracking->remainingStops())->toBe(0)
+        ->and($tracking->releaseEvents())->toHaveCount(0);
+});
+
+it('places the shipment on a route, derives stops before the customer and records the fact', function (): void {
+    $tracking = openTracking();
+    $tracking->releaseEvents();
+
+    // 3ra parada de la ruta ⇒ 2 paradas antes de la del cliente.
+    $tracking->placeOnRoute('route-7', RoutePosition::of(3));
+
+    expect($tracking->routeId())->toBe('route-7')
+        ->and($tracking->routePosition()?->value)->toBe(3)
+        ->and($tracking->remainingStops())->toBe(2);
+
+    $events = $tracking->releaseEvents();
+    expect($events)->toHaveCount(1)
+        ->and($events[0])->toBeInstanceOf(ShipmentPlacedOnRoute::class)
+        ->and($events[0]->eventName())->toBe('tracking.shipment_placed_on_route')
+        ->and($events[0]->payload())->toMatchArray([
+            'route_id' => 'route-7',
+            'route_position' => 3,
+            'stops_remaining' => 2,
+        ]);
+});
+
+it('rejects a blank route id when placing on a route', function (): void {
+    $tracking = openTracking();
+
+    expect(fn () => $tracking->placeOnRoute('  ', RoutePosition::of(1)))
+        ->toThrow(TrackingException::class, 'ruta');
+});
+
+it('does not re-place a terminal tracking on a route', function (): void {
+    $tracking = openTracking();
+    $tracking->applyStatus(VisibleStatus::Delivered);
+    $tracking->releaseEvents();
+
+    $tracking->placeOnRoute('route-7', RoutePosition::of(5));
+
+    expect($tracking->routeId())->toBeNull()
         ->and($tracking->releaseEvents())->toHaveCount(0);
 });
 

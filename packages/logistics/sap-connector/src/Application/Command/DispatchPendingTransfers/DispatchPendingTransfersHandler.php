@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Application\Command\DispatchPendingTransfers;
 
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Contract\StockTransferRepository;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
@@ -31,6 +32,7 @@ final class DispatchPendingTransfersHandler implements CommandHandler
     public function __construct(
         private readonly StockTransferRepository $transfers,
         private readonly SapClient $sap,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -59,7 +61,7 @@ final class DispatchPendingTransfersHandler implements CommandHandler
         }
 
         $this->transfers->save($transfer);
-        $transfer->releaseEvents();
+        $this->recordEvents->record($transfer->releaseEvents(), 'sap.stock_transfer');
     }
 
     public function lastSent(): int

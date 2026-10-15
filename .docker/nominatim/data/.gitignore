@@ -1,0 +1,6 @@
+# El extracto OSM de Bolivia (bolivia-latest.osm.pbf) y los artefactos del import de Nominatim son
+# pesados y se regeneran con el runbook (docs/maps-geocoder-selfhost.md): no se versionan.
+# Se mantiene el directorio en git con este .gitignore para que el bind-mount del
+# servicio `nominatim` exista en un clon limpio.
+*
+!.gitignore

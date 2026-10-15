@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Infrastructure\Persistence\Eloquent;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRecordFactory;
 
 /**
  * Fila de la tabla `shipments`. PK uuid string no incremental (UUID v7 generado por el dominio).
@@ -17,6 +19,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string      $source
  * @property string      $external_id
  * @property string      $customer_name
+ * @property string|null $customer_document_id
+ * @property string|null $customer_phone
+ * @property string|null $customer_email
  * @property string      $address_text
  * @property string|null $address_reference
  * @property string|null $lat
@@ -24,9 +29,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int         $address_confidence
  * @property string      $address_confidence_level
  * @property string      $status
+ * @property string|null $delivery_date
+ * @property string|null $delivery_window_start
+ * @property string|null $delivery_window_end
  */
 final class ShipmentRecord extends Model
 {
+    /** @use HasFactory<ShipmentRecordFactory> */
+    use HasFactory;
+
     public $incrementing = false;
 
     protected $keyType = 'string';
@@ -34,6 +45,14 @@ final class ShipmentRecord extends Model
     protected $table = 'shipments';
 
     protected $guarded = [];
+
+    /**
+     * Factory del contexto (vive en Infrastructure junto al modelo, no en la app).
+     */
+    protected static function newFactory(): ShipmentRecordFactory
+    {
+        return ShipmentRecordFactory::new();
+    }
 
     /**
      * @return HasMany<ShipmentLineRecord, $this>

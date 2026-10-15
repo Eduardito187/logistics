@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Infrastructure\Persistence\Eloquent;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Logistics\Execution\Infrastructure\Persistence\Eloquent\Factory\ScanEventRecordFactory;
 
 /**
  * Fila de la tabla `execution_scan_events`. Append-only: nunca se modifica ni se borra. PK uuid string.
@@ -25,6 +28,9 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class ScanEventRecord extends Model
 {
+    /** @use HasFactory<ScanEventRecordFactory> */
+    use HasFactory;
+
     public $incrementing = false;
 
     protected $keyType = 'string';
@@ -32,4 +38,23 @@ final class ScanEventRecord extends Model
     protected $table = 'execution_scan_events';
 
     protected $guarded = [];
+
+    /**
+     * Entrega a la que pertenece el escaneo. A través de ella se alcanza el pedido legible
+     * (delivery.shipment) y el vehículo, para no mostrar UUIDs crudos en el admin.
+     *
+     * @return BelongsTo<DeliveryRecord, $this>
+     */
+    public function delivery(): BelongsTo
+    {
+        return $this->belongsTo(DeliveryRecord::class, 'delivery_id');
+    }
+
+    /**
+     * Las factories del package viven fuera del namespace que Laravel adivina; se enlazan a mano.
+     */
+    protected static function newFactory(): ScanEventRecordFactory
+    {
+        return ScanEventRecordFactory::new();
+    }
 }

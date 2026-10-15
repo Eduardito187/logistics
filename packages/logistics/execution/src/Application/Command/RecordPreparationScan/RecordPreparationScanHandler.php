@@ -10,6 +10,7 @@ use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\Model\Delivery;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
@@ -25,6 +26,7 @@ final class RecordPreparationScanHandler implements CommandHandler
 {
     public function __construct(
         private readonly DeliveryRepository $deliveries,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -46,7 +48,6 @@ final class RecordPreparationScanHandler implements CommandHandler
 
         $this->deliveries->save($delivery);
 
-        // TODO(outbox): despachar estos eventos al outbox dentro de la misma transacción al integrar.
-        $delivery->releaseEvents();
+        $this->recordEvents->record($delivery->releaseEvents(), 'execution.delivery');
     }
 }

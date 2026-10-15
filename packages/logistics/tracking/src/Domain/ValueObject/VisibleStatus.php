@@ -41,7 +41,9 @@ enum VisibleStatus: string
     {
         return match ($executionEventType) {
             'execution.shipment_prepared', 'execution.prepared' => self::Prepared,
-            'execution.shipment_dispatched', 'execution.dispatched', 'execution.on_the_way' => self::OnTheWay,
+            // execution.shipment_loaded es el hecho real que emite execution al cargar el camión:
+            // cargado ⇒ en camino. Se conservan los alias por compatibilidad con relays normalizados.
+            'execution.shipment_loaded', 'execution.shipment_dispatched', 'execution.dispatched', 'execution.on_the_way' => self::OnTheWay,
             'execution.shipment_arriving', 'execution.arriving' => self::Arriving,
             'execution.shipment_delivered', 'execution.delivered' => self::Delivered,
             'execution.delivery_failed', 'execution.failed' => self::Failed,

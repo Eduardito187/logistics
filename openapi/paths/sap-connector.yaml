@@ -1,0 +1,369 @@
+# Fragmento OpenAPI del bounded context sap-connector (capa anti-corrupción SAP, ADR 002).
+#
+# El integrador fusiona estos `paths` y `components.schemas` dentro de openapi/v1.yaml. Las rutas son
+# relativas al server base (/api/v1). No se edita openapi/v1.yaml desde aquí.
+#
+# Puertas:
+#   - /integrations/* → credenciales de servicio (SAP)
+#   - /app/*          → token de usuario + dispositivo, roles (operaciones internas)
+
+paths:
+  /integrations/sap/orders/import:
+    post:
+      tags: [sap-connector]
+      operationId: importSapOrders
+      summary: Import pending orders from SAP, translated to the platform model
+      description: |
+        Lee los pedidos pendientes en SAP y los devuelve ya traducidos al modelo propio (sku propio,
+        no material SAP). No empuja nada a SAP dentro del request.
+      responses:
+        '200':
+          description: Orders imported and translated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ImportedSapOrder'
+                  meta:
+                    type: object
+                    required: [count]
+                    properties:
+                      count:
+                        type: integer
+                        example: 3
+
+  /integrations/sap/stock-transfers/acknowledge:
+    post:
+      tags: [sap-connector]
+      operationId: acknowledgeStockTransfer
+      summary: Acknowledge a dispatched stock transfer (SAP callback)
+      description: |
+        Callback de SAP que confirma un traspaso ya empujado. Cierra el ciclo y lo saca del panel de
+        reconciliación. Idempotente por `event_id`: reconfirmar no es un error.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcknowledgeStockTransferRequest'
+      responses:
+        '200':
+          description: Transfer acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [event_id, status]
+                    properties:
+                      event_id:
+                        type: string
+                      status:
+                        type: string
+                        enum: [ACKNOWLEDGED]
+                  meta:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        '422':
+          description: Validation error
+
+  /app/sap/material-mappings:
+    get:
+      tags: [sap-connector]
+      operationId: listMaterialMappings
+      summary: List the SAP material translation map (platform SKU to SAP coordinate)
+      responses:
+        '200':
+          description: Material mappings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialMappingCollection'
+    post:
+      tags: [sap-connector]
+      operationId: defineMaterialMapping
+      summary: Define or update a material mapping (idempotent by SKU)
+      description: |
+        Define (o actualiza) el mapeo de un sku propio a su coordenada SAP (material + centro +
+        almacén). Idempotente por sku: redefinir un sku existente actualiza su coordenada.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefineMaterialMappingRequest'
+      responses:
+        '201':
+          description: Material mapping defined
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DefineMaterialMappingRequest'
+                  meta:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        '422':
+          description: Validation error
+
+  /app/sap/stock-transfers:
+    post:
+      tags: [sap-connector]
+      operationId: enqueueStockTransfer
+      summary: Enqueue a stock transfer to SAP from a node reception
+      description: |
+        Encola un traspaso de stock al recibir un bulto en un nodo. Responde 202 de inmediato: el
+        escaneo nunca espera a SAP. Idempotente por `event_id`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnqueueStockTransferRequest'
+      responses:
+        '202':
+          description: Transfer accepted for asynchronous dispatch
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [event_id, shipment_ref, status]
+                    properties:
+                      event_id:
+                        type: string
+                      shipment_ref:
+                        type: string
+                      status:
+                        type: string
+                        enum: [ENQUEUED]
+                  meta:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        '422':
+          description: Validation error
+
+  /app/sap/stock-transfers/pending:
+    get:
+      tags: [sap-connector]
+      operationId: listPendingStockTransfers
+      summary: List stock transfers pending dispatch to SAP (Pending and Failed)
+      responses:
+        '200':
+          description: Pending transfers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockTransferCollection'
+
+  /app/sap/stock-transfers/failed:
+    get:
+      tags: [sap-connector]
+      operationId: listFailedStockTransfers
+      summary: List stock transfers whose dispatch to SAP failed
+      responses:
+        '200':
+          description: Failed transfers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockTransferCollection'
+
+  /app/sap/stock-transfers/dispatch:
+    post:
+      tags: [sap-connector]
+      operationId: dispatchPendingStockTransfers
+      summary: Trigger a dispatch run for pending and failed stock transfers
+      responses:
+        '202':
+          description: Dispatch run requested
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        enum: [DISPATCH_REQUESTED]
+                  meta:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+
+components:
+  schemas:
+    EnqueueStockTransferRequest:
+      type: object
+      required: [event_id, shipment_ref, sku, quantity]
+      properties:
+        event_id:
+          type: string
+          maxLength: 64
+          description: Identificador de la recepción que origina el traspaso (respalda la idempotencia)
+        shipment_ref:
+          type: string
+          maxLength: 64
+        sku:
+          type: string
+          maxLength: 64
+          description: SKU propio de la plataforma (el conector lo traduce a la coordenada SAP)
+        quantity:
+          type: integer
+          minimum: 1
+
+    StockTransfer:
+      type: object
+      required: [id, event_id, shipment_ref, material, center, warehouse, quantity, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+        shipment_ref:
+          type: string
+        material:
+          type: string
+          description: Material SAP (resultado de la traducción del sku propio)
+        center:
+          type: string
+        warehouse:
+          type: string
+        quantity:
+          type: integer
+        status:
+          type: string
+          enum: [PENDING, SENT, ACKNOWLEDGED, FAILED]
+        last_error:
+          type: [string, 'null']
+
+    StockTransferCollection:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockTransfer'
+        meta:
+          type: object
+          required: [count]
+          properties:
+            count:
+              type: integer
+
+    AcknowledgeStockTransferRequest:
+      type: object
+      required: [event_id]
+      properties:
+        event_id:
+          type: string
+          maxLength: 64
+          description: Clave de idempotencia (event_id de la recepción) que SAP recibió al empujarse el traspaso
+
+    DefineMaterialMappingRequest:
+      type: object
+      required: [sku, material, center, warehouse]
+      properties:
+        sku:
+          type: string
+          maxLength: 64
+          description: SKU propio de la plataforma
+        material:
+          type: string
+          maxLength: 64
+          description: Material SAP
+        center:
+          type: string
+          maxLength: 32
+          description: Centro SAP
+        warehouse:
+          type: string
+          maxLength: 32
+          description: Almacén SAP
+
+    MaterialMapping:
+      type: object
+      required: [id, sku, material, center, warehouse]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        material:
+          type: string
+        center:
+          type: string
+        warehouse:
+          type: string
+
+    MaterialMappingCollection:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterialMapping'
+        meta:
+          type: object
+          required: [count]
+          properties:
+            count:
+              type: integer
+
+    ImportedSapOrder:
+      type: object
+      required: [external_id, customer_name, address_text, lines]
+      properties:
+        external_id:
+          type: string
+        customer_name:
+          type: string
+        address_text:
+          type: string
+        address_reference:
+          type: [string, 'null']
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportedSapOrderLine'
+
+    ImportedSapOrderLine:
+      type: object
+      required: [sku, product_name, quantity]
+      properties:
+        sku:
+          type: string
+          description: SKU propio (traducido desde el material SAP)
+        product_name:
+          type: string
+        quantity:
+          type: integer

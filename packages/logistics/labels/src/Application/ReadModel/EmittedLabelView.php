@@ -23,6 +23,9 @@ final readonly class EmittedLabelView
         public string $qrContent,
         public string $zpl,
         public int $emittedAt,
+        public bool $revoked,
+        public ?int $revokedAt,
+        public ?string $revokedReason,
     ) {}
 
     public static function fromEmittedLabel(EmittedLabel $label): self
@@ -36,11 +39,14 @@ final readonly class EmittedLabelView
             $label->signedJson(),
             $label->zpl,
             $label->emittedAt,
+            $label->isRevoked(),
+            $label->revokedAt,
+            $label->revokedReason,
         );
     }
 
     /**
-     * @return array{order_number: string, label_id: string, key_id: int, sku: string, line_number: int, qr_content: string, zpl: string, emitted_at: int}
+     * @return array{order_number: string, label_id: string, key_id: int, sku: string, line_number: int, qr_content: string, zpl: string, emitted_at: int, revoked: bool, revoked_at: int|null, revoked_reason: string|null}
      */
     public function toArray(): array
     {
@@ -53,6 +59,9 @@ final readonly class EmittedLabelView
             'qr_content' => $this->qrContent,
             'zpl' => $this->zpl,
             'emitted_at' => $this->emittedAt,
+            'revoked' => $this->revoked,
+            'revoked_at' => $this->revokedAt,
+            'revoked_reason' => $this->revokedReason,
         ];
     }
 }

@@ -7,11 +7,14 @@
     "require": {
         "php": "^8.3",
         "ext-sodium": "*",
-        "logistics/shared": "^0.1"
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1"
     },
     "autoload": {
         "psr-4": {
-            "Logistics\\Labels\\": "src/"
+            "Logistics\\Labels\\": "src/",
+            "Logistics\\Labels\\Database\\Factories\\": "database/factories/",
+            "Logistics\\Labels\\Database\\Seeders\\": "database/seeders/"
         }
     },
     "extra": {

@@ -21,6 +21,7 @@ final readonly class NodeView
         public float $latitude,
         public float $longitude,
         public string $status,
+        public ?string $department = null,
     ) {}
 
     public static function fromNode(Node $node): self
@@ -33,11 +34,12 @@ final readonly class NodeView
             $node->location()->latitude,
             $node->location()->longitude,
             $node->status()->value,
+            $node->department()?->value,
         );
     }
 
     /**
-     * @return array{id: string, code: string, name: string, type: string, lat: float, lng: float, status: string}
+     * @return array{id: string, code: string, name: string, type: string, lat: float, lng: float, status: string, department: string|null}
      */
     public function toArray(): array
     {
@@ -49,6 +51,7 @@ final readonly class NodeView
             'lat' => $this->latitude,
             'lng' => $this->longitude,
             'status' => $this->status,
+            'department' => $this->department,
         ];
     }
 }

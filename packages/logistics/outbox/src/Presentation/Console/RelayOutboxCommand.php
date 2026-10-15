@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Outbox\Presentation\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Config\Repository;
 use Logistics\Outbox\Application\RelayOutbox\RelayOutboxBatch;
 
 /**
@@ -15,13 +16,14 @@ use Logistics\Outbox\Application\RelayOutbox\RelayOutboxBatch;
  */
 final class RelayOutboxCommand extends Command
 {
-    protected $signature = 'logistics:outbox:relay {--limit=100 : Maximum number of messages to dispatch in this run}';
+    protected $signature = 'logistics:outbox:relay {--limit= : Maximum number of messages to dispatch in this run (defaults to config logistics-outbox.relay.limit)}';
 
     protected $description = 'Dispatch a batch of pending outbox messages to their external destinations';
 
-    public function handle(RelayOutboxBatch $relay): int
+    public function handle(RelayOutboxBatch $relay, Repository $config): int
     {
-        $limit = (int) $this->option('limit');
+        $option = $this->option('limit');
+        $limit = $option === null ? (int) $config->get('logistics-outbox.relay.limit', 100) : (int) $option;
         if ($limit < 1) {
             $this->error('--limit must be >= 1');
 

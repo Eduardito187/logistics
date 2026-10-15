@@ -21,6 +21,9 @@ return new class extends Migration
             $table->string('status')->index();
             $table->string('pod_confirmation')->nullable();
             $table->string('pod_photo_url')->nullable();
+            // Referencia durable de la foto en el disco de evidencia (privado): el path relativo al
+            // disco. Es la referencia canónica; pod_photo_url es solo una conveniencia de acceso.
+            $table->string('pod_photo_path')->nullable();
             $table->timestampTz('pod_captured_at')->nullable();
             $table->string('failure_reason')->nullable();
             $table->timestamps();

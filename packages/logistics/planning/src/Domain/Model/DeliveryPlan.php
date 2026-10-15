@@ -6,6 +6,8 @@ namespace Logistics\Planning\Domain\Model;
 
 use Logistics\Planning\Domain\Event\PlanProposed;
 use Logistics\Planning\Domain\Event\PlanPublished;
+use Logistics\Planning\Domain\Event\RouteReoptimized;
+use Logistics\Planning\Domain\Event\StopRemovedFromPlan;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\ValueObject\Eta;
 use Logistics\Planning\Domain\ValueObject\LoadLane;
@@ -13,6 +15,7 @@ use Logistics\Planning\Domain\ValueObject\PlanDate;
 use Logistics\Planning\Domain\ValueObject\PlanId;
 use Logistics\Planning\Domain\ValueObject\PlannedStopId;
 use Logistics\Planning\Domain\ValueObject\PlanStatus;
+use Logistics\Planning\Domain\ValueObject\RouteGeometry;
 use Logistics\Planning\Domain\ValueObject\StopSequence;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
@@ -39,6 +42,7 @@ final class DeliveryPlan extends AggregateRoot
         private readonly string $vehicleId,
         private PlanStatus $status,
         private array $stops,
+        private ?RouteGeometry $geometry = null,
     ) {}
 
     /**
@@ -65,18 +69,26 @@ final class DeliveryPlan extends AggregateRoot
         string $vehicleId,
         PlanStatus $status,
         array $stops,
+        ?RouteGeometry $geometry = null,
     ): self {
-        return new self($id, $date, $vehicleId, $status, array_values($stops));
+        return new self($id, $date, $vehicleId, $status, array_values($stops), $geometry);
     }
 
     /**
      * Agrega un envío al final de la secuencia del plan. Solo mientras no esté publicado.
      *
      * No admite el mismo envío dos veces en el mismo plan. La parada nace sin ETA ni carril: eso lo
-     * resuelven la propuesta de ruta y el recálculo del plan de carga.
+     * resuelven la propuesta de ruta y el recálculo del plan de carga. La referencia del pedido, el
+     * cliente y la dirección (foto legible del destino) son opcionales y las aporta quien conoce el
+     * envío; viajan con la parada para que el plan y la ruta del chofer se muestren sin consultar envíos.
      */
-    public function assignShipment(PlannedStopId $stopId, string $shipmentId): void
-    {
+    public function assignShipment(
+        PlannedStopId $stopId,
+        string $shipmentId,
+        ?string $orderReference = null,
+        ?string $customerName = null,
+        ?string $address = null,
+    ): void {
         $this->guardNotPublished('asignar envíos');
 
         $trimmed = trim($shipmentId);
@@ -87,7 +99,14 @@ final class DeliveryPlan extends AggregateRoot
             throw PlanningException::because("el envío {$trimmed} ya está en el plan");
         }
 
-        $this->stops[] = PlannedStop::assign($stopId, $trimmed, StopSequence::of(count($this->stops) + 1));
+        $this->stops[] = PlannedStop::assign(
+            $stopId,
+            $trimmed,
+            StopSequence::of(count($this->stops) + 1),
+            $orderReference,
+            $customerName,
+            $address,
+        );
     }
 
     /**
@@ -127,9 +146,53 @@ final class DeliveryPlan extends AggregateRoot
     }
 
     /**
+     * RE-OPTIMIZACIÓN incremental (R-05): aplica un nuevo orden de reparto y una nueva ETA calculados por
+     * el re-secuenciador ante un cambio del día (nuevo pedido, cancelación, incidente), sin rehacer el
+     * resto del día. A diferencia de reorderStops (ajuste humano que conserva la ETA), acá se recalcula la
+     * ETA de cada parada. Invalida la geometría guardada (el orden cambió) y graba RouteReoptimized.
+     *
+     * No se puede sobre un plan publicado (su hoja de ruta ya está congelada). El orden debe ser
+     * exactamente el conjunto de envíos del plan; debe traer la ETA de cada uno.
+     *
+     * @param list<string>       $orderedShipmentIds envíos en el nuevo orden de reparto
+     * @param array<string, Eta> $etas               ETA por id de envío
+     */
+    public function reoptimizeTo(array $orderedShipmentIds, array $etas, string $reason): void
+    {
+        $this->guardNotPublished('re-optimizar la ruta');
+
+        if ($this->stops === []) {
+            throw PlanningException::because('no se puede re-optimizar un plan sin paradas');
+        }
+
+        $this->applyOrder($orderedShipmentIds);
+
+        foreach ($this->stops as $stop) {
+            $shipmentId = $stop->shipmentId();
+            if (!isset($etas[$shipmentId])) {
+                throw PlanningException::because("falta la ETA del envío {$shipmentId} en la re-optimización");
+            }
+            $stop->arriveAt($etas[$shipmentId]);
+        }
+
+        $this->geometry = null;
+
+        $this->recordEvent(new RouteReoptimized(
+            $this->id->toString(),
+            $this->date->toString(),
+            $this->vehicleId,
+            count($this->stops),
+            trim($reason) === '' ? 'manual' : trim($reason),
+        ));
+    }
+
+    /**
      * Ajuste humano: reordena las paradas al orden dado y renumera la secuencia. Cada parada conserva su
      * ETA y su carril; recomputar el plan de carga después refleja el nuevo orden. No se puede sobre un
      * plan publicado.
+     *
+     * Invalida la geometría guardada: al cambiar el orden, la polilínea por calles deja de corresponder y
+     * debe recalcularse en el servidor antes de volver a mostrarla.
      *
      * @param list<string> $orderedShipmentIds todos los envíos del plan, en el nuevo orden de reparto
      */
@@ -138,6 +201,66 @@ final class DeliveryPlan extends AggregateRoot
         $this->guardNotPublished('reordenar paradas');
 
         $this->applyOrder($orderedShipmentIds);
+        $this->geometry = null;
+    }
+
+    /**
+     * Quita del plan la parada del envío dado y renumera la secuencia 1..n. Es la contraparte de
+     * assignShipment: habilita MOVER un envío a otro camión (el plan de origen lo suelta, el de destino lo
+     * toma). No se puede sobre un plan publicado (su hoja de ruta ya está congelada).
+     *
+     * Invalida la geometría guardada: al cambiar el conjunto de paradas, la polilínea por calles deja de
+     * corresponder y debe recalcularse en el servidor antes de volver a mostrarla. Graba el evento
+     * StopRemovedFromPlan para que el outbox propague el cambio.
+     */
+    public function removeStop(string $shipmentId): void
+    {
+        $this->guardNotPublished('quitar envíos');
+
+        $trimmed = trim($shipmentId);
+        if ($trimmed === '') {
+            throw PlanningException::because('el id de envío no puede estar vacío');
+        }
+        if (!$this->hasShipment($trimmed)) {
+            throw PlanningException::because("el envío {$trimmed} no está en el plan");
+        }
+
+        $remaining = [];
+        foreach ($this->stops as $stop) {
+            if ($stop->shipmentId() !== $trimmed) {
+                $remaining[] = $stop;
+            }
+        }
+
+        // Renumera la secuencia 1..n tras quitar la parada, para que el orden quede sin huecos.
+        $sequence = StopSequence::first();
+        foreach ($remaining as $stop) {
+            $stop->placeAt($sequence);
+            $sequence = $sequence->next();
+        }
+
+        $this->stops = $remaining;
+        $this->geometry = null;
+
+        $this->recordEvent(new StopRemovedFromPlan(
+            $this->id->toString(),
+            $this->date->toString(),
+            $this->vehicleId,
+            $trimmed,
+            count($this->stops),
+        ));
+    }
+
+    /**
+     * Fija la geometría de la ruta por calles calculada en el SERVIDOR (polilínea GeoJSON + distancia y
+     * duración totales), para persistirla con el plan y que el mapa la pinte sin depender del navegador. No
+     * se puede sobre un plan publicado (su hoja de ruta ya está congelada).
+     */
+    public function attachRouteGeometry(RouteGeometry $geometry): void
+    {
+        $this->guardNotPublished('adjuntar la geometría de la ruta');
+
+        $this->geometry = $geometry;
     }
 
     /**
@@ -195,6 +318,14 @@ final class DeliveryPlan extends AggregateRoot
     public function status(): PlanStatus
     {
         return $this->status;
+    }
+
+    /**
+     * Geometría de la ruta por calles ya calculada, o null si todavía no se adjuntó.
+     */
+    public function geometry(): ?RouteGeometry
+    {
+        return $this->geometry;
     }
 
     /**

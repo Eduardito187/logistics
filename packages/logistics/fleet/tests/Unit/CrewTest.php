@@ -8,6 +8,7 @@ use Logistics\Fleet\Domain\Model\Crew;
 use Logistics\Fleet\Domain\ValueObject\CrewId;
 use Logistics\Fleet\Domain\ValueObject\DriverId;
 use Logistics\Fleet\Domain\ValueObject\VehicleId;
+use Logistics\Fleet\Domain\ValueObject\WorkShift;
 
 it('arma una tripulación con chofer, ayudantes y vehículo', function (): void {
     $driverId = DriverId::generate();
@@ -62,4 +63,41 @@ it('rechaza armar una tripulación sin vehículo', function (): void {
         null,
         new DateTimeImmutable('2026-10-14'),
     ))->toThrow(FleetException::class, 'necesita un vehículo');
+});
+
+it('arma una tripulación sin turno por defecto', function (): void {
+    $crew = Crew::assemble(
+        CrewId::generate(),
+        DriverId::generate(),
+        [],
+        VehicleId::generate(),
+        new DateTimeImmutable('2026-10-14'),
+    );
+
+    expect($crew->shift())->toBeNull()
+        ->and($crew->releaseEvents()[0]->shift)->toBeNull();
+});
+
+it('arma una tripulación con turno y lo expone en el evento', function (): void {
+    $shift = WorkShift::between(
+        new DateTimeImmutable('2026-10-14 06:00:00'),
+        new DateTimeImmutable('2026-10-14 14:00:00'),
+    );
+
+    $crew = Crew::assemble(
+        CrewId::generate(),
+        DriverId::generate(),
+        [],
+        VehicleId::generate(),
+        new DateTimeImmutable('2026-10-14'),
+        $shift,
+    );
+
+    expect($crew->shift())->not->toBeNull()
+        ->and($crew->shift()->durationInMinutes())->toBe(480);
+
+    $event = $crew->releaseEvents()[0];
+    expect($event)->toBeInstanceOf(CrewAssembled::class)
+        ->and($event->shift)->toBeArray()
+        ->and($event->payload()['shift'])->toHaveKeys(['starts_at', 'ends_at']);
 });

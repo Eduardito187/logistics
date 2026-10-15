@@ -53,6 +53,23 @@ final readonly class DocumentExpiry
     }
 
     /**
+     * Estado del documento a la fecha de referencia, para mostrar una etiqueta legible:
+     *  - 'expired'        ya venció;
+     *  - 'expiring_soon'  vence dentro de los próximos $soonDays días (por defecto 30);
+     *  - 'valid'          sigue vigente y aún lejos del vencimiento.
+     *
+     * Es el criterio único del badge de la licencia (color + etiqueta) y de los umbrales de alerta.
+     */
+    public function status(DateTimeImmutable $ref, int $soonDays = 30): string
+    {
+        if ($this->isExpiredAt($ref)) {
+            return 'expired';
+        }
+
+        return $this->expiresWithin($soonDays, $ref) ? 'expiring_soon' : 'valid';
+    }
+
+    /**
      * @return array{type: string, expires_on: string}
      */
     public function toArray(): array

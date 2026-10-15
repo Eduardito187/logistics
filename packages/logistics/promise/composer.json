@@ -6,11 +6,16 @@
     "license": "proprietary",
     "require": {
         "php": "^8.3",
-        "logistics/shared": "^0.1"
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1",
+        "logistics/capacity": "^0.1",
+        "logistics/shipments": "^0.1"
     },
     "autoload": {
         "psr-4": {
-            "Logistics\\Promise\\": "src/"
+            "Logistics\\Promise\\": "src/",
+            "Logistics\\Promise\\Database\\Factories\\": "database/factories/",
+            "Logistics\\Promise\\Database\\Seeders\\": "database/seeders/"
         }
     },
     "extra": {

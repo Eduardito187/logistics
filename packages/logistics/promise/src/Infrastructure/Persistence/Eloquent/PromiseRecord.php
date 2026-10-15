@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Logistics\Promise\Infrastructure\Persistence\Eloquent;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Logistics\Promise\Database\Factories\PromiseFactory;
 
 /**
  * Fila de la tabla `promises`. PK uuid string no incremental (UUID v7 generado por el dominio).
@@ -22,6 +24,9 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class PromiseRecord extends Model
 {
+    /** @use HasFactory<PromiseFactory> */
+    use HasFactory;
+
     public $incrementing = false;
 
     protected $keyType = 'string';
@@ -29,4 +34,13 @@ final class PromiseRecord extends Model
     protected $table = 'promises';
 
     protected $guarded = [];
+
+    /**
+     * El factory vive en el package (no en el namespace por defecto de Laravel), así que se resuelve
+     * explícitamente.
+     */
+    protected static function newFactory(): PromiseFactory
+    {
+        return PromiseFactory::new();
+    }
 }

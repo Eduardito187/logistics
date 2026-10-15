@@ -28,6 +28,17 @@ final readonly class ListBucketsByDateHandler implements QueryHandler
 
         $date = SlotDate::fromString($query->date);
 
-        return array_map(CapacityView::fromBucket(...), $this->buckets->byDate($date));
+        $buckets = $this->buckets->byDate($date);
+
+        // Filtro por municipio en memoria: un día tiene un número acotado de cupos, así no se agrega un
+        // método al puerto del repositorio (que obligaría a tocar todos sus implementadores y decoradores).
+        if ($query->municipalityId !== null) {
+            $buckets = array_values(array_filter(
+                $buckets,
+                static fn ($bucket): bool => $bucket->scope()->municipalityId === $query->municipalityId,
+            ));
+        }
+
+        return array_map(CapacityView::fromBucket(...), $buckets);
     }
 }

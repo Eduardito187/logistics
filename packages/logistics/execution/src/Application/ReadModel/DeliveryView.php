@@ -23,6 +23,7 @@ final readonly class DeliveryView
         public string $status,
         public ?string $podConfirmation,
         public ?string $podPhotoUrl,
+        public ?string $podPhotoPath,
         public ?string $failureReason,
         public array $scans,
     ) {}
@@ -43,6 +44,7 @@ final readonly class DeliveryView
             $delivery->status()->value,
             $proof?->confirmation,
             $proof?->photoUrl,
+            $proof?->photoPath,
             $delivery->failureReason()?->value,
             $scans,
         );
@@ -60,6 +62,7 @@ final readonly class DeliveryView
             'status' => $this->status,
             'pod_confirmation' => $this->podConfirmation,
             'pod_photo_url' => $this->podPhotoUrl,
+            'pod_photo_path' => $this->podPhotoPath,
             'failure_reason' => $this->failureReason,
             'scans' => array_map(static fn (ScanEventView $scan): array => $scan->toArray(), $this->scans),
         ];

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Application\Command\ProjectExecutionEvent;
 
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
@@ -23,6 +24,7 @@ final class ProjectExecutionEventHandler implements CommandHandler
 {
     public function __construct(
         private readonly TrackingRepository $trackings,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -43,11 +45,38 @@ final class ProjectExecutionEventHandler implements CommandHandler
             return;
         }
 
+        // Antes de aplicar: ¿ya estaba cerrado? Si ya era terminal, este evento es un reenvío del relay
+        // y no debe volver a avanzar la cascada (evita el doble descuento en reintentos).
+        $wasTerminal = $tracking->status()->isTerminal();
+
         $tracking->applyStatus($status);
 
         $this->trackings->save($tracking);
 
-        // TODO(outbox): despachar estos eventos al outbox dentro de la misma transacción al integrar.
-        $tracking->releaseEvents();
+        $this->recordEvents->record($tracking->releaseEvents(), 'tracking.shipment_tracking');
+
+        // Una parada se completó (entrega resuelta: entregada o fallida) POR PRIMERA VEZ. Si el envío
+        // tiene ubicación en la ruta, los envíos de atrás en la MISMA ruta quedan una parada más cerca
+        // del cliente: se baja su stops_remaining en cascada. Es un ajuste de proyección (no graba
+        // eventos de negocio) y corre una sola vez por parada, no en cada reintento del relay.
+        if (!$wasTerminal && $status->isTerminal()) {
+            $this->advanceLaterStops($tracking->routeId(), $tracking->routePosition()?->value);
+        }
+    }
+
+    /**
+     * Baja en uno las paradas restantes de cada envío de la misma ruta con posición posterior a la que
+     * acaba de completarse. Sin ruta/posición conocida no hay cascada.
+     */
+    private function advanceLaterStops(?string $routeId, ?int $position): void
+    {
+        if ($routeId === null || $position === null) {
+            return;
+        }
+
+        foreach ($this->trackings->stopsAheadOnRoute($routeId, $position) as $ahead) {
+            $ahead->decrementStops();
+            $this->trackings->save($ahead);
+        }
     }
 }

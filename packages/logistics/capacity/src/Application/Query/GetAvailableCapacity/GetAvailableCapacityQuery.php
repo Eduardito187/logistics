@@ -17,5 +17,6 @@ final readonly class GetAvailableCapacityQuery implements Query
         public string $date,
         public string $timeSlot,
         public string $unit,
+        public ?string $municipalityId = null,
     ) {}
 }

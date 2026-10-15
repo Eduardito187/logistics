@@ -26,4 +26,14 @@ interface TrackingRepository
     public function findByToken(TrackingToken $token): ?ShipmentTracking;
 
     public function findByShipmentId(string $shipmentId): ?ShipmentTracking;
+
+    /**
+     * Seguimientos de la MISMA ruta cuya posición es posterior a la dada y que todavía no son
+     * terminales: son los que quedan una parada más cerca cuando la parada en esa posición se completa.
+     * Sirve para avanzar en cascada stops_remaining de los envíos de atrás cuando uno de adelante se
+     * entrega. Ordenados por posición ascendente.
+     *
+     * @return list<ShipmentTracking>
+     */
+    public function stopsAheadOnRoute(string $routeId, int $position): array;
 }

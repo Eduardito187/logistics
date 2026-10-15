@@ -16,7 +16,8 @@ use Logistics\Planning\Domain\Model\PlannedStop;
 final readonly class PlanView
 {
     /**
-     * @param list<PlannedStopView> $stops
+     * @param list<PlannedStopView>     $stops
+     * @param array<string, mixed>|null $routeGeometry geometría de la ruta por calles (GeoJSON + totales)
      */
     public function __construct(
         public string $id,
@@ -24,6 +25,7 @@ final readonly class PlanView
         public string $vehicleId,
         public string $status,
         public array $stops,
+        public ?array $routeGeometry = null,
     ) {}
 
     public static function fromPlan(DeliveryPlan $plan): self
@@ -41,6 +43,7 @@ final readonly class PlanView
             $plan->vehicleId(),
             $plan->status()->value,
             $stops,
+            $plan->geometry()?->toArray(),
         );
     }
 
@@ -55,6 +58,8 @@ final readonly class PlanView
             'vehicle_id' => $this->vehicleId,
             'status' => $this->status,
             'stops' => array_map(static fn (PlannedStopView $stop): array => $stop->toArray(), $this->stops),
+            // Geometría server-side para que el mapa la pinte sin depender del navegador (null si aún no se calculó).
+            'route_geometry' => $this->routeGeometry,
         ];
     }
 
@@ -72,6 +77,9 @@ final readonly class PlanView
             $lane?->label,
             // Orden de carga = inverso del de entrega: la última entrega carga primero.
             $total - $stop->sequence()->value + 1,
+            $stop->orderReference(),
+            $stop->customerName(),
+            $stop->address(),
         );
     }
 }

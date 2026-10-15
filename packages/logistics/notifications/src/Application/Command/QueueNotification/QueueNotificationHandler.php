@@ -11,6 +11,7 @@ use Logistics\Notifications\Domain\Model\Notification;
 use Logistics\Notifications\Domain\ValueObject\MessageType;
 use Logistics\Notifications\Domain\ValueObject\NotificationId;
 use Logistics\Notifications\Domain\ValueObject\Recipient;
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
@@ -29,6 +30,7 @@ final class QueueNotificationHandler implements CommandHandler
     public function __construct(
         private readonly NotificationRepository $notifications,
         private readonly NotificationRulesProvider $rules,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -40,7 +42,7 @@ final class QueueNotificationHandler implements CommandHandler
         $messageType = MessageType::from($command->messageType);
 
         // Valida los contactos de respaldo al encolar (el canal primario va por topic FCM del envío).
-        $recipient = Recipient::of($command->shipmentId, $command->email, $command->phone);
+        $recipient = Recipient::of($command->shipmentId, $command->email, $command->phone, $command->telegramChatId);
 
         $policy = $this->rules->policyFor($messageType);
 
@@ -49,13 +51,15 @@ final class QueueNotificationHandler implements CommandHandler
             $recipient->shipmentId,
             $messageType,
             $policy,
+            $recipient->email,
+            $recipient->phone,
+            $recipient->telegramChatId,
         );
 
         $this->notifications->save($notification);
         $this->lastNotificationId = $notification->id();
 
-        // TODO(outbox): despachar estos eventos al outbox dentro de la misma transacción al integrar.
-        $notification->releaseEvents();
+        $this->recordEvents->record($notification->releaseEvents(), 'notifications.notification');
     }
 
     /**

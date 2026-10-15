@@ -1,0 +1,801 @@
+# Fragmento OpenAPI del bounded context Fleet (flota y tripulación).
+#
+# El integrador fusiona estos `paths` y `components.schemas` en openapi/v1.yaml (bajo el servidor
+# /api/v1). Las rutas ya incluyen el prefijo de su puerta:
+#   /app/*           → app interna Flutter (token usuario + dispositivo, roles)
+#   /integrations/*  → SAP / RR. HH. (credenciales de servicio)
+# Fleet no publica endpoints en la puerta /channels/* (información interna).
+
+paths:
+  /app/fleet/vehicles:
+    get:
+      tags: [Fleet]
+      summary: List fleet vehicles
+      operationId: fleetListVehicles
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/VehicleStatus'
+      responses:
+        '200':
+          description: Collection of vehicles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vehicle'
+                  meta:
+                    $ref: '#/components/schemas/CollectionMeta'
+
+  /app/fleet/vehicles/{vehicleId}/status:
+    patch:
+      tags: [Fleet]
+      summary: Change a vehicle operational status (enable / disable / maintenance)
+      operationId: fleetChangeVehicleStatus
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/VehicleStatus'
+      responses:
+        '200':
+          description: Status applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      vehicle_id:
+                        type: string
+                        format: uuid
+                      new_status:
+                        $ref: '#/components/schemas/VehicleStatus'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /app/fleet/drivers:
+    get:
+      tags: [Fleet]
+      summary: List fleet drivers
+      operationId: fleetListDrivers
+      parameters:
+        - name: only_active
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Collection of drivers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Driver'
+                  meta:
+                    $ref: '#/components/schemas/CollectionMeta'
+
+  /app/fleet/crews:
+    post:
+      tags: [Fleet]
+      summary: Assemble a crew for a given date
+      operationId: fleetAssembleCrew
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssembleCrewRequest'
+      responses:
+        '201':
+          description: Crew assembled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      driver_id:
+                        type: string
+                        format: uuid
+                      vehicle_id:
+                        type: string
+                        format: uuid
+                      assembled_for:
+                        type: string
+                        format: date
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /app/fleet/expiring-documents:
+    get:
+      tags: [Fleet]
+      summary: List vehicle and driver documents expiring within N days (expired included)
+      operationId: fleetListExpiringDocuments
+      parameters:
+        - name: days
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 365
+        - name: reference_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Collection of expiring documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExpiringDocument'
+                  meta:
+                    $ref: '#/components/schemas/CollectionMeta'
+
+  /integrations/fleet/vehicles:
+    post:
+      tags: [Fleet]
+      summary: Register a vehicle (master data sync)
+      operationId: fleetRegisterVehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterVehicleRequest'
+      responses:
+        '201':
+          description: Vehicle registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      plate:
+                        type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /integrations/fleet/drivers:
+    post:
+      tags: [Fleet]
+      summary: Register a driver (master data sync)
+      operationId: fleetRegisterDriver
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDriverRequest'
+      responses:
+        '201':
+          description: Driver registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      license_number:
+                        type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /app/fleet/helpers:
+    get:
+      tags: [Fleet]
+      summary: List fleet helpers
+      operationId: fleetListHelpers
+      parameters:
+        - name: only_active
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Collection of helpers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Helper'
+                  meta:
+                    $ref: '#/components/schemas/CollectionMeta'
+
+  /app/fleet/helpers/{helperId}/availability:
+    patch:
+      tags: [Fleet]
+      summary: Activate or deactivate a helper
+      operationId: fleetSetHelperAvailability
+      parameters:
+        - name: helperId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active:
+                  type: boolean
+      responses:
+        '200':
+          description: Availability applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      helper_id:
+                        type: string
+                        format: uuid
+                      active:
+                        type: boolean
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /app/fleet/pre-trip-checklists:
+    get:
+      tags: [Fleet]
+      summary: List pre-trip checklists (inspections)
+      operationId: fleetListPreTripChecklists
+      parameters:
+        - name: vehicle_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: only_passed
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Collection of pre-trip checklists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PreTripChecklist'
+                  meta:
+                    $ref: '#/components/schemas/CollectionMeta'
+    post:
+      tags: [Fleet]
+      summary: Record a conducted pre-trip checklist
+      operationId: fleetConductPreTripChecklist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConductPreTripChecklistRequest'
+      responses:
+        '201':
+          description: Pre-trip checklist recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      vehicle_id:
+                        type: string
+                        format: uuid
+                      driver_id:
+                        type: string
+                        format: uuid
+                      performed_on:
+                        type: string
+                        format: date
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /app/fleet/documents:
+    get:
+      tags: [Fleet]
+      summary: List fleet documents (with expiry and S3 file)
+      operationId: fleetListDocuments
+      parameters:
+        - name: owner_type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/DocumentOwnerType'
+      responses:
+        '200':
+          description: Collection of documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FleetDocument'
+                  meta:
+                    $ref: '#/components/schemas/CollectionMeta'
+
+  /integrations/fleet/helpers:
+    post:
+      tags: [Fleet]
+      summary: Register a helper (master data sync)
+      operationId: fleetRegisterHelper
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterHelperRequest'
+      responses:
+        '201':
+          description: Helper registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      name:
+                        type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /integrations/fleet/documents:
+    post:
+      tags: [Fleet]
+      summary: Register a fleet document (master data sync)
+      operationId: fleetRegisterDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDocumentRequest'
+      responses:
+        '201':
+          description: Document registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      owner_type:
+                        $ref: '#/components/schemas/DocumentOwnerType'
+                      owner_id:
+                        type: string
+                        format: uuid
+                      document_type:
+                        type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+  schemas:
+    VehicleStatus:
+      type: string
+      enum: [available, in_service, maintenance, inactive]
+      description: Operational status of a vehicle.
+
+    DocumentOwnerType:
+      type: string
+      enum: [vehicle, driver, helper]
+      description: Which entity a fleet document belongs to.
+
+    CollectionMeta:
+      type: object
+      properties:
+        count:
+          type: integer
+          minimum: 0
+
+    DocumentExpiry:
+      type: object
+      required: [type, expires_on]
+      properties:
+        type:
+          type: string
+          example: soat
+        expires_on:
+          type: string
+          format: date
+
+    Vehicle:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        plate:
+          type: string
+        capacity_kg:
+          type: integer
+        capacity_m3:
+          type: number
+          format: float
+        home_base_node_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/VehicleStatus'
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentExpiry'
+
+    Driver:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        license_number:
+          type: string
+        license_expiry:
+          type: string
+          format: date
+        enabled_vehicle_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        active:
+          type: boolean
+
+    ExpiringDocument:
+      type: object
+      properties:
+        owner_type:
+          type: string
+          enum: [vehicle, driver]
+        owner_id:
+          type: string
+          format: uuid
+        owner_label:
+          type: string
+          description: Plate for vehicles, name for drivers.
+        document_type:
+          type: string
+        expires_on:
+          type: string
+          format: date
+        expired:
+          type: boolean
+
+    RegisterVehicleRequest:
+      type: object
+      required: [plate, capacity_kg, capacity_m3, home_base_node_id]
+      properties:
+        plate:
+          type: string
+          maxLength: 20
+        capacity_kg:
+          type: integer
+          minimum: 1
+        capacity_m3:
+          type: number
+          minimum: 0
+        home_base_node_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/VehicleStatus'
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentExpiry'
+
+    RegisterDriverRequest:
+      type: object
+      required: [name, license_number, license_expiry]
+      properties:
+        name:
+          type: string
+          maxLength: 150
+        license_number:
+          type: string
+          maxLength: 50
+        license_expiry:
+          type: string
+          format: date
+        enabled_vehicle_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        active:
+          type: boolean
+          default: true
+        license_document_type:
+          type: string
+          default: driver_license
+
+    AssembleCrewRequest:
+      type: object
+      required: [driver_id, vehicle_id, assembled_for]
+      properties:
+        driver_id:
+          type: string
+          format: uuid
+        helper_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        assembled_for:
+          type: string
+          format: date
+        shift_starts_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Optional work-shift start. When both shift bounds are sent, the crew's working hours are
+            validated against the configured shift rules (time window, maximum daily hours, and minimum
+            rest between the driver's and each helper's shifts). Must be sent together with shift_ends_at.
+        shift_ends_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional work-shift end. Must be later than shift_starts_at and sent together with it.
+
+    Helper:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentExpiry'
+        active:
+          type: boolean
+
+    PreTripChecklist:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        driver_id:
+          type: string
+          format: uuid
+        items:
+          type: object
+          additionalProperties:
+            type: boolean
+          description: Map of checklist item name to its verification state.
+        passed:
+          type: boolean
+          description: True only when every item is verified (fit to dispatch).
+        pending:
+          type: array
+          items:
+            type: string
+        performed_on:
+          type: string
+          format: date
+        notes:
+          type: string
+          nullable: true
+
+    FleetDocument:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_type:
+          $ref: '#/components/schemas/DocumentOwnerType'
+        owner_id:
+          type: string
+          format: uuid
+        document_type:
+          type: string
+        expires_on:
+          type: string
+          format: date
+        issued_on:
+          type: string
+          format: date
+          nullable: true
+        file_path:
+          type: string
+          nullable: true
+          description: Object key on the private S3 disk (signed on download).
+        note:
+          type: string
+          nullable: true
+
+    RegisterHelperRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
+          nullable: true
+        active:
+          type: boolean
+          default: true
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentExpiry'
+
+    ConductPreTripChecklistRequest:
+      type: object
+      required: [vehicle_id, driver_id, items, performed_on]
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        driver_id:
+          type: string
+          format: uuid
+        items:
+          type: object
+          additionalProperties:
+            type: boolean
+          minProperties: 1
+        performed_on:
+          type: string
+          format: date
+        notes:
+          type: string
+          maxLength: 1000
+          nullable: true
+
+    RegisterDocumentRequest:
+      type: object
+      required: [owner_type, owner_id, document_type, expires_on]
+      properties:
+        owner_type:
+          $ref: '#/components/schemas/DocumentOwnerType'
+        owner_id:
+          type: string
+          format: uuid
+        document_type:
+          type: string
+          maxLength: 50
+        expires_on:
+          type: string
+          format: date
+        issued_on:
+          type: string
+          format: date
+          nullable: true
+        file_path:
+          type: string
+          maxLength: 255
+          nullable: true
+        note:
+          type: string
+          maxLength: 1000
+          nullable: true
+
+  responses:
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+              errors:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string

@@ -1,0 +1,58 @@
+{{-- Plantilla HTML del email transaccional al cliente. Muestra el cuerpo del mensaje y, debajo, el
+     listado de productos del pedido con su imagen (thumbnail), nombre y cantidad. Estilos en línea para
+     máxima compatibilidad con clientes de correo. La marca usa el rojo Dismac (#E2231A). --}}
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ $subject }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:24px 0;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+                    <tr>
+                        <td style="background-color:#E2231A;padding:20px 28px;">
+                            <span style="color:#ffffff;font-size:20px;font-weight:bold;letter-spacing:0.5px;">Dismac</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:28px;">
+                            <h1 style="margin:0 0 16px;font-size:20px;color:#111827;">{{ $subject }}</h1>
+                            <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#374151;">{!! nl2br(e($body)) !!}</p>
+
+                            @if (!empty($products))
+                                <h2 style="margin:24px 0 12px;font-size:16px;color:#111827;border-bottom:2px solid #E2231A;padding-bottom:6px;">Tu pedido</h2>
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                    @foreach ($products as $product)
+                                        <tr>
+                                            <td width="72" style="padding:8px 12px 8px 0;vertical-align:top;">
+                                                @if (!empty($product['imageUrl']))
+                                                    <img src="{{ $product['imageUrl'] }}" alt="{{ $product['name'] }}" width="64" height="64" style="display:block;width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;">
+                                                @else
+                                                    <div style="width:64px;height:64px;border-radius:6px;background-color:#f3f4f6;border:1px solid #e5e7eb;"></div>
+                                                @endif
+                                            </td>
+                                            <td style="padding:8px 0;vertical-align:top;">
+                                                <span style="display:block;font-size:14px;color:#111827;font-weight:bold;">{{ $product['name'] }}</span>
+                                                <span style="display:block;font-size:13px;color:#6b7280;margin-top:4px;">Cantidad: {{ $product['qty'] }}</span>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </table>
+                            @endif
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:18px 28px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
+                            <p style="margin:0;font-size:12px;color:#9ca3af;">Pedido {{ $shipmentId }} · Este es un mensaje automático de Dismac Logística.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

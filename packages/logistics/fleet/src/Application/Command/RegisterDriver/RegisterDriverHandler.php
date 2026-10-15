@@ -9,13 +9,15 @@ use Logistics\Fleet\Domain\Contract\DriverRepository;
 use Logistics\Fleet\Domain\Model\Driver;
 use Logistics\Fleet\Domain\ValueObject\DocumentExpiry;
 use Logistics\Fleet\Domain\ValueObject\LicenseNumber;
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
 /**
- * Construye el chofer, lo persiste y libera sus eventos.
+ * Construye el chofer, lo persiste y publica sus eventos al outbox.
  *
- * TODO(outbox): publicar los eventos liberados cuando se integre el package outbox.
+ * El save del repositorio y el append al outbox corren dentro de la misma transacción, que abre el
+ * decorador transaccional del CommandBus (Infrastructure); por eso acá no hay nada del framework.
  *
  * @implements CommandHandler<RegisterDriver>
  */
@@ -23,6 +25,7 @@ final readonly class RegisterDriverHandler implements CommandHandler
 {
     public function __construct(
         private DriverRepository $drivers,
+        private RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -39,6 +42,7 @@ final readonly class RegisterDriverHandler implements CommandHandler
         );
 
         $this->drivers->save($driver);
-        $driver->releaseEvents();
+
+        $this->recordEvents->record($driver->releaseEvents(), 'fleet.driver');
     }
 }

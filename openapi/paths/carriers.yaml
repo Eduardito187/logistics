@@ -1,0 +1,693 @@
+# Fragmento OpenAPI del contexto Transportistas (carriers).
+#
+# El integrador fusiona estos `paths` y `components` dentro de openapi/v1.yaml. Las rutas usan los
+# prefijos finales de cada puerta (ver docs/architecture.md):
+#   /api/v1/integrations/*  → SAP y sistemas de transportistas (credenciales de servicio)
+#   /api/v1/app/*           → app interna Flutter (token usuario + dispositivo)
+#
+# Todas las respuestas usan el envelope común: éxito -> { data: ... }; error -> { error: {...} }.
+
+paths:
+  /integrations/carriers:
+    post:
+      tags: [Carriers]
+      summary: Register a third-party carrier
+      operationId: registerCarrier
+      description: >
+        Da de alta un transportista tercero. El id lo genera el dominio; la respuesta es un acuse 202.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterCarrierRequest'
+      responses:
+        '202':
+          description: Carrier registration accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+  /integrations/carriers/{carrierId}/suspend:
+    post:
+      tags: [Carriers]
+      summary: Suspend a carrier
+      operationId: suspendCarrier
+      parameters:
+        - $ref: '#/components/parameters/CarrierId'
+      responses:
+        '202':
+          description: Suspension accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+  /integrations/carriers/{carrierId}/tariffs:
+    post:
+      tags: [Carriers]
+      summary: Set a carrier tariff for a corridor and vehicle class
+      operationId: setCarrierTariff
+      parameters:
+        - $ref: '#/components/parameters/CarrierId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetTariffRequest'
+      responses:
+        '202':
+          description: Tariff accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+  /integrations/carriers/{carrierId}/ratings:
+    post:
+      tags: [Carriers]
+      summary: Rate a carrier
+      operationId: rateCarrier
+      parameters:
+        - $ref: '#/components/parameters/CarrierId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RateCarrierRequest'
+      responses:
+        '202':
+          description: Rating accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+  /app/carriers:
+    get:
+      tags: [Carriers]
+      summary: List carriers
+      operationId: listCarriers
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, suspended]
+      responses:
+        '200':
+          description: Carrier list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Carrier'
+
+  /app/carriers/{carrierId}/tariff:
+    get:
+      tags: [Carriers]
+      summary: Get a carrier tariff for a corridor and vehicle class
+      operationId: getCarrierTariff
+      parameters:
+        - $ref: '#/components/parameters/CarrierId'
+        - name: corridor_from
+          in: query
+          required: true
+          schema: { type: string }
+        - name: corridor_to
+          in: query
+          required: true
+          schema: { type: string }
+        - name: corridor_type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/CorridorType'
+        - name: vehicle_class
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/VehicleClass'
+      responses:
+        '200':
+          description: Tariff
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Tariff'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /app/carriers/tariffs/cheapest:
+    get:
+      tags: [Carriers]
+      summary: Cheapest tariff for a corridor
+      operationId: cheapestCarrierTariff
+      parameters:
+        - name: corridor_from
+          in: query
+          required: true
+          schema: { type: string }
+        - name: corridor_to
+          in: query
+          required: true
+          schema: { type: string }
+        - name: corridor_type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/CorridorType'
+      responses:
+        '200':
+          description: Cheapest tariff
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Tariff'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /integrations/carriers/{carrierId}/reactivate:
+    post:
+      tags: [Carriers]
+      summary: Reactivate a suspended carrier
+      operationId: reactivateCarrier
+      parameters:
+        - $ref: '#/components/parameters/CarrierId'
+      responses:
+        '202':
+          description: Reactivation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+  /integrations/carriers/{carrierId}/settlements:
+    post:
+      tags: [Carriers]
+      summary: Submit a carrier settlement for a corridor and period
+      operationId: submitCarrierSettlement
+      parameters:
+        - $ref: '#/components/parameters/CarrierId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitSettlementRequest'
+      responses:
+        '202':
+          description: Settlement accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+  /integrations/carriers/settlements/{settlementId}/documents:
+    post:
+      tags: [Carriers]
+      summary: Attach a document to a settlement
+      operationId: attachSettlementDocument
+      parameters:
+        - $ref: '#/components/parameters/SettlementId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CarrierDocument'
+      responses:
+        '202':
+          description: Document accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+  /app/carriers/assignment:
+    get:
+      tags: [Carriers]
+      summary: Assign a corridor to a vehicle class by volume
+      operationId: assignCarrierForVolume
+      description: >
+        Devuelve la clase de vehículo que corresponde al volumen (m³) y la tarifa más barata disponible
+        para esa clase en el corredor (consolidación entre departamentos).
+      parameters:
+        - name: corridor_from
+          in: query
+          required: true
+          schema: { type: string }
+        - name: corridor_to
+          in: query
+          required: true
+          schema: { type: string }
+        - name: corridor_type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/CorridorType'
+        - name: volume_m3
+          in: query
+          required: true
+          schema:
+            type: number
+            format: float
+            minimum: 0
+      responses:
+        '200':
+          description: Corridor assignment
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Assignment'
+
+  /app/carriers/settlements:
+    get:
+      tags: [Carriers]
+      summary: List carrier settlements
+      operationId: listCarrierSettlements
+      parameters:
+        - name: carrier_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/SettlementStatus'
+      responses:
+        '200':
+          description: Settlement list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Settlement'
+
+  /app/carriers/settlements/{settlementId}:
+    get:
+      tags: [Carriers]
+      summary: Get a carrier settlement
+      operationId: getCarrierSettlement
+      parameters:
+        - $ref: '#/components/parameters/SettlementId'
+      responses:
+        '200':
+          description: Settlement
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Settlement'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /app/carriers/settlements/{settlementId}/approve:
+    post:
+      tags: [Carriers]
+      summary: Approve a settlement
+      operationId: approveCarrierSettlement
+      parameters:
+        - $ref: '#/components/parameters/SettlementId'
+      responses:
+        '202':
+          description: Approval accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+  /app/carriers/settlements/{settlementId}/pay:
+    post:
+      tags: [Carriers]
+      summary: Mark a settlement as paid
+      operationId: payCarrierSettlement
+      parameters:
+        - $ref: '#/components/parameters/SettlementId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkSettlementPaidRequest'
+      responses:
+        '202':
+          description: Payment accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+  /app/carriers/settlements/{settlementId}/dispute:
+    post:
+      tags: [Carriers]
+      summary: Dispute a settlement
+      operationId: disputeCarrierSettlement
+      parameters:
+        - $ref: '#/components/parameters/SettlementId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisputeSettlementRequest'
+      responses:
+        '202':
+          description: Dispute accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+
+components:
+  parameters:
+    CarrierId:
+      name: carrierId
+      in: path
+      required: true
+      description: UUID v7 del transportista
+      schema:
+        type: string
+        format: uuid
+    SettlementId:
+      name: settlementId
+      in: path
+      required: true
+      description: UUID v7 de la liquidación
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    DomainError:
+      description: Business rule violated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    CorridorType:
+      type: string
+      enum:
+        - cd_to_customer
+        - cd_to_cd
+        - cd_to_store
+        - store_to_store
+        - store_to_cd
+        - store_pickup
+
+    VehicleClass:
+      type: string
+      enum: [trailer, truck, third_party]
+
+    SettlementStatus:
+      type: string
+      enum: [submitted, approved, paid, disputed]
+
+    CarrierDocument:
+      type: object
+      required: [type, reference]
+      properties:
+        type:
+          type: string
+        reference:
+          type: string
+
+    RegisterCarrierRequest:
+      type: object
+      required: [name, tax_id]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        tax_id:
+          type: string
+          maxLength: 64
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/CarrierDocument'
+
+    SetTariffRequest:
+      type: object
+      required: [corridor_from, corridor_to, corridor_type, vehicle_class, price_cents, currency, effective_from]
+      properties:
+        corridor_from:
+          type: string
+        corridor_to:
+          type: string
+        corridor_type:
+          $ref: '#/components/schemas/CorridorType'
+        vehicle_class:
+          $ref: '#/components/schemas/VehicleClass'
+        price_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        effective_from:
+          type: string
+          format: date
+
+    RateCarrierRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+
+    Carrier:
+      type: object
+      required: [id, name, tax_id, status, rating_count, documents]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        tax_id:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended]
+        average_rating:
+          type: number
+          format: float
+          nullable: true
+        rating_count:
+          type: integer
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/CarrierDocument'
+
+    Tariff:
+      type: object
+      required: [id, carrier_id, corridor_from, corridor_to, corridor_type, vehicle_class, price_cents, currency, effective_from]
+      properties:
+        id:
+          type: string
+          format: uuid
+        carrier_id:
+          type: string
+          format: uuid
+        corridor_from:
+          type: string
+        corridor_to:
+          type: string
+        corridor_type:
+          $ref: '#/components/schemas/CorridorType'
+        vehicle_class:
+          $ref: '#/components/schemas/VehicleClass'
+        price_cents:
+          type: integer
+        currency:
+          type: string
+        effective_from:
+          type: string
+          format: date
+
+    Assignment:
+      type: object
+      required: [volume_m3, vehicle_class, tariff]
+      properties:
+        volume_m3:
+          type: number
+          format: float
+        vehicle_class:
+          $ref: '#/components/schemas/VehicleClass'
+        tariff:
+          allOf:
+            - $ref: '#/components/schemas/Tariff'
+          nullable: true
+
+    SubmitSettlementRequest:
+      type: object
+      required: [corridor_from, corridor_to, corridor_type, period, amount_cents, currency, reference]
+      properties:
+        corridor_from:
+          type: string
+        corridor_to:
+          type: string
+        corridor_type:
+          $ref: '#/components/schemas/CorridorType'
+        period:
+          type: string
+          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+          example: '2026-10'
+        amount_cents:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        reference:
+          type: string
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/CarrierDocument'
+
+    MarkSettlementPaidRequest:
+      type: object
+      required: [payment_reference]
+      properties:
+        payment_reference:
+          type: string
+
+    DisputeSettlementRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+
+    Settlement:
+      type: object
+      required: [id, carrier_id, corridor_from, corridor_to, corridor_type, period, amount_cents, currency, reference, status, documents]
+      properties:
+        id:
+          type: string
+          format: uuid
+        carrier_id:
+          type: string
+          format: uuid
+        corridor_from:
+          type: string
+        corridor_to:
+          type: string
+        corridor_type:
+          $ref: '#/components/schemas/CorridorType'
+        period:
+          type: string
+          example: '2026-10'
+        amount_cents:
+          type: integer
+        currency:
+          type: string
+        reference:
+          type: string
+        status:
+          $ref: '#/components/schemas/SettlementStatus'
+        dispute_reason:
+          type: string
+          nullable: true
+        payment_reference:
+          type: string
+          nullable: true
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/CarrierDocument'
+
+    AcceptedEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [accepted]
+          properties:
+            accepted:
+              type: boolean
+              example: true
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true

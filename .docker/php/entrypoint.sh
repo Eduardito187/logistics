@@ -25,7 +25,23 @@ mkdir -p /var/www/html/storage/logs
 mkdir -p /var/www/html/bootstrap/cache
 
 # ------------------------------------------------------------
-# 3. Migraciones — OPT-IN explícito (AUTO_MIGRATE=true)
+# 3. Caches de arranque — OPT-IN explícito (OPTIMIZE_ON_BOOT=true)
+# ------------------------------------------------------------
+# El `config:cache` NO se hornea en la imagen: ahí el env de producción todavía
+# no está inyectado y quedaría cacheado con los defaults del build (bug clásico).
+# En su lugar se cachea en el arranque del contenedor, cuando el env real ya está
+# presente. Es local a cada contenedor (web y workers), así que correrlo en cada
+# réplica es seguro e idempotente. Dev lo deja apagado (OPTIMIZE_ON_BOOT=false).
+if [ "${OPTIMIZE_ON_BOOT:-false}" = "true" ]; then
+    echo "[entrypoint] OPTIMIZE_ON_BOOT=true → cacheando config/route/view/event..."
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+    php artisan event:cache
+fi
+
+# ------------------------------------------------------------
+# 4. Migraciones — OPT-IN explícito (AUTO_MIGRATE=true)
 # ------------------------------------------------------------
 # Apagado por defecto: con varias réplicas web todas correrían `migrate` a la vez.
 # En cloud la migración va en un job de deploy único.
@@ -35,7 +51,7 @@ if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_MIGRATE:-false}" = "tr
 fi
 
 # ------------------------------------------------------------
-# 4. Recarga de workers — SIEMPRE
+# 5. Recarga de workers — SIEMPRE
 # ------------------------------------------------------------
 # `queue:work` mantiene el framework en memoria: sin esta señal un worker sigue ejecutando
 # el código anterior al deploy (incidente real en dis-commerce, 2026-07-19).
@@ -55,6 +71,6 @@ if [ "$1" = "php-fpm" ]; then
 fi
 
 # ------------------------------------------------------------
-# 5. Comando original
+# 6. Comando original
 # ------------------------------------------------------------
 exec "$@"

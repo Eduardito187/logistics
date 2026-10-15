@@ -7,6 +7,7 @@ namespace Logistics\Notifications\Application\Command\AdvanceCascade;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Notifications\Domain\ValueObject\NotificationId;
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
@@ -20,6 +21,7 @@ final class AdvanceCascadeHandler implements CommandHandler
 {
     public function __construct(
         private readonly NotificationRepository $notifications,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -37,7 +39,6 @@ final class AdvanceCascadeHandler implements CommandHandler
 
         $this->notifications->save($notification);
 
-        // TODO(outbox): despachar estos eventos al outbox dentro de la misma transacción al integrar.
-        $notification->releaseEvents();
+        $this->recordEvents->record($notification->releaseEvents(), 'notifications.notification');
     }
 }

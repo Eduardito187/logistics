@@ -26,5 +26,9 @@ final readonly class ReceiveShipment implements Command
         public ?float $lat = null,
         public ?float $lng = null,
         public array $lines = [],
+        // Datos de contacto del cliente: opcionales (las fuentes mínimas no siempre los traen).
+        public ?string $customerDocumentId = null,
+        public ?string $customerPhone = null,
+        public ?string $customerEmail = null,
     ) {}
 }

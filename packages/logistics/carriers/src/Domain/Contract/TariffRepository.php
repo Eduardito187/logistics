@@ -29,4 +29,9 @@ interface TariffRepository
      * Tarifa más barata ofrecida por cualquier transportista para un corredor (consolidación por costo).
      */
     public function cheapestForCorridor(CorridorRef $corridor): ?Tariff;
+
+    /**
+     * Tarifa más barata para un corredor y una clase de vehículo concreta (asignación por volumen).
+     */
+    public function cheapestForCorridorAndClass(CorridorRef $corridor, VehicleClass $class): ?Tariff;
 }

@@ -19,5 +19,6 @@ final readonly class ReleaseCapacityCommand implements Command
         public string $timeSlot,
         public string $unit,
         public float $amount,
+        public ?string $municipalityId = null,
     ) {}
 }

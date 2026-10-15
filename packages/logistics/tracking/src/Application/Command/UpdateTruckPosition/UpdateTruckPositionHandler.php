@@ -49,7 +49,11 @@ final class UpdateTruckPositionHandler implements CommandHandler
             $reportedAt,
         );
 
-        $tracking->updatePosition($position);
+        // Si el reporte llega fuera de orden (más viejo que el último conocido) el dominio lo descarta:
+        // no se persiste nada, para no reescribir la fila con una lectura añeja ni generar I/O inútil.
+        if (!$tracking->updatePosition($position)) {
+            return;
+        }
 
         $this->trackings->save($tracking);
     }

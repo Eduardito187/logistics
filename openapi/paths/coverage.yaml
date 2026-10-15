@@ -1,0 +1,291 @@
+# Fragmento OpenAPI del contexto Cobertura (coverage).
+#
+# Lo integra el responsable del contrato dentro de openapi/v1.yaml (merge de `paths` y de
+# `components.schemas`). NO editar openapi/v1.yaml desde este contexto.
+#
+# Puertas (los prefijos /app, /channels, /integrations y su seguridad los define el integrador):
+#   /app/coverage/*           → app interna Flutter (token usuario + dispositivo)
+#   /integrations/coverage/*  → SAP/transportistas/webhooks (credenciales de servicio)
+
+paths:
+  /app/coverage/zones/resolve:
+    get:
+      tags: [coverage]
+      operationId: resolveCoverageZoneForPoint
+      summary: Resolve which coverage zone contains a point
+      description: >
+        Devuelve la zona de cobertura que contiene el punto (lat, lng) con su nodo de atención y
+        reglas. Responde 404 si ningún polígono contiene el punto.
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema: { type: number, format: float, minimum: -90, maximum: 90 }
+        - name: lng
+          in: query
+          required: true
+          schema: { type: number, format: float, minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Zona encontrada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/CoverageZone' }
+        '404':
+          description: Ninguna zona contiene el punto
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CoverageError' }
+        '422':
+          description: Parámetros inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationError' }
+
+  /app/coverage/zones:
+    get:
+      tags: [coverage]
+      operationId: listCoverageZones
+      summary: List coverage zones
+      description: Lista todas las zonas de cobertura con su polígono GeoJSON y reglas (visor de zonas).
+      responses:
+        '200':
+          description: Colección de zonas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CoverageZone' }
+
+  /integrations/coverage/zones/resolve:
+    get:
+      tags: [coverage]
+      operationId: resolveCoverageZoneForPointIntegration
+      summary: Resolve which coverage zone contains a point (service credentials)
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema: { type: number, format: float, minimum: -90, maximum: 90 }
+        - name: lng
+          in: query
+          required: true
+          schema: { type: number, format: float, minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Zona encontrada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/CoverageZone' }
+        '404':
+          description: Ninguna zona contiene el punto
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CoverageError' }
+
+  /integrations/coverage/zones:
+    get:
+      tags: [coverage]
+      operationId: listCoverageZonesIntegration
+      summary: List coverage zones (service credentials)
+      responses:
+        '200':
+          description: Colección de zonas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CoverageZone' }
+
+  /integrations/coverage/map:import:
+    post:
+      tags: [coverage]
+      operationId: importCoverageMap
+      summary: Import the coverage map from a GeoJSON FeatureCollection
+      description: >
+        Empuja el mapa de cobertura vigente como FeatureCollection de GeoJSON. El procesamiento es
+        asíncrono (bus transaccional + outbox): responde 202 al aceptar el comando.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CoverageFeatureCollection' }
+      responses:
+        '202':
+          description: Importación aceptada para procesarse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, example: import_accepted }
+        '422':
+          description: FeatureCollection inválido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationError' }
+
+  /integrations/coverage/map:import-kml:
+    post:
+      tags: [coverage]
+      operationId: importCoverageMapKml
+      summary: Import the coverage map from a KML document
+      description: >
+        Empuja el mapa de cobertura vigente como documento KML (export de Google Earth / Maps). El
+        cuerpo es el XML crudo; cada <Placemark> se convierte en una zona. El procesamiento es
+        asíncrono (bus transaccional + outbox): responde 202 al aceptar el comando.
+      requestBody:
+        required: true
+        content:
+          application/vnd.google-earth.kml+xml:
+            schema: { type: string, format: binary }
+          application/xml:
+            schema: { type: string }
+          text/xml:
+            schema: { type: string }
+      responses:
+        '202':
+          description: Importación aceptada para procesarse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, example: import_accepted }
+        '422':
+          description: KML inválido o vacío
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CoverageError' }
+
+components:
+  schemas:
+    CoverageZone:
+      type: object
+      required: [id, name, parentAreaId, active, polygon, rules]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: Zona Sur }
+        parentAreaId:
+          type: string
+          format: uuid
+          nullable: true
+        active: { type: boolean }
+        polygon: { $ref: '#/components/schemas/GeoJsonPolygon' }
+        rules: { $ref: '#/components/schemas/CoverageRule' }
+
+    CoverageRule:
+      type: object
+      description: Reglas de operación de la zona (CoverageRule). No incluye cupos ni capacidad.
+      required: [nodeId, services, baseMinutes, productLimits, timeWindows, serviceDays]
+      properties:
+        nodeId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Nodo de la red que atiende la zona.
+        services:
+          type: array
+          items: { type: string }
+          example: [STD, EXPRESS]
+        baseMinutes:
+          type: integer
+          minimum: 0
+          description: Tiempo base de preparación/entrega en minutos.
+        productLimits:
+          type: object
+          additionalProperties: { type: integer, minimum: 0 }
+          description: Límite de unidades por SKU.
+        timeWindows:
+          type: array
+          items: { $ref: '#/components/schemas/TimeWindow' }
+        serviceDays:
+          type: array
+          items: { type: integer, minimum: 1, maximum: 7 }
+          description: Días de atención (1=lunes .. 7=domingo).
+
+    TimeWindow:
+      type: object
+      required: [start, end]
+      properties:
+        start: { type: string, example: '08:00' }
+        end: { type: string, example: '18:00' }
+
+    GeoJsonPolygon:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { type: string, enum: [Polygon] }
+        coordinates:
+          type: array
+          description: Anillos del polígono; cada posición es un par [lng, lat].
+          items:
+            type: array
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items: { type: number }
+
+    CoverageFeatureCollection:
+      type: object
+      required: [type, features]
+      properties:
+        type: { type: string, enum: [FeatureCollection] }
+        features:
+          type: array
+          items:
+            type: object
+            required: [type, geometry, properties]
+            properties:
+              type: { type: string, enum: [Feature] }
+              geometry: { $ref: '#/components/schemas/GeoJsonPolygon' }
+              properties:
+                type: object
+                description: Nombre de la zona, área padre y reglas en forma primitiva.
+
+    CoverageError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: zone_not_found }
+            message: { type: string }
+
+    ValidationError:
+      type: object
+      required: [message, errors]
+      properties:
+        message: { type: string }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }

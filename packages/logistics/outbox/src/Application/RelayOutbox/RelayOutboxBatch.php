@@ -22,22 +22,41 @@ use Throwable;
  */
 final readonly class RelayOutboxBatch
 {
-    /** Cantidad total de intentos antes de descartar el mensaje (dead letter). */
-    private const MAX_ATTEMPTS = 6;
+    /** Cantidad total de intentos antes de descartar el mensaje (dead letter), por defecto. */
+    private const DEFAULT_MAX_ATTEMPTS = 6;
 
     /**
-     * Minutos de espera antes del próximo intento, por número de intento ya realizado.
+     * Minutos de espera antes del próximo intento, por número de intento ya realizado (por defecto).
      * Backoff exponencial: 1 → 1min, 2 → 5min, 3 → 30min, 4 → 2h, 5 → 6h.
      *
      * @var array<int, int>
      */
-    private const BACKOFF_MINUTES = [1 => 1, 2 => 5, 3 => 30, 4 => 120, 5 => 360];
+    private const DEFAULT_BACKOFF_MINUTES = [1 => 1, 2 => 5, 3 => 30, 4 => 120, 5 => 360];
 
+    /** Intentos totales antes del dead-letter (config logistics-outbox.relay.max_attempts). */
+    private int $maxAttempts;
+
+    /**
+     * Backoff efectivo (config logistics-outbox.relay.backoff_minutes).
+     *
+     * @var array<int, int>
+     */
+    private array $backoffMinutes;
+
+    /**
+     * @param int|null             $maxAttempts    Intentos totales; null usa el valor por defecto.
+     * @param array<int, int>|null $backoffMinutes Tabla de backoff; null usa la por defecto.
+     */
     public function __construct(
         private OutboxStore $store,
         private MessageDispatcher $dispatcher,
         private Clock $clock,
-    ) {}
+        ?int $maxAttempts = null,
+        ?array $backoffMinutes = null,
+    ) {
+        $this->maxAttempts = $maxAttempts ?? self::DEFAULT_MAX_ATTEMPTS;
+        $this->backoffMinutes = $backoffMinutes ?? self::DEFAULT_BACKOFF_MINUTES;
+    }
 
     /**
      * Procesa hasta $limit mensajes despachables y devuelve el resumen de la corrida.
@@ -79,7 +98,7 @@ final readonly class RelayOutboxBatch
         $attemptJustMade = $message->attempts() + 1;
         $reason = $error->getMessage();
 
-        if ($attemptJustMade >= self::MAX_ATTEMPTS) {
+        if ($attemptJustMade >= $this->maxAttempts) {
             $message->markDeadLettered($reason);
             $this->store->save($message);
 
@@ -98,7 +117,7 @@ final readonly class RelayOutboxBatch
     private function nextAttemptAt(DateTimeImmutable $now, int $attemptJustMade): DateTimeImmutable
     {
         // Fallback 360 (el último escalón) por si se agrega un intento intermedio sin su tabla.
-        $minutes = self::BACKOFF_MINUTES[$attemptJustMade] ?? 360;
+        $minutes = $this->backoffMinutes[$attemptJustMade] ?? 360;
 
         return $now->add(new DateInterval("PT{$minutes}M"));
     }
