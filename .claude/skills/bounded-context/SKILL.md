@@ -273,8 +273,21 @@ seguir esto (detalle en [[admin-ops-first-redesign]]):
   artisan deja de bootear). Fix: `composer dump-autoload -o --no-scripts` y luego `php artisan package:discover`.
 - **`grep` de un patrón que empieza con `-`** (p.ej. `"->native(false)"`) devuelve **falso 0** (grep lo toma
   como flags). Usar `grep -- "->native(false)"`. Un falso 0 hizo creer que 95 selects eran nativos.
-- **Sweep de render del admin** (sin pest): autenticar admin, iterar `getPages()` + `getResources()::getUrl('index')`
-  por el HTTP kernel contando 200. El script temporal va DENTRO del repo (el container NO ve el scratchpad del host).
+- **Sweep de render del admin**: autenticar admin, iterar `getPages()` + `getResources()::getUrl('index')`
+  por el HTTP kernel contando 200. El script temporal va DENTRO del repo (el container NO ve el scratchpad del
+  host) y **se BORRA al terminar** — un `_tmp_*.php` olvidado se coló commiteado en la raíz (basura real que
+  hubo que `git rm`). Nunca dejar scripts de verificación en el working tree.
+- **PHPStan: errores FANTASMA del result-cache.** Un `phpstan analyse` global puede reportar errores que ya
+  no existen (quedaron en `.phpstan.cache` de un estado viejo, sobre todo tras `dump-autoload` o con varias
+  sesiones editando). ANTES de confiar en un conteo: `./vendor/bin/phpstan clear-result-cache` y re-correr.
+  (Esto hizo creer que había 8 errores en fleetops/tracking que en realidad eran 0.) Además, el `phpstan.neon`
+  del proyecto tiene `treatPhpDocTypesAsCertain: false`: NO emite `notIdentical.alwaysTrue`/`alwaysFalse`
+  derivados de tipos PHPDoc → una guarda `!== null` sobre un retorno `?T` declarado por PHPDoc es LEGÍTIMA,
+  no muerta; no la quites "para limpiar PHPStan" (no la marca) ni asumas bug.
+- **No persigas el Pint/PHPStan de una sesión concurrente VIVA.** Si otra sesión está escribiendo un contexto
+  (p.ej. planning) en tiempo real, arreglar sus stragglers de formato uno por uno NO converge (aparecen
+  nuevos) y arriesga clobber. Formatea en bloque el paquete una vez (`pint packages/logistics/<ctx>`) o déjalo
+  a su dueño; ver [[multisession-shared-tree]]. Lo tuyo se mide sobre TUS archivos.
 - **Mapas**: usar SIEMPRE el helper `window.DismacMaps.tileLayer(L, {url, fallbackUrl, ...})` (public/js/dismac-maps.js),
   nunca `L.tileLayer()` crudo — cae al OSM público si el tileserver self-host no responde. Ver [[admin-ui-maps]].
 
@@ -300,6 +313,23 @@ seguir esto (detalle en [[admin-ops-first-redesign]]):
 - **Coordinación entre sesiones paralelas en el mismo working tree**: particionar por archivos, dueño único
   de los archivos calientes (es.json/openapi/compose/providers.php), serializar composer/npm/pest, no dos
   pest a la vez. Olas de ~5 subagentes concurrentes queman el límite de sesión. Ver [[multisession-shared-tree]].
+
+## Gotchas de CI (Docker / Vite) — no se reproducen en dev (2026-10-15)
+
+El CI (`.github/workflows/ci.yml`) falla por cosas que LOCALMENTE andan, porque en dev ya existen
+`vendor/`, `node_modules/` y `public/build/`. Verificar como el runner: `git worktree add --detach
+/tmp/ci-verify <sha>` y buildear/probar ahí (solo archivos commiteados). Detalle en [[ci-docker-vite-gotchas]].
+
+- **Build de la imagen prod (job `image`)**: el tema Filament hace `@import 'vendor/filament/...'` y Tailwind
+  `@source 'vendor/laravel/...'`, pero `vendor/` está en `.dockerignore` → el stage `assets` (solo Node) no
+  lo tiene y `vite build` falla. Fix: stage `vendor` (`FROM base`, `composer install`) + `COPY --from=vendor
+  /var/www/html/vendor ./vendor` en `assets` antes de `npm run build`.
+- **Tests de render de página completa (job `test`)**: `$this->get('/admin/...')` renderiza el layout con
+  `@vite`; el CI no compila assets → `public/build/manifest.json` no existe → `ViteManifestNotFoundException`
+  (500). Fix: `$this->withoutVite()` en `tests/TestCase::setUp()`. (`Livewire::test()` no dispara esto.)
+- **Deps JS**: un `import 'x'` en resources/js sin su entrada en package.json/lock → `npm ci` no la instala y
+  `vite` falla ("Rolldown failed to resolve import"). Commitear la dep (package.json + package-lock.json).
+- **git push** lo bloquea el clasificador de auto-mode; `gh` no está instalado → PR por link de compare.
 
 ## Referencia
 
