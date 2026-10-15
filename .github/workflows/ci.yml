@@ -97,6 +97,10 @@ jobs:
           extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
           tools: composer:v2
           coverage: pcov
+          # pcov solo instrumenta los archivos bajo pcov.directory. Sin fijarla, pcov la autodetecta a una
+          # subcarpeta (p.ej. app/) y deja TODO packages/logistics/*/src en 0% → la cobertura caía a ~5%.
+          # Se fija al root del checkout para cubrir app/ Y los packages, igual que los containers.
+          ini-values: pcov.directory=${{ github.workspace }}
 
       - uses: actions/cache@v4
         with:
