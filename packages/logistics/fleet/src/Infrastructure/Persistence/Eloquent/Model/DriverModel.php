@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null                                                                                    $phone_secondary
  * @property string|null                                                                                    $address
  * @property string|null                                                                                    $license_category
+ * @property string|null                                                                                    $license_city
  * @property string|null                                                                                    $emergency_contact_name
  * @property string|null                                                                                    $emergency_contact_phone
  * @property list<array{name: string, relationship?: string|null, phone?: string|null, note?: string|null}> $references

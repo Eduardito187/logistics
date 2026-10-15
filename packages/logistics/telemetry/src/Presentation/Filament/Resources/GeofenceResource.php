@@ -29,6 +29,7 @@ use Logistics\Telemetry\Presentation\Filament\Forms\GeofenceMapField;
 use Logistics\Telemetry\Presentation\Filament\Resources\GeofenceResource\Pages\CreateGeofence;
 use Logistics\Telemetry\Presentation\Filament\Resources\GeofenceResource\Pages\EditGeofence;
 use Logistics\Telemetry\Presentation\Filament\Resources\GeofenceResource\Pages\ListGeofences;
+use Logistics\Telemetry\Presentation\Filament\Support\NodeNames;
 
 /**
  * Admin de geocercas (zonas poligonales con semántica: CD, tienda, zona prohibida, descanso...).
@@ -47,7 +48,12 @@ final class GeofenceResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Telemetry');
+        return __('Fleet');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 52;
     }
 
     public static function getNavigationIcon(): string
@@ -147,9 +153,11 @@ final class GeofenceResource extends Resource
                     ->label(__('Active'))
                     ->boolean()
                     ->sortable(),
+                // Nombre legible del nodo de red, nunca el UUID (regla: ningún UUID visible).
                 TextColumn::make('node_ref')
                     ->label(__('Logistics node'))
                     ->placeholder('—')
+                    ->formatStateUsing(static fn (?string $state): string => $state === null ? '—' : (NodeNames::label($state) ?? '—'))
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([

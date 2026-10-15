@@ -4,6 +4,7 @@
 // sola vez. Expone focusStop(seq) para que la página de detalle centre/abra el marcador de una parada
 // al hacer clic en su tarjeta (mismo patrón que en Filament, pero en Vue y sin eventos globales).
 import { onMounted, onBeforeUnmount, ref } from 'vue';
+import { usePage } from '@inertiajs/vue3';
 
 const props = defineProps({
     stops: { type: Array, default: () => [] }, // [{ seq, lat, lng, order, customer, status }]
@@ -13,7 +14,19 @@ const props = defineProps({
     geometry: { type: Array, default: () => [] },
     // Host de OSRM (ruteo OpenStreetMap, sin API key) para trazar la planificada siguiendo calles.
     osrmHost: { type: String, default: 'https://router.project-osrm.org' },
+    // URL de teselas (patrón Leaflet {z}/{x}/{y}). Si no se pasa, se resuelve desde la config de mapas
+    // compartida por Inertia (config/maps.php) y, en última instancia, el tile público de OSM.
+    tileUrl: { type: String, default: '' },
 });
+
+// Config de teselas compartida por Inertia (HandleInertiaRequests → 'maps'). Permite usar el tileserver
+// OSM self-host del proyecto sin una URL fija en el componente. Degrada con gracia si no está presente.
+const TILE_FALLBACK = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const mapsConfig = () => (usePage().props?.maps ?? {});
+const resolveTileUrl = () => {
+    const cfg = mapsConfig();
+    return props.tileUrl || cfg.tileUrl || cfg.tileFallbackUrl || TILE_FALLBACK;
+};
 
 const mapEl = ref(null);
 let map = null;
@@ -52,9 +65,10 @@ const esc = (v) => String(v ?? '');
 
 function render(L) {
     map = L.map(mapEl.value).setView([-16.5, -68.15], 11); // Bolivia
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap',
-        maxZoom: 19,
+    const cfg = mapsConfig();
+    L.tileLayer(resolveTileUrl(), {
+        attribution: cfg.tileAttribution || '&copy; OpenStreetMap',
+        maxZoom: cfg.tileMaxZoom || 19,
     }).addTo(map);
 
     const group = L.featureGroup().addTo(map);

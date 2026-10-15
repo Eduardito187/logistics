@@ -36,6 +36,17 @@ final class VehicleFactory extends Factory
                 ['type' => 'soat', 'expires_on' => $this->faker->dateTimeBetween('+1 month', '+1 year')->format('Y-m-d')],
                 ['type' => 'technical_inspection', 'expires_on' => $this->faker->dateTimeBetween('+1 month', '+1 year')->format('Y-m-d')],
             ],
+            // Ficha técnica de demo (toda nullable en el esquema; se puebla para que el admin luzca completo).
+            'make' => $this->faker->randomElement(['Volvo', 'Mercedes-Benz', 'Hino', 'Isuzu', 'Volkswagen']),
+            'model' => strtoupper($this->faker->bothify('FH-###')),
+            'model_year' => $this->faker->numberBetween(2012, 2024),
+            'vin' => strtoupper($this->faker->bothify('?#?###?#?#######')),
+            'engine_number' => strtoupper($this->faker->bothify('ENG-######')),
+            'color' => $this->faker->randomElement(['White', 'Red', 'Blue', 'Gray', 'Black']),
+            'photo_front' => null,
+            'photo_back' => null,
+            'photo_left' => null,
+            'photo_right' => null,
         ];
     }
 

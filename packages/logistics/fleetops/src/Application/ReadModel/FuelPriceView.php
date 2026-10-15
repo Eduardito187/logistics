@@ -19,6 +19,7 @@ final readonly class FuelPriceView
         public string $currency,
         public string $effectiveFrom,
         public ?string $source,
+        public bool $active,
     ) {}
 
     public static function fromDomain(FuelPrice $price): self
@@ -30,11 +31,12 @@ final readonly class FuelPriceView
             $price->pricePerLiter()->currency,
             $price->effectiveFrom()->format('Y-m-d'),
             $price->source(),
+            $price->isActive(),
         );
     }
 
     /**
-     * @return array{id: string, fuel_type: string, price_cents: int, currency: string, effective_from: string, source: string|null}
+     * @return array{id: string, fuel_type: string, price_cents: int, currency: string, effective_from: string, source: string|null, active: bool}
      */
     public function toArray(): array
     {
@@ -45,6 +47,7 @@ final readonly class FuelPriceView
             'currency' => $this->currency,
             'effective_from' => $this->effectiveFrom,
             'source' => $this->source,
+            'active' => $this->active,
         ];
     }
 }

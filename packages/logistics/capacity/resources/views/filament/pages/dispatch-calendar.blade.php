@@ -1,30 +1,42 @@
-{{-- Calendario de despacho: cupos por scope y franja para un día, con total/usado/disponible, más el
-     resumen de los horarios configurados. Texto visible en inglés (regla 5). --}}
+{{-- Calendario de despacho por municipio: vista de los 7 días de la semana con total/usado/disponible
+     por ventana, días bloqueados marcados, horizonte activo y navegación por semana. Mutaciones (activar
+     cupos, bloquear/desbloquear) van por los Commands del CommandBus. Texto visible en inglés (regla 5). --}}
 <x-filament-panels::page>
     <div class="space-y-6">
-        {{-- Navegación de día + resumen de horarios configurados --}}
+        {{-- Filtro de municipio (select buscable, native(false)) + navegación de semana + horizonte activo --}}
         <x-filament::section>
-            <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                <div class="flex items-end gap-3">
-                    <x-filament::button color="gray" wire:click="shiftDay(-1)" icon="heroicon-m-chevron-left">
-                        {{ __('Previous day') }}
-                    </x-filament::button>
+            <div class="space-y-4">
+                {{ $this->getFiltersForm() }}
 
-                    <div>
-                        <label for="dispatch-calendar-date" class="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                            {{ __('Delivery date') }}
-                        </label>
-                        <input
-                            id="dispatch-calendar-date"
-                            type="date"
-                            wire:model.live="date"
-                            class="mt-1 rounded-lg border-gray-300 shadow-sm dark:bg-gray-900 dark:border-gray-700"
-                        />
+                <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div class="flex items-center gap-2">
+                        <x-filament::button color="gray" wire:click="shiftWeek(-1)" icon="heroicon-m-chevron-left">
+                            {{ __('Previous week') }}
+                        </x-filament::button>
+                        <x-filament::button color="gray" wire:click="goToThisWeek">
+                            {{ __('This week') }}
+                        </x-filament::button>
+                        <x-filament::button color="gray" wire:click="shiftWeek(1)" icon="heroicon-m-chevron-right" icon-position="after">
+                            {{ __('Next week') }}
+                        </x-filament::button>
+                        <span class="ml-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                            {{ $weekStart }} — {{ $weekEnd }}
+                        </span>
                     </div>
 
-                    <x-filament::button color="gray" wire:click="shiftDay(1)" icon="heroicon-m-chevron-right" icon-position="after">
-                        {{ __('Next day') }}
-                    </x-filament::button>
+                    <div class="text-sm">
+                        @if ($activeHorizon)
+                            <span class="text-gray-500 dark:text-gray-400">{{ __('Slots active until') }}:</span>
+                            <span class="font-semibold text-success-600 dark:text-success-400">{{ $activeHorizon['active_until'] }}</span>
+                            @if ($activeHorizon['global'])
+                                <span class="ml-1 text-xs text-gray-400">({{ __('Global') }})</span>
+                            @endif
+                        @else
+                            <span class="text-gray-500 dark:text-gray-400">
+                                {{ __('No active horizon yet. Use "Activate slots" to open a date range.') }}
+                            </span>
+                        @endif
+                    </div>
                 </div>
 
                 <dl class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm md:grid-cols-4">
@@ -45,20 +57,107 @@
                         <dd class="font-medium">{{ $schedule['scopes_count'] }}</dd>
                     </div>
                 </dl>
-            </div>
 
-            @if (! empty($windows))
-                <div class="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                @if ($municipalityLabel)
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                        {{ __('Showing weekly slots for') }}: <span class="font-semibold">{{ $municipalityLabel }}</span>
+                    </p>
+                @else
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ __('Showing slots across all municipalities. Pick one above to focus the week.') }}
+                    </p>
+                @endif
+            </div>
+        </x-filament::section>
+
+        {{-- Vista semanal: siete tarjetas (Lun–Dom). Cada día marca si está bloqueado (feriado) o fuera
+             del horizonte activo, y lista sus ventanas con total/usado/disponible. --}}
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            @foreach ($week as $day)
+                <div @class([
+                    'flex flex-col rounded-xl border p-3 shadow-sm',
+                    'border-danger-300 bg-danger-50 dark:border-danger-800 dark:bg-danger-950/40' => $day['blocked'],
+                    'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900' => ! $day['blocked'],
+                ])>
+                    <div class="mb-2 flex items-center justify-between">
+                        <div>
+                            <div class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{{ $day['weekday_label'] }}</div>
+                            <div class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('d/m') }}</div>
+                        </div>
+                        @if ($day['is_today'])
+                            <span class="rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-primary-700 dark:bg-primary-950 dark:text-primary-300">
+                                {{ __('Today') }}
+                            </span>
+                        @endif
+                    </div>
+
+                    @if ($day['blocked'])
+                        <div class="mb-2 rounded-lg bg-danger-100 px-2 py-1 text-xs text-danger-800 dark:bg-danger-900/50 dark:text-danger-200">
+                            <div class="font-semibold">{{ __('Blocked') }}</div>
+                            @if ($day['reason'])
+                                <div class="truncate" title="{{ $day['reason'] }}">{{ $day['reason'] }}</div>
+                            @endif
+                        </div>
+                    @elseif (! $day['within_horizon'])
+                        <div class="mb-2 rounded-lg bg-warning-100 px-2 py-1 text-[11px] text-warning-800 dark:bg-warning-900/50 dark:text-warning-200">
+                            {{ __('Outside active horizon') }}
+                        </div>
+                    @endif
+
+                    <div class="flex-1 space-y-2">
+                        @forelse ($day['windows'] as $window)
+                            <div class="rounded-lg border border-gray-100 p-2 text-xs dark:border-gray-800">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-mono font-medium text-gray-800 dark:text-gray-100">{{ $window['time_slot'] }}</span>
+                                    @if ($window['full'])
+                                        <span class="rounded-full bg-danger-100 px-1.5 py-0.5 text-[10px] font-medium text-danger-700 dark:bg-danger-950 dark:text-danger-300">{{ __('Full') }}</span>
+                                    @else
+                                        <span class="rounded-full bg-success-100 px-1.5 py-0.5 text-[10px] font-medium text-success-700 dark:bg-success-950 dark:text-success-300">{{ __('Open') }}</span>
+                                    @endif
+                                </div>
+                                <div class="mt-1 text-gray-500 dark:text-gray-400">{{ $unitLabels[$window['unit']] ?? $window['unit'] }}</div>
+                                <div class="mt-1 flex items-center justify-between tabular-nums">
+                                    <span class="text-gray-500 dark:text-gray-400">{{ __('Avail.') }}</span>
+                                    <span class="font-semibold text-gray-900 dark:text-gray-100">
+                                        {{ number_format($window['available'], 2) }} / {{ number_format($window['total'], 2) }}
+                                    </span>
+                                </div>
+                            </div>
+                        @empty
+                            <div class="rounded-lg border border-dashed border-gray-200 py-3 text-center text-[11px] text-gray-400 dark:border-gray-700">
+                                {{ __('No slots') }}
+                            </div>
+                        @endforelse
+                    </div>
+
+                    <div class="mt-3 border-t border-gray-100 pt-2 dark:border-gray-800">
+                        @if ($day['blocked'])
+                            <x-filament::button size="xs" color="success" class="w-full" wire:click="unblockDay('{{ $day['date'] }}')" wire:confirm="{{ __('Unblock this dispatch day?') }}">
+                                {{ __('Unblock') }}
+                            </x-filament::button>
+                        @else
+                            <x-filament::button size="xs" color="gray" class="w-full" wire:click="mountAction('block_day', { date: '{{ $day['date'] }}' })">
+                                {{ __('Block') }}
+                            </x-filament::button>
+                        @endif
+                    </div>
+                </div>
+            @endforeach
+        </div>
+
+        @if (! empty($windows))
+            <x-filament::section>
+                <div class="flex flex-wrap items-center gap-2 text-xs">
                     <span class="text-gray-500 dark:text-gray-400">{{ __('Configured windows') }}:</span>
                     @foreach ($windows as $window)
                         <span class="rounded-full bg-gray-100 px-2 py-0.5 font-mono dark:bg-gray-800">{{ $window }}</span>
                     @endforeach
                 </div>
-            @endif
-        </x-filament::section>
+            </x-filament::section>
+        @endif
 
-        {{-- Historial de versiones de las reglas de cupo (settings): inmutable, de la más nueva a la
-             más vieja. Editar reglas publica una versión nueva; esto deja ver la traza de cambios. --}}
+        {{-- Historial de versiones de las reglas de cupo (settings): inmutable, de la más nueva a la más
+             vieja. Editar reglas publica una versión nueva; esto deja ver la traza de cambios. --}}
         @if (! empty($history))
             <x-filament::section>
                 <x-slot name="heading">{{ __('Capacity rules history') }}</x-slot>
@@ -86,62 +185,5 @@
                 </div>
             </x-filament::section>
         @endif
-
-        {{-- Cupos del día, agrupados por scope --}}
-        @forelse ($scopes as $scope)
-            <x-filament::section>
-                <x-slot name="heading">
-                    <span class="inline-flex items-center gap-2">
-                        <span class="rounded bg-primary-50 px-2 py-0.5 text-xs font-semibold uppercase text-primary-700 dark:bg-primary-950 dark:text-primary-300">
-                            {{ $scope['kind'] }}
-                        </span>
-                        {{ $scope['label'] }}
-                    </span>
-                </x-slot>
-
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="border-b text-left text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                                <th class="py-2 pr-4 font-medium">{{ __('Time window') }}</th>
-                                <th class="py-2 pr-4 font-medium">{{ __('Unit') }}</th>
-                                <th class="py-2 pr-4 text-right font-medium">{{ __('Total') }}</th>
-                                <th class="py-2 pr-4 text-right font-medium">{{ __('Used') }}</th>
-                                <th class="py-2 pr-4 text-right font-medium">{{ __('Available') }}</th>
-                                <th class="py-2 pr-4 font-medium">{{ __('Status') }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($scope['rows'] as $row)
-                                <tr class="border-b last:border-0 dark:border-gray-800">
-                                    <td class="py-2 pr-4 font-mono">{{ $row['time_slot'] }}</td>
-                                    <td class="py-2 pr-4">{{ $unitLabels[$row['unit']] ?? $row['unit'] }}</td>
-                                    <td class="py-2 pr-4 text-right tabular-nums">{{ number_format($row['total'], 3) }}</td>
-                                    <td class="py-2 pr-4 text-right tabular-nums">{{ number_format($row['used'], 3) }}</td>
-                                    <td class="py-2 pr-4 text-right font-semibold tabular-nums">{{ number_format($row['available'], 3) }}</td>
-                                    <td class="py-2 pr-4">
-                                        @if ($row['full'])
-                                            <span class="rounded-full bg-danger-100 px-2 py-0.5 text-xs font-medium text-danger-700 dark:bg-danger-950 dark:text-danger-300">
-                                                {{ __('Full') }}
-                                            </span>
-                                        @else
-                                            <span class="rounded-full bg-success-100 px-2 py-0.5 text-xs font-medium text-success-700 dark:bg-success-950 dark:text-success-300">
-                                                {{ __('Open') }}
-                                            </span>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </x-filament::section>
-        @empty
-            <x-filament::section>
-                <div class="py-8 text-center text-gray-500 dark:text-gray-400">
-                    {{ __('No capacity buckets defined for :date.', ['date' => $date]) }}
-                </div>
-            </x-filament::section>
-        @endforelse
     </div>
 </x-filament-panels::page>

@@ -14,6 +14,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Notifications\Application\Command\ResetMessageTypeRule\ResetMessageTypeRule;
 use Logistics\Notifications\Domain\ValueObject\EscalateCondition;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\MessageTypeRuleRecord;
@@ -32,6 +33,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class MessageTypeRuleResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = MessageTypeRuleRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-adjustments-horizontal';
@@ -40,7 +43,12 @@ final class MessageTypeRuleResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Notifications');
+        return __('Administration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 44;
     }
 
     public static function getNavigationLabel(): string

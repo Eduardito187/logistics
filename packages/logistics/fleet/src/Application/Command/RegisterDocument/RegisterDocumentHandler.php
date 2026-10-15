@@ -40,6 +40,7 @@ final readonly class RegisterDocumentHandler implements CommandHandler
             $command->issuedOn !== null ? new DateTimeImmutable($command->issuedOn) : null,
             $command->filePath,
             $command->note,
+            $command->reference,
         );
 
         $this->documents->save($document);

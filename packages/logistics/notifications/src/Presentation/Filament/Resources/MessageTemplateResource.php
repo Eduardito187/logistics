@@ -17,6 +17,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Notifications\Domain\ValueObject\Channel;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\MessageTemplateRecord;
 use Logistics\Notifications\Presentation\Filament\Resources\MessageTemplateResource\Pages\CreateMessageTemplate;
@@ -33,6 +34,8 @@ use Logistics\Notifications\Presentation\Filament\Resources\MessageTemplateResou
  */
 final class MessageTemplateResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = MessageTemplateRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-document-text';
@@ -41,7 +44,12 @@ final class MessageTemplateResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Notifications');
+        return __('Administration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 42;
     }
 
     public static function getNavigationLabel(): string

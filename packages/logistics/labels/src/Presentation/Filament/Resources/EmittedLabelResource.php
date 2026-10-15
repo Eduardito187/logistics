@@ -53,7 +53,12 @@ final class EmittedLabelResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Labels');
+        return __('Commerce');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 30;
     }
 
     public static function getNavigationLabel(): string
@@ -120,12 +125,6 @@ final class EmittedLabelResource extends Resource
                         ($record->origin ?? '—').' → '.($record->destination_label ?? '—'),
                     ))
                     ->toggleable(),
-                TextColumn::make('key_id')
-                    ->label(__('Signing key'))
-                    ->badge()
-                    ->color('gray')
-                    ->formatStateUsing(fn (int $state): string => __('Key #').$state)
-                    ->sortable(),
                 TextColumn::make('status')
                     ->label(__('Status'))
                     ->badge()
@@ -143,14 +142,6 @@ final class EmittedLabelResource extends Resource
                     ->placeholder('—')
                     ->toggleable()
                     ->sortable(),
-                TextColumn::make('label_id')
-                    ->label(__('Label ID (ULID)'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('id')
-                    ->label(__('Storage ID (UUID)'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 TernaryFilter::make('revoked')
@@ -222,11 +213,6 @@ final class EmittedLabelResource extends Resource
                     TextEntry::make('piece_label')->label(__('Piece (N of M)'))->placeholder('—'),
                     TextEntry::make('origin')->label(__('Origin'))->placeholder('—'),
                     TextEntry::make('destination_label')->label(__('Destination'))->placeholder('—'),
-                    TextEntry::make('key_id')
-                        ->label(__('Signing key'))
-                        ->badge()
-                        ->color('gray')
-                        ->formatStateUsing(fn (int $state): string => __('Key #').$state),
                     TextEntry::make('status')
                         ->label(__('Status'))
                         ->badge()
@@ -243,12 +229,10 @@ final class EmittedLabelResource extends Resource
                         ->placeholder('—'),
                 ])
                 ->columns(3),
-            Section::make(__('Identifiers & payload'))
-                ->description(__('Raw identifiers and signed QR content — for auditing and printing only.'))
+            Section::make(__('Signed payload'))
+                ->description(__('Signed QR content and ZPL — for auditing and printing only.'))
                 ->collapsed()
                 ->schema([
-                    TextEntry::make('label_id')->label(__('Label ID (ULID)'))->copyable(),
-                    TextEntry::make('id')->label(__('Storage ID (UUID)'))->copyable(),
                     TextEntry::make('signed_json')
                         ->label(__('QR content (signed)'))
                         ->copyable()

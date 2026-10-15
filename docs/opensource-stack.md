@@ -10,7 +10,7 @@ decisiones formales están en el ADR 013 (mapas/geocoder/ruteo), el ADR 014 (pus
 
 | Capa | Antes (pago / Google) | Ahora (open-source, gratis) | Config / ADR |
 | --- | --- | --- | --- |
-| **Tiles de mapa** | Google Maps JS / tile.openstreetmap.org en prod | **OpenMapTiles + TileServer-GL** o **Protomaps** (`.pmtiles`) self-host | `MAP_TILES_URL` · ADR 013 |
+| **Tiles de mapa** | Google Maps JS / tile.openstreetmap.org en prod | **OpenMapTiles + TileServer-GL** o **Protomaps** (`.pmtiles`) self-host | `MAP_TILE_URL` · ADR 013 |
 | **Geocoder** | Google Geocoding | **Nominatim** o **Photon** self-host (datos OSM de Bolivia) | `GEOCODER_DRIVER`, `NOMINATIM_URL`/`PHOTON_URL` · ADR 013 |
 | **Matriz / geometría de ruta** | Google Directions / Distance Matrix | **OSRM** self-host (`/table`, `/route`, `/trip`) | `OSRM_HOST` · ADR 009/013 |
 | **Optimización VRP/VRPTW** | Google Route Optimization | **VRP propio** (Clarke-Wright + 2-opt) + **VROOM** self-host opcional | `PLANNING_ROUTING_BACKEND`, `VROOM_URL` · ADR 009 |

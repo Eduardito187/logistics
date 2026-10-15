@@ -59,6 +59,7 @@ final readonly class DocumentController
             'issued_on' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'file_path' => ['sometimes', 'nullable', 'string', 'max:255'],
             'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'reference' => ['sometimes', 'nullable', 'string', 'max:80'],
         ]);
 
         $this->commandBus->dispatch(new RegisterDocument(
@@ -69,6 +70,7 @@ final readonly class DocumentController
             issuedOn: $validated['issued_on'] ?? null,
             filePath: $validated['file_path'] ?? null,
             note: $validated['note'] ?? null,
+            reference: $validated['reference'] ?? null,
         ));
 
         return $this->respondAccepted([

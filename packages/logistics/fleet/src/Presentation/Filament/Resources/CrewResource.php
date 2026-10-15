@@ -41,7 +41,7 @@ final class CrewResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-user-group';
 
-    protected static ?int $navigationSort = 30;
+    protected static ?int $navigationSort = 16;
 
     public static function getNavigationGroup(): string
     {
@@ -162,10 +162,6 @@ final class CrewResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
                 // Nombre legible del chofer vía la relación Eloquent (eager-cargada), no el UUID.
                 TextColumn::make('driver.name')
                     ->label(__('Driver'))
@@ -208,7 +204,7 @@ final class CrewResource extends Resource
                 // Muestra el nombre real de cada ayudante (entidad Helper referenciada por id).
                 ->formatStateUsing(static fn (string $state): string => HelperModel::query()
                     ->whereKey($state)
-                    ->value('name') ?? $state),
+                    ->value('name') ?? '—'),
             TextEntry::make('assembled_for')->label(__('Assembled for'))->date('Y-m-d'),
             TextEntry::make('shift_starts_at')
                 ->label(__('Shift start'))

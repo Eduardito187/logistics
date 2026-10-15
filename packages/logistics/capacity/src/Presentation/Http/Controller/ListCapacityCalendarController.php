@@ -19,15 +19,16 @@ final class ListCapacityCalendarController
     public function __invoke(CapacityCalendarRequest $request, QueryBus $bus): JsonResponse
     {
         $date = $request->calendarDate();
+        $municipalityId = $request->municipalityId();
 
         /** @var list<CapacityView> $views */
-        $views = $bus->ask(new ListBucketsByDateQuery($date));
+        $views = $bus->ask(new ListBucketsByDateQuery($date, $municipalityId));
 
         $data = array_map(static fn (CapacityView $view): array => $view->toArray(), $views);
 
         return new JsonResponse([
             'data' => $data,
-            'meta' => ['date' => $date, 'count' => count($data)],
+            'meta' => ['date' => $date, 'municipality_id' => $municipalityId, 'count' => count($data)],
         ]);
     }
 }

@@ -14,6 +14,7 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use Logistics\FleetOps\Domain\ValueObject\FuelType;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Model\RefuelRecord;
 use Logistics\FleetOps\Presentation\Filament\Resources\RefuelResource\Pages\CreateRefuel;
@@ -33,11 +34,26 @@ final class RefuelResource extends Resource
 {
     protected static ?string $model = RefuelRecord::class;
 
-    protected static ?string $recordTitleAttribute = 'id';
-
     public static function getNavigationGroup(): string
     {
-        return __('Fleet Ops');
+        return __('Fleet');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 32;
+    }
+
+    /**
+     * Título legible del registro: la placa del vehículo, nunca el UUID (regla: ningún UUID visible).
+     */
+    public static function getRecordTitle(?Model $record): ?string
+    {
+        if (!$record instanceof RefuelRecord) {
+            return null;
+        }
+
+        return VehiclePlates::label((string) $record->vehicle_id) ?? '—';
     }
 
     public static function getNavigationIcon(): string
@@ -135,7 +151,7 @@ final class RefuelResource extends Resource
             ->columns([
                 TextColumn::make('vehicle_id')
                     ->label(__('Vehicle'))
-                    ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? $state)
+                    ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? '—')
                     ->sortable(),
                 TextColumn::make('fuel_type')
                     ->label(__('Fuel type'))

@@ -246,6 +246,38 @@ Al generar presentación/datos de un package, respetar esto o el admin/seed romp
   es `Logistics\Fleet\...\Model\VehicleModel`, no `VehicleRecord`). Para mostrar su placa, lectura cruzada
   read-only EN LOTE (helper/trait memoizado), nunca belongsTo que obligue a tocar el otro contexto.
 
+## Presentación "operaciones-primero" del admin (verificado 2026-10-14)
+
+El admin NO es un explorador de tablas: es una sala de operaciones. Al añadir presentación a un contexto,
+seguir esto (detalle en [[admin-ops-first-redesign]]):
+- **Navegación: 5 grupos fijos** (`Operations, Fleet, Network, Commerce, Administration`) declarados en
+  `AdminPanelProvider::navigationGroups`. Cada Resource/Page elige su grupo con `getNavigationGroup(): string`
+  (`__('Fleet')`) y orden con `getNavigationSort(): int` (usar `: int`, NO `?int` → `return.unusedType`).
+  Cockpits/acciones con sort bajo (arriba), catálogos CRUD con sort alto (abajo). No crear grupos nuevos por contexto.
+- **Landing = `App\Filament\Pages\ControlTower`** (`extends Dashboard`, `$routePath='/'`), NO el Dashboard
+  por defecto (se quitó de `->pages([])`). Widgets en `app/Filament/Widgets` ordenados excepciones→salud→KPIs,
+  con el concern `ReadsControlTowerData` (lectura tolerante + `canView()` Admin/Supervisor).
+- **Cockpit por frente** = una `Page` que arriba muestra EXCEPCIONES ("qué requiere acción") con su acción
+  inline que despacha un Command (reusar el helper `DeliveryResource::dispatch()`), y debajo los KPIs. Las
+  Pages de package se registran a mano en `AdminPanelProvider->pages([...])`.
+- **Gating**: en el admin solo entran Admin+Supervisor (`User::canAccessPanel`). El grupo **Administration**
+  es Admin-only → trait `AdminOnly` en todos sus resources. No relajar los que ya son AdminOnly.
+- **Selects**: regla 5 (`->native(false)` + searchable donde referencia entidad) YA cumplida en los 95
+  `Select::make`. Para `<select>` nativos hechos a mano usar los dropdowns propios `<x-dismac-select>`
+  (Blade/Alpine, sincroniza Livewire) o `resources/js/Components/UI/Select.vue` (SPA). Ver [[admin-ui-maps]].
+
+## Gotchas de verificación (2026-10-14)
+
+- **`composer dump-autoload` aborta** si un Resource nuevo referencia una Page aún no autocargada (el
+  `package:discover` del post-dump bootea Filament antes de que el classmap la tenga → "Class not found" →
+  artisan deja de bootear). Fix: `composer dump-autoload -o --no-scripts` y luego `php artisan package:discover`.
+- **`grep` de un patrón que empieza con `-`** (p.ej. `"->native(false)"`) devuelve **falso 0** (grep lo toma
+  como flags). Usar `grep -- "->native(false)"`. Un falso 0 hizo creer que 95 selects eran nativos.
+- **Sweep de render del admin** (sin pest): autenticar admin, iterar `getPages()` + `getResources()::getUrl('index')`
+  por el HTTP kernel contando 200. El script temporal va DENTRO del repo (el container NO ve el scratchpad del host).
+- **Mapas**: usar SIEMPRE el helper `window.DismacMaps.tileLayer(L, {url, fallbackUrl, ...})` (public/js/dismac-maps.js),
+  nunca `L.tileLayer()` crudo — cae al OSM público si el tileserver self-host no responde. Ver [[admin-ui-maps]].
+
 ## Referencia
 
 `packages/logistics/network`, `fleet`, `coverage`, `shipments` ya siguen este patrón; `labels` para el

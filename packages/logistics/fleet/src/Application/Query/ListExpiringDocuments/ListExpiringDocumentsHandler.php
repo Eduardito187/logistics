@@ -42,9 +42,30 @@ final readonly class ListExpiringDocumentsHandler implements QueryHandler
             ? new DateTimeImmutable($query->referenceDate)
             : new DateTimeImmutable('today');
 
+        $vehicles = $this->vehicles->all();
+        $drivers = $this->drivers->all();
+        $helpers = $this->helpers->all();
+
+        // Mapas id → etiqueta legible (placa/nombre) para resolver el dueño de los documentos de flota
+        // en lote, sin N+1. Mismo criterio que la alerta programada.
+        $labels = [
+            'vehicle' => [],
+            'driver' => [],
+            'helper' => [],
+        ];
+        foreach ($vehicles as $vehicle) {
+            $labels['vehicle'][$vehicle->id()->toString()] = $vehicle->plate()->value;
+        }
+        foreach ($drivers as $driver) {
+            $labels['driver'][$driver->id()->toString()] = $driver->name();
+        }
+        foreach ($helpers as $helper) {
+            $labels['helper'][$helper->id()->toString()] = $helper->name();
+        }
+
         $results = [];
 
-        foreach ($this->vehicles->all() as $vehicle) {
+        foreach ($vehicles as $vehicle) {
             foreach ($vehicle->documentsExpiringWithin($query->days, $ref) as $document) {
                 $results[] = ExpiringDocumentView::forVehicle(
                     $vehicle->id()->toString(),
@@ -56,7 +77,7 @@ final readonly class ListExpiringDocumentsHandler implements QueryHandler
             }
         }
 
-        foreach ($this->drivers->all() as $driver) {
+        foreach ($drivers as $driver) {
             $license = $driver->licenseExpiry();
             if ($license->expiresWithin($query->days, $ref)) {
                 $results[] = ExpiringDocumentView::forDriver(
@@ -69,7 +90,7 @@ final readonly class ListExpiringDocumentsHandler implements QueryHandler
             }
         }
 
-        foreach ($this->helpers->all() as $helper) {
+        foreach ($helpers as $helper) {
             foreach ($helper->documentsExpiringWithin($query->days, $ref) as $document) {
                 $results[] = ExpiringDocumentView::forHelper(
                     $helper->id()->toString(),
@@ -83,10 +104,12 @@ final readonly class ListExpiringDocumentsHandler implements QueryHandler
 
         foreach ($this->documents->all() as $document) {
             if ($document->expiresWithin($query->days, $ref)) {
+                $ownerType = $document->ownerType()->value;
+                $ownerId = $document->ownerId();
                 $results[] = ExpiringDocumentView::forDocument(
-                    $document->ownerType()->value,
-                    $document->ownerId(),
-                    $document->ownerId(),
+                    $ownerType,
+                    $ownerId,
+                    $labels[$ownerType][$ownerId] ?? $ownerId,
                     $document->document()->type,
                     $document->document()->expiresOn->format('Y-m-d'),
                     $document->isExpiredAt($ref),

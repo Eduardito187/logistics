@@ -179,10 +179,7 @@ final class NodeResource extends Resource
                 TextColumn::make('lng')
                     ->label(__('Longitude'))
                     ->toggleable(isToggledHiddenByDefault: true),
-                // Identificador técnico: oculto por defecto, disponible para soporte.
-                TextColumn::make('id')
-                    ->label(__('Internal ID'))
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // El UUID del nodo no se muestra: la URL ya lo lleva y el admin opera por código/nombre.
             ])
             ->filters([
                 SelectFilter::make('type')

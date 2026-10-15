@@ -22,6 +22,10 @@ enum FleetDocumentType: string
 
     case Photo = 'photo';
 
+    case TechnicalInspection = 'technical_inspection';
+
+    case Soat = 'soat';
+
     case Other = 'other';
 
     /**
@@ -35,6 +39,8 @@ enum FleetDocumentType: string
             self::HealthCard => 'Health card',
             self::CriminalRecord => 'Criminal record',
             self::Photo => 'Photo',
+            self::TechnicalInspection => 'Technical inspection',
+            self::Soat => 'SOAT insurance',
             self::Other => 'Other',
         };
     }

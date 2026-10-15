@@ -58,6 +58,11 @@ final class ZoneResource extends Resource
         return __('Network');
     }
 
+    public static function getNavigationSort(): int
+    {
+        return 20;
+    }
+
     public static function getNavigationLabel(): string
     {
         return __('Coverage Zones');
@@ -228,12 +233,7 @@ final class ZoneResource extends Resource
                     ->label(__('Active'))
                     ->boolean()
                     ->sortable(),
-                // UUID crudo: columna secundaria, oculta por defecto.
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->fontFamily('mono')
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // El UUID de la zona no se muestra: el admin opera por nombre y área padre.
             ])
             ->filters([
                 // Estado de la zona (activa / inactiva).

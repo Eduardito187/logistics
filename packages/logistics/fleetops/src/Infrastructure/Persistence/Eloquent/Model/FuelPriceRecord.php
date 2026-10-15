@@ -19,6 +19,7 @@ use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Factory\FuelPriceFact
  * @property string      $currency
  * @property string      $effective_from fecha de vigencia en formato Y-m-d (sin cast: siempre texto)
  * @property string|null $source
+ * @property bool        $active
  */
 final class FuelPriceRecord extends Model
 {
@@ -48,6 +49,7 @@ final class FuelPriceRecord extends Model
     {
         return [
             'price_cents' => 'integer',
+            'active' => 'boolean',
         ];
     }
 }

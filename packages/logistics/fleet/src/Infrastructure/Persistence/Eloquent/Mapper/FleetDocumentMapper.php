@@ -26,11 +26,12 @@ final class FleetDocumentMapper
             $model->issued_on !== null ? new DateTimeImmutable($model->issued_on) : null,
             $model->file_path,
             $model->note,
+            $model->reference,
         );
     }
 
     /**
-     * @return array{id: string, owner_type: string, owner_id: string, document_type: string, expires_on: string, issued_on: string|null, file_path: string|null, note: string|null}
+     * @return array{id: string, owner_type: string, owner_id: string, document_type: string, expires_on: string, issued_on: string|null, file_path: string|null, note: string|null, reference: string|null}
      */
     public function toRow(FleetDocument $document): array
     {
@@ -43,6 +44,7 @@ final class FleetDocumentMapper
             'issued_on' => $document->issuedOn()?->format('Y-m-d'),
             'file_path' => $document->filePath(),
             'note' => $document->note(),
+            'reference' => $document->reference(),
         ];
     }
 }

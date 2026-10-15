@@ -72,6 +72,11 @@ final class PlanResource extends Resource
         return __('Operations');
     }
 
+    public static function getNavigationSort(): int
+    {
+        return 10;
+    }
+
     public static function getNavigationLabel(): string
     {
         return __('Delivery Plans');
@@ -97,7 +102,7 @@ final class PlanResource extends Resource
             return null;
         }
 
-        $plate = $record->vehicle->plate ?? $record->vehicle_id;
+        $plate = $record->vehicle->plate ?? '—';
 
         return "{$record->plan_date} · {$plate}";
     }
@@ -140,15 +145,6 @@ final class PlanResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(),
-                // UUID crudo: disponible pero secundario, oculto por defecto.
-                TextColumn::make('vehicle_id')
-                    ->label(__('Vehicle ID'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('id')
-                    ->label(__('Plan ID'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('status')
@@ -218,7 +214,7 @@ final class PlanResource extends Resource
                             ->map(static fn (PlannedStopRecord $stop): array => [
                                 'shipment_id' => $stop->shipment_id,
                                 'label' => self::shipmentLabel($stop->shipment)
-                                    ?? $stop->shipment_id,
+                                    ?? '—',
                             ])
                             ->all(),
                     ])
@@ -299,7 +295,6 @@ final class PlanResource extends Resource
                         ->badge()
                         ->formatStateUsing(static fn (string $state): string => self::statusLabel($state))
                         ->color(static fn (string $state): string => self::statusColor($state)),
-                    TextEntry::make('id')->label(__('Plan ID'))->copyable(),
                 ])
                 ->columns(2),
             Section::make(__('Stops'))

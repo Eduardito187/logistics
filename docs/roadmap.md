@@ -88,15 +88,15 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
 - `[x]` **V-13** Tests de etiquetas (Ed25519) con el vector compartido; sincronizar con `logistics-app`
   si cambia `v`.
 - `[ ]` **V-14** Tests de contrato OpenAPI (request/response) por endpoint de las 3 puertas.
-- `[ ]` **V-15** Gate de cobertura mínima por package en CI.
+- `[x]` **V-15** Gate de cobertura mínima en CI (`pest --coverage --min=75`, falla el build si baja).
 
 ### V-C. Higiene del repo
 - `[ ]` **V-16** Revisar/consolidar migraciones del día (muchas `2026_10_13_*`); naming y orden coherentes.
 - `[ ]` **V-17** Confirmar que cada package nuevo (`access`, `fleetops`, etc.) esté en
   `bootstrap/providers.php` Y `dont-discover`.
 - `[x]` **V-18** Re-fusionar `openapi/v1.yaml` desde `openapi/paths/*` y validar OpenAPI 3.
-- `[ ]` **V-19** Quitar/parametrizar `vendor/filament` copiado al host (hack del build del tema);
-  documentar el build en el Makefile (`make assets`).
+- `[x]` **V-19** Parametrizado/documentado el build del tema (`vendor/filament` vía Composer en el
+  árbol + `npm ci && npm run build`); procedimiento reproducible en `make assets` y `docs/deploy.md`.
 - `[x]` **V-20** `.gitignore`: `node_modules`, `public/build`, `vendor` fuera del repo.
 - `[ ]` **V-21** Primer commit/PR real del trabajo (hoy todo es local; el dueño autoriza el push).
 

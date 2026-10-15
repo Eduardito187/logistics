@@ -18,7 +18,8 @@ use Illuminate\Support\Facades\DB;
  */
 final class PlatformStatsWidget extends StatsOverviewWidget
 {
-    protected static ?int $sort = 1;
+    // KPIs globales: al fondo de la torre (la narrativa va de excepciones a totales).
+    protected static ?int $sort = 9;
 
     /**
      * Solo lo ve quien tenga un rol con alcance operativo global (administrador o supervisor).

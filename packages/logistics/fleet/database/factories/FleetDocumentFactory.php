@@ -32,6 +32,7 @@ final class FleetDocumentFactory extends Factory
             'issued_on' => $issuedOn->format('Y-m-d'),
             'file_path' => null,
             'note' => null,
+            'reference' => null,
         ];
     }
 

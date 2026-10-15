@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -63,6 +65,41 @@ it('passes writes through when no idempotency key is sent', function (): void {
     $this->postJson('/api/_test/idem-none', ['qty' => 1])->assertStatus(201)->assertJsonPath('hits', 1);
     // Sin clave no hay deduplicación: cada petición ejecuta el handler.
     $this->postJson('/api/_test/idem-none', ['qty' => 1])->assertStatus(201)->assertJsonPath('hits', 2);
+});
+
+it('does not collide across distinct keys on the same route', function (): void {
+    registerIdempotentRoute('/api/_test/idem-distinct');
+
+    // Dos operaciones lógicas distintas (claves distintas) deben ejecutarse ambas: cada una abre su
+    // propio espacio de idempotencia, no se reproduce la respuesta de la otra.
+    $this->postJson('/api/_test/idem-distinct', ['qty' => 1], ['Idempotency-Key' => 'key-a'])
+        ->assertStatus(201)->assertJsonPath('hits', 1);
+
+    $this->postJson('/api/_test/idem-distinct', ['qty' => 1], ['Idempotency-Key' => 'key-b'])
+        ->assertStatus(201)->assertJsonPath('hits', 2);
+});
+
+it('does not execute twice when another request with the same key is in progress', function (): void {
+    registerIdempotentRoute('/api/_test/idem-progress');
+
+    $key = 'key-progress-1';
+
+    // Simula un request concurrente "en vuelo": tomamos nosotros el lock que el middleware tomaría.
+    // El nombre del lock replica el esquema interno de IdempotentRequests (principal|clave hasheados);
+    // para un request sin credenciales el principal es "anon:<ip>" y la IP de prueba es 127.0.0.1.
+    $cacheKey = 'idem:'.hash('sha256', 'anon:127.0.0.1|'.$key);
+    $store = Cache::store('array')->getStore();
+    assert($store instanceof LockProvider);
+    $heldLock = $store->lock($cacheKey.':lock', 15);
+    expect($heldLock->get())->toBeTrue();
+
+    try {
+        $this->postJson('/api/_test/idem-progress', ['qty' => 1], ['Idempotency-Key' => $key])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'idempotency_key_in_progress');
+    } finally {
+        $heldLock->release();
+    }
 });
 
 it('does not intercept read requests', function (): void {

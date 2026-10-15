@@ -40,6 +40,7 @@ final readonly class DeliveryCandidate
         public ?string $address,
         public ?string $windowStart,
         public ?string $windowEnd,
+        public ShipmentRouteRequirement $requirement,
     ) {}
 
     public static function of(
@@ -56,6 +57,7 @@ final readonly class DeliveryCandidate
         ?string $address = null,
         ?string $windowStart = null,
         ?string $windowEnd = null,
+        ?ShipmentRouteRequirement $requirement = null,
     ): self {
         $trimmedId = trim($shipmentId);
         if ($trimmedId === '') {
@@ -98,6 +100,8 @@ final readonly class DeliveryCandidate
             $address,
             $resolvedStart,
             $resolvedEnd,
+            // Sin requisito explícito, el envío no exige nada al camión (comportamiento previo).
+            $requirement ?? ShipmentRouteRequirement::none(),
         );
     }
 

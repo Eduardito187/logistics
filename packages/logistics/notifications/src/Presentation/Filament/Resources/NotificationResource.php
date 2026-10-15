@@ -17,6 +17,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Notifications\Application\Command\AdvanceCascade\AdvanceCascade;
 use Logistics\Notifications\Application\Command\MarkNotificationSent\MarkNotificationSent;
 use Logistics\Notifications\Application\Command\SuppressNotification\SuppressNotification;
@@ -42,13 +43,20 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class NotificationResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = NotificationRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-bell-alert';
 
     public static function getNavigationGroup(): string
     {
-        return __('Notifications');
+        return __('Administration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 40;
     }
 
     public static function getNavigationLabel(): string
@@ -225,21 +233,6 @@ final class NotificationResource extends Resource
                     ->label(__('Queued at'))
                     ->dateTime()
                     ->sortable(),
-                // El UUID queda disponible pero oculto por defecto (dato técnico, no humano).
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->searchable()
-                    ->copyable()
-                    ->fontFamily('mono')
-                    ->limit(13)
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('shipment_id')
-                    ->label(__('Shipment UUID'))
-                    ->searchable()
-                    ->copyable()
-                    ->fontFamily('mono')
-                    ->limit(13)
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('message_type')
@@ -291,7 +284,6 @@ final class NotificationResource extends Resource
                     ->state(fn (NotificationRecord $record): string => self::formatAttempts($record->attempts)),
                 TextEntry::make('created_at')->label(__('Queued at'))->dateTime(),
                 TextEntry::make('updated_at')->label(__('Last update'))->dateTime(),
-                TextEntry::make('id')->label(__('ID'))->copyable(),
             ]);
     }
 

@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Providers\Filament;
 
 use App\Http\Middleware\SecurityHeaders;
+use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\NavigationGroup;
-use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
@@ -21,6 +21,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Logistics\Capacity\Presentation\Filament\Pages\DispatchCalendar;
+use Logistics\Execution\Presentation\Filament\Pages\LastMileBoard;
 use Logistics\Fleet\Presentation\Filament\Pages\DriverHistory;
 use Logistics\FleetOps\Presentation\Filament\Pages\FleetCostDashboard;
 use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
@@ -40,9 +41,20 @@ final class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            // Modo SPA: navegación sin recargar la página (wire:navigate) + barra de progreso superior,
+            // para que el admin se sienta una app web. Los mapas Leaflet cargan vía @assets (persistente
+            // entre navegaciones SPA), así que siguen funcionando.
+            ->spa()
             ->brandName('Dismac Logistics')
-            // Tipografía del e-commerce Dismatec.
-            ->font('Open Sans')
+            // Tipografía del e-commerce Dismatec (Open Sans). Auto-hospedada (ADR 013: sin Google ni
+            // servicios de pago): se sirve el CSS/woff2 propios de public/fonts/open-sans con el
+            // LocalFontProvider, en vez del link a fonts.bunny.net/Google que emite el provider por
+            // defecto. Así la CSP del admin no abre orígenes externos de fuentes.
+            ->font(
+                'Open Sans',
+                url: asset('fonts/open-sans/open-sans.css'),
+                provider: LocalFontProvider::class,
+            )
             // Tema compilado propio (Tailwind v4) que escanea nuestras vistas para que sus clases apliquen.
             ->viteTheme('resources/css/filament/admin/theme.css')
             // Paleta de marca Dismac (del e-commerce): rojo #E2231A como primario, gris neutro del panel.
@@ -56,25 +68,17 @@ final class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): string => view('filament.brand-theme')->render(),
             )
-            // Orden de los grupos de navegación: sigue el flujo operativo (datos maestros →
-            // ejecución → integraciones → plataforma). Cada Resource declara su propio grupo.
+            // Arquitectura de información "operaciones-primero": 5 grupos por modelo mental del operador
+            // en vez de un grupo por bounded context (antes 16). El orden sigue el flujo del negocio:
+            // Operations (flujo vivo) → Fleet (camiones y personas) → Network (grafo físico) →
+            // Commerce (pedidos y dinero) → Administration (config y gobierno, solo admin).
+            // Cada Resource/Page declara su grupo y orden con getNavigationGroup()/getNavigationSort().
             ->navigationGroups([
                 NavigationGroup::make('Operations'),
-                NavigationGroup::make('Network'),
                 NavigationGroup::make('Fleet'),
-                NavigationGroup::make('Fleet Ops'),
-                NavigationGroup::make('Shipments'),
-                NavigationGroup::make('Capacity'),
-                NavigationGroup::make('Promise'),
-                NavigationGroup::make('Carriers'),
-                NavigationGroup::make('Execution'),
-                NavigationGroup::make('Tracking'),
-                NavigationGroup::make('Telemetry'),
-                NavigationGroup::make('Labels'),
-                NavigationGroup::make('Notifications'),
-                NavigationGroup::make('Integrations'),
-                NavigationGroup::make('Access'),
-                NavigationGroup::make('Platform'),
+                NavigationGroup::make('Network'),
+                NavigationGroup::make('Commerce'),
+                NavigationGroup::make('Administration'),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             // Resources de cada bounded context: viven en packages/logistics/<ctx>/src/Presentation/Filament
@@ -154,7 +158,12 @@ final class AdminPanelProvider extends PanelProvider
             )
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
-                Dashboard::class,
+                // Landing del panel: la Torre de control (App\Filament\Pages\ControlTower, ruta '/') se
+                // auto-descubre con discoverPages y reemplaza al Dashboard genérico de Filament, que ya no
+                // se registra. Es la sala de operaciones: excepciones y acciones primero, KPIs después.
+                //
+                // Cola de última milla / despacho del contexto Execution: entregas del día accionables.
+                LastMileBoard::class,
                 // Calendario de despacho del contexto Capacity (cupos por día/franja, por nodo/zona).
                 DispatchCalendar::class,
                 // Mapa de flota en vivo (telemetría GPS): todos los camiones en tiempo real.

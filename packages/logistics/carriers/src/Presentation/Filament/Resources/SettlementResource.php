@@ -99,14 +99,19 @@ final class SettlementResource extends Resource
             return null;
         }
 
-        $carrier = $record->carrier->name ?? $record->carrier_id;
+        $carrier = $record->carrier->name ?? '—';
 
         return "{$carrier} · {$record->period} · {$record->reference}";
     }
 
     public static function getNavigationGroup(): string
     {
-        return __('Carriers');
+        return __('Commerce');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 24;
     }
 
     public static function getNavigationIcon(): string

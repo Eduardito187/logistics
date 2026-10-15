@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Planning\Domain\Service;
 
 use Logistics\Planning\Domain\ValueObject\DeliveryCandidate;
+use Logistics\Planning\Domain\ValueObject\VehicleRouteProfile;
 
 /**
  * Contenedor mutable de empaque: un camión mientras se le acomodan pedidos. Vive solo dentro del
@@ -35,6 +36,8 @@ final class PackingBin
         private readonly ?string $vehicleDepartmentId,
         private readonly float $usableKg,
         private readonly float $usableM3,
+        private readonly VehicleRouteProfile $profile,
+        private readonly VehicleCompatibility $compatibility,
     ) {}
 
     /**
@@ -49,6 +52,11 @@ final class PackingBin
     public function accepts(DeliveryCandidate $candidate, ?string $slotKey): bool
     {
         if (!$this->departmentFits($candidate->departmentId)) {
+            return false;
+        }
+        // Restricción DURA de ruteo (R-04): el camión debe poder servir el envío (tipo de carga, zona,
+        // altura y peso por bulto). Sin restricciones/requisitos, siempre pasa (comportamiento previo).
+        if (!$this->compatibility->canServe($this->profile, $candidate->requirement)) {
             return false;
         }
         if ($slotKey !== null && $this->bound && $this->boundSlotKey !== $slotKey) {

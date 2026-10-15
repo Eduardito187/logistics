@@ -43,7 +43,7 @@ final class PreTripChecklistResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-clipboard-document-check';
 
-    protected static ?int $navigationSort = 40;
+    protected static ?int $navigationSort = 18;
 
     public static function getNavigationGroup(): string
     {
@@ -156,10 +156,6 @@ final class PreTripChecklistResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
                 // Placa legible del vehículo vía la relación Eloquent (eager-cargada), no el UUID.
                 TextColumn::make('vehicle.plate')
                     ->label(__('Vehicle'))

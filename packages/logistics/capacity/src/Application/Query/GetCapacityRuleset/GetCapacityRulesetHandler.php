@@ -32,7 +32,9 @@ final readonly class GetCapacityRulesetHandler implements QueryHandler
     {
         assert($query instanceof GetCapacityRulesetQuery);
 
-        return $this->rules->current($this->parseAt($query->at))->toArray();
+        return $this->rules
+            ->currentForMunicipality($query->municipalityId, $this->parseAt($query->at))
+            ->toArray();
     }
 
     private function parseAt(?string $raw): DateTimeImmutable

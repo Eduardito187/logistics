@@ -41,7 +41,12 @@ final class MaintenancePlanResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Fleet Ops');
+        return __('Fleet');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 40;
     }
 
     public static function getNavigationIcon(): string
@@ -109,7 +114,7 @@ final class MaintenancePlanResource extends Resource
             ->columns([
                 TextColumn::make('vehicle_id')
                     ->label(__('Vehicle'))
-                    ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? $state)
+                    ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? '—')
                     ->sortable(),
                 TextColumn::make('service_kind')
                     ->label(__('Service kind'))

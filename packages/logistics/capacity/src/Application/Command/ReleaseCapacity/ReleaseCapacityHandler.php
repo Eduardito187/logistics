@@ -35,7 +35,7 @@ final readonly class ReleaseCapacityHandler implements CommandHandler
     {
         assert($command instanceof ReleaseCapacityCommand);
 
-        $scope = BucketScope::fromNullable($command->nodeId, $command->zoneId);
+        $scope = BucketScope::fromNullable($command->nodeId, $command->zoneId, $command->municipalityId);
         $date = SlotDate::fromString($command->date);
         $slot = TimeSlot::fromString($command->timeSlot);
         $unit = CapacityUnit::tryFrom($command->unit)

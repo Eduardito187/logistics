@@ -16,10 +16,12 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Logistics\Telemetry\Domain\ValueObject\TripStatus;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\TripRecord;
 use Logistics\Telemetry\Presentation\Filament\Resources\TripResource\Pages\ListTrips;
 use Logistics\Telemetry\Presentation\Filament\Resources\TripResource\Pages\ViewTrip;
+use Logistics\Telemetry\Presentation\Filament\Support\VehiclePlates;
 
 /**
  * Admin de trips (tramos de conducción). SOLO LECTURA: los trips los materializa la ingesta de
@@ -32,11 +34,26 @@ final class TripResource extends Resource
 {
     protected static ?string $model = TripRecord::class;
 
-    protected static ?string $recordTitleAttribute = 'vehicle_id';
-
     public static function getNavigationGroup(): string
     {
-        return __('Telemetry');
+        return __('Fleet');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 50;
+    }
+
+    /**
+     * Título legible del trip: la placa del vehículo, nunca el UUID (regla: ningún UUID visible).
+     */
+    public static function getRecordTitle(?Model $record): ?string
+    {
+        if (!$record instanceof TripRecord) {
+            return null;
+        }
+
+        return VehiclePlates::label($record->vehicle_id) ?? '—';
     }
 
     public static function getNavigationIcon(): string
@@ -80,7 +97,8 @@ final class TripResource extends Resource
             Section::make(__('Trip'))
                 ->schema([
                     TextEntry::make('vehicle_id')
-                        ->label(__('Vehicle')),
+                        ->label(__('Vehicle'))
+                        ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? '—'),
                     TextEntry::make('status')
                         ->label(__('Status'))
                         ->badge()
@@ -126,8 +144,15 @@ final class TripResource extends Resource
             ->columns([
                 TextColumn::make('vehicle_id')
                     ->label(__('Vehicle'))
-                    ->searchable()
+                    ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? '—')
                     ->sortable(),
+                // UUID crudo del vehículo: oculto por defecto, disponible como columna toggleable para
+                // depurar o cruzar datos. La placa legible vive en la columna "Vehicle" de arriba.
+                TextColumn::make('vehicle_uuid')
+                    ->label(__('Vehicle ID'))
+                    ->getStateUsing(static fn (TripRecord $record): string => $record->vehicle_id)
+                    ->copyable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('started_at')
                     ->label(__('Started at'))
                     ->dateTime()
@@ -162,11 +187,22 @@ final class TripResource extends Resource
                     ->label(__('Vehicle'))
                     ->native(false)
                     ->searchable()
-                    ->options(static fn (): array => TripRecord::query()
-                        ->distinct()
-                        ->orderBy('vehicle_id')
-                        ->pluck('vehicle_id', 'vehicle_id')
-                        ->all()),
+                    // Opciones id→placa: solo los vehículos con trips, etiquetados con su placa legible.
+                    ->options(static function (): array {
+                        /** @var list<string> $ids */
+                        $ids = TripRecord::query()
+                            ->distinct()
+                            ->orderBy('vehicle_id')
+                            ->pluck('vehicle_id')
+                            ->all();
+
+                        $options = [];
+                        foreach ($ids as $id) {
+                            $options[$id] = VehiclePlates::label($id) ?? '—';
+                        }
+
+                        return $options;
+                    }),
                 SelectFilter::make('status')
                     ->label(__('Status'))
                     ->native(false)

@@ -38,7 +38,7 @@ final class ShipmentLineResource extends Resource
 {
     protected static ?string $model = ShipmentLineRecord::class;
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 12;
 
     protected static ?string $recordTitleAttribute = 'sku';
 
@@ -49,7 +49,7 @@ final class ShipmentLineResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Shipments');
+        return __('Commerce');
     }
 
     public static function getModelLabel(): string

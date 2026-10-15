@@ -40,11 +40,11 @@ final class OdometerReadingResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'km';
 
-    protected static ?int $navigationSort = 60;
+    protected static ?int $navigationSort = 36;
 
     public static function getNavigationGroup(): string
     {
-        return __('Fleet Ops');
+        return __('Fleet');
     }
 
     public static function getNavigationIcon(): string

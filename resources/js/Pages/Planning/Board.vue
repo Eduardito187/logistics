@@ -14,6 +14,7 @@ import AppCard from '@/Components/UI/AppCard.vue';
 import StatusBadge from '@/Components/UI/StatusBadge.vue';
 import RouteMap from '@/Components/Map/RouteMap.vue';
 import PlanStopCard from '@/Components/Planning/PlanStopCard.vue';
+import Select from '@/Components/UI/Select.vue';
 
 const props = defineProps({
     plan: { type: Object, required: true },
@@ -45,6 +46,12 @@ const dragIndex = ref(null);
 const overIndex = ref(null);
 const saving = ref(false);
 const strategy = ref('optimization');
+
+// Estrategias de auto-planificación disponibles para el dropdown.
+const strategyOptions = [
+    { value: 'optimization', label: 'Optimización (cercanía + capacidad)' },
+    { value: 'slots', label: 'Franjas del cliente' },
+];
 
 const isPublished = computed(() => props.plan.status === 'PUBLISHED');
 const canReorder = computed(() => !isPublished.value && orderedStops.value.length > 1);
@@ -178,13 +185,9 @@ const autoPlan = () => {
 
             <div class="flex items-center gap-2">
                 <label class="text-xs text-neutral-500">Estrategia</label>
-                <select
-                    v-model="strategy"
-                    class="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-200"
-                >
-                    <option value="optimization">Optimización (cercanía + capacidad)</option>
-                    <option value="slots">Franjas del cliente</option>
-                </select>
+                <div class="w-64">
+                    <Select v-model="strategy" :options="strategyOptions" placeholder="Selecciona una estrategia…" />
+                </div>
                 <button
                     type="button"
                     :disabled="autoPlanning"

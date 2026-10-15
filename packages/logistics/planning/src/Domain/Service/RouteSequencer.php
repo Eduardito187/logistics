@@ -63,6 +63,30 @@ final readonly class RouteSequencer
     }
 
     /**
+     * RE-SECUENCIA INCREMENTAL (R-05): mejora un orden EXISTENTE con 2-opt/Or-opt SIN volver a sembrar el
+     * orden inicial (vecino más cercano / EDD). Arranca del orden que ya tiene la ruta y solo aplica
+     * movimientos que BAJAN el costo, así el resultado NUNCA empeora el orden actual ("mejora o mantiene")
+     * y es idempotente: re-aplicarla sobre su propia salida no la cambia (es un punto fijo del descenso).
+     *
+     * Es lo que usa la re-optimización ante un cambio (nuevo pedido, cancelación, incidente): re-secuenciar
+     * la ruta afectada sin rehacer el día. Con menos de dos paradas, devuelve el orden tal cual.
+     *
+     * @param  list<int>              $order   orden actual de las paradas (índices 1..n de la matriz)
+     * @param  array<int, TimeWindow> $windows ventana por índice de parada; sin entrada = sin restricción
+     * @return list<int>              el mismo conjunto de paradas, re-secuenciado (igual o mejor)
+     */
+    public function improve(DistanceMatrix $matrix, array $order, array $windows = []): array
+    {
+        if (count($order) < 2) {
+            return array_values($order);
+        }
+
+        $improved = $this->twoOpt($matrix, array_values($order), $windows);
+
+        return $this->orOpt($matrix, $improved, $windows);
+    }
+
+    /**
      * Hora de llegada EFECTIVA (segundos desde la salida) a cada parada en el orden dado, aplicando la
      * espera de las ventanas: si se llega antes de la apertura, la llegada se corre a la apertura. Es lo que
      * el motor usa para fijar la ETA real de cada parada respetando su franja.

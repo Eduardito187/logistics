@@ -43,6 +43,7 @@ final class DriverMapper
             $model->emergency_contact_name,
             $model->emergency_contact_phone !== null ? PhoneNumber::of($model->emergency_contact_phone) : null,
             self::referencesToDomain($model->references),
+            $model->license_city,
         );
     }
 
@@ -51,8 +52,8 @@ final class DriverMapper
      *     id: string, name: string, license_number: string, license_expiry: string,
      *     enabled_vehicle_ids: list<string>, active: bool, photo_path: string|null, birth_date: string|null,
      *     national_id: string|null, phone_primary: string|null, phone_secondary: string|null,
-     *     address: string|null, license_category: string|null, emergency_contact_name: string|null,
-     *     emergency_contact_phone: string|null,
+     *     address: string|null, license_category: string|null, license_city: string|null,
+     *     emergency_contact_name: string|null, emergency_contact_phone: string|null,
      *     references: list<array{name: string, relationship: string|null, phone: string|null, note: string|null}>
      * }
      */
@@ -72,6 +73,7 @@ final class DriverMapper
             'phone_secondary' => $driver->phoneSecondary()?->value,
             'address' => $driver->address(),
             'license_category' => $driver->licenseCategory()?->value,
+            'license_city' => $driver->licenseCity(),
             'emergency_contact_name' => $driver->emergencyContactName(),
             'emergency_contact_phone' => $driver->emergencyContactPhone()?->value,
             'references' => array_values(array_map(

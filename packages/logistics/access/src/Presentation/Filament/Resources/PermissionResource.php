@@ -40,7 +40,12 @@ final class PermissionResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Access');
+        return __('Administration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 14;
     }
 
     public static function getNavigationIcon(): string
@@ -110,9 +115,7 @@ final class PermissionResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // El id (UUID) nunca se muestra: la URL ya lo lleva. Se identifica el permiso por su key.
                 TextColumn::make('key')
                     ->label(__('Key'))
                     ->searchable()

@@ -25,6 +25,7 @@ final readonly class EffectiveCapacityView
         public ?string $bucketId,
         public ?string $nodeId,
         public ?string $zoneId,
+        public ?string $municipalityId,
         public string $date,
         public string $timeSlot,
         public string $unit,
@@ -44,6 +45,7 @@ final readonly class EffectiveCapacityView
             $bucket->id()->toString(),
             $bucket->scope()->nodeId,
             $bucket->scope()->zoneId,
+            $bucket->scope()->municipalityId,
             $bucket->date()->toString(),
             $bucket->slot()->toString(),
             $bucket->unit()->value,
@@ -69,6 +71,7 @@ final readonly class EffectiveCapacityView
             null,
             $scope->nodeId,
             $scope->zoneId,
+            $scope->municipalityId,
             $date->toString(),
             $slot->toString(),
             $unit->value,
@@ -93,6 +96,7 @@ final readonly class EffectiveCapacityView
             null,
             $scope->nodeId,
             $scope->zoneId,
+            $scope->municipalityId,
             $date->toString(),
             $slot->toString(),
             $unit->value,
@@ -105,7 +109,7 @@ final readonly class EffectiveCapacityView
     }
 
     /**
-     * @return array{bucket_id: string|null, node_id: string|null, zone_id: string|null, date: string, time_slot: string, unit: string, total: float, used: float, available: float, full: bool, source: string}
+     * @return array{bucket_id: string|null, node_id: string|null, zone_id: string|null, municipality_id: string|null, date: string, time_slot: string, unit: string, total: float, used: float, available: float, full: bool, source: string}
      */
     public function toArray(): array
     {
@@ -113,6 +117,7 @@ final readonly class EffectiveCapacityView
             'bucket_id' => $this->bucketId,
             'node_id' => $this->nodeId,
             'zone_id' => $this->zoneId,
+            'municipality_id' => $this->municipalityId,
             'date' => $this->date,
             'time_slot' => $this->timeSlot,
             'unit' => $this->unit,

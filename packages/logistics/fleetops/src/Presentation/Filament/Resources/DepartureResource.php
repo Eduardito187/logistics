@@ -49,11 +49,11 @@ final class DepartureResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'destination';
 
-    protected static ?int $navigationSort = 50;
+    protected static ?int $navigationSort = 30;
 
     public static function getNavigationGroup(): string
     {
-        return __('Fleet Ops');
+        return __('Fleet');
     }
 
     public static function getNavigationIcon(): string

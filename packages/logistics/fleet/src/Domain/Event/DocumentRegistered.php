@@ -19,6 +19,7 @@ final readonly class DocumentRegistered extends BaseDomainEvent
         public string $expiresOn,
         public ?string $issuedOn,
         public ?string $filePath,
+        public ?string $reference = null,
     ) {
         parent::__construct($aggregateId);
     }
@@ -37,6 +38,7 @@ final readonly class DocumentRegistered extends BaseDomainEvent
             'expires_on' => $this->expiresOn,
             'issued_on' => $this->issuedOn,
             'file_path' => $this->filePath,
+            'reference' => $this->reference,
         ];
     }
 }

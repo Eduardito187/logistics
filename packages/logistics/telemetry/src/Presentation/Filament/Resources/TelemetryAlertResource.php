@@ -18,6 +18,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Telemetry\Application\Command\AcknowledgeAlert\AcknowledgeAlert;
 use Logistics\Telemetry\Domain\ValueObject\AlertSeverity;
@@ -25,6 +26,7 @@ use Logistics\Telemetry\Domain\ValueObject\AlertType;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\AlertRecord;
 use Logistics\Telemetry\Presentation\Filament\Resources\TelemetryAlertResource\Pages\ListTelemetryAlerts;
 use Logistics\Telemetry\Presentation\Filament\Resources\TelemetryAlertResource\Pages\ViewTelemetryAlert;
+use Logistics\Telemetry\Presentation\Filament\Support\VehiclePlates;
 
 /**
  * Admin de alertas de mal uso de la telemetría (exceso de velocidad, zona prohibida, uso no
@@ -39,11 +41,26 @@ final class TelemetryAlertResource extends Resource
 {
     protected static ?string $model = AlertRecord::class;
 
-    protected static ?string $recordTitleAttribute = 'vehicle_id';
-
     public static function getNavigationGroup(): string
     {
-        return __('Telemetry');
+        return __('Fleet');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 54;
+    }
+
+    /**
+     * Título legible de la alerta: la placa del vehículo, nunca el UUID (regla: ningún UUID visible).
+     */
+    public static function getRecordTitle(?Model $record): ?string
+    {
+        if (!$record instanceof AlertRecord) {
+            return null;
+        }
+
+        return VehiclePlates::label($record->vehicle_id) ?? '—';
     }
 
     public static function getNavigationIcon(): string
@@ -114,7 +131,8 @@ final class TelemetryAlertResource extends Resource
             Section::make(__('Alert'))
                 ->schema([
                     TextEntry::make('vehicle_id')
-                        ->label(__('Vehicle')),
+                        ->label(__('Vehicle'))
+                        ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? '—'),
                     TextEntry::make('type')
                         ->label(__('Type'))
                         ->badge()
@@ -145,8 +163,15 @@ final class TelemetryAlertResource extends Resource
             ->columns([
                 TextColumn::make('vehicle_id')
                     ->label(__('Vehicle'))
-                    ->searchable()
+                    ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? '—')
                     ->sortable(),
+                // UUID crudo del vehículo: oculto por defecto, disponible como columna toggleable para
+                // depurar o cruzar datos. La placa legible vive en la columna "Vehicle" de arriba.
+                TextColumn::make('vehicle_uuid')
+                    ->label(__('Vehicle ID'))
+                    ->getStateUsing(static fn (AlertRecord $record): string => $record->vehicle_id)
+                    ->copyable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('type')
                     ->label(__('Type'))
                     ->badge()

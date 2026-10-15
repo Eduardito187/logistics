@@ -20,6 +20,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Collection;
+use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Outbox\Application\Command\DiscardMessage\DiscardMessageCommand;
 use Logistics\Outbox\Application\Command\RetryMessage\RetryMessageCommand;
 use Logistics\Outbox\Application\Query\GetOutboxStats\GetOutboxStatsQuery;
@@ -59,6 +60,8 @@ use Logistics\Shared\Application\Query\QueryBus;
  */
 final class OutboxMessageResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = OutboxMessageRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-inbox-arrow-down';
@@ -67,7 +70,12 @@ final class OutboxMessageResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Platform');
+        return __('Administration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 50;
     }
 
     public static function getNavigationLabel(): string
@@ -157,12 +165,7 @@ final class OutboxMessageResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->toggleable(),
-                TextColumn::make('aggregate_id')
-                    ->label(__('Aggregate ID'))
-                    ->searchable()
-                    ->copyable()
-                    ->fontFamily('mono')
-                    ->limit(18),
+                // aggregate_id es un UUID técnico sin relación legible: no se muestra (basta aggregate_type + event_name).
                 TextColumn::make('status')
                     ->label(__('Status'))
                     ->badge()
@@ -222,22 +225,11 @@ final class OutboxMessageResource extends Resource
     public static function infolist(Schema $schema): Schema
     {
         return $schema->components([
-            TextEntry::make('id')
-                ->label(__('Message ID'))
-                ->copyable()
-                ->fontFamily('mono'),
-            TextEntry::make('event_id')
-                ->label(__('Event ID'))
-                ->copyable()
-                ->fontFamily('mono'),
+            // id, event_id y aggregate_id son UUID técnicos sin relación legible: no se muestran.
             TextEntry::make('event_name')
                 ->label(__('Event')),
             TextEntry::make('aggregate_type')
                 ->label(__('Aggregate type')),
-            TextEntry::make('aggregate_id')
-                ->label(__('Aggregate ID'))
-                ->copyable()
-                ->fontFamily('mono'),
             TextEntry::make('status')
                 ->label(__('Status'))
                 ->badge()

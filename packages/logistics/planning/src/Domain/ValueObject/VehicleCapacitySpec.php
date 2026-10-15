@@ -27,6 +27,7 @@ final readonly class VehicleCapacitySpec
         public ?string $departmentId,
         public ?float $homeBaseLatitude,
         public ?float $homeBaseLongitude,
+        public VehicleRouteProfile $profile,
     ) {}
 
     public static function of(
@@ -38,6 +39,7 @@ final readonly class VehicleCapacitySpec
         ?string $departmentId = null,
         ?float $homeBaseLatitude = null,
         ?float $homeBaseLongitude = null,
+        ?VehicleRouteProfile $profile = null,
     ): self {
         $trimmedVehicle = trim($vehicleId);
         if ($trimmedVehicle === '') {
@@ -59,6 +61,8 @@ final readonly class VehicleCapacitySpec
             $departmentId,
             $homeBaseLatitude,
             $homeBaseLongitude,
+            // Sin perfil explícito, el camión no impone restricciones de ruteo (comportamiento previo).
+            $profile ?? VehicleRouteProfile::unrestricted(),
         );
     }
 

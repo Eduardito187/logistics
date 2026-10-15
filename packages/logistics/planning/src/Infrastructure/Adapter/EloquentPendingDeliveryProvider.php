@@ -6,12 +6,15 @@ namespace Logistics\Planning\Infrastructure\Adapter;
 
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Logistics\Coverage\Domain\Contract\DepartmentLocator;
 use Logistics\Coverage\Domain\ValueObject\GeoPoint;
 use Logistics\Planning\Domain\Contract\PendingDeliveryProvider;
 use Logistics\Planning\Domain\ValueObject\DeliveryCandidate;
 use Logistics\Planning\Domain\ValueObject\PlanDate;
+use Logistics\Planning\Domain\ValueObject\ShipmentRouteRequirement;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
+use Throwable;
 
 /**
  * Adaptador que arma los pedidos pendientes para el auto-planificador leyendo el contexto de Envíos y
@@ -46,6 +49,7 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
     {
         $defaultWeight = $this->floatConfig('default_weight_kg_per_package', 10.0);
         $defaultVolume = $this->floatConfig('default_volume_m3_per_package', 0.05);
+        $requirements = $this->shipmentRequirements();
 
         /** @var list<DeliveryCandidate> $candidates */
         $candidates = [];
@@ -56,10 +60,10 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
             ->whereNotNull('lng')
             ->withSum('lines', 'quantity')
             ->orderBy('id')
-            ->chunkById(self::CHUNK_SIZE, function (Collection $chunk) use (&$candidates, $defaultWeight, $defaultVolume): void {
+            ->chunkById(self::CHUNK_SIZE, function (Collection $chunk) use (&$candidates, $defaultWeight, $defaultVolume, $requirements): void {
                 /** @var Collection<int, ShipmentRecord> $chunk */
                 foreach ($chunk as $record) {
-                    $candidate = $this->toCandidate($record, $defaultWeight, $defaultVolume);
+                    $candidate = $this->toCandidate($record, $defaultWeight, $defaultVolume, $requirements);
                     if ($candidate !== null) {
                         $candidates[] = $candidate;
                     }
@@ -72,8 +76,10 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
     /**
      * Traduce una fila de envío a un candidato, resolviendo departamento y estimando la carga. Devuelve
      * null si el envío no tiene coordenadas numéricas (no se puede rutear ni ubicar).
+     *
+     * @param array<string, ShipmentRouteRequirement> $requirements requisitos de ruteo (R-04) por envío
      */
-    private function toCandidate(ShipmentRecord $record, float $defaultWeight, float $defaultVolume): ?DeliveryCandidate
+    private function toCandidate(ShipmentRecord $record, float $defaultWeight, float $defaultVolume, array $requirements): ?DeliveryCandidate
     {
         if (!is_numeric($record->lat) || !is_numeric($record->lng)) {
             return null;
@@ -110,7 +116,42 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
             address: $record->address_text,
             windowStart: $windowStart,
             windowEnd: $windowEnd,
+            requirement: $requirements[(string) $record->id] ?? null,
         );
+    }
+
+    /**
+     * Requisitos de ruteo (R-04) por envío, leídos EN LOTE del read-side propio de Planificación
+     * (planning_shipment_requirements). Tolerante: si la tabla aún no existe (migración sin aplicar),
+     * degrada a sin requisitos para no romper la planificación.
+     *
+     * @return array<string, ShipmentRouteRequirement>
+     */
+    private function shipmentRequirements(): array
+    {
+        try {
+            $rows = DB::table('planning_shipment_requirements')->get();
+        } catch (Throwable) {
+            return [];
+        }
+
+        $requirements = [];
+        foreach ($rows as $row) {
+            $data = (array) $row;
+            $shipmentId = isset($data['shipment_id']) ? (string) $data['shipment_id'] : '';
+            if ($shipmentId === '') {
+                continue;
+            }
+
+            $requirements[$shipmentId] = ShipmentRouteRequirement::fromArray([
+                'load_type' => $data['load_type'] ?? null,
+                'zone' => $data['zone'] ?? null,
+                'height_m' => $data['height_m'] ?? null,
+                'weight_kg' => $data['weight_kg'] ?? null,
+            ]);
+        }
+
+        return $requirements;
     }
 
     private function floatConfig(string $key, float $default): float

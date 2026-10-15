@@ -21,7 +21,7 @@ final class NotificationsTodayWidget extends StatsOverviewWidget
 {
     use ReadsControlTowerData;
 
-    protected static ?int $sort = 5;
+    protected static ?int $sort = 7;
 
     protected ?string $heading = 'Notifications today';
 

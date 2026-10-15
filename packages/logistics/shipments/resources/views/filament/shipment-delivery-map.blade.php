@@ -29,6 +29,7 @@
 @assets
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="{{ asset('js/dismac-maps.js') }}"></script>
 @endassets
 
 @script
@@ -41,8 +42,11 @@
 
     if (el && lat !== null && lng !== null) {
         const map = L.map(el).setView([lat, lng], 15);
-        // Teselas self-host (tileserver OSM del proyecto); si MAP_TILE_URL está vacío, cae al tile público de OSM.
-        L.tileLayer(@js(config('maps.tile_url') ?: config('maps.tile_fallback_url')), {
+        // Teselas self-host con fallback automático al OSM público (helper compartido): si el
+        // tileserver del proyecto no responde, la capa baja sola al tile público y el mapa no queda gris.
+        window.DismacMaps.tileLayer(L, {
+            url: @js(config('maps.tile_url')),
+            fallbackUrl: @js(config('maps.tile_fallback_url')),
             attribution: @js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
             maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
         }).addTo(map);

@@ -310,6 +310,72 @@ services:
         networks:
             - dismac_lg
 
+    # ============================================================
+    # AÑADIDO — frente almacenamiento de objetos (ROADMAP B2): MinIO self-host.
+    # ------------------------------------------------------------
+    # MinIO es S3-compatible y 100% open-source: permite probar LOCAL el flujo S3 real
+    # (POD, checklist, daños, collages, documentos de flota) sin cuentas AWS ni pago, y
+    # sin que la evidencia de clientes salga a un tercero. En producción se usa S3/MinIO/R2
+    # real por env (ver docs/deploy.md §5). Los discos de config/filesystems.php apuntan acá
+    # con AWS_ENDPOINT=http://minio:9000 + AWS_USE_PATH_STYLE_ENDPOINT=true (ver .env.example).
+    #
+    # NOTA: este bloque agrega SOLO los servicios `minio` y `createbuckets` (otra oleada
+    # también edita este compose). Usa su propio volumen `minio_data` y la red `dismac_lg`
+    # ya existente; no toca otros servicios. Credenciales de DESARROLLO (no usar en prod).
+    #
+    # Puertos del host: API S3 en 9010 y consola web en 9011 (propios, para correr en
+    # paralelo con los demás proyectos Dismac). La consola abre en http://localhost:9011
+    # (usuario/clave: minioadmin/minioadmin).
+    # --------------------------------------------------------------
+    minio:
+        image: minio/minio:latest
+        container_name: dismac_lg_minio
+        restart: unless-stopped
+        command: server /data --console-address ":9001"
+        environment:
+            MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-minioadmin}
+            MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+            # Región que anuncia el servidor (debe coincidir con AWS_DEFAULT_REGION).
+            MINIO_REGION_NAME: ${AWS_DEFAULT_REGION:-us-east-1}
+        ports:
+            - "${DOCKER_MINIO_API_PORT:-9010}:9000"
+            - "${DOCKER_MINIO_CONSOLE_PORT:-9011}:9001"
+        volumes:
+            - minio_data:/data
+        healthcheck:
+            test: ["CMD-SHELL", "mc ready local || exit 1"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 15s
+        networks:
+            - dismac_lg
+
+    # One-shot: crea el bucket por defecto (AWS_BUCKET) y deja público el prefijo `collages`
+    # (el collage de la notificación al cliente es la única evidencia pública — ADR 006 /
+    # config/filesystems.php). Corre, deja los buckets listos y termina (restart: "no").
+    # Usa el cliente oficial `mc`; es idempotente (`mb --ignore-existing`).
+    createbuckets:
+        image: minio/mc:latest
+        container_name: dismac_lg_createbuckets
+        restart: "no"
+        depends_on:
+            minio:
+                condition: service_healthy
+        environment:
+            MINIO_BUCKET: ${AWS_BUCKET:-logistics}
+            MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-minioadmin}
+            MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+        entrypoint: >
+            /bin/sh -c "
+            mc alias set local http://minio:9000 \"$${MINIO_ROOT_USER}\" \"$${MINIO_ROOT_PASSWORD}\";
+            mc mb --ignore-existing \"local/$${MINIO_BUCKET}\";
+            mc anonymous set download \"local/$${MINIO_BUCKET}/collages\";
+            echo \"MinIO listo: bucket '$${MINIO_BUCKET}' (prefijo 'collages' público).\";
+            "
+        networks:
+            - dismac_lg
+
 volumes:
     postgres_data:
     valkey_data:
@@ -318,6 +384,7 @@ volumes:
     composer_cache:
     mailpit_data:
     nominatim_data:
+    minio_data:
 
 networks:
     dismac_lg:

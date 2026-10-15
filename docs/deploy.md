@@ -76,6 +76,29 @@ Se hace **dentro del build de la imagen** (stage `assets`), no hace falta correr
 > correr en el contenedor `node` del compose: `npm ci && npm run build`. En producción
 > **siempre** se reconstruye la imagen: los assets viven en ella, no en un volumen.
 
+#### Dependencia `vendor/filament` (procedimiento reproducible)
+
+El tema custom del panel (`resources/css/filament/admin/theme.css`) hace
+`@import` de `vendor/filament/filament/resources/css/theme.css` y Tailwind escanea las
+vistas Blade bajo `vendor/filament/**`. Por eso el build del tema **requiere que
+`vendor/filament` esté presente en el árbol del proyecto** donde corre `npm run build`, no
+solo dentro del container `app` (donde `vendor/` vive en un volumen que el container `node`
+no monta). Esto no debe depender de copiar a mano desde el container.
+
+Procedimiento reproducible, idéntico en CI, imagen y dev:
+
+| Entorno | Cómo se materializa `vendor/filament` | Build |
+|---------|----------------------------------------|-------|
+| **CI** (job `assets`) | `composer install` nativo en el runner (trae `vendor/filament` al árbol) | `npm ci && npm run build` |
+| **Imagen prod** (stage `assets`) | el stage ya corre sobre el código con `vendor/` instalado | `npm ci && npm run build` |
+| **Dev** (`make assets`) | el target asegura `vendor/filament` en el host (lo copia del container `app` solo si falta, de forma idempotente) antes de buildear | `npm ci && npm run build` (en el container `node`) |
+
+La regla única: **primero traer `vendor/filament` vía Composer al árbol donde corre Node,
+después `npm ci && npm run build`**. En CI y en la imagen esto sale "gratis" porque el
+`composer install` ya dejó `vendor/filament` en el árbol; en dev, `make assets` lo
+materializa desde el container sin intervención manual (ver comentarios del target `assets`
+en el `Makefile`).
+
 ---
 
 ## 3. Variables de entorno
@@ -173,6 +196,36 @@ Cada contexto elige su disco por env (`EXECUTION_POD_DISK`, `EXECUTION_CHECKLIST
 `EXECUTION_DAMAGE_DISK`, `FLEET_DOCUMENTS_DISK`, `NOTIFICATIONS_COLLAGE_DISK`). Si no se da
 un bucket dedicado, todos caen a `AWS_BUCKET` separados por carpeta (modo "un solo bucket",
 útil en staging).
+
+### MinIO local (desarrollo) — probar el flujo S3 real (ROADMAP B2)
+
+En desarrollo no se usa AWS: el `docker-compose.yml` incluye **MinIO** (S3-compatible,
+100% open-source), para ejercitar el mismo código de subida/descarga que en producción sin
+cuentas AWS ni pago, y sin que la evidencia de clientes salga a un tercero.
+
+- Servicio `minio` (imagen oficial `minio/minio`): API S3 en `http://minio:9000` (red docker)
+  y consola web en `http://localhost:9011` (usuario/clave de dev: **minioadmin/minioadmin**).
+  La API queda expuesta al host en `http://localhost:9010` por si se la usa desde fuera del
+  compose. Datos persistidos en el volumen `minio_data`.
+- Servicio one-shot `createbuckets` (imagen oficial `minio/mc`): al levantar, crea el bucket
+  por defecto (`AWS_BUCKET`, por defecto `logistics`) y deja **público** el prefijo `collages`
+  (la única evidencia pública — su URL va en la notificación al cliente, ADR 006). Es
+  idempotente; corre y termina.
+
+```bash
+# Levantar MinIO + crear el bucket (el resto del stack puede ya estar arriba)
+docker compose up -d minio createbuckets
+
+# El .env.example ya trae los defaults que apuntan a MinIO:
+#   AWS_ACCESS_KEY_ID=minioadmin   AWS_SECRET_ACCESS_KEY=minioadmin
+#   AWS_DEFAULT_REGION=us-east-1   AWS_BUCKET=logistics
+#   AWS_ENDPOINT=http://minio:9000 AWS_USE_PATH_STYLE_ENDPOINT=true
+# Para ejercitar S3 de verdad, poner FILESYSTEM_DISK=s3 (o los selectores *_DISK en su disco S3).
+```
+
+> Puertos del host (`DOCKER_MINIO_API_PORT=9010`, `DOCKER_MINIO_CONSOLE_PORT=9011`) elegidos
+> propios para correr en paralelo con los demás proyectos Dismac. En **producción** no se
+> levanta este contenedor: se apunta a un S3/MinIO/R2 gestionado por env (sección 3).
 
 ### Ciclo de vida (lifecycle) — se aplica en el bucket, no en la app
 

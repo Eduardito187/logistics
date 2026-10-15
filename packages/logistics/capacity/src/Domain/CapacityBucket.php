@@ -55,6 +55,7 @@ final class CapacityBucket extends AggregateRoot
             $slot->toString(),
             $unit->value,
             $total->value(),
+            $scope->municipalityId,
         ));
 
         return $bucket;

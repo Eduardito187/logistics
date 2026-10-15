@@ -8,6 +8,7 @@
 // (que muestra el AppLayout). Los escaneos son append-only: estas acciones agregan hechos, no editan.
 import { ref, computed } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
+import Select from '@/Components/UI/Select.vue';
 
 const props = defineProps({
     delivery: { type: Object, required: true },
@@ -195,13 +196,7 @@ const submitIncident = () => {
                         <div class="space-y-4">
                             <div>
                                 <label class="mb-1 block text-xs text-neutral-400">Motivo</label>
-                                <select
-                                    v-model="failForm.reason"
-                                    class="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 focus:border-[#E2231A] focus:outline-none"
-                                >
-                                    <option value="" disabled>Selecciona un motivo…</option>
-                                    <option v-for="r in failureReasons" :key="r.value" :value="r.value">{{ r.label }}</option>
-                                </select>
+                                <Select v-model="failForm.reason" :options="failureReasons" placeholder="Selecciona un motivo…" />
                                 <p v-if="failForm.errors.reason" class="mt-1 text-xs text-red-400">{{ failForm.errors.reason }}</p>
                             </div>
                             <div>
@@ -234,24 +229,12 @@ const submitIncident = () => {
                         <div class="space-y-4">
                             <div>
                                 <label class="mb-1 block text-xs text-neutral-400">Gravedad</label>
-                                <select
-                                    v-model="incidentForm.severity"
-                                    class="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 focus:border-[#E2231A] focus:outline-none"
-                                >
-                                    <option value="" disabled>Selecciona la gravedad…</option>
-                                    <option v-for="s in incidentSeverities" :key="s.value" :value="s.value">{{ s.label }}</option>
-                                </select>
+                                <Select v-model="incidentForm.severity" :options="incidentSeverities" placeholder="Selecciona la gravedad…" />
                                 <p v-if="incidentForm.errors.severity" class="mt-1 text-xs text-red-400">{{ incidentForm.errors.severity }}</p>
                             </div>
                             <div>
                                 <label class="mb-1 block text-xs text-neutral-400">Tipo</label>
-                                <select
-                                    v-model="incidentForm.type"
-                                    class="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 focus:border-[#E2231A] focus:outline-none"
-                                >
-                                    <option value="" disabled>Selecciona el tipo…</option>
-                                    <option v-for="t in incidentTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
-                                </select>
+                                <Select v-model="incidentForm.type" :options="incidentTypes" placeholder="Selecciona el tipo…" />
                                 <p v-if="incidentForm.errors.type" class="mt-1 text-xs text-red-400">{{ incidentForm.errors.type }}</p>
                             </div>
                             <div>

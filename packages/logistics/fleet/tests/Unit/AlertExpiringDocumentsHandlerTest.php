@@ -252,3 +252,57 @@ it('usa la ventana de la política cuando el comando no fuerza los días', funct
     expect($handler2->lastTotal())->toBe(1)
         ->and($store2->appended)->toHaveCount(1);
 });
+
+it('clasifica los documentos por umbral: vencido, ≤7 días y ≤30 días', function (): void {
+    $store = collectingStore();
+    $handler = makeAlertHandler(
+        [
+            fakeDocument('2026-09-01'), // vencido (ref 2026-10-13)
+            fakeDocument('2026-10-18'), // vence en 5 días → ≤7
+            fakeDocument('2026-11-05'), // vence en 23 días → ≤30
+            fakeDocument('2027-06-01'), // fuera de la ventana
+        ],
+        30,
+        $store,
+    );
+
+    $handler->handle(new AlertExpiringDocuments('2026-10-13'));
+
+    expect($handler->lastExpired())->toBe(1)
+        ->and($handler->lastDueSoon())->toBe(1)
+        ->and($handler->lastUpcoming())->toBe(1)
+        ->and($handler->lastExpiring())->toBe(2)
+        ->and($handler->lastTotal())->toBe(3);
+
+    $payload = $store->appended[0]->payload();
+    expect($payload['expired_count'])->toBe(1)
+        ->and($payload['due_soon_count'])->toBe(1)
+        ->and($payload['upcoming_count'])->toBe(1)
+        ->and($payload['total_count'])->toBe(3);
+
+    // Cada documento del resumen lleva su clasificación de umbral.
+    $thresholds = array_map(static fn (array $d): string => $d['threshold'], $payload['documents']);
+    expect($thresholds)->toContain('expired')
+        ->and($thresholds)->toContain('due_soon')
+        ->and($thresholds)->toContain('upcoming');
+});
+
+it('es idempotente: el mismo día produce el mismo eventId y distinto día uno diferente', function (): void {
+    // Dos corridas del MISMO día de referencia → mismo eventId (el outbox no re-encola la alerta).
+    $storeA = collectingStore();
+    makeAlertHandler([fakeDocument('2026-09-01')], 30, $storeA)->handle(new AlertExpiringDocuments('2026-10-13'));
+
+    $storeB = collectingStore();
+    makeAlertHandler([fakeDocument('2026-09-01')], 30, $storeB)->handle(new AlertExpiringDocuments('2026-10-13'));
+
+    $idDay1RunA = $storeA->appended[0]->eventId()->value;
+    $idDay1RunB = $storeB->appended[0]->eventId()->value;
+
+    // Otro día de referencia → eventId distinto (es una alerta nueva).
+    $storeC = collectingStore();
+    makeAlertHandler([fakeDocument('2026-09-01')], 30, $storeC)->handle(new AlertExpiringDocuments('2026-10-14'));
+    $idDay2 = $storeC->appended[0]->eventId()->value;
+
+    expect($idDay1RunA)->toBe($idDay1RunB)
+        ->and($idDay1RunA)->not->toBe($idDay2);
+});

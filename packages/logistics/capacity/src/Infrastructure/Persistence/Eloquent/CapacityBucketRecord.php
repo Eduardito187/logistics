@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Logistics\Capacity\Infrastructure\Persistence\Eloquent\Factory\CapacityBucketFactory;
+use Logistics\Coverage\Infrastructure\Persistence\Eloquent\GeoAreaRecord;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\ZoneRecord;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 
@@ -21,6 +22,7 @@ use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
  * @property string      $id
  * @property string|null $node_id
  * @property string|null $zone_id
+ * @property string|null $municipality_id
  * @property string      $slot_date
  * @property string      $time_slot
  * @property string      $unit
@@ -45,6 +47,7 @@ final class CapacityBucketRecord extends Model
         'id',
         'node_id',
         'zone_id',
+        'municipality_id',
         'slot_date',
         'time_slot',
         'unit',
@@ -81,5 +84,17 @@ final class CapacityBucketRecord extends Model
     public function zone(): BelongsTo
     {
         return $this->belongsTo(ZoneRecord::class, 'zone_id');
+    }
+
+    /**
+     * Municipio (área administrativa de coverage) al que pertenece el cupo cuando su scope es un
+     * municipio. Proyección de lectura para el admin: muestra el nombre del municipio en vez del UUID y
+     * permite eager-loadearlo sin N+1.
+     *
+     * @return BelongsTo<GeoAreaRecord, $this>
+     */
+    public function municipality(): BelongsTo
+    {
+        return $this->belongsTo(GeoAreaRecord::class, 'municipality_id');
     }
 }

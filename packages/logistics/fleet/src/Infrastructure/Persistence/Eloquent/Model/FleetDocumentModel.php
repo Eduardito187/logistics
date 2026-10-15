@@ -23,6 +23,7 @@ use Logistics\Fleet\Domain\ValueObject\DocumentOwnerType;
  * @property string|null $issued_on
  * @property string|null $file_path
  * @property string|null $note
+ * @property string|null $reference
  * @property-read VehicleModel|null $ownerVehicle
  * @property-read DriverModel|null  $ownerDriver
  * @property-read HelperModel|null  $ownerHelper

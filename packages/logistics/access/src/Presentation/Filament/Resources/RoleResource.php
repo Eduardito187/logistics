@@ -49,7 +49,12 @@ final class RoleResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Access');
+        return __('Administration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 12;
     }
 
     public static function getNavigationIcon(): string
@@ -145,9 +150,7 @@ final class RoleResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // El id (UUID) nunca se muestra: la URL ya lo lleva. Se identifica el rol por key/name.
                 TextColumn::make('name')
                     ->label(__('Name'))
                     ->searchable()

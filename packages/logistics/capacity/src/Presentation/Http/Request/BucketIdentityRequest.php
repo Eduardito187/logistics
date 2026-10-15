@@ -30,8 +30,9 @@ abstract class BucketIdentityRequest extends FormRequest
     protected function identityRules(): array
     {
         return [
-            'node_id' => ['nullable', 'uuid', 'required_without:zone_id'],
-            'zone_id' => ['nullable', 'uuid', 'required_without:node_id'],
+            'municipality_id' => ['nullable', 'uuid', 'required_without_all:node_id,zone_id'],
+            'node_id' => ['nullable', 'uuid', 'required_without_all:municipality_id,zone_id'],
+            'zone_id' => ['nullable', 'uuid', 'required_without_all:municipality_id,node_id'],
             'date' => ['required', 'date_format:Y-m-d'],
             'time_slot' => ['required', 'string', 'regex:/^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/'],
             'unit' => ['required', 'string', Rule::in(array_column(CapacityUnit::cases(), 'value'))],
@@ -39,13 +40,17 @@ abstract class BucketIdentityRequest extends FormRequest
     }
 
     /**
-     * Un cupo pertenece a un nodo O a una zona, nunca a ambos (invariante del dominio BucketScope).
+     * Un cupo pertenece a EXACTAMENTE un municipio, una zona o un nodo (invariante del dominio
+     * BucketScope). El municipio es el eje principal; zona/nodo quedan para control fino.
      */
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            if ($this->filled('node_id') && $this->filled('zone_id')) {
-                $validator->errors()->add('zone_id', 'A capacity bucket belongs to a node or a zone, not both.');
+            $populated = (int) $this->filled('municipality_id')
+                + (int) $this->filled('node_id')
+                + (int) $this->filled('zone_id');
+            if ($populated > 1) {
+                $validator->errors()->add('municipality_id', 'A capacity bucket belongs to exactly one of a municipality, a zone or a node.');
             }
         });
     }
@@ -66,6 +71,16 @@ abstract class BucketIdentityRequest extends FormRequest
     public function zoneId(): ?string
     {
         $value = $this->input('zone_id');
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * municipality_id normalizado (null si no se envió).
+     */
+    public function municipalityId(): ?string
+    {
+        $value = $this->input('municipality_id');
 
         return is_string($value) && $value !== '' ? $value : null;
     }

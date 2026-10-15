@@ -22,10 +22,17 @@ use Logistics\Shared\Application\Query\QueryBus;
  *
  * El cruce entre contextos es por el bus y por primitivos (zoneId string, fechas): este adaptador no
  * importa infraestructura de capacity ni su repositorio, solo su mensaje de consulta público.
+ *
+ * Como el AvailabilityProvider, filtra además por día DESPACHABLE del municipio del cupo: ni bloqueado
+ * (feriado u otro motivo) ni fuera del horizonte activo de cupos del municipio. Así el cálculo de promesa
+ * nunca ofrece ni prioriza un día que dejó de ser válido aunque todavía tenga cupos cargados.
  */
 final readonly class CapacityBackedCapacityCalendar implements CapacityCalendar
 {
-    public function __construct(private QueryBus $queryBus) {}
+    public function __construct(
+        private QueryBus $queryBus,
+        private DispatchDayGate $dispatchDay,
+    ) {}
 
     public function availableSlots(string $zoneId, DateTimeImmutable $date): array
     {
@@ -33,6 +40,10 @@ final readonly class CapacityBackedCapacityCalendar implements CapacityCalendar
 
         /** @var list<CapacityView> $buckets */
         $buckets = $this->queryBus->ask(new ListBucketsByDateQuery($day->format('Y-m-d')));
+
+        // Memo del veredicto de despacho por municipio dentro de este día (una sola consulta por municipio).
+        /** @var array<string, bool> $dispatchable */
+        $dispatchable = [];
 
         $slots = [];
         foreach ($buckets as $bucket) {
@@ -43,6 +54,15 @@ final readonly class CapacityBackedCapacityCalendar implements CapacityCalendar
                 continue;
             }
             if ($bucket->available <= 0.0) {
+                continue;
+            }
+
+            $municipalityKey = $bucket->municipalityId ?? '';
+            if (!array_key_exists($municipalityKey, $dispatchable)) {
+                $dispatchable[$municipalityKey] = $this->dispatchDay->isDispatchable($bucket->municipalityId, $day);
+            }
+            if (!$dispatchable[$municipalityKey]) {
+                // Día bloqueado o fuera del horizonte activo del municipio: su cupo no cuenta.
                 continue;
             }
 

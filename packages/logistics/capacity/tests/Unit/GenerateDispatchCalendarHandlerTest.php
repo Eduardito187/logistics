@@ -48,6 +48,11 @@ function rulesetProviderOf(CapacityRuleset $ruleset): CapacityRulesetProvider
         {
             return $this->ruleset;
         }
+
+        public function currentForMunicipality(?string $municipalityId, DateTimeImmutable $at): CapacityRuleset
+        {
+            return $this->ruleset;
+        }
     };
 }
 

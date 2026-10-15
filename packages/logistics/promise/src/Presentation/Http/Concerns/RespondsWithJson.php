@@ -56,18 +56,43 @@ trait RespondsWithJson
     }
 
     /**
-     * Mapea un error de dominio a HTTP: "no existe …" es un 404; el resto son reglas de negocio
-     * incumplidas (cupo agotado, transición no permitida, reserva vencida) y responden 422.
+     * Mapea un error de dominio a HTTP. Prioriza el `kind` explícito de la excepción (reserva del
+     * cliente): franja ya tomada → 409, día no despachable → 422, recurso inexistente → 404. Sin kind,
+     * cae a la heurística histórica: "no existe …" es un 404 y el resto reglas de negocio (422).
      */
     protected function domainError(PromiseException $exception): JsonResponse
     {
-        $notFound = str_contains($exception->getMessage(), 'no existe');
+        [$type, $status] = $this->classify($exception);
 
         return new JsonResponse([
             'error' => [
-                'type' => $notFound ? 'not_found' : 'business_rule_violation',
+                'type' => $type,
                 'message' => $exception->getMessage(),
             ],
-        ], $notFound ? 404 : 422);
+        ], $status);
+    }
+
+    /**
+     * Devuelve el par [tipo de error, status HTTP] para la excepción, según su `kind` o, en su ausencia,
+     * la heurística del mensaje.
+     *
+     * @return array{0: string, 1: int}
+     */
+    private function classify(PromiseException $exception): array
+    {
+        switch ($exception->kind()) {
+            case PromiseException::KIND_SLOT_TAKEN:
+                return ['slot_taken', 409];
+            case PromiseException::KIND_DAY_UNAVAILABLE:
+                return ['day_unavailable', 422];
+            case PromiseException::KIND_NOT_FOUND:
+                return ['not_found', 404];
+        }
+
+        if (str_contains($exception->getMessage(), 'no existe')) {
+            return ['not_found', 404];
+        }
+
+        return ['business_rule_violation', 422];
     }
 }

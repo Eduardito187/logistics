@@ -31,6 +31,10 @@ use Logistics\Planning\Domain\ValueObject\VehicleCapacitySpec;
  */
 final readonly class DailyPlanComposer
 {
+    public function __construct(
+        private VehicleCompatibility $compatibility = new VehicleCompatibility(),
+    ) {}
+
     /**
      * @param list<DeliveryCandidate>   $candidates
      * @param list<VehicleCapacitySpec> $vehicles
@@ -78,11 +82,13 @@ final readonly class DailyPlanComposer
         $ratio = $params->usableCapacityRatio();
 
         return array_map(
-            static fn (VehicleCapacitySpec $v): PackingBin => new PackingBin(
+            fn (VehicleCapacitySpec $v): PackingBin => new PackingBin(
                 $v->vehicleId,
                 $v->departmentId,
                 $v->capacityKg * $ratio,
                 $v->capacityM3 * $ratio,
+                $v->profile,
+                $this->compatibility,
             ),
             $usable,
         );

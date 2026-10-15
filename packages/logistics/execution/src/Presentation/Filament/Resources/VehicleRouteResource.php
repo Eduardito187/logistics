@@ -50,11 +50,11 @@ final class VehicleRouteResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map-pin';
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 32;
 
     public static function getNavigationGroup(): string
     {
-        return __('Execution');
+        return __('Operations');
     }
 
     public static function getNavigationLabel(): string

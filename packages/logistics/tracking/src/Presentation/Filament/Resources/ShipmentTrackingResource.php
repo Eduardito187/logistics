@@ -66,7 +66,12 @@ final class ShipmentTrackingResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Tracking');
+        return __('Operations');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 40;
     }
 
     public static function getNavigationLabel(): string
@@ -142,9 +147,6 @@ final class ShipmentTrackingResource extends Resource
                         ->label(__('Public token'))
                         // El token es el secreto del enlace público: se muestra enmascarado, nunca crudo.
                         ->formatStateUsing(fn (?string $state): string => self::maskToken($state)),
-                    TextEntry::make('shipment_id')
-                        ->label(__('Shipment ID (internal)'))
-                        ->copyable(),
                 ])
                 ->columns(2),
             // Estado visible del envío y progreso hacia el cliente.
@@ -249,12 +251,6 @@ final class ShipmentTrackingResource extends Resource
                     ->dateTime()
                     ->placeholder(__('No position'))
                     ->sortable(),
-                // UUID interno del seguimiento: columna secundaria, oculta por defecto.
-                TextColumn::make('shipment_id')
-                    ->label(__('Shipment ID (internal)'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true)
-                    ->limit(18),
                 TextColumn::make('updated_at')
                     ->label(__('Updated'))
                     ->dateTime()
@@ -517,7 +513,7 @@ final class ShipmentTrackingResource extends Resource
             return "{$shipment->external_id} — {$shipment->customer_name}";
         }
 
-        return $record->shipment_id;
+        return __('Unknown shipment');
     }
 
     /**

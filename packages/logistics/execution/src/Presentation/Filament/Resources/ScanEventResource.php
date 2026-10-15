@@ -17,6 +17,7 @@ use Logistics\Execution\Domain\ValueObject\ScanType;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\ScanEventRecord;
 use Logistics\Execution\Presentation\Filament\Resources\ScanEventResource\Pages\ListScanEvents;
 use Logistics\Execution\Presentation\Filament\Resources\ScanEventResource\Pages\ViewScanEvent;
+use Logistics\Execution\Presentation\Filament\Support\UserNames;
 
 /**
  * Admin de solo lectura de los escaneos de terreno (preparación, carga, descarga, prueba de entrega
@@ -36,11 +37,11 @@ final class ScanEventResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-qr-code';
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 36;
 
     public static function getNavigationGroup(): string
     {
-        return __('Execution');
+        return __('Operations');
     }
 
     public static function getNavigationLabel(): string
@@ -102,20 +103,11 @@ final class ScanEventResource extends Resource
                     ->copyable()
                     ->fontFamily('mono')
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('delivery_id')
-                    ->label(__('Delivery ID'))
-                    ->searchable()
-                    ->copyable()
-                    ->fontFamily('mono')
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // user_id se muestra como el NOMBRE del operador (users.name), nunca el id crudo.
                 TextColumn::make('user_id')
                     ->label(__('User'))
-                    ->searchable()
+                    ->formatStateUsing(static fn (?string $state): string => UserNames::label($state))
                     ->toggleable(),
-                TextColumn::make('device_id')
-                    ->label(__('Device'))
-                    ->searchable()
-                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('lat')
                     ->label(__('Latitude'))
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -146,21 +138,18 @@ final class ScanEventResource extends Resource
                     ->formatStateUsing(static fn (string $state): string => self::typeLabel($state)),
                 TextEntry::make('delivery.shipment.external_id')->label(__('Order'))->placeholder('—'),
                 TextEntry::make('delivery.vehicle.plate')->label(__('Vehicle'))->placeholder('—'),
-                TextEntry::make('delivery_id')->label(__('Delivery ID'))->copyable()->fontFamily('mono'),
                 TextEntry::make('unit')
                     ->label(__('Unit'))
                     ->state(static fn (ScanEventRecord $record): string => self::unitLabel($record))
                     ->placeholder('—'),
                 TextEntry::make('unit_id')->label(__('Unit ID'))->copyable()->fontFamily('mono'),
                 TextEntry::make('occurred_at')->label(__('Occurred at'))->dateTime(),
-                TextEntry::make('user_id')->label(__('User')),
-                TextEntry::make('device_id')->label(__('Device')),
+                // user_id se muestra como el NOMBRE del operador (users.name), nunca el id crudo.
+                TextEntry::make('user_id')
+                    ->label(__('User'))
+                    ->formatStateUsing(static fn (?string $state): string => UserNames::label($state)),
                 TextEntry::make('lat')->label(__('Latitude')),
                 TextEntry::make('lng')->label(__('Longitude')),
-                TextEntry::make('idempotency_key')
-                    ->label(__('Idempotency key'))
-                    ->copyable()
-                    ->fontFamily('mono'),
                 TextEntry::make('created_at')->label(__('Recorded at'))->dateTime(),
             ]);
     }

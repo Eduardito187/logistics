@@ -24,6 +24,7 @@ final class CapacityCalendarRequest extends FormRequest
     {
         return [
             'date' => ['required', 'date_format:Y-m-d'],
+            'municipality_id' => ['nullable', 'uuid'],
         ];
     }
 
@@ -34,5 +35,15 @@ final class CapacityCalendarRequest extends FormRequest
     public function calendarDate(): string
     {
         return (string) $this->input('date');
+    }
+
+    /**
+     * municipality_id para filtrar el calendario por municipio (null = todos los scopes del día).
+     */
+    public function municipalityId(): ?string
+    {
+        $value = $this->input('municipality_id');
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 }

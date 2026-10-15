@@ -32,6 +32,7 @@ final class EloquentCapacityRepository implements CapacityRepository
         $record->id = $id;
         $record->node_id = $bucket->scope()->nodeId;
         $record->zone_id = $bucket->scope()->zoneId;
+        $record->municipality_id = $bucket->scope()->municipalityId;
         $record->slot_date = $bucket->date()->toString();
         $record->time_slot = $bucket->slot()->toString();
         $record->unit = $bucket->unit()->value;
@@ -81,13 +82,16 @@ final class EloquentCapacityRepository implements CapacityRepository
             ->where('time_slot', $slot->toString())
             ->where('unit', $unit->value);
 
-        // Exactamente una de las dos columnas de scope está poblada; la otra es NULL.
+        // Exactamente una de las tres columnas de scope está poblada; las otras dos son NULL.
         $scope->nodeId === null
             ? $query->whereNull('node_id')
             : $query->where('node_id', $scope->nodeId);
         $scope->zoneId === null
             ? $query->whereNull('zone_id')
             : $query->where('zone_id', $scope->zoneId);
+        $scope->municipalityId === null
+            ? $query->whereNull('municipality_id')
+            : $query->where('municipality_id', $scope->municipalityId);
 
         if ($lockForUpdate) {
             $query->lockForUpdate();
@@ -117,7 +121,7 @@ final class EloquentCapacityRepository implements CapacityRepository
     {
         return CapacityBucket::fromState(
             CapacityBucketId::fromString($record->id),
-            BucketScope::fromNullable($record->node_id, $record->zone_id),
+            BucketScope::fromNullable($record->node_id, $record->zone_id, $record->municipality_id),
             // La columna es date; se recorta por si el driver devuelve 'Y-m-d H:i:s'.
             SlotDate::fromString(substr($record->slot_date, 0, 10)),
             TimeSlot::fromString($record->time_slot),

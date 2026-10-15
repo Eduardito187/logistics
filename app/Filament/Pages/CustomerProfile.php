@@ -32,6 +32,12 @@ final class CustomerProfile extends Page
         return false;
     }
 
+    // Pertenece al frente Commerce (pedidos y clientes) aunque no se liste en el menú.
+    public static function getNavigationGroup(): string
+    {
+        return __('Commerce');
+    }
+
     /**
      * Lee el nombre del cliente del querystring (?customer=<nombre>). Lo normaliza a null si no viene.
      */

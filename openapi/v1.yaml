@@ -82,6 +82,7 @@ paths:
       summary: Available capacity for a bucket (internal app)
       description: Returns the capacity bucket for a given scope, date, time slot and unit.
       parameters:
+      - $ref: '#/components/parameters/CapacityMunicipalityId'
       - $ref: '#/components/parameters/CapacityNodeId'
       - $ref: '#/components/parameters/CapacityZoneId'
       - $ref: '#/components/parameters/CapacityDate'
@@ -113,6 +114,7 @@ paths:
       description: Lists every capacity bucket of a day across all scopes, slots and units.
       parameters:
       - $ref: '#/components/parameters/CapacityDate'
+      - $ref: '#/components/parameters/CapacityMunicipalityId'
       responses:
         '200':
           description: Buckets for the requested date
@@ -133,6 +135,7 @@ paths:
       description: 'Returns the effective capacity for a scope/date/slot/unit: the explicit bucket when it exists,
         otherwise the default total from the configurable rules, or zero when neither applies. Never 404s.'
       parameters:
+      - $ref: '#/components/parameters/CapacityMunicipalityId'
       - $ref: '#/components/parameters/CapacityNodeId'
       - $ref: '#/components/parameters/CapacityZoneId'
       - $ref: '#/components/parameters/CapacityDate'
@@ -3657,6 +3660,7 @@ paths:
       summary: Available capacity for a bucket (channels)
       description: Read-only availability lookup used by client apps, web and call center.
       parameters:
+      - $ref: '#/components/parameters/CapacityMunicipalityId'
       - $ref: '#/components/parameters/CapacityNodeId'
       - $ref: '#/components/parameters/CapacityZoneId'
       - $ref: '#/components/parameters/CapacityDate'
@@ -3688,6 +3692,7 @@ paths:
       description: Read-only calendar used by channels to offer dates and slots to the customer.
       parameters:
       - $ref: '#/components/parameters/CapacityDate'
+      - $ref: '#/components/parameters/CapacityMunicipalityId'
       responses:
         '200':
           description: Buckets for the requested date
@@ -3708,6 +3713,7 @@ paths:
       description: Read-only effective capacity used by client apps, web and call center to offer dates and slots.
         Returns the explicit bucket, the rule default, or zero when neither applies. Never 404s.
       parameters:
+      - $ref: '#/components/parameters/CapacityMunicipalityId'
       - $ref: '#/components/parameters/CapacityNodeId'
       - $ref: '#/components/parameters/CapacityZoneId'
       - $ref: '#/components/parameters/CapacityDate'
@@ -7771,6 +7777,12 @@ components:
           - string
           - 'null'
           format: uuid
+        municipality_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Municipality (coverage area) the bucket belongs to, when its scope is a municipality.
         date:
           type: string
           format: date
@@ -8259,6 +8271,12 @@ components:
           - string
           - 'null'
           format: uuid
+        municipality_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Municipality (coverage area) the key belongs to, when its scope is a municipality.
         date:
           type: string
           format: date
@@ -8505,6 +8523,10 @@ components:
         note:
           type: string
           nullable: true
+        reference:
+          type: string
+          nullable: true
+          description: Policy/serial number (SOAT) or certificate number (technical inspection).
     GeneratePlanProposalRequest:
       type: object
       required:
@@ -10136,6 +10158,11 @@ components:
           type: string
           maxLength: 1000
           nullable: true
+        reference:
+          type: string
+          maxLength: 80
+          nullable: true
+          description: Policy/serial number (SOAT) or certificate number (technical inspection).
     RegisterDriverRequest:
       type: object
       required:
@@ -11454,11 +11481,19 @@ components:
       schema:
         type: string
         format: date
+    CapacityMunicipalityId:
+      name: municipality_id
+      in: query
+      required: false
+      description: Municipality (coverage area) that owns the bucket. Exactly one of municipality_id/zone_id/node_id must be provided. The municipality is the primary axis of capacity management.
+      schema:
+        type: string
+        format: uuid
     CapacityNodeId:
       name: node_id
       in: query
       required: false
-      description: Node that owns the bucket. Exactly one of node_id/zone_id must be provided.
+      description: Node that owns the bucket. Exactly one of municipality_id/zone_id/node_id must be provided.
       schema:
         type: string
         format: uuid
@@ -11482,7 +11517,7 @@ components:
       name: zone_id
       in: query
       required: false
-      description: Zone that owns the bucket. Exactly one of node_id/zone_id must be provided.
+      description: Zone that owns the bucket. Exactly one of municipality_id/zone_id/node_id must be provided.
       schema:
         type: string
         format: uuid

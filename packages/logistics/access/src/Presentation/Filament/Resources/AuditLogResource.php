@@ -33,11 +33,11 @@ final class AuditLogResource extends Resource
 
     protected static ?string $model = AuditEntryRecord::class;
 
-    protected static ?int $navigationSort = 90;
+    protected static ?int $navigationSort = 18;
 
     public static function getNavigationGroup(): string
     {
-        return __('Access');
+        return __('Administration');
     }
 
     public static function getNavigationIcon(): string
@@ -132,10 +132,7 @@ final class AuditLogResource extends Resource
                         ->dateTime(),
                     TextEntry::make('actor_label')
                         ->label(__('Actor')),
-                    TextEntry::make('actor_id')
-                        ->label(__('Actor ID'))
-                        ->placeholder(__('System'))
-                        ->copyable(),
+                    // El actor_id (UUID) no se muestra: actor_label ya expone el nombre/email legible del autor.
                     TextEntry::make('action')
                         ->label(__('Action'))
                         ->badge()
@@ -145,10 +142,7 @@ final class AuditLogResource extends Resource
                         ->badge()
                         ->color('gray')
                         ->formatStateUsing(static fn (string $state): string => self::subjectTypeLabel($state)),
-                    TextEntry::make('subject_id')
-                        ->label(__('Subject ID'))
-                        ->placeholder('—')
-                        ->copyable(),
+                    // El subject_id (UUID) no se muestra: basta el tipo de sujeto legible (subject_type).
                     TextEntry::make('ip_address')
                         ->label(__('IP address'))
                         ->placeholder('—')
@@ -186,11 +180,7 @@ final class AuditLogResource extends Resource
                     ->color('gray')
                     ->formatStateUsing(static fn (string $state): string => self::subjectTypeLabel($state))
                     ->sortable(),
-                TextColumn::make('subject_id')
-                    ->label(__('Subject ID'))
-                    ->placeholder('—')
-                    ->toggleable()
-                    ->copyable(),
+                // El subject_id (UUID) no se muestra: basta el tipo de sujeto legible (subject_type).
                 TextColumn::make('ip_address')
                     ->label(__('IP address'))
                     ->placeholder('—')

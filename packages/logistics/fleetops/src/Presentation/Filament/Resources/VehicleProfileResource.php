@@ -38,11 +38,11 @@ final class VehicleProfileResource extends Resource
 
     protected static ?string $model = VehicleProfileRecord::class;
 
-    protected static ?int $navigationSort = 70;
+    protected static ?int $navigationSort = 38;
 
     public static function getNavigationGroup(): string
     {
-        return __('Fleet Ops');
+        return __('Fleet');
     }
 
     public static function getNavigationIcon(): string

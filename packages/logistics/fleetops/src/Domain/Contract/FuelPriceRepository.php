@@ -18,6 +18,10 @@ interface FuelPriceRepository
 
     public function save(FuelPrice $price): void;
 
+    public function findById(FuelPriceId $id): ?FuelPrice;
+
+    public function delete(FuelPriceId $id): void;
+
     /**
      * Precio vigente de un tipo de combustible en una fecha: el más reciente con `effective_from <= at`.
      */

@@ -67,7 +67,7 @@ it('builds the ruleset from the versioned settings value when one exists', funct
         'windows_by_weekday' => [],
         'totals' => ['deliveries' => 25.0],
         'totals_by_slot' => [],
-        'scopes' => [['node_id' => '11111111-1111-7111-8111-111111111111', 'zone_id' => null]],
+        'scopes' => [['node_id' => '11111111-1111-7111-8111-111111111111', 'zone_id' => null, 'municipality_id' => null]],
     ]);
 });
 

@@ -33,13 +33,15 @@ final class SecurityHeaders
         'default-src' => ["'self'"],
         // Scripts propios + inline/eval (Alpine/Livewire) + Leaflet y Geoman desde unpkg.
         'script-src' => ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://unpkg.com'],
-        // Estilos propios + inline (tema de marca, Leaflet) + CSS de Leaflet/Geoman y fuentes.
-        'style-src' => ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://fonts.bunny.net', 'https://fonts.googleapis.com'],
+        // Estilos propios + inline (tema de marca, Leaflet) + CSS de Leaflet/Geoman desde unpkg. Las
+        // fuentes (Open Sans) se auto-hospedan desde assets propios ('self'); no se usa Google Fonts.
+        'style-src' => ["'self'", "'unsafe-inline'", 'https://unpkg.com'],
         // Teselas de mapas (OSM público de fallback), íconos de marcador de Leaflet (unpkg) e imágenes
         // embebidas (QR/etiquetas, blobs). El origen del tileserver self-host se agrega en runtime desde
         // config/maps.php (ver contentSecurityPolicy): así el admin funciona con tiles propios sin editar el código.
-        'img-src' => ["'self'", 'data:', 'blob:', 'https://unpkg.com', 'https://*.tile.openstreetmap.org'],
-        'font-src' => ["'self'", 'data:', 'https://fonts.bunny.net', 'https://fonts.gstatic.com'],
+        'img-src' => ["'self'", 'data:', 'blob:', 'https://unpkg.com', 'https://tile.openstreetmap.org', 'https://*.tile.openstreetmap.org'],
+        // Fuentes propias (Open Sans auto-hospedado como woff2 bajo 'self') + data: para íconos inline.
+        'font-src' => ["'self'", 'data:'],
         // Peticiones XHR/fetch de Livewire: mismo origen.
         'connect-src' => ["'self'"],
         'worker-src' => ["'self'", 'blob:'],

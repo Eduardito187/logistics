@@ -19,7 +19,7 @@ final class OutboxHealthWidget extends StatsOverviewWidget
 {
     use ReadsControlTowerData;
 
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 4;
 
     protected ?string $heading = 'Outbox health';
 

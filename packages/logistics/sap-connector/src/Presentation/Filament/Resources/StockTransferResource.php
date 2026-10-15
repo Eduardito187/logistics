@@ -17,6 +17,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\SapConnector\Application\Command\AcknowledgeStockTransfer\AcknowledgeStockTransfer;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
@@ -37,11 +38,13 @@ use UnitEnum;
  */
 final class StockTransferResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = StockTransferRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-arrow-path-rounded-square';
 
-    protected static string | UnitEnum | null $navigationGroup = 'Integrations';
+    protected static string | UnitEnum | null $navigationGroup = 'Administration';
 
     protected static ?string $navigationLabel = 'SAP stock transfers';
 
@@ -51,7 +54,12 @@ final class StockTransferResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Integrations');
+        return __('Administration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 32;
     }
 
     public static function getNavigationLabel(): string
@@ -89,9 +97,8 @@ final class StockTransferResource extends Resource
             TextEntry::make('shipment_ref')
                 ->label(__('Shipment'))
                 ->copyable(),
-            TextEntry::make('event_id')
-                ->label(__('Reception event'))
-                ->copyable(),
+            // event_id (UUID de la recepción) es técnico sin valor legible: no se muestra. La referencia
+            // de negocio del traspaso es shipment_ref (y el SKU/material de abajo).
             TextEntry::make('mapping.sku')
                 ->label(__('Platform SKU'))
                 ->placeholder(__('Unmapped')),
@@ -129,10 +136,7 @@ final class StockTransferResource extends Resource
                     ->label(__('Shipment'))
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('event_id')
-                    ->label(__('Reception event'))
-                    ->searchable()
-                    ->toggleable(),
+                // event_id (UUID de la recepción) es técnico sin valor legible: no se muestra en la tabla.
                 TextColumn::make('mapping.sku')
                     ->label(__('Platform SKU'))
                     ->placeholder(__('Unmapped'))

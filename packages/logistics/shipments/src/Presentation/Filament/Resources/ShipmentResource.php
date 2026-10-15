@@ -97,7 +97,7 @@ final class ShipmentResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Shipments');
+        return __('Commerce');
     }
 
     /**

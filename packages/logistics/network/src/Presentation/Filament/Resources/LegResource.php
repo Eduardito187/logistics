@@ -41,7 +41,7 @@ final class LegResource extends Resource
 {
     protected static ?string $model = LegRecord::class;
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 12;
 
     public static function getNavigationIcon(): string
     {
@@ -155,10 +155,7 @@ final class LegResource extends Resource
                     ->label(__('Corridor type'))
                     ->badge()
                     ->formatStateUsing(static fn (string $state): string => __(CorridorType::from($state)->label())),
-                // Identificador técnico: oculto por defecto, disponible para soporte.
-                TextColumn::make('id')
-                    ->label(__('Internal ID'))
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // El UUID del tramo no se muestra: el tramo se identifica por origen → destino (nombre de nodo).
             ])
             ->filters([
                 SelectFilter::make('corridor_type')

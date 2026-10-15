@@ -11,14 +11,18 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -31,8 +35,10 @@ use Logistics\Fleet\Presentation\Filament\Resources\VehicleResource\Pages\Create
 use Logistics\Fleet\Presentation\Filament\Resources\VehicleResource\Pages\EditVehicle;
 use Logistics\Fleet\Presentation\Filament\Resources\VehicleResource\Pages\ListVehicles;
 use Logistics\Fleet\Presentation\Filament\Resources\VehicleResource\Pages\ViewVehicle;
+use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\ImageFallback;
 
 /**
  * Resource de administración de vehículos de la flota.
@@ -85,67 +91,140 @@ final class VehicleResource extends Resource
         $lockedOnEdit = static fn (string $operation): bool => $operation === 'edit';
 
         return $schema->components([
-            TextInput::make('plate')
-                ->label(__('Plate'))
-                ->required()
-                ->maxLength(20)
-                ->disabled($lockedOnEdit),
-
-            TextInput::make('capacity_kg')
-                ->label(__('Capacity (kg)'))
-                ->numeric()
-                ->minValue(1)
-                ->required()
-                ->disabled($lockedOnEdit),
-
-            TextInput::make('capacity_m3')
-                ->label(__('Capacity (m³)'))
-                ->numeric()
-                ->minValue(0)
-                ->step(0.001)
-                ->required()
-                ->disabled($lockedOnEdit),
-
-            Select::make('home_base_node_id')
-                ->label(__('Home base'))
-                ->required()
-                ->native(false)
-                ->searchable()
-                ->disabled($lockedOnEdit)
-                // Datos reales desde la red de nodos: búsqueda por nombre o código.
-                ->getSearchResultsUsing(static fn (string $search): array => NodeRecord::query()
-                    ->where('name', 'ilike', "%{$search}%")
-                    ->orWhere('code', 'ilike', "%{$search}%")
-                    ->orderBy('name')
-                    ->limit(50)
-                    ->pluck('name', 'id')
-                    ->all())
-                ->getOptionLabelUsing(static fn (string $value): ?string => NodeRecord::query()
-                    ->whereKey($value)
-                    ->value('name')),
-
-            Select::make('status')
-                ->label(__('Status'))
-                ->required()
-                ->native(false)
-                ->options(self::statusOptions()),
-
-            Repeater::make('documents')
-                ->label(__('Documents'))
-                ->disabled($lockedOnEdit)
+            Section::make(__('Registration'))
                 ->schema([
-                    TextInput::make('type')
-                        ->label(__('Document type'))
+                    TextInput::make('plate')
+                        ->label(__('Plate'))
                         ->required()
-                        ->maxLength(50),
-                    DatePicker::make('expires_on')
-                        ->label(__('Expires on'))
+                        ->maxLength(20)
+                        ->disabled($lockedOnEdit),
+
+                    TextInput::make('capacity_kg')
+                        ->label(__('Capacity (kg)'))
+                        ->numeric()
+                        ->minValue(1)
+                        ->required()
+                        ->disabled($lockedOnEdit),
+
+                    TextInput::make('capacity_m3')
+                        ->label(__('Capacity (m³)'))
+                        ->numeric()
+                        ->minValue(0)
+                        ->step(0.001)
+                        ->required()
+                        ->disabled($lockedOnEdit),
+
+                    Select::make('home_base_node_id')
+                        ->label(__('Home base'))
+                        ->required()
                         ->native(false)
+                        ->searchable()
+                        ->disabled($lockedOnEdit)
+                        // Datos reales desde la red de nodos: búsqueda por nombre o código.
+                        ->getSearchResultsUsing(static fn (string $search): array => NodeRecord::query()
+                            ->where('name', 'ilike', "%{$search}%")
+                            ->orWhere('code', 'ilike', "%{$search}%")
+                            ->orderBy('name')
+                            ->limit(50)
+                            ->pluck('name', 'id')
+                            ->all())
+                        ->getOptionLabelUsing(static fn (string $value): ?string => NodeRecord::query()
+                            ->whereKey($value)
+                            ->value('name')),
+
+                    Select::make('status')
+                        ->label(__('Status'))
                         ->required()
-                        ->format('Y-m-d'),
+                        ->native(false)
+                        ->options(self::statusOptions()),
+
+                    Repeater::make('documents')
+                        ->label(__('Documents'))
+                        ->disabled($lockedOnEdit)
+                        ->schema([
+                            TextInput::make('type')
+                                ->label(__('Document type'))
+                                ->required()
+                                ->maxLength(50),
+                            DatePicker::make('expires_on')
+                                ->label(__('Expires on'))
+                                ->native(false)
+                                ->required()
+                                ->format('Y-m-d'),
+                        ])
+                        ->columns(2)
+                        ->default([])
+                        ->columnSpanFull(),
                 ])
-                ->columns(2)
-                ->default([]),
+                ->columns(2),
+
+            // Ficha técnica y fotos: solo se gestionan en edición (el alta solo registra placa/capacidad).
+            Section::make(__('Vehicle details'))
+                ->visibleOn('edit')
+                ->schema([
+                    TextInput::make('make')
+                        ->label(__('Make'))
+                        ->maxLength(80),
+
+                    TextInput::make('model')
+                        ->label(__('Model'))
+                        ->maxLength(80),
+
+                    TextInput::make('model_year')
+                        ->label(__('Model year'))
+                        ->numeric()
+                        ->minValue(1950)
+                        ->maxValue((int) date('Y') + 1),
+
+                    TextInput::make('vin')
+                        ->label(__('VIN'))
+                        ->maxLength(40),
+
+                    TextInput::make('engine_number')
+                        ->label(__('Engine number'))
+                        ->maxLength(40),
+
+                    TextInput::make('color')
+                        ->label(__('Color'))
+                        ->maxLength(40),
+
+                    FileUpload::make('photo_front')
+                        ->label(__('Front photo'))
+                        ->disk(self::documentsDisk())
+                        ->directory('fleet-vehicle-photos')
+                        ->visibility('private')
+                        ->image()
+                        ->imageEditor()
+                        ->acceptedFileTypes(['image/jpeg', 'image/png']),
+
+                    FileUpload::make('photo_back')
+                        ->label(__('Back photo'))
+                        ->disk(self::documentsDisk())
+                        ->directory('fleet-vehicle-photos')
+                        ->visibility('private')
+                        ->image()
+                        ->imageEditor()
+                        ->acceptedFileTypes(['image/jpeg', 'image/png']),
+
+                    FileUpload::make('photo_left')
+                        ->label(__('Left photo'))
+                        ->disk(self::documentsDisk())
+                        ->directory('fleet-vehicle-photos')
+                        ->visibility('private')
+                        ->image()
+                        ->imageEditor()
+                        ->acceptedFileTypes(['image/jpeg', 'image/png']),
+
+                    FileUpload::make('photo_right')
+                        ->label(__('Right photo'))
+                        ->disk(self::documentsDisk())
+                        ->directory('fleet-vehicle-photos')
+                        ->visibility('private')
+                        ->image()
+                        ->imageEditor()
+                        ->acceptedFileTypes(['image/jpeg', 'image/png']),
+                ])
+                ->columns(2),
         ]);
     }
 
@@ -153,22 +232,43 @@ final class VehicleResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // Foto frontal cuadrada pequeña; si falta o el disco no es alcanzable, pinta el placeholder.
+                ImageColumn::make('photo_front')
+                    ->label(__('Photo'))
+                    ->square()
+                    ->imageSize(40)
+                    ->checkFileExistence(false)
+                    ->getStateUsing(static fn (VehicleModel $record): ?string => ImageFallback::diskUrl(self::documentsDisk(), $record->photo_front))
+                    ->defaultImageUrl(ImageFallback::placeholder('box'))
+                    ->extraImgAttributes(ImageFallback::onError('box')),
                 TextColumn::make('plate')
                     ->label(__('Plate'))
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('make')
+                    ->label(__('Make'))
+                    ->placeholder('—')
+                    ->searchable()
+                    ->sortable(),
+                TextColumn::make('model')
+                    ->label(__('Model'))
+                    ->placeholder('—')
+                    ->searchable()
+                    ->sortable(),
+                TextColumn::make('model_year')
+                    ->label(__('Model year'))
+                    ->placeholder('—')
+                    ->sortable(),
                 TextColumn::make('capacity_kg')
                     ->label(__('Capacity (kg)'))
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(),
                 TextColumn::make('capacity_m3')
                     ->label(__('Capacity (m³)'))
                     ->numeric(decimalPlaces: 3)
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(),
                 // Nombre legible del nodo base vía la relación Eloquent (eager-cargada), no el UUID.
                 TextColumn::make('homeBaseNode.name')
                     ->label(__('Home base'))
@@ -208,24 +308,69 @@ final class VehicleResource extends Resource
     public static function infolist(Schema $schema): Schema
     {
         return $schema->components([
-            TextEntry::make('plate')->label(__('Plate'))->copyable(),
-            TextEntry::make('capacity_kg')->label(__('Capacity (kg)'))->numeric(),
-            TextEntry::make('capacity_m3')->label(__('Capacity (m³)'))->numeric(decimalPlaces: 3),
-            TextEntry::make('homeBaseNode.name')
-                ->label(__('Home base'))
-                ->placeholder('—'),
-            TextEntry::make('status')
-                ->label(__('Status'))
-                ->badge()
-                ->formatStateUsing(static fn (string $state): string => __(VehicleStatus::from($state)->label())),
+            Section::make(__('Registration'))
+                ->schema([
+                    TextEntry::make('plate')->label(__('Plate'))->copyable(),
+                    TextEntry::make('capacity_kg')->label(__('Capacity (kg)'))->numeric(),
+                    TextEntry::make('capacity_m3')->label(__('Capacity (m³)'))->numeric(decimalPlaces: 3),
+                    TextEntry::make('homeBaseNode.name')
+                        ->label(__('Home base'))
+                        ->placeholder('—'),
+                    TextEntry::make('status')
+                        ->label(__('Status'))
+                        ->badge()
+                        ->formatStateUsing(static fn (string $state): string => __(VehicleStatus::from($state)->label())),
+                ])
+                ->columns(2),
+
+            Section::make(__('Vehicle details'))
+                ->schema([
+                    TextEntry::make('make')->label(__('Make'))->placeholder('—'),
+                    TextEntry::make('model')->label(__('Model'))->placeholder('—'),
+                    TextEntry::make('model_year')->label(__('Model year'))->placeholder('—'),
+                    TextEntry::make('vin')->label(__('VIN'))->placeholder('—')->copyable(),
+                    TextEntry::make('engine_number')->label(__('Engine number'))->placeholder('—')->copyable(),
+                    TextEntry::make('color')->label(__('Color'))->placeholder('—'),
+                ])
+                ->columns(2),
+
+            Section::make(__('Photos'))
+                ->schema([
+                    self::photoEntry('photo_front', __('Front photo')),
+                    self::photoEntry('photo_back', __('Back photo')),
+                    self::photoEntry('photo_left', __('Left photo')),
+                    self::photoEntry('photo_right', __('Right photo')),
+                ])
+                ->columns(4),
+
             RepeatableEntry::make('documents')
-                ->label(__('Documents'))
+                ->label(__('Embedded documents'))
+                ->placeholder('—')
                 ->schema([
                     TextEntry::make('type')->label(__('Document type')),
                     TextEntry::make('expires_on')->label(__('Expires on'))->date('Y-m-d'),
                 ])
                 ->columns(2),
+
+            // Documentos administrables del vehículo (SOAT, inspección técnica, etc.) con estado y archivo.
+            OwnerDocuments::infolistSection('vehicle'),
         ]);
+    }
+
+    /**
+     * Entrada de imagen para una foto del vehículo guardada en disco, con placeholder y fallback de error
+     * (nunca se ve rota ni deja un hueco).
+     */
+    private static function photoEntry(string $field, string $label): ImageEntry
+    {
+        return ImageEntry::make($field)
+            ->label($label)
+            ->square()
+            ->imageSize(120)
+            ->checkFileExistence(false)
+            ->getStateUsing(static fn (VehicleModel $record): ?string => ImageFallback::diskUrl(self::documentsDisk(), $record->{$field}))
+            ->defaultImageUrl(ImageFallback::placeholder('box'))
+            ->extraImgAttributes(ImageFallback::onError('box'));
     }
 
     /**
@@ -298,5 +443,15 @@ final class VehicleResource extends Resource
         }
 
         return $options;
+    }
+
+    /**
+     * Disco donde se guardan fotos y archivos de flota (configurable por env).
+     */
+    private static function documentsDisk(): string
+    {
+        $disk = config('fleet.documents_disk');
+
+        return is_string($disk) && $disk !== '' ? $disk : 'local';
     }
 }

@@ -21,7 +21,7 @@ final class QueueHealthWidget extends StatsOverviewWidget
 {
     use ReadsControlTowerData;
 
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 5;
 
     protected ?string $heading = 'Queue health';
 

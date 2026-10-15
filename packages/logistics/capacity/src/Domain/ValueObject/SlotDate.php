@@ -48,6 +48,23 @@ final readonly class SlotDate
         return $this->value === $other->value;
     }
 
+    /**
+     * ¿Esta fecha es estrictamente posterior a la otra? El valor está normalizado a 'Y-m-d', cuyo orden
+     * lexicográfico coincide con el cronológico, así que basta comparar las cadenas.
+     */
+    public function isAfter(self $other): bool
+    {
+        return $this->value > $other->value;
+    }
+
+    /**
+     * ¿Esta fecha es anterior o igual a la otra?
+     */
+    public function isOnOrBefore(self $other): bool
+    {
+        return $this->value <= $other->value;
+    }
+
     public function toString(): string
     {
         return $this->value;

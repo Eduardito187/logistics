@@ -52,6 +52,7 @@ final class EditDriver extends EditRecord
             emergencyContactName: $this->blankToNull($data['emergency_contact_name'] ?? null),
             emergencyContactPhone: $this->blankToNull($data['emergency_contact_phone'] ?? null),
             references: $this->normalizeReferences($data['references'] ?? []),
+            licenseCity: $this->blankToNull($data['license_city'] ?? null),
         ));
 
         return $record->refresh();

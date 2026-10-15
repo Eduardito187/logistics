@@ -11,6 +11,7 @@ use Logistics\Planning\Domain\Contract\RoutingBackend;
 use Logistics\Planning\Domain\Service\ClarkeWrightSolver;
 use Logistics\Planning\Domain\Service\DepartmentRouteGrouping;
 use Logistics\Planning\Domain\Service\RouteSequencer;
+use Logistics\Planning\Domain\Service\VehicleCompatibility;
 use Logistics\Planning\Domain\ValueObject\AutoPlanParameters;
 use Logistics\Planning\Domain\ValueObject\DeliveryCandidate;
 use Logistics\Planning\Domain\ValueObject\DistanceMatrix;
@@ -43,6 +44,7 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
         private ClarkeWrightSolver $solver,
         private RouteSequencer $sequencer,
         private DepartmentRouteGrouping $grouping,
+        private VehicleCompatibility $compatibility,
     ) {}
 
     public function route(
@@ -68,6 +70,15 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
             if ($eligible === []) {
                 array_push($unassigned, ...$group);
 
+                continue;
+            }
+
+            // R-04: descarta de entrada los envíos que NINGÚN camión elegible puede servir (exceden
+            // altura/peso por bulto, zona no permitida o tipo de carga no admitido). Así no contaminan la
+            // matriz ni el VRP: van directo a no asignados. Sin restricciones, no se descarta nada.
+            [$group, $groupInfeasible] = $this->splitByServability($group, $eligible);
+            array_push($unassigned, ...$groupInfeasible);
+            if ($group === []) {
                 continue;
             }
 
@@ -153,7 +164,7 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
         $unassigned = [];
 
         foreach ($loaded as $route) {
-            $vehicle = $this->firstFittingVehicle($vehiclesByCapacity, $used, $route['kg'], $route['m3'], $ratio);
+            $vehicle = $this->firstFittingVehicle($vehiclesByCapacity, $used, $route['kg'], $route['m3'], $ratio, $route['stops'], $group);
             if ($vehicle === null) {
                 foreach ($route['stops'] as $stopIndex) {
                     $unassigned[] = $group[$stopIndex - 1];
@@ -232,22 +243,82 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
     }
 
     /**
-     * Primer camión aún sin usar cuya capacidad utilizable soporte la carga de la ruta.
+     * Primer camión aún sin usar cuya capacidad utilizable soporte la carga de la ruta Y que sea
+     * FACTIBLE para TODAS sus paradas (R-04: tipo de carga, zona, altura y peso por bulto). Una ruta que
+     * mezcla paradas sin un camión común que las pueda servir queda sin asignar (se descarta esa fusión).
      *
      * @param list<VehicleCapacitySpec> $vehicles
      * @param array<string, true>       $used
+     * @param list<int>                 $stops    índices de parada (1..n) de la ruta
+     * @param list<DeliveryCandidate>   $group
      */
-    private function firstFittingVehicle(array $vehicles, array $used, float $kg, float $m3, float $ratio): ?VehicleCapacitySpec
+    private function firstFittingVehicle(array $vehicles, array $used, float $kg, float $m3, float $ratio, array $stops, array $group): ?VehicleCapacitySpec
     {
         foreach ($vehicles as $vehicle) {
             if (isset($used[$vehicle->vehicleId])) {
                 continue;
             }
-            if ($vehicle->capacityKg * $ratio + 1e-9 >= $kg && $vehicle->capacityM3 * $ratio + 1e-9 >= $m3) {
-                return $vehicle;
+            if ($vehicle->capacityKg * $ratio + 1e-9 < $kg || $vehicle->capacityM3 * $ratio + 1e-9 < $m3) {
+                continue;
             }
+            if (!$this->vehicleServesAll($vehicle, $stops, $group)) {
+                continue;
+            }
+
+            return $vehicle;
         }
 
         return null;
+    }
+
+    /**
+     * ¿El camión es factible para todas las paradas de la ruta? (R-04). Con perfil/requisitos vacíos,
+     * siempre true (comportamiento previo).
+     *
+     * @param list<int>               $stops índices de parada (1..n)
+     * @param list<DeliveryCandidate> $group
+     */
+    private function vehicleServesAll(VehicleCapacitySpec $vehicle, array $stops, array $group): bool
+    {
+        foreach ($stops as $stopIndex) {
+            if (!$this->compatibility->canServe($vehicle->profile, $group[$stopIndex - 1]->requirement)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Parte el grupo en (servibles, infactibles): un envío es servible si AL MENOS un camión elegible
+     * puede llevarlo (R-04). Los infactibles van directo a no asignados. Sin restricciones, todos servibles.
+     *
+     * @param  list<DeliveryCandidate>                                  $group
+     * @param  list<VehicleCapacitySpec>                                $eligible
+     * @return array{0: list<DeliveryCandidate>, 1: list<DeliveryCandidate>}
+     */
+    private function splitByServability(array $group, array $eligible): array
+    {
+        /** @var list<DeliveryCandidate> $servable */
+        $servable = [];
+        /** @var list<DeliveryCandidate> $infeasible */
+        $infeasible = [];
+
+        foreach ($group as $candidate) {
+            $canBeServed = false;
+            foreach ($eligible as $vehicle) {
+                if ($this->compatibility->canServe($vehicle->profile, $candidate->requirement)) {
+                    $canBeServed = true;
+                    break;
+                }
+            }
+            if ($canBeServed) {
+                $servable[] = $candidate;
+            } else {
+                $infeasible[] = $candidate;
+            }
+        }
+
+        return [$servable, $infeasible];
     }
 }

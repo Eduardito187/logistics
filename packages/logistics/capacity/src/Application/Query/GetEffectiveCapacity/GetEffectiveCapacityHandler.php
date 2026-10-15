@@ -34,7 +34,7 @@ final readonly class GetEffectiveCapacityHandler implements QueryHandler
     {
         assert($query instanceof GetEffectiveCapacityQuery);
 
-        $scope = BucketScope::fromNullable($query->nodeId, $query->zoneId);
+        $scope = BucketScope::fromNullable($query->nodeId, $query->zoneId, $query->municipalityId);
         $date = SlotDate::fromString($query->date);
         $slot = TimeSlot::fromString($query->timeSlot);
         $unit = CapacityUnit::tryFrom($query->unit)

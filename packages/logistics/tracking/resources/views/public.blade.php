@@ -3,6 +3,16 @@
 @php
     /** @var array{status:string,remaining_stops:int,route_position:?int,eta:?string,last_position:?array{lat:float,lng:float,reported_at:string},position_is_live:?bool,stops_message:string} $tracking */
     /** @var list<array{label:string,status:string,status_message:string}> $units */
+    /** @var string $publicToken */
+    /** @var bool $canSurvey */
+    /** @var bool $surveyRecorded */
+    /** @var ?string $vapidPublicKey */
+
+    // Valores por defecto defensivos: la página sigue renderizando aunque falte alguna variable.
+    $publicToken = $publicToken ?? '';
+    $canSurvey = $canSurvey ?? false;
+    $surveyRecorded = $surveyRecorded ?? false;
+    $vapidPublicKey = $vapidPublicKey ?? null;
 
     // Etiqueta legible del estado (español, copy de cliente).
     $statusLabels = [
@@ -82,6 +92,25 @@
         .unit-label { font-weight: 600; }
         .unit-status { color: var(--muted); font-size: 14px; text-align: right; }
         footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 24px; }
+
+        /* Encuesta de satisfacción (K-06): selector de estrellas accesible y comentario opcional. */
+        .survey-stars { display: flex; flex-direction: row-reverse; justify-content: center; gap: 6px; margin: 8px 0 14px; }
+        .survey-stars input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+        .survey-stars label { font-size: 34px; line-height: 1; color: var(--line); cursor: pointer; transition: color .1s; }
+        .survey-stars label:hover,
+        .survey-stars label:hover ~ label,
+        .survey-stars input:checked ~ label { color: #f59e0b; }
+        .survey-stars input:focus-visible + label { outline: 2px solid var(--dismac-red); outline-offset: 2px; border-radius: 4px; }
+        .survey-field { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+            font: inherit; color: var(--ink); resize: vertical; min-height: 72px; margin-bottom: 12px; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+            padding: 12px 16px; border: 0; border-radius: 10px; background: var(--dismac-red); color: #fff;
+            font: inherit; font-weight: 700; cursor: pointer; }
+        .btn:disabled { opacity: .55; cursor: default; }
+        .btn.secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+        .form-note { font-size: 13px; color: var(--muted); margin-top: 10px; text-align: center; }
+        .form-note.error { color: var(--dismac-red); }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -132,11 +161,51 @@
         </div>
     @endif
 
+    @if ($vapidPublicKey && $status !== 'DELIVERED' && $status !== 'FAILED')
+        {{-- Web Push (K-04): botón "Notificarme". Oculto por defecto; el JS lo muestra solo si el --}}
+        {{-- navegador soporta Service Worker + Push. Degrada en silencio si no hay soporte. --}}
+        <div class="card hidden" id="push-card">
+            <h2>Avísame de novedades</h2>
+            <p style="margin:0 0 12px;color:var(--muted);font-size:14px;">
+                Activa las notificaciones para enterarte cuando tu pedido avance.
+            </p>
+            <button type="button" class="btn secondary" id="push-button">Notificarme</button>
+            <div class="form-note hidden" id="push-note"></div>
+        </div>
+    @endif
+
+    @if ($surveyRecorded)
+        <div class="card" id="survey-done">
+            <h2>Gracias por tu opinión</h2>
+            <p style="margin:0;color:var(--muted);font-size:14px;">Ya recibimos tu calificación de esta entrega.</p>
+        </div>
+    @elseif ($canSurvey)
+        {{-- Encuesta de satisfacción (K-06): solo si el envío está entregado y aún no hay respuesta. --}}
+        <div class="card" id="survey-card">
+            <h2>¿Cómo estuvo tu entrega?</h2>
+            <p style="margin:0;color:var(--muted);font-size:14px;">Califícala del 1 al 5.</p>
+            <form id="survey-form">
+                <div class="survey-stars" role="radiogroup" aria-label="Calificación de la entrega">
+                    {{-- En orden inverso (5→1) para que el CSS :hover ilumine de izquierda a derecha. --}}
+                    @foreach ([5, 4, 3, 2, 1] as $star)
+                        <input type="radio" name="rating" id="star-{{ $star }}" value="{{ $star }}" required>
+                        <label for="star-{{ $star }}" title="{{ $star }}" aria-label="{{ $star }}">&#9733;</label>
+                    @endforeach
+                </div>
+                <textarea class="survey-field" id="survey-comment" name="comment" maxlength="1000"
+                          placeholder="Cuéntanos qué tal (opcional)"></textarea>
+                <button type="submit" class="btn" id="survey-submit">Enviar calificación</button>
+                <div class="form-note hidden" id="survey-note"></div>
+            </form>
+        </div>
+    @endif
+
     <footer>Dismac &middot; Este enlace es privado, no lo compartas.</footer>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{{ asset('js/dismac-maps.js') }}"></script>
 <script>
     (function () {
         var tracking = @json($tracking);
@@ -156,8 +225,11 @@
 
         if (pos && typeof L !== 'undefined') {
             var map = L.map('map', { scrollWheelZoom: false }).setView([pos.lat, pos.lng], 14);
-            {{-- Teselas self-host (tileserver OSM del proyecto); si MAP_TILE_URL está vacío, cae al tile público de OSM. --}}
-            L.tileLayer(@js(config('maps.tile_url') ?: config('maps.tile_fallback_url')), {
+            {{-- Teselas self-host con fallback automático al OSM público (helper compartido): si el --}}
+            {{-- tileserver del proyecto no responde, la capa baja sola al tile público y el mapa no queda gris. --}}
+            window.DismacMaps.tileLayer(L, {
+                url: @js(config('maps.tile_url')),
+                fallbackUrl: @js(config('maps.tile_fallback_url')),
                 attribution: @js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
                 maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
             }).addTo(map);
@@ -172,6 +244,121 @@
                     metaEl.textContent = metaEl.textContent + (mins === 0 ? ' · ahora' : ' · hace ' + mins + ' min');
                 } catch (e) { /* se deja el texto base */ }
             }
+        }
+    })();
+</script>
+<script>
+    // Encuesta de satisfacción (K-06) y Web Push (K-04) de la página pública. El token es la credencial;
+    // viaja en la URL de cada POST. Sin PII. Degrada en silencio si el navegador no soporta push.
+    (function () {
+        var token = @json($publicToken);
+        var vapidKey = @json($vapidPublicKey);
+        var surveyUrl = '/t/' + encodeURIComponent(token) + '/survey';
+        var pushUrl = '/t/' + encodeURIComponent(token) + '/push-subscriptions';
+        var swUrl = '/t/sw.js';
+
+        function showNote(el, message, isError) {
+            if (!el) { return; }
+            el.textContent = message;
+            el.classList.remove('hidden');
+            el.classList.toggle('error', !!isError);
+        }
+
+        // ── Encuesta de satisfacción ───────────────────────────────────────────
+        var surveyForm = document.getElementById('survey-form');
+        if (surveyForm) {
+            surveyForm.addEventListener('submit', function (event) {
+                event.preventDefault();
+                var note = document.getElementById('survey-note');
+                var submit = document.getElementById('survey-submit');
+                var ratingEl = surveyForm.querySelector('input[name="rating"]:checked');
+                if (!ratingEl) {
+                    showNote(note, 'Elige cuántas estrellas.', true);
+                    return;
+                }
+                var comment = (document.getElementById('survey-comment') || {}).value || '';
+                submit.disabled = true;
+
+                fetch(surveyUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({ rating: Number(ratingEl.value), comment: comment }),
+                }).then(function (res) {
+                    if (res.ok) {
+                        var card = document.getElementById('survey-card');
+                        if (card) {
+                            card.innerHTML = '<h2>Gracias por tu opinión</h2>' +
+                                '<p style="margin:0;color:var(--muted);font-size:14px;">' +
+                                'Registramos tu calificación de esta entrega.</p>';
+                        }
+                        return;
+                    }
+                    submit.disabled = false;
+                    if (res.status === 409) {
+                        showNote(note, 'Esta entrega ya fue calificada.', true);
+                    } else {
+                        showNote(note, 'No pudimos registrar tu calificación. Intenta más tarde.', true);
+                    }
+                }).catch(function () {
+                    submit.disabled = false;
+                    showNote(note, 'No pudimos registrar tu calificación. Intenta más tarde.', true);
+                });
+            });
+        }
+
+        // ── Web Push ───────────────────────────────────────────────────────────
+        // Pasa una clave VAPID base64url a Uint8Array (lo que espera applicationServerKey).
+        function urlBase64ToUint8Array(base64String) {
+            var padding = '='.repeat((4 - base64String.length % 4) % 4);
+            var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            var raw = atob(base64);
+            var output = new Uint8Array(raw.length);
+            for (var i = 0; i < raw.length; i++) { output[i] = raw.charCodeAt(i); }
+            return output;
+        }
+
+        var pushCard = document.getElementById('push-card');
+        var pushButton = document.getElementById('push-button');
+        var supportsPush = ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+
+        if (pushCard && pushButton && vapidKey && supportsPush) {
+            // El soporte existe: recién ahí se muestra la tarjeta (degradación elegante).
+            pushCard.classList.remove('hidden');
+            var pushNote = document.getElementById('push-note');
+
+            pushButton.addEventListener('click', function () {
+                pushButton.disabled = true;
+                Notification.requestPermission().then(function (permission) {
+                    if (permission !== 'granted') {
+                        pushButton.disabled = false;
+                        showNote(pushNote, 'Activa los permisos de notificación para recibir avisos.', true);
+                        return;
+                    }
+                    return navigator.serviceWorker.register(swUrl).then(function (reg) {
+                        return reg.pushManager.subscribe({
+                            userVisibleOnly: true,
+                            applicationServerKey: urlBase64ToUint8Array(vapidKey),
+                        });
+                    }).then(function (subscription) {
+                        return fetch(pushUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                            body: JSON.stringify(subscription),
+                        });
+                    }).then(function (res) {
+                        if (res && res.ok) {
+                            showNote(pushNote, 'Listo: te avisaremos de las novedades de tu pedido.', false);
+                            pushButton.textContent = 'Notificaciones activadas';
+                        } else {
+                            pushButton.disabled = false;
+                            showNote(pushNote, 'No pudimos activar las notificaciones. Intenta más tarde.', true);
+                        }
+                    });
+                }).catch(function () {
+                    pushButton.disabled = false;
+                    showNote(pushNote, 'No pudimos activar las notificaciones. Intenta más tarde.', true);
+                });
+            });
         }
     })();
 </script>

@@ -44,7 +44,12 @@ final class CarrierResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Carriers');
+        return __('Commerce');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 20;
     }
 
     public static function getNavigationIcon(): string

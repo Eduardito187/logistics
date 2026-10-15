@@ -51,7 +51,7 @@ final class DocumentResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-document-text';
 
-    protected static ?int $navigationSort = 50;
+    protected static ?int $navigationSort = 20;
 
     public static function getNavigationGroup(): string
     {
@@ -198,10 +198,6 @@ final class DocumentResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('owner_type')
                     ->label(__('Owner type'))
                     ->badge()

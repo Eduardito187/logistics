@@ -19,9 +19,13 @@
             init() {
                 const el = this.$refs.map;
                 this.map = L.map(el).setView([-16.5, -68.15], 11); // Bolivia
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap',
-                    maxZoom: 19,
+                // Teselas self-host con fallback automático al OSM público (helper compartido): si el
+                // tileserver del proyecto no responde, la capa baja sola al tile público y el mapa no queda gris.
+                window.DismacMaps.tileLayer(L, {
+                    url: @js(config('maps.tile_url')),
+                    fallbackUrl: @js(config('maps.tile_fallback_url')),
+                    attribution: @js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
+                    maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
                 }).addTo(this.map);
 
                 // Controles de Geoman: solo polígono (dibujar, editar, arrastrar, borrar).
@@ -110,6 +114,7 @@
     @assets
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script src="{{ asset('js/dismac-maps.js') }}"></script>
         <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css" />
         <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
     @endassets

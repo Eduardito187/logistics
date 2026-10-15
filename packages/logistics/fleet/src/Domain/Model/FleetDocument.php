@@ -29,10 +29,13 @@ final class FleetDocument extends AggregateRoot
         private readonly ?DateTimeImmutable $issuedOn,
         private readonly ?string $filePath,
         private readonly ?string $note,
+        private readonly ?string $reference,
     ) {}
 
     /**
      * Registra un documento de flota nuevo.
+     *
+     * `reference` es el nº de póliza/serie (SOAT) o nº de certificado (inspección técnica), opcional.
      */
     public static function register(
         FleetDocumentId $id,
@@ -42,8 +45,9 @@ final class FleetDocument extends AggregateRoot
         ?DateTimeImmutable $issuedOn = null,
         ?string $filePath = null,
         ?string $note = null,
+        ?string $reference = null,
     ): self {
-        $doc = new self($id, $ownerType, $ownerId, $document, $issuedOn, $filePath, $note);
+        $doc = new self($id, $ownerType, $ownerId, $document, $issuedOn, $filePath, $note, $reference);
         $doc->recordEvent(new DocumentRegistered(
             $id->toString(),
             $ownerType->value,
@@ -52,6 +56,7 @@ final class FleetDocument extends AggregateRoot
             $document->expiresOn->format('Y-m-d'),
             $issuedOn?->format('Y-m-d'),
             $filePath,
+            $reference,
         ));
 
         return $doc;
@@ -68,8 +73,9 @@ final class FleetDocument extends AggregateRoot
         ?DateTimeImmutable $issuedOn,
         ?string $filePath,
         ?string $note,
+        ?string $reference = null,
     ): self {
-        return new self($id, $ownerType, $ownerId, $document, $issuedOn, $filePath, $note);
+        return new self($id, $ownerType, $ownerId, $document, $issuedOn, $filePath, $note, $reference);
     }
 
     public function expiresWithin(int $days, DateTimeImmutable $ref): bool
@@ -115,5 +121,10 @@ final class FleetDocument extends AggregateRoot
     public function note(): ?string
     {
         return $this->note;
+    }
+
+    public function reference(): ?string
+    {
+        return $this->reference;
     }
 }

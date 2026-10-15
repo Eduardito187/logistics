@@ -17,6 +17,7 @@ return [
     // Zoom máximo que ofrecen las teselas.
     'tile_max_zoom' => (int) env('MAP_TILE_MAX_ZOOM', 19),
 
-    // URL pública de OSM usada SOLO como fallback cuando no hay tileserver self-host configurado.
-    'tile_fallback_url' => 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    // URL pública de OSM usada como fallback cuando el tileserver self-host no está disponible. Se usa el
+    // endpoint moderno SIN subdominio (tile.openstreetmap.org), más fiable que el patrón {s} ya en desuso.
+    'tile_fallback_url' => 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
 ];

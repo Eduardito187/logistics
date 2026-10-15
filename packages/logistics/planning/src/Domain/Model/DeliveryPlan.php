@@ -6,6 +6,7 @@ namespace Logistics\Planning\Domain\Model;
 
 use Logistics\Planning\Domain\Event\PlanProposed;
 use Logistics\Planning\Domain\Event\PlanPublished;
+use Logistics\Planning\Domain\Event\RouteReoptimized;
 use Logistics\Planning\Domain\Event\StopRemovedFromPlan;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\ValueObject\Eta;
@@ -141,6 +142,47 @@ final class DeliveryPlan extends AggregateRoot
             $this->date->toString(),
             $this->vehicleId,
             count($this->stops),
+        ));
+    }
+
+    /**
+     * RE-OPTIMIZACIÓN incremental (R-05): aplica un nuevo orden de reparto y una nueva ETA calculados por
+     * el re-secuenciador ante un cambio del día (nuevo pedido, cancelación, incidente), sin rehacer el
+     * resto del día. A diferencia de reorderStops (ajuste humano que conserva la ETA), acá se recalcula la
+     * ETA de cada parada. Invalida la geometría guardada (el orden cambió) y graba RouteReoptimized.
+     *
+     * No se puede sobre un plan publicado (su hoja de ruta ya está congelada). El orden debe ser
+     * exactamente el conjunto de envíos del plan; debe traer la ETA de cada uno.
+     *
+     * @param list<string>       $orderedShipmentIds envíos en el nuevo orden de reparto
+     * @param array<string, Eta> $etas               ETA por id de envío
+     */
+    public function reoptimizeTo(array $orderedShipmentIds, array $etas, string $reason): void
+    {
+        $this->guardNotPublished('re-optimizar la ruta');
+
+        if ($this->stops === []) {
+            throw PlanningException::because('no se puede re-optimizar un plan sin paradas');
+        }
+
+        $this->applyOrder($orderedShipmentIds);
+
+        foreach ($this->stops as $stop) {
+            $shipmentId = $stop->shipmentId();
+            if (!isset($etas[$shipmentId])) {
+                throw PlanningException::because("falta la ETA del envío {$shipmentId} en la re-optimización");
+            }
+            $stop->arriveAt($etas[$shipmentId]);
+        }
+
+        $this->geometry = null;
+
+        $this->recordEvent(new RouteReoptimized(
+            $this->id->toString(),
+            $this->date->toString(),
+            $this->vehicleId,
+            count($this->stops),
+            trim($reason) === '' ? 'manual' : trim($reason),
         ));
     }
 

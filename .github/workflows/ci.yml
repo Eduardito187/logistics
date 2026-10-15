@@ -113,8 +113,12 @@ jobs:
           # PostGIS resuelve zonas de cobertura, geocercas y distancias (ADR 003); la suite lo necesita.
           PGPASSWORD=logistics psql -h 127.0.0.1 -U logistics -d logistics_test -c 'CREATE EXTENSION IF NOT EXISTS postgis;'
 
-      - name: Pest
-        run: ./vendor/bin/pest
+      # Gate de cobertura (V-15): corre la suite con pcov y falla el build si la cobertura de
+      # líneas baja de 75%. Es el mismo comando que `composer test:coverage`
+      # (pest --coverage --min=75). El umbral NO se baja: si un cambio reduce cobertura, se
+      # agregan tests, no se afloja el gate.
+      - name: Pest (con gate de cobertura --min=75)
+        run: ./vendor/bin/pest --coverage --min=75
 
   assets:
     name: Build admin theme

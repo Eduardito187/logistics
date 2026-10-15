@@ -40,11 +40,11 @@ final class ExpenseResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'description';
 
-    protected static ?int $navigationSort = 80;
+    protected static ?int $navigationSort = 44;
 
     public static function getNavigationGroup(): string
     {
-        return __('Fleet Ops');
+        return __('Fleet');
     }
 
     public static function getNavigationIcon(): string

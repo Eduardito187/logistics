@@ -20,6 +20,7 @@ final readonly class DocumentView
         public ?string $issuedOn,
         public ?string $filePath,
         public ?string $note,
+        public ?string $reference,
     ) {}
 
     public static function fromDomain(FleetDocument $document): self
@@ -33,11 +34,12 @@ final readonly class DocumentView
             $document->issuedOn()?->format('Y-m-d'),
             $document->filePath(),
             $document->note(),
+            $document->reference(),
         );
     }
 
     /**
-     * @return array{id: string, owner_type: string, owner_id: string, document_type: string, expires_on: string, issued_on: string|null, file_path: string|null, note: string|null}
+     * @return array{id: string, owner_type: string, owner_id: string, document_type: string, expires_on: string, issued_on: string|null, file_path: string|null, note: string|null, reference: string|null}
      */
     public function toArray(): array
     {
@@ -50,6 +52,7 @@ final readonly class DocumentView
             'issued_on' => $this->issuedOn,
             'file_path' => $this->filePath,
             'note' => $this->note,
+            'reference' => $this->reference,
         ];
     }
 }

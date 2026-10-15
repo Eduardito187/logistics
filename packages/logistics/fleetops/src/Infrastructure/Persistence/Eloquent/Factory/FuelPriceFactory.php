@@ -31,6 +31,7 @@ final class FuelPriceFactory extends Factory
             'currency' => 'BOB',
             'effective_from' => '2026-01-01',
             'source' => $this->faker->randomElement(['ANH', 'manual', null]),
+            'active' => true,
         ];
     }
 

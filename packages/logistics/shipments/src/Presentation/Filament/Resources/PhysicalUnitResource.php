@@ -38,7 +38,7 @@ final class PhysicalUnitResource extends Resource
 {
     protected static ?string $model = PhysicalUnitRecord::class;
 
-    protected static ?int $navigationSort = 30;
+    protected static ?int $navigationSort = 14;
 
     /**
      * Título humano del bulto: referencia del pedido + posición "unidad/total" (nunca el UUID crudo).
@@ -71,7 +71,7 @@ final class PhysicalUnitResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Shipments');
+        return __('Commerce');
     }
 
     public static function getModelLabel(): string

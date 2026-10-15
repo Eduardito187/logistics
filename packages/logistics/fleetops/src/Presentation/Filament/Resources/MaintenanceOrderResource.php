@@ -15,6 +15,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use Logistics\FleetOps\Application\Command\CancelMaintenance\CancelMaintenance;
 use Logistics\FleetOps\Application\Command\CompleteMaintenance\CompleteMaintenance;
 use Logistics\FleetOps\Application\Command\StartMaintenance\StartMaintenance;
@@ -39,11 +40,26 @@ final class MaintenanceOrderResource extends Resource
 {
     protected static ?string $model = MaintenanceOrderRecord::class;
 
-    protected static ?string $recordTitleAttribute = 'id';
-
     public static function getNavigationGroup(): string
     {
-        return __('Fleet Ops');
+        return __('Fleet');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 42;
+    }
+
+    /**
+     * Título legible del registro: la placa del vehículo, nunca el UUID (regla: ningún UUID visible).
+     */
+    public static function getRecordTitle(?Model $record): ?string
+    {
+        if (!$record instanceof MaintenanceOrderRecord) {
+            return null;
+        }
+
+        return VehiclePlates::label((string) $record->vehicle_id) ?? '—';
     }
 
     public static function getNavigationIcon(): string
@@ -135,7 +151,7 @@ final class MaintenanceOrderResource extends Resource
             ->columns([
                 TextColumn::make('vehicle_id')
                     ->label(__('Vehicle'))
-                    ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? $state)
+                    ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? '—')
                     ->sortable(),
                 TextColumn::make('type')
                     ->label(__('Type'))

@@ -14,6 +14,8 @@ use Logistics\Promise\Application\Command\QuotePromise\QuotePromise;
 use Logistics\Promise\Application\Command\QuotePromise\QuotePromiseHandler;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlot;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlotHandler;
+use Logistics\Promise\Application\Command\ReserveMunicipalitySlot\ReserveMunicipalitySlot;
+use Logistics\Promise\Application\Command\ReserveMunicipalitySlot\ReserveMunicipalitySlotHandler;
 use Logistics\Promise\Application\Command\ReservePromise\ReservePromise;
 use Logistics\Promise\Application\Command\ReservePromise\ReservePromiseHandler;
 use Logistics\Promise\Application\Query\CalculateDeliveryPromise\CalculateDeliveryPromise;
@@ -22,23 +24,35 @@ use Logistics\Promise\Application\Query\GetPromise\GetPromise;
 use Logistics\Promise\Application\Query\GetPromise\GetPromiseHandler;
 use Logistics\Promise\Application\Query\ListAvailableSlots\ListAvailableSlots;
 use Logistics\Promise\Application\Query\ListAvailableSlots\ListAvailableSlotsHandler;
+use Logistics\Promise\Application\Query\ListMunicipalityPromise\ListMunicipalityPromise;
+use Logistics\Promise\Application\Query\ListMunicipalityPromise\ListMunicipalityPromiseHandler;
 use Logistics\Promise\Domain\Contract\AvailabilityProvider;
 use Logistics\Promise\Domain\Contract\CapacityCalendar;
 use Logistics\Promise\Domain\Contract\CorridorAvailabilityProvider;
 use Logistics\Promise\Domain\Contract\CoverageProfileProvider;
+use Logistics\Promise\Domain\Contract\MunicipalityDispatchCalendar;
+use Logistics\Promise\Domain\Contract\MunicipalityDispatchGate;
+use Logistics\Promise\Domain\Contract\MunicipalityResolver;
+use Logistics\Promise\Domain\Contract\MunicipalitySlotReserver;
 use Logistics\Promise\Domain\Contract\OrderDeliverySlotGateway;
 use Logistics\Promise\Domain\Contract\PromiseRepository;
+use Logistics\Promise\Domain\Contract\ShipmentLocator;
 use Logistics\Promise\Domain\Contract\SlotReserver;
 use Logistics\Promise\Infrastructure\Availability\CachingAvailabilityProvider;
 use Logistics\Promise\Infrastructure\Availability\CapacityBackedAvailabilityProvider;
 use Logistics\Promise\Infrastructure\Availability\CapacityBackedCapacityCalendar;
+use Logistics\Promise\Infrastructure\Availability\CapacityBackedMunicipalityDispatchCalendar;
+use Logistics\Promise\Infrastructure\Availability\CapacityBackedMunicipalitySlotReserver;
 use Logistics\Promise\Infrastructure\Availability\CapacityBackedSlotReserver;
+use Logistics\Promise\Infrastructure\Availability\DispatchDayGate;
 use Logistics\Promise\Infrastructure\Cache\CacheInvalidatingPromiseRepository;
 use Logistics\Promise\Infrastructure\Cache\CachingGetPromiseHandler;
+use Logistics\Promise\Infrastructure\Coverage\CoverageBackedMunicipalityResolver;
 use Logistics\Promise\Infrastructure\Coverage\CoverageBackedProfileProvider;
 use Logistics\Promise\Infrastructure\Network\NetworkBackedCorridorProvider;
 use Logistics\Promise\Infrastructure\Persistence\Eloquent\EloquentPromiseRepository;
 use Logistics\Promise\Infrastructure\Shipments\ShipmentsOrderDeliverySlotGateway;
+use Logistics\Promise\Infrastructure\Shipments\ShipmentsShipmentLocator;
 use Logistics\Promise\Presentation\Console\ExpireReservationsCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -59,9 +73,11 @@ final class PromiseServiceProvider extends ServiceProvider
         QuotePromise::class => QuotePromiseHandler::class,
         ReservePromise::class => ReservePromiseHandler::class,
         ReserveDeliverySlot::class => ReserveDeliverySlotHandler::class,
+        ReserveMunicipalitySlot::class => ReserveMunicipalitySlotHandler::class,
         ConfirmPromise::class => ConfirmPromiseHandler::class,
         ExpireReservation::class => ExpireReservationHandler::class,
         ListAvailableSlots::class => ListAvailableSlotsHandler::class,
+        ListMunicipalityPromise::class => ListMunicipalityPromiseHandler::class,
         CalculateDeliveryPromise::class => CalculateDeliveryPromiseHandler::class,
         GetPromise::class => CachingGetPromiseHandler::class,
     ];
@@ -110,6 +126,15 @@ final class PromiseServiceProvider extends ServiceProvider
 
         // Puerto hacia shipments: leer y fijar la franja de entrega del pedido vía su comando/consulta.
         $this->app->bind(OrderDeliverySlotGateway::class, ShipmentsOrderDeliverySlotGateway::class);
+
+        // Eje MUNICIPIO del canal del cliente (K-03/K-05): resolver el municipio de una coordenada/envío
+        // y ofrecer/reservar sobre el calendario de despacho por municipio. Cada puerto cruza a su contexto
+        // (coverage/shipments/capacity) por el bus o por su puerto público, sin dependencia composer nueva.
+        $this->app->bind(MunicipalityResolver::class, CoverageBackedMunicipalityResolver::class);
+        $this->app->bind(ShipmentLocator::class, ShipmentsShipmentLocator::class);
+        $this->app->bind(MunicipalityDispatchCalendar::class, CapacityBackedMunicipalityDispatchCalendar::class);
+        $this->app->bind(MunicipalityDispatchGate::class, DispatchDayGate::class);
+        $this->app->bind(MunicipalitySlotReserver::class, CapacityBackedMunicipalitySlotReserver::class);
     }
 
     public function boot(): void

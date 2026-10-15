@@ -23,8 +23,15 @@ use Logistics\Shared\Application\Query\QueryBus;
  */
 final readonly class SettingsCapacityRulesetProvider implements CapacityRulesetProvider
 {
-    /** Clave namespaced de las reglas de cupo en settings. */
+    /** Clave namespaced de las reglas de cupo de la red en settings. */
     public const string SETTING_KEY = 'capacity.dispatch_rules';
+
+    /**
+     * Prefijo de la clave de reglas POR municipio: `capacity.dispatch_rules.municipality.<uuid>`. Así el
+     * calendario de 7 días se versiona por municipio sin tocar el dominio; si el municipio no publicó
+     * reglas propias, se cae a las de la red.
+     */
+    public const string MUNICIPALITY_SETTING_PREFIX = 'capacity.dispatch_rules.municipality.';
 
     public function __construct(
         private QueryBus $queryBus,
@@ -33,15 +40,48 @@ final readonly class SettingsCapacityRulesetProvider implements CapacityRulesetP
 
     public function current(DateTimeImmutable $at): CapacityRuleset
     {
-        /** @var mixed $value */
-        $value = $this->queryBus->ask(new GetSettingQuery(self::SETTING_KEY, $at->format(DATE_ATOM)));
+        $value = $this->readSetting(self::SETTING_KEY, $at);
 
-        if (is_array($value)) {
-            /** @var array<string, mixed> $value */
+        if ($value !== null) {
             return CapacityRuleset::fromArray($value);
         }
 
         return CapacityRuleset::fromArray($this->fallbackFromConfig());
+    }
+
+    public function currentForMunicipality(?string $municipalityId, DateTimeImmutable $at): CapacityRuleset
+    {
+        // Sin municipio, equivale a las reglas de la red.
+        if ($municipalityId === null || trim($municipalityId) === '') {
+            return $this->current($at);
+        }
+
+        $value = $this->readSetting(self::MUNICIPALITY_SETTING_PREFIX.trim($municipalityId), $at);
+
+        // El municipio no publicó reglas propias: cae a las de la red.
+        if ($value !== null) {
+            return CapacityRuleset::fromArray($value);
+        }
+
+        return $this->current($at);
+    }
+
+    /**
+     * Lee una clave de settings vigente a la fecha y devuelve su forma primitiva, o null si no hay versión.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function readSetting(string $key, DateTimeImmutable $at): ?array
+    {
+        /** @var mixed $value */
+        $value = $this->queryBus->ask(new GetSettingQuery($key, $at->format(DATE_ATOM)));
+
+        if (is_array($value)) {
+            /** @var array<string, mixed> $value */
+            return $value;
+        }
+
+        return null;
     }
 
     /**

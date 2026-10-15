@@ -8,8 +8,10 @@ use Logistics\Promise\Presentation\Http\Controllers\ConfirmPromiseController;
 use Logistics\Promise\Presentation\Http\Controllers\ExpireReservationController;
 use Logistics\Promise\Presentation\Http\Controllers\GetPromiseController;
 use Logistics\Promise\Presentation\Http\Controllers\ListAvailableSlotsController;
+use Logistics\Promise\Presentation\Http\Controllers\ListMunicipalityPromiseController;
 use Logistics\Promise\Presentation\Http\Controllers\QuotePromiseController;
 use Logistics\Promise\Presentation\Http\Controllers\ReserveDeliverySlotController;
+use Logistics\Promise\Presentation\Http\Controllers\ReserveMunicipalitySlotController;
 use Logistics\Promise\Presentation\Http\Controllers\ReservePromiseController;
 
 /*
@@ -24,6 +26,15 @@ return [
     // Puerta channels.
     'channels' => static function (): void {
         Route::name('promise.')->group(function (): void {
+            // K-05 — Promesa de entrega al cliente por MUNICIPIO: dada una dirección/coordenada (o un
+            // envío, o un municipio), devuelve fechas y franjas disponibles respetando cobertura,
+            // capacidad, feriados y horizonte. Es el eje que el calendario de despacho por municipio expone.
+            Route::get('promises/delivery', ListMunicipalityPromiseController::class)->name('delivery.index');
+
+            // K-03 — Selección de slot por el cliente: reserva una franja (día + ventana) para su envío,
+            // consumiendo cupo del municipio de forma atómica e idempotente, y la fija en el envío.
+            Route::post('shipments/slot-reservation', ReserveMunicipalitySlotController::class)->name('shipments.slot.reserve');
+
             // Promesas disponibles: cálculo integrado (cobertura + capacidad + corredor) de fechas y
             // franjas que se pueden prometer para una zona en un horizonte de días.
             Route::get('promises/offers', CalculateDeliveryPromiseController::class)->name('offers.index');

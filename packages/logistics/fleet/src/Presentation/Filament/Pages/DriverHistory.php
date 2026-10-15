@@ -28,7 +28,7 @@ final class DriverHistory extends Page
 {
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-chart-bar';
 
-    protected static ?int $navigationSort = 25;
+    protected static ?int $navigationSort = 8;
 
     protected string $view = 'logistics-fleet::filament.pages.driver-history';
 

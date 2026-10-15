@@ -26,6 +26,7 @@ use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Logistics\Fleet\Domain\ValueObject\DocumentExpiry;
 use Logistics\Fleet\Domain\ValueObject\LicenseCategory;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\DriverModel;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
@@ -53,7 +54,7 @@ final class DriverResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-identification';
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 12;
 
     public static function getNavigationGroup(): string
     {
@@ -169,6 +170,10 @@ final class DriverResource extends Resource
                         ->native(false)
                         ->options(self::licenseCategoryOptions()),
 
+                    TextInput::make('license_city')
+                        ->label(__('License issuing city'))
+                        ->maxLength(120),
+
                     Textarea::make('address')
                         ->label(__('Address'))
                         ->maxLength(1000)
@@ -242,13 +247,20 @@ final class DriverResource extends Resource
                     ->badge()
                     ->color('gray')
                     ->formatStateUsing(static fn (?string $state): ?string => self::licenseCategoryLabel($state)),
+                TextColumn::make('license_city')
+                    ->label(__('License issuing city'))
+                    ->placeholder('—')
+                    ->toggleable(),
                 TextColumn::make('license_expiry')
                     ->label(__('License expiry'))
                     ->date('Y-m-d')
-                    ->sortable()
-                    // Badge por vencimiento de la licencia: rojo si venció, ámbar si vence pronto.
+                    ->sortable(),
+                // Estado de la licencia: etiqueta legible + color (vigente / por vencer / vencida).
+                TextColumn::make('license_status')
+                    ->label(__('License status'))
                     ->badge()
-                    ->color(static fn (?string $state): string => self::expiryColor($state)),
+                    ->getStateUsing(static fn ($record): ?string => self::expiryStatusLabel($record->license_expiry))
+                    ->color(static fn ($record): string => self::expiryColor($record->license_expiry)),
                 IconColumn::make('active')
                     ->label(__('Active'))
                     ->boolean(),
@@ -301,7 +313,14 @@ final class DriverResource extends Resource
                         ->badge()
                         ->color('gray')
                         ->formatStateUsing(static fn (?string $state): ?string => self::licenseCategoryLabel($state)),
+                    TextEntry::make('license_city')->label(__('License issuing city'))->placeholder('—'),
                     TextEntry::make('license_expiry')->label(__('License expiry'))->date('Y-m-d'),
+                    // Estado de la licencia: etiqueta legible + color (vigente / por vencer / vencida).
+                    TextEntry::make('license_status')
+                        ->label(__('License status'))
+                        ->badge()
+                        ->getStateUsing(static fn ($record): ?string => self::expiryStatusLabel($record->license_expiry))
+                        ->color(static fn ($record): string => self::expiryColor($record->license_expiry)),
                     IconEntry::make('active')->label(__('Active'))->boolean(),
                     TextEntry::make('enabled_vehicle_ids')
                         ->label(__('Enabled vehicles'))
@@ -310,7 +329,7 @@ final class DriverResource extends Resource
                         // Muestra las placas reales de los vehículos habilitados para este chofer.
                         ->formatStateUsing(static fn (string $state): string => VehicleModel::query()
                             ->whereKey($state)
-                            ->value('plate') ?? $state),
+                            ->value('plate') ?? '—'),
                 ])
                 ->columns(2),
 
@@ -408,29 +427,49 @@ final class DriverResource extends Resource
     }
 
     /**
-     * Color semántico del badge de vencimiento de la licencia según cuánto falta para que venza.
-     *
-     * Rojo (danger) si ya venció, ámbar (warning) si vence dentro de 30 días, verde (success) si sigue
-     * vigente, gris si no hay fecha. La fecha llega como texto 'Y-m-d' (Postgres).
+     * Estado de vencimiento de la licencia a hoy ('valid'|'expiring_soon'|'expired'); null si no hay
+     * fecha interpretable. Delega en el VO de dominio DocumentExpiry para usar el mismo criterio que
+     * las alertas (vencida, o por vencer dentro de 30 días). La fecha llega como texto 'Y-m-d' (Postgres).
      */
-    private static function expiryColor(?string $expiresOn): string
+    private static function licenseStatus(?string $expiresOn): ?string
     {
         if ($expiresOn === null || $expiresOn === '') {
-            return 'gray';
+            return null;
         }
 
         $expiry = \DateTimeImmutable::createFromFormat('!Y-m-d', $expiresOn);
         if ($expiry === false) {
-            return 'gray';
+            return null;
         }
 
-        $today = new \DateTimeImmutable('today');
-        if ($expiry < $today) {
-            return 'danger';
-        }
+        return DocumentExpiry::of('driver_license', $expiry)->status(new \DateTimeImmutable('today'));
+    }
 
-        $daysLeft = (int) $today->diff($expiry)->format('%a');
+    /**
+     * Color semántico del badge de vencimiento de la licencia: rojo (danger) si venció, ámbar (warning)
+     * si vence dentro de 30 días, verde (success) si sigue vigente, gris si no hay fecha.
+     */
+    private static function expiryColor(?string $expiresOn): string
+    {
+        return match (self::licenseStatus($expiresOn)) {
+            'expired' => 'danger',
+            'expiring_soon' => 'warning',
+            'valid' => 'success',
+            default => 'gray',
+        };
+    }
 
-        return $daysLeft <= 30 ? 'warning' : 'success';
+    /**
+     * Etiqueta legible del estado de la licencia (texto fuente en inglés, regla 5 de CLAUDE.md);
+     * null si no hay fecha interpretable.
+     */
+    private static function expiryStatusLabel(?string $expiresOn): ?string
+    {
+        return match (self::licenseStatus($expiresOn)) {
+            'expired' => (string) __('Expired'),
+            'expiring_soon' => (string) __('Expiring soon'),
+            'valid' => (string) __('Valid'),
+            default => null,
+        };
     }
 }

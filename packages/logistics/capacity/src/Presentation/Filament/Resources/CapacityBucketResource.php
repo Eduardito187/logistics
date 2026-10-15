@@ -51,7 +51,7 @@ final class CapacityBucketResource extends Resource
 {
     protected static ?string $model = CapacityBucketRecord::class;
 
-    protected static ?int $navigationSort = 10;
+    protected static ?int $navigationSort = 50;
 
     public static function getNavigationIcon(): string
     {
@@ -60,7 +60,7 @@ final class CapacityBucketResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Capacity');
+        return __('Operations');
     }
 
     public static function getModelLabel(): string
@@ -152,16 +152,8 @@ final class CapacityBucketResource extends Resource
                     ->badge()
                     ->color(static fn (CapacityBucketRecord $record): string => self::availableOf($record) > 0 ? 'success' : 'danger')
                     ->state(static fn (CapacityBucketRecord $record): string => number_format(self::availableOf($record), 3, '.', '')),
-                // Identidades UUID crudas: secundarias, ocultas por defecto (para depuración).
-                TextColumn::make('node_id')
-                    ->label(__('Node ID'))
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('zone_id')
-                    ->label(__('Zone ID'))
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('id')
-                    ->label(__('Bucket ID'))
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // Los UUID (node_id, zone_id y el id del cupo) no se muestran: el scope ya se pinta por
+                // código/nombre del nodo o de la zona (relaciones eager-loaded), nunca el UUID crudo.
             ])
             ->filters([
                 SelectFilter::make('unit')

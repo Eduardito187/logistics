@@ -7,8 +7,10 @@ namespace Logistics\Tracking\Presentation\Http\Controller;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Response;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Tracking\Application\Query\GetPublicSurveyState\GetPublicSurveyState;
 use Logistics\Tracking\Application\Query\GetPublicTracking\GetPublicTracking;
 use Logistics\Tracking\Application\Query\GetPublicUnits\GetPublicUnits;
+use Logistics\Tracking\Application\ReadModel\PublicSurveyStateView;
 use Logistics\Tracking\Application\ReadModel\PublicTrackingView;
 use Logistics\Tracking\Application\ReadModel\PublicUnitView;
 
@@ -38,12 +40,37 @@ final class PublicTrackingPageController
 
         $units = $this->queryBus->ask(new GetPublicUnits($token));
 
+        // Estado de la encuesta (K-06): se muestra el formulario solo si el envío está entregado y aún
+        // no hay respuesta. Si la consulta falla de forma inesperada, se degrada a "no mostrar".
+        $surveyState = $this->queryBus->ask(new GetPublicSurveyState($token));
+        $canSurvey = $surveyState instanceof PublicSurveyStateView && $surveyState->canSubmit();
+        $surveyRecorded = $surveyState instanceof PublicSurveyStateView && $surveyState->alreadySubmitted;
+
         return view('tracking::public', [
             'tracking' => $view->toArray(),
             'units' => array_map(
                 static fn (PublicUnitView $unit): array => $unit->toArray(),
                 is_array($units) ? $units : [],
             ),
+            // El token de la URL se usa como action de los formularios públicos (encuesta y push). No es
+            // PII: es la misma credencial por la que se llegó a la página.
+            'publicToken' => $token,
+            'canSurvey' => $canSurvey,
+            'surveyRecorded' => $surveyRecorded,
+            // Clave pública VAPID (K-04): habilita el botón "Notify me". Si falta, el botón queda oculto
+            // (degradación elegante). Se lee de la config del contexto de notificaciones (no se toca su
+            // sender): solo es un valor público pensado para el navegador.
+            'vapidPublicKey' => $this->vapidPublicKey(),
         ]);
+    }
+
+    /**
+     * Clave pública VAPID expuesta a la página, o null si no está configurada.
+     */
+    private function vapidPublicKey(): ?string
+    {
+        $key = config('logistics-notifications.web_push.vapid_public_key');
+
+        return is_string($key) && trim($key) !== '' ? $key : null;
     }
 }

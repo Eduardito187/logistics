@@ -24,11 +24,12 @@ final class FuelPriceMapper
             Money::of($record->price_cents, $record->currency),
             new DateTimeImmutable($record->effective_from),
             $record->source,
+            (bool) $record->active,
         );
     }
 
     /**
-     * @return array{id: string, fuel_type: string, price_cents: int, currency: string, effective_from: string, source: string|null}
+     * @return array{id: string, fuel_type: string, price_cents: int, currency: string, effective_from: string, source: string|null, active: bool}
      */
     public function toRow(FuelPrice $price): array
     {
@@ -39,6 +40,7 @@ final class FuelPriceMapper
             'currency' => $price->pricePerLiter()->currency,
             'effective_from' => $price->effectiveFrom()->format('Y-m-d'),
             'source' => $price->source(),
+            'active' => $price->isActive(),
         ];
     }
 }

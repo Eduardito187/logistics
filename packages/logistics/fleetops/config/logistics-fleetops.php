@@ -21,4 +21,14 @@ return [
     'consumption' => [
         'max_reasonable_kml' => (float) env('FLEETOPS_MAX_KML', 25.0),
     ],
+
+    // Rentabilidad por corredor/entrega (ROADMAP 3-06). Hoy NO hay facturación: el ingreso es una entrada
+    // OPCIONAL y configurable. No se inventan ingresos — mientras todo esto sea 0/vacío, el margen queda
+    // indefinido (null) y el read-model solo muestra costo, listo para enchufar el ingreso real.
+    'revenue' => [
+        // Ingreso por entrega por defecto (centavos). 0 = sin ingreso (margen no disponible).
+        'default_per_delivery_cents' => (int) env('FLEETOPS_REVENUE_PER_DELIVERY_CENTS', 0),
+        // Mapa opcional corredor → ingreso del período (centavos). Inyectable por settings/deploy.
+        'by_corridor' => [],
+    ],
 ];

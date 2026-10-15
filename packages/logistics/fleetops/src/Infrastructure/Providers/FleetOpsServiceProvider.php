@@ -6,6 +6,8 @@ namespace Logistics\FleetOps\Infrastructure\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
+use Logistics\FleetOps\Application\Command\ActivateFuelPrice\ActivateFuelPrice;
+use Logistics\FleetOps\Application\Command\ActivateFuelPrice\ActivateFuelPriceHandler;
 use Logistics\FleetOps\Application\Command\ActivatePlan\ActivatePlan;
 use Logistics\FleetOps\Application\Command\ActivatePlan\ActivatePlanHandler;
 use Logistics\FleetOps\Application\Command\CancelMaintenance\CancelMaintenance;
@@ -14,12 +16,16 @@ use Logistics\FleetOps\Application\Command\CloseDeparture\CloseDeparture;
 use Logistics\FleetOps\Application\Command\CloseDeparture\CloseDepartureHandler;
 use Logistics\FleetOps\Application\Command\CompleteMaintenance\CompleteMaintenance;
 use Logistics\FleetOps\Application\Command\CompleteMaintenance\CompleteMaintenanceHandler;
+use Logistics\FleetOps\Application\Command\DeactivateFuelPrice\DeactivateFuelPrice;
+use Logistics\FleetOps\Application\Command\DeactivateFuelPrice\DeactivateFuelPriceHandler;
 use Logistics\FleetOps\Application\Command\DeactivatePlan\DeactivatePlan;
 use Logistics\FleetOps\Application\Command\DeactivatePlan\DeactivatePlanHandler;
 use Logistics\FleetOps\Application\Command\DefineMaintenancePlan\DefineMaintenancePlan;
 use Logistics\FleetOps\Application\Command\DefineMaintenancePlan\DefineMaintenancePlanHandler;
 use Logistics\FleetOps\Application\Command\DefineVehicleProfile\DefineVehicleProfile;
 use Logistics\FleetOps\Application\Command\DefineVehicleProfile\DefineVehicleProfileHandler;
+use Logistics\FleetOps\Application\Command\DeleteFuelPrice\DeleteFuelPrice;
+use Logistics\FleetOps\Application\Command\DeleteFuelPrice\DeleteFuelPriceHandler;
 use Logistics\FleetOps\Application\Command\RecordExpense\RecordExpense;
 use Logistics\FleetOps\Application\Command\RecordExpense\RecordExpenseHandler;
 use Logistics\FleetOps\Application\Command\RecordOdometer\RecordOdometer;
@@ -36,8 +42,16 @@ use Logistics\FleetOps\Application\Command\SetFuelPrice\SetFuelPrice;
 use Logistics\FleetOps\Application\Command\SetFuelPrice\SetFuelPriceHandler;
 use Logistics\FleetOps\Application\Command\StartMaintenance\StartMaintenance;
 use Logistics\FleetOps\Application\Command\StartMaintenance\StartMaintenanceHandler;
+use Logistics\FleetOps\Application\Command\UpdateFuelPrice\UpdateFuelPrice;
+use Logistics\FleetOps\Application\Command\UpdateFuelPrice\UpdateFuelPriceHandler;
 use Logistics\FleetOps\Application\Command\UpdateVehicleOdometer\UpdateVehicleOdometer;
 use Logistics\FleetOps\Application\Command\UpdateVehicleOdometer\UpdateVehicleOdometerHandler;
+use Logistics\FleetOps\Application\Query\GetCarrierCostBreakdown\GetCarrierCostBreakdown;
+use Logistics\FleetOps\Application\Query\GetCarrierCostBreakdown\GetCarrierCostBreakdownHandler;
+use Logistics\FleetOps\Application\Query\GetCorridorCostBreakdown\GetCorridorCostBreakdown;
+use Logistics\FleetOps\Application\Query\GetCorridorCostBreakdown\GetCorridorCostBreakdownHandler;
+use Logistics\FleetOps\Application\Query\GetCorridorProfitability\GetCorridorProfitability;
+use Logistics\FleetOps\Application\Query\GetCorridorProfitability\GetCorridorProfitabilityHandler;
 use Logistics\FleetOps\Application\Query\GetCurrentFuelPrice\GetCurrentFuelPrice;
 use Logistics\FleetOps\Application\Query\GetCurrentFuelPrice\GetCurrentFuelPriceHandler;
 use Logistics\FleetOps\Application\Query\GetDailyFuelSpend\GetDailyFuelSpend;
@@ -50,6 +64,8 @@ use Logistics\FleetOps\Application\Query\GetMaintenanceCost\GetMaintenanceCost;
 use Logistics\FleetOps\Application\Query\GetMaintenanceCost\GetMaintenanceCostHandler;
 use Logistics\FleetOps\Application\Query\GetMaintenanceOrder\GetMaintenanceOrder;
 use Logistics\FleetOps\Application\Query\GetMaintenanceOrder\GetMaintenanceOrderHandler;
+use Logistics\FleetOps\Application\Query\GetVehicleCostBreakdown\GetVehicleCostBreakdown;
+use Logistics\FleetOps\Application\Query\GetVehicleCostBreakdown\GetVehicleCostBreakdownHandler;
 use Logistics\FleetOps\Application\Query\GetVehicleCostSummary\GetVehicleCostSummary;
 use Logistics\FleetOps\Application\Query\GetVehicleCostSummary\GetVehicleCostSummaryHandler;
 use Logistics\FleetOps\Application\Query\GetVehicleExpenseTotal\GetVehicleExpenseTotal;
@@ -110,6 +126,10 @@ final class FleetOpsServiceProvider extends ServiceProvider
     private const HANDLERS = [
         // Combustible.
         SetFuelPrice::class => SetFuelPriceHandler::class,
+        UpdateFuelPrice::class => UpdateFuelPriceHandler::class,
+        ActivateFuelPrice::class => ActivateFuelPriceHandler::class,
+        DeactivateFuelPrice::class => DeactivateFuelPriceHandler::class,
+        DeleteFuelPrice::class => DeleteFuelPriceHandler::class,
         RecordRefuel::class => RecordRefuelHandler::class,
         ListFuelPrices::class => ListFuelPricesHandler::class,
         GetCurrentFuelPrice::class => GetCurrentFuelPriceHandler::class,
@@ -150,6 +170,13 @@ final class FleetOpsServiceProvider extends ServiceProvider
         ListExpenses::class => ListExpensesHandler::class,
         GetVehicleExpenseTotal::class => GetVehicleExpenseTotalHandler::class,
         GetVehicleCostSummary::class => GetVehicleCostSummaryHandler::class,
+
+        // Modelo de costos y rentabilidad (ROADMAP 3-01 / 3-06): desgloses por vehículo/corredor/tercero
+        // y rentabilidad por corredor (ingreso − costo).
+        GetVehicleCostBreakdown::class => GetVehicleCostBreakdownHandler::class,
+        GetCorridorCostBreakdown::class => GetCorridorCostBreakdownHandler::class,
+        GetCarrierCostBreakdown::class => GetCarrierCostBreakdownHandler::class,
+        GetCorridorProfitability::class => GetCorridorProfitabilityHandler::class,
     ];
 
     /**

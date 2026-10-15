@@ -27,6 +27,7 @@ final class GetEffectiveCapacityController
             (string) $request->input('date'),
             (string) $request->input('time_slot'),
             (string) $request->input('unit'),
+            $request->municipalityId(),
         ));
 
         return new JsonResponse(['data' => $view->toArray()]);

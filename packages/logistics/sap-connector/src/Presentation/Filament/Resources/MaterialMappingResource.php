@@ -18,6 +18,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\MaterialMappingRecord;
 use Logistics\SapConnector\Presentation\Filament\Resources\MaterialMappingResource\Pages;
 use UnitEnum;
@@ -32,11 +33,13 @@ use UnitEnum;
  */
 final class MaterialMappingResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = MaterialMappingRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-arrows-right-left';
 
-    protected static string | UnitEnum | null $navigationGroup = 'Integrations';
+    protected static string | UnitEnum | null $navigationGroup = 'Administration';
 
     protected static ?string $navigationLabel = 'SAP material mappings';
 
@@ -48,7 +51,12 @@ final class MaterialMappingResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Integrations');
+        return __('Administration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 34;
     }
 
     public static function getNavigationLabel(): string

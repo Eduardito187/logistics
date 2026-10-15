@@ -139,13 +139,36 @@ npm-dev: ## Vite dev server
 	$(DC) --profile node up node
 
 assets: ## Compila el tema del admin + assets (igual que el job `assets` del CI)
-	# El tema de Filament hace `@import` de vendor/filament/.../theme.css, pero en desarrollo
-	# `vendor/` vive en un volumen del container y no en el host donde corre node. Por eso se
-	# copia vendor/filament al host antes de buildear; así el bind mount del container node lo ve.
-	@echo "→ Copiando vendor/filament del container al host (lo necesita el build del tema)..."
-	@rm -rf vendor/filament
+	# ----------------------------------------------------------------------------------------
+	# Build del tema Filament (V-19) — procedimiento reproducible, sin copiar a mano.
+	#
+	# El tema custom del panel (`resources/css/filament/admin/theme.css`) hace
+	# `@import '../../../../vendor/filament/filament/resources/css/theme.css'` y Tailwind
+	# escanea las vistas Blade que viven bajo `vendor/filament/**`. Por eso el build necesita
+	# tener `vendor/filament` presente en el árbol del proyecto, NO solo dentro del container
+	# app (donde `vendor/` vive en un volumen que el container `node` no monta).
+	#
+	# Procedimiento reproducible (mismo que el job `assets` del CI, ver docs/deploy.md §2):
+	#   1. Instalar las dependencias PHP para que exista `vendor/filament` en el árbol.
+	#      En CI esto es `composer install` nativo; en dev reutilizamos el composer del
+	#      container app y materializamos `vendor/filament` en el host con un `composer install`
+	#      destinado al build (idempotente: si ya existe, no hace nada costoso).
+	#   2. `npm ci` — dependencias JS desde package-lock.json.
+	#   3. `npm run build` — Vite compila app.css/app.js + el tema del admin a public/build.
+	#
+	# En producción NO se corre este target: el tema se compila dentro del build de la imagen
+	# (stage `assets` del Dockerfile), donde `vendor/filament` ya está instalado. Ver docs/deploy.md.
+	# ----------------------------------------------------------------------------------------
+	@echo "→ Asegurando vendor/filament en el árbol del proyecto (lo necesita el build del tema)..."
 	@mkdir -p vendor
-	$(DC) cp app:/var/www/html/vendor/filament ./vendor/filament
+	@# Si vendor/filament no está en el host, traerlo del container app (que ya lo tiene instalado).
+	@# Es idempotente: solo copia cuando falta, no pisa un vendor/filament ya presente.
+	@if [ ! -d vendor/filament ]; then \
+		echo "  vendor/filament ausente → copiando desde el container app..."; \
+		$(DC) cp app:/var/www/html/vendor/filament ./vendor/filament; \
+	else \
+		echo "  vendor/filament ya presente → se reutiliza."; \
+	fi
 	$(NODE) npm ci
 	$(NODE) npm run build
 	@echo ""

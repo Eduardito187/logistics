@@ -53,6 +53,7 @@ final class Driver extends AggregateRoot
         private ?string $emergencyContactName = null,
         private ?PhoneNumber $emergencyContactPhone = null,
         private array $references = [],
+        private ?string $licenseCity = null,
     ) {}
 
     /**
@@ -80,6 +81,7 @@ final class Driver extends AggregateRoot
         ?string $emergencyContactName = null,
         ?PhoneNumber $emergencyContactPhone = null,
         array $references = [],
+        ?string $licenseCity = null,
     ): self {
         $driver = new self(
             $id,
@@ -98,6 +100,7 @@ final class Driver extends AggregateRoot
             $emergencyContactName,
             $emergencyContactPhone,
             array_values($references),
+            $licenseCity,
         );
         $driver->recordEvent(new DriverRegistered(
             $id->toString(),
@@ -133,6 +136,7 @@ final class Driver extends AggregateRoot
         ?string $emergencyContactName = null,
         ?PhoneNumber $emergencyContactPhone = null,
         array $references = [],
+        ?string $licenseCity = null,
     ): self {
         return new self(
             $id,
@@ -151,6 +155,7 @@ final class Driver extends AggregateRoot
             $emergencyContactName,
             $emergencyContactPhone,
             array_values($references),
+            $licenseCity,
         );
     }
 
@@ -189,6 +194,7 @@ final class Driver extends AggregateRoot
         $this->phoneSecondary = $profile->phoneSecondary;
         $this->address = $profile->address;
         $this->licenseCategory = $profile->licenseCategory;
+        $this->licenseCity = $profile->licenseCity;
         $this->emergencyContactName = $profile->emergencyContactName;
         $this->emergencyContactPhone = $profile->emergencyContactPhone;
         $this->references = array_values($profile->references);
@@ -262,6 +268,11 @@ final class Driver extends AggregateRoot
     public function licenseCategory(): ?LicenseCategory
     {
         return $this->licenseCategory;
+    }
+
+    public function licenseCity(): ?string
+    {
+        return $this->licenseCity;
     }
 
     public function emergencyContactName(): ?string

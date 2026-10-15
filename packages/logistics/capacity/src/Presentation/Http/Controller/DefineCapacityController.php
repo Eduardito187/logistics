@@ -26,12 +26,14 @@ final class DefineCapacityController
             (string) $request->input('time_slot'),
             (string) $request->input('unit'),
             $request->total(),
+            $request->municipalityId(),
         ));
 
         return new JsonResponse([
             'data' => [
                 'node_id' => $request->nodeId(),
                 'zone_id' => $request->zoneId(),
+                'municipality_id' => $request->municipalityId(),
                 'date' => (string) $request->input('date'),
                 'time_slot' => (string) $request->input('time_slot'),
                 'unit' => (string) $request->input('unit'),

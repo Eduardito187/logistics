@@ -13,20 +13,30 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Component;
+use Filament\Schemas\Schema;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Database\Eloquent\Builder;
+use Logistics\Capacity\Application\Command\ActivateCapacityWindow\ActivateCapacityWindowCommand;
+use Logistics\Capacity\Application\Command\BlockDispatchDay\BlockDispatchDayCommand;
 use Logistics\Capacity\Application\Command\GenerateDispatchCalendar\GenerateDispatchCalendar;
 use Logistics\Capacity\Application\Command\GenerateDispatchCalendar\GenerateDispatchCalendarHandler;
+use Logistics\Capacity\Application\Command\UnblockDispatchDay\UnblockDispatchDayCommand;
+use Logistics\Capacity\Application\Query\CheckDispatchDay\CheckDispatchDayQuery;
+use Logistics\Capacity\Application\Query\GetActiveHorizon\GetActiveHorizonQuery;
 use Logistics\Capacity\Application\Query\GetCapacityRuleset\GetCapacityRulesetQuery;
 use Logistics\Capacity\Application\Query\ListBucketsByDate\ListBucketsByDateQuery;
+use Logistics\Capacity\Application\ReadModel\ActiveHorizonView;
 use Logistics\Capacity\Application\ReadModel\CapacityView;
+use Logistics\Capacity\Application\ReadModel\DispatchDayAvailabilityView;
 use Logistics\Capacity\Domain\Exception\CapacityException;
 use Logistics\Capacity\Domain\ValueObject\CapacityRuleset;
 use Logistics\Capacity\Domain\ValueObject\CapacityUnit;
 use Logistics\Capacity\Infrastructure\Settings\SettingsCapacityRulesetProvider;
+use Logistics\Capacity\Presentation\Filament\Support\MunicipalityOptions;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\ZoneRecord;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Settings\Application\Command\SetSetting\SetSettingCommand;
@@ -35,16 +45,23 @@ use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 
 /**
- * Calendario de despacho del admin: muestra, para un día elegido, los cupos de entrega por scope
- * (nodo o zona) y franja horaria, con total / usado / disponible, y el resumen de las reglas de cupo
- * vigentes (días de servicio, corte, ventanas). Desde la cabecera se editan las reglas (publicando una
- * versión nueva en settings, con historial) y se genera el calendario del horizonte a partir de ellas.
+ * Calendario de despacho del admin, pensado en grande: eje por MUNICIPIO y vista de los SIETE días de la
+ * semana (lunes a domingo). Para el municipio y la semana elegidos muestra, por día y por ventana,
+ * total/usado/disponible, marca visualmente los días BLOQUEADOS (feriado u otro motivo) y los días fuera
+ * del horizonte activo, y resume hasta cuándo hay cupos activos para ese municipio ("slots active until").
  *
- * Nota de arquitectura: los NÚMEROS salen del lado de lectura CQRS (QueryBus → ListBucketsByDateQuery
- * → CapacityView), nunca de un acceso directo al agregado. Editar reglas despacha SetSetting al bus (no
- * pisa versiones: crea la siguiente). Generar despacha DefineCapacity por cada cupo faltante. Los
- * nombres legibles de nodo/zona se resuelven desde las proyecciones de lectura (NodeRecord/ZoneRecord)
- * solo para presentación. Todo texto visible va en inglés (regla 5); comentarios en español (regla 6).
+ * Operaciones principales de la cabecera:
+ * - "Activate slots": activa cupos por RANGO de fechas (hasta noviembre, por ejemplo), por día de la
+ *   semana y por ventana (franja + unidad + cantidad), para uno o todos los municipios. Despacha
+ *   ActivateCapacityWindowCommand al CommandBus; la generación de buckets corre ASÍNCRONA (job troceado).
+ * - "Block a day" / acción rápida por día: bloquea o desbloquea un día (BlockDispatchDay / UnblockDispatchDay).
+ * - "Edit rules" / "Generate calendar": control fino de la plantilla de reglas y su materialización.
+ *
+ * Nota de arquitectura: los NÚMEROS y la disponibilidad salen del lado de lectura CQRS (QueryBus →
+ * ListBucketsByDateQuery / CheckDispatchDayQuery / GetActiveHorizonQuery), nunca de un acceso directo al
+ * agregado. Las mutaciones despachan Commands al CommandBus. Los municipios se leen por el catálogo de
+ * coverage (ListMunicipalities, vía MunicipalityOptions). Todo texto visible en inglés (regla 5);
+ * comentarios en español (regla 6).
  */
 final class DispatchCalendar extends Page
 {
@@ -54,20 +71,40 @@ final class DispatchCalendar extends Page
 
     protected string $view = 'logistics-capacity::filament.pages.dispatch-calendar';
 
-    /** Día que se está mirando, en 'Y-m-d'. Enlazado al selector de fecha de la vista. */
-    public string $date = '';
+    /** Lunes de la semana que se está mirando, en 'Y-m-d'. Lo mueven los botones anterior/siguiente. */
+    public string $weekStart = '';
+
+    /**
+     * Estado del formulario de filtros (municipio elegido). El select escribe en filters.municipality_id;
+     * null/vacío = todos los municipios.
+     *
+     * @var array<string, mixed>
+     */
+    public array $filters = [];
 
     public function mount(): void
     {
-        // Por defecto, el día de hoy.
-        if ($this->date === '') {
-            $this->date = date('Y-m-d');
+        // Por defecto, la semana que contiene hoy (su lunes).
+        if ($this->weekStart === '') {
+            $this->weekStart = $this->mondayOf(date('Y-m-d'));
         }
+
+        // Precarga el estado del formulario de filtros (sin municipio = todos).
+        $this->getFiltersForm()->fill($this->filters);
+    }
+
+    /**
+     * Cachea el formulario de filtros en cada request (patrón de los filtros de dashboard de Filament),
+     * para que la vista lo renderice con el estado vivo de $this->filters.
+     */
+    public function booted(): void
+    {
+        $this->cacheSchema('filtersForm', $this->getFiltersForm());
     }
 
     public static function getNavigationGroup(): string
     {
-        return __('Capacity');
+        return __('Operations');
     }
 
     public static function getNavigationLabel(): string
@@ -81,30 +118,181 @@ final class DispatchCalendar extends Page
     }
 
     /**
-     * Acciones de cabecera: generar el calendario del horizonte y editar las reglas de cupo.
+     * Formulario de filtros del calendario: el selector de MUNICIPIO, buscable y native(false), poblado
+     * con datos reales del catálogo de coverage. Es `live()`, así cambiar de municipio recalcula la vista.
+     */
+    public function getFiltersForm(): Schema
+    {
+        if ((!$this->isCachingSchemas) && $this->hasCachedSchema('filtersForm')) {
+            $cached = $this->getSchema('filtersForm');
+            if ($cached !== null) {
+                return $cached;
+            }
+        }
+
+        return $this->makeSchema()
+            ->statePath('filters')
+            ->live()
+            ->components([
+                Select::make('municipality_id')
+                    ->label(__('Municipality'))
+                    ->placeholder(__('All municipalities'))
+                    ->helperText(__('Pick a municipality to manage its weekly slots. Empty shows every municipality.'))
+                    ->native(false)
+                    ->searchable()
+                    ->options(static fn (): array => MunicipalityOptions::all()),
+            ]);
+    }
+
+    /**
+     * Acciones de cabecera: activar cupos por rango, bloquear un día, y el control fino de reglas.
      *
      * @return array<int, Action>
      */
     protected function getHeaderActions(): array
     {
         return [
+            $this->activateSlotsAction(),
+            $this->blockDayAction(),
             $this->editRulesAction(),
             $this->generateAction(),
         ];
     }
 
     /**
-     * Avanza o retrocede el día mirado (botones del encabezado del calendario).
+     * Avanza o retrocede la semana mirada (botones del encabezado del calendario).
      */
-    public function shiftDay(int $days): void
+    public function shiftWeek(int $weeks): void
     {
-        $timestamp = strtotime($this->date." {$days} day");
-        // strtotime devuelve false si la fecha actual no es parseable: en ese caso no se mueve el día.
+        $timestamp = strtotime($this->weekStart.' '.($weeks * 7).' day');
+        // strtotime devuelve false si la fecha actual no es parseable: en ese caso no se mueve la semana.
         if ($timestamp === false) {
             return;
         }
 
-        $this->date = date('Y-m-d', $timestamp);
+        $this->weekStart = $this->mondayOf(date('Y-m-d', $timestamp));
+    }
+
+    /**
+     * Vuelve a la semana que contiene hoy.
+     */
+    public function goToThisWeek(): void
+    {
+        $this->weekStart = $this->mondayOf(date('Y-m-d'));
+    }
+
+    /**
+     * Acción rápida desde el calendario: desbloquea el día indicado para el municipio del filtro (o el
+     * bloqueo global si no hay municipio elegido). Despacha UnblockDispatchDayCommand al CommandBus.
+     */
+    public function unblockDay(string $date): void
+    {
+        try {
+            app(CommandBus::class)->dispatch(new UnblockDispatchDayCommand(
+                date: substr($date, 0, 10),
+                municipalityId: $this->selectedMunicipalityId(),
+            ));
+        } catch (CapacityException $exception) {
+            Notification::make()
+                ->title(__('Could not unblock the day'))
+                ->body($exception->getMessage())
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title(__('Dispatch day unblocked'))
+            ->success()
+            ->send();
+    }
+
+    /**
+     * Flujo "Activate slots": activa cupos por RANGO de fechas y por municipio. El operador elige uno o
+     * todos los municipios, el rango from→to, los días de la semana activos y las ventanas (franja +
+     * unidad + cantidad). Despacha ActivateCapacityWindowCommand; la materialización de buckets es
+     * asíncrona (job troceado), así que solo se confirma que quedó encolado.
+     */
+    public function activateSlotsAction(): Action
+    {
+        return Action::make('activate_slots')
+            ->label(__('Activate slots'))
+            ->icon('heroicon-o-bolt')
+            ->modalHeading(__('Activate dispatch slots for a date range'))
+            ->modalDescription(__('Open slots for a date range (e.g. through November), by weekday and time window, for one or all municipalities. Buckets are generated in the background.'))
+            ->modalSubmitActionLabel(__('Activate slots'))
+            ->fillForm(fn (): array => [
+                'all_municipalities' => false,
+                'municipality_ids' => array_values(array_filter([$this->selectedMunicipalityId()], static fn (?string $v): bool => $v !== null)),
+                'from' => date('Y-m-d'),
+                'weekdays' => array_keys($this->weekdayOptions()),
+                'windows' => [['time_slot' => '08:00-12:00', 'unit' => CapacityUnit::Deliveries->value, 'quantity' => null]],
+            ])
+            ->schema($this->activateFormComponents())
+            ->action(function (array $data): void {
+                $this->activateSlots($data);
+            });
+    }
+
+    /**
+     * Flujo "Block a day": bloquea un día (feriado u otro motivo) para el municipio del filtro o global.
+     * Se precarga con el municipio elegido; si se abre desde un día concreto del calendario, con esa fecha.
+     */
+    public function blockDayAction(): Action
+    {
+        return Action::make('block_day')
+            ->label(__('Block a day'))
+            ->icon('heroicon-o-no-symbol')
+            ->color('gray')
+            ->modalHeading(__('Block a dispatch day'))
+            ->modalDescription(__('Mark a day as a holiday or otherwise closed. Leave the municipality empty to block the whole network.'))
+            ->modalSubmitActionLabel(__('Block day'))
+            ->fillForm(fn (array $arguments): array => [
+                'blackout_date' => is_string($arguments['date'] ?? null) ? substr($arguments['date'], 0, 10) : date('Y-m-d'),
+                'municipality_id' => $this->selectedMunicipalityId(),
+            ])
+            ->schema([
+                DatePicker::make('blackout_date')
+                    ->label(__('Date'))
+                    ->native(false)
+                    ->required(),
+                Select::make('municipality_id')
+                    ->label(__('Municipality'))
+                    ->helperText(__('Leave empty to block the whole network (global).'))
+                    ->placeholder(__('Global (all municipalities)'))
+                    ->native(false)
+                    ->searchable()
+                    ->options(static fn (): array => MunicipalityOptions::all()),
+                TextInput::make('reason')
+                    ->label(__('Reason'))
+                    ->required()
+                    ->maxLength(255)
+                    ->placeholder(__('e.g. National holiday')),
+            ])
+            ->action(function (array $data): void {
+                try {
+                    app(CommandBus::class)->dispatch(new BlockDispatchDayCommand(
+                        date: substr((string) ($data['blackout_date'] ?? ''), 0, 10),
+                        municipalityId: $this->blankToNull($data['municipality_id'] ?? null),
+                        reason: trim((string) ($data['reason'] ?? '')),
+                        blockedBy: $this->currentUserId(),
+                    ));
+                } catch (CapacityException $exception) {
+                    Notification::make()
+                        ->title(__('Could not block the day'))
+                        ->body($exception->getMessage())
+                        ->danger()
+                        ->send();
+
+                    return;
+                }
+
+                Notification::make()
+                    ->title(__('Dispatch day blocked'))
+                    ->success()
+                    ->send();
+            });
     }
 
     /**
@@ -117,6 +305,7 @@ final class DispatchCalendar extends Page
         return Action::make('generate')
             ->label(__('Generate calendar'))
             ->icon('heroicon-o-sparkles')
+            ->color('gray')
             ->modalHeading(__('Generate the dispatch calendar'))
             ->modalDescription(__('Create the capacity buckets the current rules prescribe for the horizon. Existing buckets are left untouched.'))
             ->schema([
@@ -153,9 +342,9 @@ final class DispatchCalendar extends Page
                     return;
                 }
 
-                // Deja la vista en el primer día generado para ver el resultado al instante.
+                // Deja la vista en la semana del primer día generado para ver el resultado al instante.
                 if ($from !== null) {
-                    $this->date = $from;
+                    $this->weekStart = $this->mondayOf($from);
                 }
 
                 Notification::make()
@@ -220,21 +409,283 @@ final class DispatchCalendar extends Page
      */
     protected function getViewData(): array
     {
-        $date = $this->normalizedDate();
-
-        /** @var QueryBus $queryBus */
-        $queryBus = app(QueryBus::class);
-        /** @var list<CapacityView> $buckets */
-        $buckets = $queryBus->ask(new ListBucketsByDateQuery($date));
+        $municipalityId = $this->selectedMunicipalityId();
 
         return [
-            'date' => $date,
+            'weekStart' => $this->weekStart,
+            'weekEnd' => $this->weekEnd(),
+            'week' => $this->buildWeek($municipalityId),
+            'municipalityId' => $municipalityId,
+            'municipalityLabel' => MunicipalityOptions::labelFor($municipalityId),
+            'activeHorizon' => $this->activeHorizon($municipalityId),
             'windows' => $this->configuredWindows(),
-            'scopes' => $this->groupByScope($buckets),
             'schedule' => $this->scheduleSummary(),
             'unitLabels' => $this->unitLabels(),
             'history' => $this->ruleHistory(),
         ];
+    }
+
+    /**
+     * Ejecuta la activación por rango a partir del estado del formulario: resuelve los municipios (uno,
+     * varios o todos), normaliza días/ventanas, valida y despacha ActivateCapacityWindowCommand.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function activateSlots(array $data): void
+    {
+        $all = (bool) ($data['all_municipalities'] ?? false);
+        $municipalityIds = $all
+            ? MunicipalityOptions::ids()
+            : $this->toStringList($data['municipality_ids'] ?? []);
+
+        if ($municipalityIds === []) {
+            Notification::make()
+                ->title(__('Pick at least one municipality'))
+                ->body(__('Choose one or more municipalities, or turn on "Apply to all municipalities".'))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $weekdays = array_values(array_map(intval(...), $this->toList($data['weekdays'] ?? [])));
+        $windows = $this->formToActivationWindows($data['windows'] ?? []);
+
+        if ($windows === []) {
+            Notification::make()
+                ->title(__('Add at least one time window'))
+                ->body(__('Each window needs a time slot, a unit and a quantity.'))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $from = substr((string) ($data['from'] ?? ''), 0, 10);
+        $to = substr((string) ($data['to'] ?? ''), 0, 10);
+
+        try {
+            app(CommandBus::class)->dispatch(new ActivateCapacityWindowCommand(
+                municipalityIds: $municipalityIds,
+                fromDate: $from,
+                toDate: $to,
+                weekdays: $weekdays,
+                windows: $windows,
+                activatedBy: $this->currentUserId(),
+            ));
+        } catch (CapacityException $exception) {
+            Notification::make()
+                ->title(__('Could not activate slots'))
+                ->body($exception->getMessage())
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title(__('Slot activation queued'))
+            ->body(__('Slots for :count municipality(ies) are being activated in the background.', [
+                'count' => count($municipalityIds),
+            ]))
+            ->success()
+            ->send();
+    }
+
+    /**
+     * Componentes del formulario de activación por rango. Municipios buscables y native(false); un toggle
+     * "todos"; rango de fechas; días de la semana (los 7); y un repeater de ventanas (franja/unidad/cantidad).
+     *
+     * @return array<int, Component>
+     */
+    private function activateFormComponents(): array
+    {
+        return [
+            Toggle::make('all_municipalities')
+                ->label(__('Apply to all municipalities'))
+                ->helperText(__('When on, the municipality picker is ignored and every municipality is activated.')),
+            Select::make('municipality_ids')
+                ->label(__('Municipalities'))
+                ->native(false)
+                ->searchable()
+                ->multiple()
+                ->options(static fn (): array => MunicipalityOptions::all())
+                ->helperText(__('Ignored when "Apply to all municipalities" is on.')),
+            DatePicker::make('from')
+                ->label(__('From'))
+                ->native(false)
+                ->required(),
+            DatePicker::make('to')
+                ->label(__('To'))
+                ->native(false)
+                ->required()
+                ->helperText(__('Last day to activate, e.g. the end of November.')),
+            CheckboxList::make('weekdays')
+                ->label(__('Active weekdays'))
+                ->options($this->weekdayOptions())
+                ->columns(4)
+                ->required()
+                ->helperText(__('Only these weekdays get slots. Blocked days are skipped automatically.')),
+            Repeater::make('windows')
+                ->label(__('Time windows'))
+                ->schema([
+                    TextInput::make('time_slot')
+                        ->label(__('Time window'))
+                        ->placeholder('08:00-12:00')
+                        ->required()
+                        ->maxLength(11)
+                        ->regex('/^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/'),
+                    Select::make('unit')
+                        ->label(__('Unit'))
+                        ->native(false)
+                        ->required()
+                        ->default(CapacityUnit::Deliveries->value)
+                        ->options($this->unitOptions()),
+                    TextInput::make('quantity')
+                        ->label(__('Quantity'))
+                        ->required()
+                        ->numeric()
+                        ->minValue(0)
+                        ->step(0.001),
+                ])
+                ->minItems(1)
+                ->helperText(__('Each window opens that much capacity per eligible day.')),
+        ];
+    }
+
+    /**
+     * Repeater de ventanas → forma primitiva que espera ActivateCapacityWindowCommand. Descarta filas
+     * incompletas en silencio.
+     *
+     * @return list<array{time_slot: string, unit: string, quantity: float}>
+     */
+    private function formToActivationWindows(mixed $raw): array
+    {
+        $windows = [];
+        foreach ($this->toList($raw) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $slot = is_string($item['time_slot'] ?? null) ? trim($item['time_slot']) : '';
+            $unit = is_string($item['unit'] ?? null) ? $item['unit'] : '';
+            $quantity = $item['quantity'] ?? null;
+            if ($slot === '' || $unit === '' || !is_numeric($quantity)) {
+                continue;
+            }
+            $windows[] = ['time_slot' => $slot, 'unit' => $unit, 'quantity' => (float) $quantity];
+        }
+
+        return $windows;
+    }
+
+    /**
+     * Construye los siete días de la semana mirada para el municipio elegido: por cada día, su
+     * disponibilidad (bloqueo/horizonte) y las ventanas con total/usado/disponible agregados por scope.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildWeek(?string $municipalityId): array
+    {
+        /** @var QueryBus $queryBus */
+        $queryBus = app(QueryBus::class);
+
+        $start = $this->mondayOf($this->weekStart);
+        $today = date('Y-m-d');
+        $weekdayNames = $this->weekdayShortNames();
+
+        $days = [];
+        for ($i = 0; $i < 7; $i++) {
+            $timestamp = strtotime($start.' '.$i.' day');
+            if ($timestamp === false) {
+                continue;
+            }
+            $date = date('Y-m-d', $timestamp);
+            $weekday = (int) date('N', $timestamp);
+
+            /** @var DispatchDayAvailabilityView $availability */
+            $availability = $queryBus->ask(new CheckDispatchDayQuery($date, $municipalityId));
+            /** @var list<CapacityView> $buckets */
+            $buckets = $queryBus->ask(new ListBucketsByDateQuery($date, $municipalityId));
+
+            $days[] = [
+                'date' => $date,
+                'weekday' => $weekday,
+                'weekday_label' => $weekdayNames[$weekday] ?? (string) $weekday,
+                'is_today' => $date === $today,
+                'blocked' => $availability->blocked,
+                'reason' => $availability->reason,
+                'within_horizon' => $availability->withinHorizon,
+                'windows' => $this->aggregateWindows($buckets),
+            ];
+        }
+
+        return $days;
+    }
+
+    /**
+     * Agrega los cupos de un día por (franja, unidad), sumando total/usado entre scopes (p. ej. varias
+     * zonas de un municipio). Cada fila lleva total/usado/disponible y si está llena.
+     *
+     * @param  list<CapacityView>         $buckets
+     * @return list<array<string, mixed>>
+     */
+    private function aggregateWindows(array $buckets): array
+    {
+        /** @var array<string, array<string, mixed>> $byKey */
+        $byKey = [];
+        foreach ($buckets as $bucket) {
+            $key = $bucket->timeSlot.'|'.$bucket->unit;
+            if (!isset($byKey[$key])) {
+                $byKey[$key] = [
+                    'time_slot' => $bucket->timeSlot,
+                    'unit' => $bucket->unit,
+                    'total' => 0.0,
+                    'used' => 0.0,
+                ];
+            }
+            $byKey[$key]['total'] = (float) $byKey[$key]['total'] + $bucket->total;
+            $byKey[$key]['used'] = (float) $byKey[$key]['used'] + $bucket->used;
+        }
+
+        $rows = [];
+        foreach ($byKey as $row) {
+            $total = (float) $row['total'];
+            $used = (float) $row['used'];
+            $available = $total - $used;
+            $rows[] = [
+                'time_slot' => $row['time_slot'],
+                'unit' => $row['unit'],
+                'total' => $total,
+                'used' => $used,
+                'available' => $available,
+                'full' => $available <= 0.0,
+            ];
+        }
+
+        // Orden estable por franja y unidad.
+        usort($rows, static fn (array $a, array $b): int => [$a['time_slot'], $a['unit']] <=> [$b['time_slot'], $b['unit']]);
+
+        return $rows;
+    }
+
+    /**
+     * Horizonte activo de cupos del alcance (municipio, o global si no hay municipio): hasta qué fecha hay
+     * cupos activados. Devuelve null si nunca se activó ese alcance.
+     *
+     * @return array{active_until: string, global: bool}|null
+     */
+    private function activeHorizon(?string $municipalityId): ?array
+    {
+        /** @var QueryBus $queryBus */
+        $queryBus = app(QueryBus::class);
+        /** @var ActiveHorizonView|null $horizon */
+        $horizon = $queryBus->ask(new GetActiveHorizonQuery($municipalityId));
+
+        if ($horizon === null) {
+            return null;
+        }
+
+        return ['active_until' => $horizon->activeUntil, 'global' => $horizon->global];
     }
 
     /**
@@ -569,96 +1020,7 @@ final class DispatchCalendar extends Page
     }
 
     /**
-     * Agrupa los cupos del día por scope (nodo o zona), y dentro de cada scope por franja. Cada celda
-     * lleva total/usado/disponible por unidad.
-     *
-     * @param  list<CapacityView>                                                                      $buckets
-     * @return list<array{key: string, label: string, kind: string, rows: list<array<string, mixed>>}>
-     */
-    private function groupByScope(array $buckets): array
-    {
-        $nodeNames = $this->nodeNames($buckets);
-        $zoneNames = $this->zoneNames($buckets);
-
-        /** @var array<string, array{key: string, label: string, kind: string, rows: list<array<string, mixed>>}> $scopes */
-        $scopes = [];
-        foreach ($buckets as $bucket) {
-            if ($bucket->nodeId !== null) {
-                $key = 'node:'.$bucket->nodeId;
-                $label = $nodeNames[$bucket->nodeId] ?? $bucket->nodeId;
-                $kind = __('Node');
-            } else {
-                $key = 'zone:'.((string) $bucket->zoneId);
-                $label = $zoneNames[(string) $bucket->zoneId] ?? (string) $bucket->zoneId;
-                $kind = __('Zone');
-            }
-
-            $scopes[$key] ??= ['key' => $key, 'label' => $label, 'kind' => $kind, 'rows' => []];
-            $scopes[$key]['rows'][] = [
-                'time_slot' => $bucket->timeSlot,
-                'unit' => $bucket->unit,
-                'total' => $bucket->total,
-                'used' => $bucket->used,
-                'available' => $bucket->available,
-                'full' => $bucket->full,
-            ];
-        }
-
-        // Orden estable: por etiqueta de scope, y dentro por franja y unidad.
-        $ordered = array_values($scopes);
-        usort($ordered, static fn (array $a, array $b): int => strcmp($a['label'], $b['label']));
-        foreach ($ordered as &$scope) {
-            usort($scope['rows'], static function (array $a, array $b): int {
-                return [$a['time_slot'], $a['unit']] <=> [$b['time_slot'], $b['unit']];
-            });
-        }
-        unset($scope);
-
-        return $ordered;
-    }
-
-    /**
-     * Nombres de nodo (code — name) para los ids presentes en los cupos.
-     *
-     * @param  list<CapacityView>    $buckets
-     * @return array<string, string>
-     */
-    private function nodeNames(array $buckets): array
-    {
-        $ids = array_values(array_filter(array_map(static fn (CapacityView $b): ?string => $b->nodeId, $buckets)));
-        if ($ids === []) {
-            return [];
-        }
-
-        return NodeRecord::query()
-            ->whereIn('id', array_unique($ids))
-            ->get(['id', 'code', 'name'])
-            ->mapWithKeys(static fn (NodeRecord $n): array => [$n->id => "{$n->code} — {$n->name}"])
-            ->all();
-    }
-
-    /**
-     * Nombres de zona para los ids presentes en los cupos.
-     *
-     * @param  list<CapacityView>    $buckets
-     * @return array<string, string>
-     */
-    private function zoneNames(array $buckets): array
-    {
-        $ids = array_values(array_filter(array_map(static fn (CapacityView $b): ?string => $b->zoneId, $buckets)));
-        if ($ids === []) {
-            return [];
-        }
-
-        return ZoneRecord::query()
-            ->whereIn('id', array_unique($ids))
-            ->get(['id', 'name'])
-            ->mapWithKeys(static fn (ZoneRecord $z): array => [$z->id => $z->name])
-            ->all();
-    }
-
-    /**
-     * Ventanas de franja configuradas (columnas del calendario).
+     * Ventanas de franja configuradas (referencia para el operador).
      *
      * @return list<string>
      */
@@ -683,7 +1045,7 @@ final class DispatchCalendar extends Page
         /** @var array<string, mixed> $rules */
         $rules = $queryBus->ask(new GetCapacityRulesetQuery);
 
-        $names = [1 => __('Mon'), 2 => __('Tue'), 3 => __('Wed'), 4 => __('Thu'), 5 => __('Fri'), 6 => __('Sat'), 7 => __('Sun')];
+        $names = $this->weekdayShortNames();
         $days = is_array($rules['service_days'] ?? null) ? $rules['service_days'] : [];
         $scopes = is_array($rules['scopes'] ?? null) ? $rules['scopes'] : [];
 
@@ -729,6 +1091,16 @@ final class DispatchCalendar extends Page
     }
 
     /**
+     * Nombres cortos de día de la semana (1=Mon … 7=Sun), para el encabezado del calendario y el resumen.
+     *
+     * @return array<int, string>
+     */
+    private function weekdayShortNames(): array
+    {
+        return [1 => __('Mon'), 2 => __('Tue'), 3 => __('Wed'), 4 => __('Thu'), 5 => __('Fri'), 6 => __('Sat'), 7 => __('Sun')];
+    }
+
+    /**
      * Opciones valor→etiqueta de las unidades de capacidad.
      *
      * @return array<string, string>
@@ -744,6 +1116,14 @@ final class DispatchCalendar extends Page
     }
 
     /**
+     * Municipio elegido en el filtro, como string, o null (todos los municipios).
+     */
+    private function selectedMunicipalityId(): ?string
+    {
+        return $this->blankToNull($this->filters['municipality_id'] ?? null);
+    }
+
+    /**
      * Identificador del usuario autenticado (para auditoría), como string o null.
      */
     private function currentUserId(): ?string
@@ -751,6 +1131,44 @@ final class DispatchCalendar extends Page
         $id = Filament::auth()->id();
 
         return $id === null ? null : (string) $id;
+    }
+
+    /**
+     * Lunes de la semana que contiene la fecha dada, en 'Y-m-d'. Cae a hoy si la fecha es inválida.
+     */
+    private function mondayOf(string $date): string
+    {
+        $timestamp = strtotime($date);
+        if ($timestamp === false) {
+            $timestamp = time();
+        }
+        $weekday = (int) date('N', $timestamp);
+        $monday = strtotime('-'.($weekday - 1).' day', $timestamp);
+
+        return date('Y-m-d', $monday === false ? $timestamp : $monday);
+    }
+
+    /**
+     * Domingo de la semana mirada, en 'Y-m-d' (para mostrar el rango).
+     */
+    private function weekEnd(): string
+    {
+        $timestamp = strtotime($this->mondayOf($this->weekStart).' 6 day');
+
+        return $timestamp === false ? $this->weekStart : date('Y-m-d', $timestamp);
+    }
+
+    /**
+     * Convierte cadenas vacías a null.
+     */
+    private function blankToNull(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $value = trim($value);
+
+        return $value === '' ? null : $value;
     }
 
     /**
@@ -781,15 +1199,5 @@ final class DispatchCalendar extends Page
         }
 
         return $out;
-    }
-
-    /**
-     * Normaliza la fecha mirada a 'Y-m-d', cayendo a hoy si viene vacía o mal formada.
-     */
-    private function normalizedDate(): string
-    {
-        $time = strtotime($this->date);
-
-        return $time === false ? date('Y-m-d') : date('Y-m-d', $time);
     }
 }

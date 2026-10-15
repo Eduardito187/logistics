@@ -7,13 +7,15 @@
 
                 <div class="space-y-4">
                     <div>
-                        <label class="text-sm font-medium">{{ __('Edit existing zone') }}</label>
-                        <select wire:model="zoneId" class="fi-input mt-1 block w-full rounded-lg border-gray-300 text-sm dark:bg-white/5">
-                            <option value="">— {{ __('New zone') }} —</option>
-                            @foreach ($zones as $z)
-                                <option value="{{ $z['id'] }}">{{ $z['name'] }}</option>
-                            @endforeach
-                        </select>
+                        <x-dismac-select
+                            property="zoneId"
+                            :label="__('Edit existing zone')"
+                            :placeholder="'— ' . __('New zone') . ' —'"
+                            :options="array_merge(
+                                [['value' => '', 'label' => '— ' . __('New zone') . ' —']],
+                                array_map(fn ($z) => ['value' => $z['id'], 'label' => $z['name']], $zones),
+                            )"
+                        />
                         <div class="mt-2 flex gap-2">
                             <x-filament::button size="xs" color="gray" wire:click="loadZone">{{ __('Load') }}</x-filament::button>
                             <x-filament::button size="xs" color="gray" wire:click="newZone">{{ __('New zone') }}</x-filament::button>
@@ -26,13 +28,15 @@
                     </div>
 
                     <div>
-                        <label class="text-sm font-medium">{{ __('Municipality / City') }}</label>
-                        <select wire:model="parentAreaId" class="fi-input mt-1 block w-full rounded-lg border-gray-300 text-sm dark:bg-white/5">
-                            <option value="">—</option>
-                            @foreach ($cities as $id => $cityName)
-                                <option value="{{ $id }}">{{ $cityName }}</option>
-                            @endforeach
-                        </select>
+                        <x-dismac-select
+                            property="parentAreaId"
+                            :label="__('Municipality / City')"
+                            placeholder="—"
+                            :options="array_merge(
+                                [['value' => '', 'label' => '—']],
+                                array_map(fn ($id, $cityName) => ['value' => (string) $id, 'label' => $cityName], array_keys($cities), array_values($cities)),
+                            )"
+                        />
                     </div>
 
                     <p class="text-xs text-gray-500">
@@ -58,6 +62,8 @@
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css" />
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        {{-- Helper de teselas con fallback automático al OSM público si el self-host no responde. --}}
+        <script src="{{ asset('js/dismac-maps.js') }}"></script>
         <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
     @endassets
 
@@ -67,8 +73,10 @@
         let zones = @js($zones);
 
         const map = L.map(container).setView([-16.5, -68.15], 11); // La Paz / Bolivia
-        // Teselas self-host (tileserver OSM del proyecto); si MAP_TILE_URL está vacío, cae al tile público de OSM.
-        L.tileLayer(@js(config('maps.tile_url') ?: config('maps.tile_fallback_url')), {
+        // Teselas self-host (tileserver OSM del proyecto); si falla, el helper cae automáticamente al OSM público.
+        window.DismacMaps.tileLayer(L, {
+            url: @js(config('maps.tile_url')),
+            fallbackUrl: @js(config('maps.tile_fallback_url')),
             attribution: @js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
             maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
         }).addTo(map);

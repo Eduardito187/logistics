@@ -6,7 +6,8 @@ namespace Logistics\Fleet\Domain\ValueObject;
 
 /**
  * Agrupa los datos personales editables de un chofer (foto, CI, fecha de nacimiento, teléfonos,
- * dirección, categoría de licencia, contacto de emergencia) y sus referencias personales.
+ * dirección, categoría y ciudad de emisión de la licencia, contacto de emergencia) y sus referencias
+ * personales.
  *
  * Es el argumento de `Driver::updateProfile()`: todos los campos son opcionales (nullable) porque el
  * perfil se completa de a poco. Las referencias se reemplazan por completo en cada actualización.
@@ -27,6 +28,7 @@ final readonly class DriverProfile
         public ?string $emergencyContactName = null,
         public ?PhoneNumber $emergencyContactPhone = null,
         public array $references = [],
+        public ?string $licenseCity = null,
     ) {}
 
     /**
@@ -40,6 +42,7 @@ final readonly class DriverProfile
      *     phone_secondary: string|null,
      *     address: string|null,
      *     license_category: string|null,
+     *     license_city: string|null,
      *     emergency_contact_name: string|null,
      *     emergency_contact_phone: string|null,
      *     references: list<array{name: string, relationship: string|null, phone: string|null, note: string|null}>
@@ -55,6 +58,7 @@ final readonly class DriverProfile
             'phone_secondary' => $this->phoneSecondary?->value,
             'address' => $this->address,
             'license_category' => $this->licenseCategory?->value,
+            'license_city' => $this->licenseCity,
             'emergency_contact_name' => $this->emergencyContactName,
             'emergency_contact_phone' => $this->emergencyContactPhone?->value,
             'references' => array_values(array_map(

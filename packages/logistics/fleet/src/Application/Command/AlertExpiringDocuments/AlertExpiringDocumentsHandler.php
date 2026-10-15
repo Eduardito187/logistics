@@ -35,6 +35,10 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
 
     private int $lastExpiring = 0;
 
+    private int $lastDueSoon = 0;
+
+    private int $lastUpcoming = 0;
+
     private bool $lastEmitted = false;
 
     public function __construct(
@@ -62,16 +66,22 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
 
         $views = $this->scan($days, $ref);
 
-        $this->lastExpired = count(array_filter($views, static fn (ExpiringDocumentView $v): bool => $v->expired));
-        $this->lastExpiring = count($views) - $this->lastExpired;
+        // Clasifica cada documento por umbral (vencido / ≤7 días / ≤30 días) a la fecha de referencia.
+        $documents = array_map(
+            static fn (ExpiringDocumentView $v): array => $v->toArray() + ['threshold' => $v->thresholdAt($ref)],
+            $views,
+        );
+
+        $this->lastExpired = $this->countThreshold($documents, ExpiringDocumentView::THRESHOLD_EXPIRED);
+        $this->lastDueSoon = $this->countThreshold($documents, ExpiringDocumentView::THRESHOLD_DUE_SOON);
+        $this->lastUpcoming = $this->countThreshold($documents, ExpiringDocumentView::THRESHOLD_UPCOMING);
+        $this->lastExpiring = $this->lastDueSoon + $this->lastUpcoming;
         $this->lastEmitted = false;
 
         // Sin documentos en la ventana no hay nada que alertar: no se ensucia el outbox.
-        if ($views === []) {
+        if ($documents === []) {
             return;
         }
-
-        $documents = array_map(static fn (ExpiringDocumentView $v): array => $v->toArray(), $views);
 
         $event = new FleetDocumentsExpiryAlerted(
             'fleet-document-expiry-'.$ref->format('Y-m-d'),
@@ -80,6 +90,8 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
             $this->lastExpired,
             $this->lastExpiring,
             array_values($documents),
+            $this->lastDueSoon,
+            $this->lastUpcoming,
         );
 
         $this->recordEvents->record([$event], 'fleet.document_expiry');
@@ -94,9 +106,30 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
      */
     private function scan(int $days, DateTimeImmutable $ref): array
     {
+        $vehicles = $this->vehicles->all();
+        $drivers = $this->drivers->all();
+        $helpers = $this->helpers->all();
+
+        // Mapas id → etiqueta legible (placa/nombre) para resolver el dueño de los documentos de flota
+        // en lote, sin N+1. Mismo criterio que el tablero (ListExpiringDocuments).
+        $labels = [
+            'vehicle' => [],
+            'driver' => [],
+            'helper' => [],
+        ];
+        foreach ($vehicles as $vehicle) {
+            $labels['vehicle'][$vehicle->id()->toString()] = $vehicle->plate()->value;
+        }
+        foreach ($drivers as $driver) {
+            $labels['driver'][$driver->id()->toString()] = $driver->name();
+        }
+        foreach ($helpers as $helper) {
+            $labels['helper'][$helper->id()->toString()] = $helper->name();
+        }
+
         $results = [];
 
-        foreach ($this->vehicles->all() as $vehicle) {
+        foreach ($vehicles as $vehicle) {
             foreach ($vehicle->documentsExpiringWithin($days, $ref) as $document) {
                 $results[] = ExpiringDocumentView::forVehicle(
                     $vehicle->id()->toString(),
@@ -108,7 +141,7 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
             }
         }
 
-        foreach ($this->drivers->all() as $driver) {
+        foreach ($drivers as $driver) {
             $license = $driver->licenseExpiry();
             if ($license->expiresWithin($days, $ref)) {
                 $results[] = ExpiringDocumentView::forDriver(
@@ -121,7 +154,7 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
             }
         }
 
-        foreach ($this->helpers->all() as $helper) {
+        foreach ($helpers as $helper) {
             foreach ($helper->documentsExpiringWithin($days, $ref) as $document) {
                 $results[] = ExpiringDocumentView::forHelper(
                     $helper->id()->toString(),
@@ -135,10 +168,12 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
 
         foreach ($this->documents->all() as $document) {
             if ($document->expiresWithin($days, $ref)) {
+                $ownerType = $document->ownerType()->value;
+                $ownerId = $document->ownerId();
                 $results[] = ExpiringDocumentView::forDocument(
-                    $document->ownerType()->value,
-                    $document->ownerId(),
-                    $document->ownerId(),
+                    $ownerType,
+                    $ownerId,
+                    $labels[$ownerType][$ownerId] ?? $ownerId,
                     $document->document()->type,
                     $document->document()->expiresOn->format('Y-m-d'),
                     $document->isExpiredAt($ref),
@@ -147,6 +182,19 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
         }
 
         return $results;
+    }
+
+    /**
+     * Cuenta los documentos de un umbral dado dentro del resumen de la última corrida.
+     *
+     * @param list<array{threshold?: string}> $documents
+     */
+    private function countThreshold(array $documents, string $threshold): int
+    {
+        return count(array_filter(
+            $documents,
+            static fn (array $document): bool => ($document['threshold'] ?? null) === $threshold,
+        ));
     }
 
     /**
@@ -163,6 +211,22 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
     public function lastExpiring(): int
     {
         return $this->lastExpiring;
+    }
+
+    /**
+     * Cantidad de documentos que vencen dentro de los próximos 7 días (aún vigentes) en la última corrida.
+     */
+    public function lastDueSoon(): int
+    {
+        return $this->lastDueSoon;
+    }
+
+    /**
+     * Cantidad de documentos que vencen dentro de la ventana (hasta 30 días) pero a más de 7 días.
+     */
+    public function lastUpcoming(): int
+    {
+        return $this->lastUpcoming;
     }
 
     /**

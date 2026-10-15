@@ -30,5 +30,6 @@ final readonly class UpdateDriverProfile implements Command
         public ?string $emergencyContactName = null,
         public ?string $emergencyContactPhone = null,
         public array $references = [],
+        public ?string $licenseCity = null,
     ) {}
 }

@@ -16,6 +16,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Grouping\Group;
 use Filament\Tables\Table;
+use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Settings\Infrastructure\Persistence\Eloquent\SettingVersionRecord;
 use Logistics\Settings\Presentation\Filament\Resources\SettingVersionResource\Pages\CreateSettingVersion;
 use Logistics\Settings\Presentation\Filament\Resources\SettingVersionResource\Pages\ListSettingVersions;
@@ -40,17 +41,19 @@ use Logistics\Settings\Presentation\Filament\Resources\SettingVersionResource\Pa
  */
 final class SettingVersionResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = SettingVersionRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-adjustments-horizontal';
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 52;
 
     protected static ?string $recordTitleAttribute = 'key';
 
     public static function getNavigationGroup(): string
     {
-        return __('Platform');
+        return __('Administration');
     }
 
     public static function getNavigationLabel(): string

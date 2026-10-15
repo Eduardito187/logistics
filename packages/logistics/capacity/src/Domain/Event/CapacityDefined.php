@@ -20,6 +20,7 @@ final readonly class CapacityDefined extends BaseDomainEvent
         private string $timeSlot,
         private string $unit,
         private float $total,
+        private ?string $municipalityId = null,
     ) {
         parent::__construct($aggregateId);
     }
@@ -30,13 +31,14 @@ final readonly class CapacityDefined extends BaseDomainEvent
     }
 
     /**
-     * @return array{node_id: string|null, zone_id: string|null, date: string, time_slot: string, unit: string, total: float}
+     * @return array{node_id: string|null, zone_id: string|null, municipality_id: string|null, date: string, time_slot: string, unit: string, total: float}
      */
     public function payload(): array
     {
         return [
             'node_id' => $this->nodeId,
             'zone_id' => $this->zoneId,
+            'municipality_id' => $this->municipalityId,
             'date' => $this->date,
             'time_slot' => $this->timeSlot,
             'unit' => $this->unit,

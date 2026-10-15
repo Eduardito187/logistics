@@ -27,6 +27,8 @@ use Logistics\Fleet\Application\Command\UpdateDriverProfile\UpdateDriverProfile;
 use Logistics\Fleet\Application\Command\UpdateDriverProfile\UpdateDriverProfileHandler;
 use Logistics\Fleet\Application\Command\UpdateHelperProfile\UpdateHelperProfile;
 use Logistics\Fleet\Application\Command\UpdateHelperProfile\UpdateHelperProfileHandler;
+use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfile;
+use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfileHandler;
 use Logistics\Fleet\Application\Query\GetDriverHistory\GetDriverHistory;
 use Logistics\Fleet\Application\Query\GetDriverHistory\GetDriverHistoryHandler;
 use Logistics\Fleet\Application\Query\ListDocuments\ListDocuments;
@@ -84,6 +86,7 @@ final class FleetServiceProvider extends ServiceProvider
         SetHelperAvailability::class => SetHelperAvailabilityHandler::class,
         UpdateDriverProfile::class => UpdateDriverProfileHandler::class,
         UpdateHelperProfile::class => UpdateHelperProfileHandler::class,
+        UpdateVehicleProfile::class => UpdateVehicleProfileHandler::class,
         AssembleCrew::class => AssembleCrewHandler::class,
         ConductPreTripChecklist::class => ConductPreTripChecklistHandler::class,
         RegisterDocument::class => RegisterDocumentHandler::class,

@@ -41,3 +41,28 @@ it('reconoce un documento vencido y uno por vencer', function (): void {
     expect($porVencer->expiresWithin(30, new DateTimeImmutable('2026-10-13')))->toBeTrue()
         ->and($porVencer->isExpiredAt(new DateTimeImmutable('2026-10-13')))->toBeFalse();
 });
+
+it('guarda la referencia (nº de póliza/certificado) y la expone en el evento', function (): void {
+    $document = FleetDocument::register(
+        FleetDocumentId::generate(),
+        DocumentOwnerType::Vehicle,
+        'veh-1',
+        DocumentExpiry::of('soat', new DateTimeImmutable('2027-01-01')),
+        new DateTimeImmutable('2026-01-01'),
+        null,
+        null,
+        'POL-2026-00123',
+    );
+
+    expect($document->reference())->toBe('POL-2026-00123');
+
+    $events = $document->releaseEvents();
+    expect($events)->toHaveCount(1)
+        ->and($events[0]->payload()['reference'])->toBe('POL-2026-00123');
+});
+
+it('acepta un documento sin referencia (null por defecto)', function (): void {
+    $document = registrarDocumento();
+
+    expect($document->reference())->toBeNull();
+});

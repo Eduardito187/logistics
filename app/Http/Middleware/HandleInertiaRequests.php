@@ -54,6 +54,15 @@ final class HandleInertiaRequests extends Middleware
                 'success' => fn (): ?string => $request->session()->get('success'),
                 'error' => fn (): ?string => $request->session()->get('error'),
             ],
+            // Configuración de teselas de mapa (config/maps.php) para los mapas Leaflet del SPA. Se
+            // comparte aquí para que RouteMap.vue use el tileserver OSM self-host del proyecto en vez de
+            // una URL fija; vacío el self-host, el componente cae al tile público de OSM (solo demo).
+            'maps' => [
+                'tileUrl' => config('maps.tile_url'),
+                'tileFallbackUrl' => config('maps.tile_fallback_url'),
+                'tileAttribution' => config('maps.tile_attribution', '&copy; OpenStreetMap'),
+                'tileMaxZoom' => (int) config('maps.tile_max_zoom', 19),
+            ],
         ];
     }
 }

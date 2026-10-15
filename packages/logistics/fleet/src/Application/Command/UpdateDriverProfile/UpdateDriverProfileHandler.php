@@ -63,6 +63,7 @@ final readonly class UpdateDriverProfileHandler implements CommandHandler
             $command->emergencyContactName,
             $command->emergencyContactPhone !== null ? PhoneNumber::of($command->emergencyContactPhone) : null,
             array_values($references),
+            $command->licenseCity,
         ));
 
         $this->drivers->save($driver);

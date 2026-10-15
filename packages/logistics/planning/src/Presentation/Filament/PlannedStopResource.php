@@ -37,7 +37,7 @@ final class PlannedStopResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-flag';
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 12;
 
     public static function getNavigationGroup(): string
     {

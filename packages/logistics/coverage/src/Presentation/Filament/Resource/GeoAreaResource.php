@@ -54,6 +54,11 @@ final class GeoAreaResource extends Resource
         return __('Network');
     }
 
+    public static function getNavigationSort(): int
+    {
+        return 22;
+    }
+
     public static function getNavigationLabel(): string
     {
         return __('Geographic Areas');
@@ -159,12 +164,7 @@ final class GeoAreaResource extends Resource
                     ->badge()
                     ->color('primary')
                     ->sortable(),
-                // UUID crudo: columna secundaria, oculta por defecto.
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->fontFamily('mono')
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // El UUID del área no se muestra: el admin opera por nombre y nivel.
             ])
             ->filters([
                 // Filtro por nivel administrativo con etiquetas en inglés.

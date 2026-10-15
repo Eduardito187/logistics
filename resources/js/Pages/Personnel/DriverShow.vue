@@ -23,7 +23,7 @@ const fields = [
     { label: 'Cédula de identidad', value: props.driver.national_id },
     { label: 'Fecha de nacimiento', value: props.driver.birth_date },
     { label: 'Edad', value: props.driver.age != null ? `${props.driver.age} años` : null },
-    { label: 'Placa de licencia', value: props.driver.license_number },
+    { label: 'Número de licencia', value: props.driver.license_number },
     { label: 'Categoría de licencia', value: props.driver.license_category },
     { label: 'Vence licencia', value: props.driver.license_expiry },
     { label: 'Teléfono principal', value: props.driver.phone_primary },

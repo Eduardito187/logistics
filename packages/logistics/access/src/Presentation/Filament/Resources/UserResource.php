@@ -49,7 +49,12 @@ final class UserResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Access');
+        return __('Administration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 10;
     }
 
     public static function getNavigationIcon(): string
@@ -175,9 +180,7 @@ final class UserResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label(__('ID'))
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // El id (UUID) nunca se muestra: la URL ya lo lleva. Se identifica al usuario por name/email.
                 TextColumn::make('name')
                     ->label(__('Name'))
                     ->searchable()

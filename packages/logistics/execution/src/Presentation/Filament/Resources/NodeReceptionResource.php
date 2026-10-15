@@ -18,6 +18,7 @@ use Logistics\Execution\Domain\ValueObject\NodeReceptionStatus;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\NodeReceptionRecord;
 use Logistics\Execution\Presentation\Filament\Resources\NodeReceptionResource\Pages\ListNodeReceptions;
 use Logistics\Execution\Presentation\Filament\Resources\NodeReceptionResource\Pages\ViewNodeReception;
+use Logistics\Execution\Presentation\Filament\Support\NodeNames;
 
 /**
  * Admin de solo lectura de las recepciones en nodo (CD→CD, CD→tienda, tienda→tienda, tienda→CD).
@@ -36,11 +37,11 @@ final class NodeReceptionResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-inbox-arrow-down';
 
-    protected static ?int $navigationSort = 25;
+    protected static ?int $navigationSort = 34;
 
     public static function getNavigationGroup(): string
     {
-        return __('Execution');
+        return __('Operations');
     }
 
     public static function getNavigationLabel(): string
@@ -113,17 +114,14 @@ final class NodeReceptionResource extends Resource
                     ->badge()
                     ->color(static fn (int $state): string => $state > 0 ? 'warning' : 'gray')
                     ->alignCenter(),
+                // Nodos mostrados por su NOMBRE legible (network_nodes.name), nunca el UUID crudo.
                 TextColumn::make('destination_node_id')
                     ->label(__('Destination node'))
-                    ->searchable()
-                    ->copyable()
-                    ->fontFamily('mono')
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->formatStateUsing(static fn (?string $state): string => NodeNames::label($state) ?? '—')
+                    ->toggleable(),
                 TextColumn::make('origin_node_id')
                     ->label(__('Origin node'))
-                    ->searchable()
-                    ->copyable()
-                    ->fontFamily('mono')
+                    ->formatStateUsing(static fn (?string $state): string => NodeNames::label($state) ?? '—')
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('opened_at')
                     ->label(__('Opened at'))
@@ -162,8 +160,13 @@ final class NodeReceptionResource extends Resource
                     ->badge()
                     ->color(static fn (string $state): string => $state === NodeReceptionStatus::Reconciled->value ? 'success' : 'warning')
                     ->formatStateUsing(static fn (string $state): string => self::statusLabel($state)),
-                TextEntry::make('origin_node_id')->label(__('Origin node'))->copyable()->fontFamily('mono'),
-                TextEntry::make('destination_node_id')->label(__('Destination node'))->copyable()->fontFamily('mono'),
+                // Nodos mostrados por su NOMBRE legible (network_nodes.name), nunca el UUID crudo.
+                TextEntry::make('origin_node_id')
+                    ->label(__('Origin node'))
+                    ->formatStateUsing(static fn (?string $state): string => NodeNames::label($state) ?? '—'),
+                TextEntry::make('destination_node_id')
+                    ->label(__('Destination node'))
+                    ->formatStateUsing(static fn (?string $state): string => NodeNames::label($state) ?? '—'),
                 TextEntry::make('expected_unit_ids')
                     ->label(__('Expected units'))
                     ->badge()
@@ -187,7 +190,6 @@ final class NodeReceptionResource extends Resource
                     ->placeholder('—'),
                 TextEntry::make('opened_at')->label(__('Opened at'))->dateTime(),
                 TextEntry::make('reconciled_at')->label(__('Reconciled at'))->dateTime()->placeholder('—'),
-                TextEntry::make('id')->label(__('Reception ID'))->copyable()->fontFamily('mono'),
             ]);
     }
 

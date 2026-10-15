@@ -85,6 +85,7 @@ final class GenerateDispatchCalendarHandler implements CommandHandler
                 timeSlot: $planned->slot->toString(),
                 unit: $planned->unit->value,
                 total: $planned->total->value(),
+                municipalityId: $planned->scope->municipalityId,
             ));
             $this->lastCreated++;
         } catch (CapacityException) {

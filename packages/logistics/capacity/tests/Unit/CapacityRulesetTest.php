@@ -43,7 +43,7 @@ it('round-trips its primitive form through fromArray/toArray', function (): void
         ->and($array['windows_by_weekday'])->toBe([6 => ['09:00-13:00']])
         ->and($array['totals'])->toBe(['deliveries' => 40.0, 'weight' => 8000.0])
         ->and($array['totals_by_slot'])->toBe(['deliveries' => ['08:00-12:00' => 60.0]])
-        ->and($array['scopes'])->toBe([['node_id' => '11111111-1111-7111-8111-111111111111', 'zone_id' => null]]);
+        ->and($array['scopes'])->toBe([['node_id' => '11111111-1111-7111-8111-111111111111', 'zone_id' => null, 'municipality_id' => null]]);
 
     // Reconstruir desde toArray da el mismo resultado (idempotencia).
     expect(CapacityRuleset::fromArray($array)->toArray())->toBe($array);

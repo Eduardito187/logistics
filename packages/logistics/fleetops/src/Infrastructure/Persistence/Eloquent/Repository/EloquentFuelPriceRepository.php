@@ -32,6 +32,18 @@ final readonly class EloquentFuelPriceRepository implements FuelPriceRepository
         FuelPriceRecord::query()->updateOrCreate(['id' => $row['id']], $row);
     }
 
+    public function findById(FuelPriceId $id): ?FuelPrice
+    {
+        $record = FuelPriceRecord::query()->find($id->toString());
+
+        return $record instanceof FuelPriceRecord ? $this->mapper->toDomain($record) : null;
+    }
+
+    public function delete(FuelPriceId $id): void
+    {
+        FuelPriceRecord::query()->whereKey($id->toString())->delete();
+    }
+
     public function currentFor(FuelType $fuelType, DateTimeImmutable $at): ?FuelPrice
     {
         // Precio vigente = el más reciente cuya fecha de vigencia no supera la fecha consultada.

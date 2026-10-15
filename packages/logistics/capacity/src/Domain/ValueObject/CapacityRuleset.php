@@ -95,7 +95,7 @@ final readonly class CapacityRuleset
     /**
      * Forma primitiva lista para serializar a JSON o persistir como `value` de settings (regla 7).
      *
-     * @return array{service_days: list<int>, order_cutoff: string, horizon_days: int, holidays: list<string>, windows: list<string>, windows_by_weekday: array<int, list<string>>, totals: array<string, float>, totals_by_slot: array<string, array<string, float>>, scopes: list<array{node_id: string|null, zone_id: string|null}>}
+     * @return array{service_days: list<int>, order_cutoff: string, horizon_days: int, holidays: list<string>, windows: list<string>, windows_by_weekday: array<int, list<string>>, totals: array<string, float>, totals_by_slot: array<string, array<string, float>>, scopes: list<array{node_id: string|null, zone_id: string|null, municipality_id: string|null}>}
      */
     public function toArray(): array
     {
@@ -127,7 +127,11 @@ final readonly class CapacityRuleset
             'totals' => $totals,
             'totals_by_slot' => $totalsBySlot,
             'scopes' => array_map(
-                static fn (BucketScope $s): array => ['node_id' => $s->nodeId, 'zone_id' => $s->zoneId],
+                static fn (BucketScope $s): array => [
+                    'node_id' => $s->nodeId,
+                    'zone_id' => $s->zoneId,
+                    'municipality_id' => $s->municipalityId,
+                ],
                 $this->scopes,
             ),
         ];
@@ -395,11 +399,12 @@ final readonly class CapacityRuleset
         $scopes = [];
         foreach ($raw as $entry) {
             if (!is_array($entry)) {
-                throw CapacityException::because('cada scope debe ser un objeto con node_id o zone_id');
+                throw CapacityException::because('cada scope debe ser un objeto con municipality_id, zone_id o node_id');
             }
             $nodeId = isset($entry['node_id']) && is_string($entry['node_id']) ? $entry['node_id'] : null;
             $zoneId = isset($entry['zone_id']) && is_string($entry['zone_id']) ? $entry['zone_id'] : null;
-            $scopes[] = BucketScope::fromNullable($nodeId, $zoneId);
+            $municipalityId = isset($entry['municipality_id']) && is_string($entry['municipality_id']) ? $entry['municipality_id'] : null;
+            $scopes[] = BucketScope::fromNullable($nodeId, $zoneId, $municipalityId);
         }
 
         return $scopes;

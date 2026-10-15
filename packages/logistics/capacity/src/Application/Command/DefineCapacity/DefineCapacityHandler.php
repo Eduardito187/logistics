@@ -36,7 +36,7 @@ final readonly class DefineCapacityHandler implements CommandHandler
     {
         assert($command instanceof DefineCapacityCommand);
 
-        $scope = BucketScope::fromNullable($command->nodeId, $command->zoneId);
+        $scope = BucketScope::fromNullable($command->nodeId, $command->zoneId, $command->municipalityId);
         $date = SlotDate::fromString($command->date);
         $slot = TimeSlot::fromString($command->timeSlot);
         $unit = CapacityUnit::tryFrom($command->unit)

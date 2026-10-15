@@ -24,10 +24,11 @@ final class AlertExpiringDocumentsCommand extends Command
         $handler->handle(new AlertExpiringDocuments);
 
         $this->info(sprintf(
-            'Fleet document expiry scan finished: %d in window (%d expired, %d upcoming); alert %s.',
+            'Fleet document expiry scan finished: %d in window (%d expired, %d due within 7 days, %d within 30 days); alert %s.',
             $handler->lastTotal(),
             $handler->lastExpired(),
-            $handler->lastExpiring(),
+            $handler->lastDueSoon(),
+            $handler->lastUpcoming(),
             $handler->lastEmitted() ? 'emitted' : 'skipped (nothing to report)',
         ));
 

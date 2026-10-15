@@ -39,6 +39,7 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\DeliveryRecord;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\ScanEventRecord;
 use Logistics\Execution\Presentation\Filament\Resources\DeliveryResource\Pages\ListDeliveries;
 use Logistics\Execution\Presentation\Filament\Resources\DeliveryResource\Pages\ViewDelivery;
+use Logistics\Execution\Presentation\Filament\Support\UserNames;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\Command;
@@ -67,11 +68,11 @@ final class DeliveryResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-truck';
 
-    protected static ?int $navigationSort = 10;
+    protected static ?int $navigationSort = 30;
 
     public static function getNavigationGroup(): string
     {
-        return __('Execution');
+        return __('Operations');
     }
 
     public static function getNavigationLabel(): string
@@ -153,16 +154,6 @@ final class DeliveryResource extends Resource
                     ->label(__('Opened at'))
                     ->dateTime()
                     ->sortable(),
-                TextColumn::make('id')
-                    ->label(__('Delivery ID'))
-                    ->fontFamily('mono')
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('shipment_id')
-                    ->label(__('Order ID'))
-                    ->fontFamily('mono')
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('status')
@@ -233,8 +224,10 @@ final class DeliveryResource extends Resource
                             ->label(__('Unit'))
                             ->state(static fn (ScanEventRecord $scan): string => self::scanUnitLabel($scan)),
                         TextEntry::make('occurred_at')->label(__('Occurred at'))->dateTime(),
-                        TextEntry::make('user_id')->label(__('User')),
-                        TextEntry::make('device_id')->label(__('Device')),
+                        // user_id se muestra como el NOMBRE del operador (users.name), nunca el id crudo.
+                        TextEntry::make('user_id')
+                            ->label(__('User'))
+                            ->formatStateUsing(static fn (?string $state): string => UserNames::label($state)),
                         TextEntry::make('lat')->label(__('Lat')),
                         TextEntry::make('lng')->label(__('Lng')),
                     ])

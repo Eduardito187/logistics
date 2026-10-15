@@ -14,7 +14,7 @@ defineProps({
 
 const driverColumns = [
     { key: 'name', label: 'Nombre' },
-    { key: 'license_number', label: 'Placa de licencia' },
+    { key: 'license_number', label: 'Número de licencia' },
     { key: 'license_category', label: 'Categoría' },
     { key: 'age', label: 'Edad', align: 'right' },
     { key: 'active', label: 'Estado' },

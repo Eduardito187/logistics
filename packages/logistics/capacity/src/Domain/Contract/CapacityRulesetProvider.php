@@ -22,4 +22,11 @@ interface CapacityRulesetProvider
      * publicada en settings, cae a los valores por defecto de la configuración del package.
      */
     public function current(DateTimeImmutable $at): CapacityRuleset;
+
+    /**
+     * Reglas de cupo vigentes para un municipio a la fecha dada (calendario de 7 días por municipio). Si
+     * el municipio no tiene reglas propias publicadas, cae a las reglas de la red (current). Con municipio
+     * null es equivalente a current(): la configuración de la red.
+     */
+    public function currentForMunicipality(?string $municipalityId, DateTimeImmutable $at): CapacityRuleset;
 }

@@ -27,6 +27,7 @@ final class GetAvailableCapacityController
             (string) $request->input('date'),
             (string) $request->input('time_slot'),
             (string) $request->input('unit'),
+            $request->municipalityId(),
         ));
 
         if ($view === null) {

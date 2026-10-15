@@ -9,6 +9,7 @@ use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Support\ServiceProvider;
+use Logistics\Coverage\Domain\Contract\MunicipalityLocator;
 use Logistics\Planning\Application\Command\AssignShipmentToVehicle\AssignShipmentToVehicle;
 use Logistics\Planning\Application\Command\AssignShipmentToVehicle\AssignShipmentToVehicleHandler;
 use Logistics\Planning\Application\Command\GenerateDailyPlan\GenerateDailyPlan;
@@ -45,6 +46,8 @@ use Logistics\Planning\Domain\Service\ClarkeWrightSolver;
 use Logistics\Planning\Domain\Service\DailyPlanComposer;
 use Logistics\Planning\Domain\Service\DepartmentRouteGrouping;
 use Logistics\Planning\Domain\Service\RouteSequencer;
+use Logistics\Planning\Domain\Service\VehicleCompatibility;
+use Logistics\Planning\Infrastructure\Adapter\BlackoutAwarePendingDeliveryProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentPendingDeliveryProvider;
 use Logistics\Planning\Infrastructure\Adapter\FleetVehicleAvailabilityProvider;
 use Logistics\Planning\Infrastructure\Adapter\NetworkNodeOriginLocator;
@@ -62,6 +65,7 @@ use Logistics\Planning\Infrastructure\Routing\OsrmTripRoutingBackend;
 use Logistics\Planning\Infrastructure\Routing\VroomRoutingBackend;
 use Logistics\Planning\Infrastructure\Settings\ConfiguredAutoPlanSettings;
 use Logistics\Shared\Application\HandlerRegistry;
+use Logistics\Shared\Application\Query\QueryBus;
 
 /**
  * Registro del bounded context Planificación: propuesta pedido→camión, secuencia, ETA y plan de carga.
@@ -99,7 +103,16 @@ final class PlanningServiceProvider extends ServiceProvider
 
         // Auto-planificador diario: puertos de lectura (pedidos pendientes y flota disponible),
         // parámetros configurables (settings/config) y encolado asíncrono del cálculo pesado.
-        $this->app->bind(PendingDeliveryProvider::class, EloquentPendingDeliveryProvider::class);
+        // El proveedor de pendientes se envuelve con el decorador que descarta los pedidos cuyo municipio
+        // tiene la fecha del plan bloqueada (feriado u otro motivo): el auto-planificador no planifica
+        // entregas en un día bloqueado del municipio correspondiente.
+        $this->app->bind(PendingDeliveryProvider::class, function ($app): PendingDeliveryProvider {
+            return new BlackoutAwarePendingDeliveryProvider(
+                $app->make(EloquentPendingDeliveryProvider::class),
+                $app->make(MunicipalityLocator::class),
+                $app->make(QueryBus::class),
+            );
+        });
         $this->app->bind(FleetAvailabilityProvider::class, FleetVehicleAvailabilityProvider::class);
         $this->app->bind(AutoPlanSettingsProvider::class, ConfiguredAutoPlanSettings::class);
         $this->app->bind(DailyPlanDispatcher::class, QueuedDailyPlanDispatcher::class);
@@ -200,6 +213,7 @@ final class PlanningServiceProvider extends ServiceProvider
             $app->make(ClarkeWrightSolver::class),
             $app->make(RouteSequencer::class),
             $app->make(DepartmentRouteGrouping::class),
+            $app->make(VehicleCompatibility::class),
         );
     }
 
