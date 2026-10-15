@@ -44,6 +44,7 @@ it('defines a bucket with zero used and records CapacityDefined', function (): v
         ->and($events[0]->payload())->toBe([
             'node_id' => '11111111-1111-7111-8111-111111111111',
             'zone_id' => null,
+            'municipality_id' => null,
             'date' => '2026-10-13',
             'time_slot' => '09:00-13:00',
             'unit' => 'deliveries',

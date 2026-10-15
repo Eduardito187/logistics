@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
+use Monolog\Processor\UidProcessor;
 
 return [
 
@@ -113,6 +115,43 @@ return [
             ],
             'formatter' => env('LOG_STDERR_FORMATTER'),
             'processors' => [PsrLogMessageProcessor::class],
+        ],
+
+        /*
+        | Canal estructurado en JSON (una línea por evento) pensado para que el
+        | agregador de logs (Loki, CloudWatch, ELK, etc.) lo ingiera sin parsear
+        | texto libre. Cada registro lleva: message, level, channel, datetime,
+        | context y extra. Ver docs/observability.md.
+        |
+        | Correlación: el processor de `request_id` es CONFIGURABLE vía
+        | LOG_REQUEST_ID_PROCESSOR. Por defecto usa UidProcessor de Monolog, que
+        | adjunta un id único por proceso bajo `extra.uid`, suficiente para
+        | correlacionar todas las líneas de un mismo request/worker. Para
+        | propagar un id de extremo a extremo (p. ej. tomar el header
+        | X-Request-Id o reusar el id del evento de outbox), apuntar esta env a
+        | un processor propio; esa clase la aporta la capa de aplicación, no esta
+        | config. La cadena asíncrona (evento → outbox → relay → notificación)
+        | se traza arrastrando ese mismo id en el `context`; ver el doc.
+        */
+        'json' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'handler' => StreamHandler::class,
+            'handler_with' => [
+                'stream' => env('LOG_JSON_STREAM', 'php://stderr'),
+            ],
+            'formatter' => JsonFormatter::class,
+            'formatter_with' => [
+                // Una línea JSON por registro; incluir stacktraces de excepciones.
+                'appendNewline' => true,
+                'includeStacktraces' => true,
+            ],
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                // Clase resuelta por el contenedor: debe ser invocable o
+                // implementar Monolog\Processor\ProcessorInterface.
+                env('LOG_REQUEST_ID_PROCESSOR', UidProcessor::class),
+            ],
         ],
 
         'syslog' => [

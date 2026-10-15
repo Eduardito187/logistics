@@ -67,7 +67,9 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Zona horaria configurable por env; por defecto Bolivia. Al migrar la plataforma a otra
+    // empresa/país basta cambiar APP_TIMEZONE (p. ej. America/Lima, America/Santiago).
+    'timezone' => env('APP_TIMEZONE', 'America/La_Paz'),
 
     /*
     |--------------------------------------------------------------------------

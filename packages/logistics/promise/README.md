@@ -24,7 +24,8 @@ Cuatro capas, igual que el resto de los contextos (ver `docs/architecture.md`):
   contratos (puertos hacia capacity/coverage y hacia la persistencia).
 - `src/Application`: casos de uso CQRS (commands y queries) con sus ReadModels.
 - `src/Infrastructure`: Eloquent, stubs deterministas de los puertos, provider.
-- `src/Presentation`: controllers / Filament / consola (todavía vacío).
+- `src/Presentation`: controllers HTTP (puerta channels) y Filament Resource (solo lectura).
+- `database/factories` y `database/seeders`: factory de `PromiseRecord` y `PromiseSeeder` con datos de demo.
 
 ## Puertos hacia otros contextos
 
@@ -36,5 +37,6 @@ Ambos stubs están pensados para reemplazarse por la integración real sin tocar
 
 ## Estado
 
-Dominio y CQRS implementados; integración real con capacity/coverage y verificación en containers
-pendientes. Fase 2 ("Prometer").
+Dominio, CQRS, persistencia Eloquent + migración, controllers de la puerta channels, Filament Resource,
+factory y seeder de demo implementados. Pendiente: integración real con `capacity`/`coverage` (hoy tras
+los stubs `StubAvailabilityProvider`/`StubSlotReserver`) y verificación en containers. Fase 2 ("Prometer").

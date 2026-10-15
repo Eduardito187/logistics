@@ -23,7 +23,9 @@ Imprimir: la app envía el ZPL a la impresora.
 | CQRS: `EmitShipmentLabels` + `GetShipmentLabels` (sobre `logistics/shared`) | Implementado |
 | Persistencia de emitidas + detección de duplicados por `id` único (`labels_emitted`) | Implementado |
 | `php artisan logistics:labels:public-keys` (bundle de claves para la app) | Implementado |
-| Revocación por reimpresión | Pendiente (depende de execution) |
+| Pre-emisión al planificar (`PreEmitOrderLabels`, idempotente) + endpoint integrations | Implementado |
+| Reimpresión con revocación (`ReprintOrderLabels`): revoca vigentes y reemite | Implementado |
+| Endpoints app: obtener/emitir/reimprimir/ZPL (offline-friendly) | Implementado |
 | Payloads de MAN, NOD, VEH, DLV | Pendiente |
 
 ## Uso

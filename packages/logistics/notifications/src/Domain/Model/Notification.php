@@ -13,6 +13,7 @@ use Logistics\Notifications\Domain\ValueObject\FcmTopic;
 use Logistics\Notifications\Domain\ValueObject\MessageType;
 use Logistics\Notifications\Domain\ValueObject\NotificationId;
 use Logistics\Notifications\Domain\ValueObject\NotificationStatus;
+use Logistics\Notifications\Domain\ValueObject\Recipient;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
 /**
@@ -21,7 +22,7 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * escala al siguiente, y al agotarse la cascada queda fallida.
  *
  * El envío real es asíncrono (por outbox): el agregado solo registra el estado y los hechos; no habla
- * con FCM, email ni SMS.
+ * con ntfy, email ni SMS.
  */
 final class Notification extends AggregateRoot
 {
@@ -36,22 +37,34 @@ final class Notification extends AggregateRoot
         private NotificationStatus $status,
         private Channel $currentChannel,
         private array $attempts,
+        private readonly ?string $email = null,
+        private readonly ?string $phone = null,
+        private readonly ?string $telegramChatId = null,
     ) {}
 
     /**
      * Encola una notificación: arranca en Queued apuntando al primer canal de la política y graba el
      * hecho de encolado (que el outbox usará para despachar el primer envío).
+     *
+     * El email y el teléfono son contactos de respaldo de la cascada (email y SMS). El canal primario
+     * (push / web push) va por el topic FCM del envío y no necesita contacto.
      */
     public static function queue(
         NotificationId $id,
         string $shipmentId,
         MessageType $messageType,
         CascadePolicy $policy,
+        ?string $email = null,
+        ?string $phone = null,
+        ?string $telegramChatId = null,
     ): self {
         $trimmedShipment = trim($shipmentId);
         if ($trimmedShipment === '') {
             throw NotificationsException::because('una notificación necesita un id de envío');
         }
+
+        // Normaliza y valida los contactos de respaldo reutilizando las reglas del Recipient.
+        $recipient = Recipient::of($trimmedShipment, $email, $phone, $telegramChatId);
 
         $notification = new self(
             $id,
@@ -61,6 +74,9 @@ final class Notification extends AggregateRoot
             NotificationStatus::Queued,
             $policy->first(),
             [],
+            $recipient->email,
+            $recipient->phone,
+            $recipient->telegramChatId,
         );
 
         $notification->recordEvent(new NotificationQueued(
@@ -88,8 +104,11 @@ final class Notification extends AggregateRoot
         NotificationStatus $status,
         Channel $currentChannel,
         array $attempts,
+        ?string $email = null,
+        ?string $phone = null,
+        ?string $telegramChatId = null,
     ): self {
-        return new self($id, $shipmentId, $messageType, $policy, $status, $currentChannel, $attempts);
+        return new self($id, $shipmentId, $messageType, $policy, $status, $currentChannel, $attempts, $email, $phone, $telegramChatId);
     }
 
     /**
@@ -197,6 +216,38 @@ final class Notification extends AggregateRoot
     public function fcmTopic(): FcmTopic
     {
         return FcmTopic::forShipment($this->shipmentId);
+    }
+
+    /**
+     * Email de respaldo del destinatario (null si no se capturó).
+     */
+    public function email(): ?string
+    {
+        return $this->email;
+    }
+
+    /**
+     * Teléfono de respaldo del destinatario para el SMS crítico (null si no se capturó).
+     */
+    public function phone(): ?string
+    {
+        return $this->phone;
+    }
+
+    /**
+     * Chat id de Telegram del destinatario para el canal Telegram (null si no se capturó).
+     */
+    public function telegramChatId(): ?string
+    {
+        return $this->telegramChatId;
+    }
+
+    /**
+     * Reconstruye el destinatario (topic FCM + contactos de respaldo) del envío.
+     */
+    public function recipient(): Recipient
+    {
+        return Recipient::of($this->shipmentId, $this->email, $this->phone, $this->telegramChatId);
     }
 
     private function countAttempt(Channel $channel): void

@@ -7,6 +7,7 @@ namespace Logistics\Carriers\Application\Query\CheapestCarrierForCorridor;
 use Logistics\Carriers\Application\ReadModel\TariffView;
 use Logistics\Carriers\Domain\Contract\TariffRepository;
 use Logistics\Carriers\Domain\ValueObject\CorridorRef;
+use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\CarrierRecord;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 
@@ -29,6 +30,13 @@ final readonly class CheapestCarrierForCorridorHandler implements QueryHandler
             CorridorRef::of($query->corridorFrom, $query->corridorTo, $query->corridorType),
         );
 
-        return $tariff !== null ? TariffView::fromDomain($tariff) : null;
+        if ($tariff === null) {
+            return null;
+        }
+
+        // Nombre legible del transportista (lado lectura), junto al UUID crudo de carrier_id.
+        $carrierName = CarrierRecord::query()->whereKey($tariff->carrierId())->value('name');
+
+        return TariffView::fromDomain($tariff, is_string($carrierName) ? $carrierName : null);
     }
 }

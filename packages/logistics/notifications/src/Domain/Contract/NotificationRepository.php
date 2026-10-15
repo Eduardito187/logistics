@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Notifications\Domain\Contract;
 
 use Logistics\Notifications\Domain\Model\Notification;
+use Logistics\Notifications\Domain\ValueObject\MessageType;
 use Logistics\Notifications\Domain\ValueObject\NotificationId;
 
 /**
@@ -23,9 +24,23 @@ interface NotificationRepository
     public function findById(NotificationId $id): ?Notification;
 
     /**
+     * ¿Ya existe una notificación para este envío y tipo de mensaje? Lo usa el wiring por eventos de
+     * dominio para ser idempotente: un mismo hito del pedido no debe notificarse dos veces, aunque el
+     * outbox reentregue el evento (at-least-once).
+     */
+    public function existsForShipmentAndType(string $shipmentId, MessageType $messageType): bool;
+
+    /**
      * Notificaciones de un envío, de la más reciente a la más antigua.
      *
      * @return list<Notification>
      */
     public function findByShipment(string $shipmentId): array;
+
+    /**
+     * Últimas notificaciones de toda la operación, de la más reciente a la más antigua (para el log).
+     *
+     * @return list<Notification>
+     */
+    public function latest(int $limit = 100): array;
 }

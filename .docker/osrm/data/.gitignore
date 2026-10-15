@@ -1,0 +1,6 @@
+# El extracto OSM de Bolivia y los artefactos del preprocesado OSRM son pesados y se
+# regeneran con el runbook (docs/routing-selfhost.md): no se versionan.
+# Se mantiene el directorio en git con este .gitignore para que el bind-mount del
+# servicio `osrm` exista en un clon limpio.
+*
+!.gitignore

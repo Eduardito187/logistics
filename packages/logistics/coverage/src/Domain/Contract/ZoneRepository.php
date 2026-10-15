@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Coverage\Domain\Contract;
 
 use Logistics\Coverage\Domain\Model\Zone;
+use Logistics\Coverage\Domain\ValueObject\GeoAreaId;
 use Logistics\Coverage\Domain\ValueObject\GeoPoint;
 use Logistics\Coverage\Domain\ValueObject\ZoneId;
 
@@ -18,6 +19,14 @@ interface ZoneRepository
     public function save(Zone $zone): void;
 
     public function findById(ZoneId $id): ?Zone;
+
+    /**
+     * Busca una zona por su clave estable dentro de un área padre: el nombre acotado al área
+     * administrativa a la que pertenece. Es la base de la importación idempotente: dos importaciones
+     * del mismo mapa reconocen la misma zona por (nombre, área padre) y la actualizan en vez de
+     * duplicarla. El área padre puede ser null (zonas sin jerarquía); se compara con IS NOT DISTINCT.
+     */
+    public function findByNameAndParent(string $name, ?GeoAreaId $parentAreaId): ?Zone;
 
     /**
      * @return array<int, Zone>

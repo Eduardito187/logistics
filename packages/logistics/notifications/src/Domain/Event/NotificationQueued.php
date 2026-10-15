@@ -8,7 +8,7 @@ use Logistics\Shared\Domain\Event\BaseDomainEvent;
 
 /**
  * Se encoló una notificación para un envío. De este hecho se alimenta el outbox, que despacha el
- * mensaje por el primer canal de la cascada (push al topic FCM del envío).
+ * mensaje por el primer canal de la cascada (push ntfy al topic del envío).
  */
 final readonly class NotificationQueued extends BaseDomainEvent
 {

@@ -30,6 +30,9 @@ final class NotificationMapper
             'current_channel' => $notification->currentChannel()->value,
             'policy' => $notification->policy()->toArray(),
             'attempts' => $notification->attempts(),
+            'email' => $notification->email(),
+            'phone' => $notification->phone(),
+            'telegram_chat_id' => $notification->telegramChatId(),
         ];
     }
 
@@ -49,6 +52,9 @@ final class NotificationMapper
             NotificationStatus::from($record->status),
             Channel::from($record->current_channel),
             $attempts,
+            $record->email,
+            $record->phone,
+            $record->telegram_chat_id,
         );
     }
 }

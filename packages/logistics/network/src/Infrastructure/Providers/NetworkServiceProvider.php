@@ -7,13 +7,25 @@ namespace Logistics\Network\Infrastructure\Providers;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Network\Application\Command\DeactivateNode\DeactivateNodeCommand;
 use Logistics\Network\Application\Command\DeactivateNode\DeactivateNodeHandler;
+use Logistics\Network\Application\Command\DefineLeg\DefineLegCommand;
+use Logistics\Network\Application\Command\DefineLeg\DefineLegHandler;
 use Logistics\Network\Application\Command\RegisterNode\RegisterNodeCommand;
 use Logistics\Network\Application\Command\RegisterNode\RegisterNodeHandler;
+use Logistics\Network\Application\Command\RemoveLeg\RemoveLegCommand;
+use Logistics\Network\Application\Command\RemoveLeg\RemoveLegHandler;
+use Logistics\Network\Application\Query\FindLeg\FindLegHandler;
+use Logistics\Network\Application\Query\FindLeg\FindLegQuery;
 use Logistics\Network\Application\Query\FindNode\FindNodeHandler;
 use Logistics\Network\Application\Query\FindNode\FindNodeQuery;
+use Logistics\Network\Application\Query\ListLegs\ListLegsHandler;
+use Logistics\Network\Application\Query\ListLegs\ListLegsQuery;
 use Logistics\Network\Application\Query\ListNodes\ListNodesHandler;
 use Logistics\Network\Application\Query\ListNodes\ListNodesQuery;
+use Logistics\Network\Application\Query\OperationalCorridorsByDepartment\OperationalCorridorsByDepartmentHandler;
+use Logistics\Network\Application\Query\OperationalCorridorsByDepartment\OperationalCorridorsByDepartmentQuery;
+use Logistics\Network\Domain\Contract\LegRepository;
 use Logistics\Network\Domain\Contract\NodeRepository;
+use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentLegRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentNodeRepository;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -28,6 +40,7 @@ final class NetworkServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(NodeRepository::class, EloquentNodeRepository::class);
+        $this->app->bind(LegRepository::class, EloquentLegRepository::class);
     }
 
     public function boot(): void
@@ -41,5 +54,17 @@ final class NetworkServiceProvider extends ServiceProvider
         $registry->register(DeactivateNodeCommand::class, DeactivateNodeHandler::class);
         $registry->register(ListNodesQuery::class, ListNodesHandler::class);
         $registry->register(FindNodeQuery::class, FindNodeHandler::class);
+
+        // Tramos/corredores entre nodos.
+        $registry->register(DefineLegCommand::class, DefineLegHandler::class);
+        $registry->register(RemoveLegCommand::class, RemoveLegHandler::class);
+        $registry->register(ListLegsQuery::class, ListLegsHandler::class);
+        $registry->register(FindLegQuery::class, FindLegHandler::class);
+
+        // Corredores operativos por departamento: insumo de planning/promise.
+        $registry->register(
+            OperationalCorridorsByDepartmentQuery::class,
+            OperationalCorridorsByDepartmentHandler::class,
+        );
     }
 }

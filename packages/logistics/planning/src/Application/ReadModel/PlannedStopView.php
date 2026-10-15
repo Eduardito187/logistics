@@ -19,6 +19,9 @@ final readonly class PlannedStopView
         public ?int $etaMinutes,
         public ?string $lane,
         public int $loadOrder,
+        public ?string $orderReference = null,
+        public ?string $customerName = null,
+        public ?string $address = null,
     ) {}
 
     /**
@@ -29,6 +32,9 @@ final readonly class PlannedStopView
         return [
             'id' => $this->id,
             'shipment_id' => $this->shipmentId,
+            'order_reference' => $this->orderReference,
+            'customer_name' => $this->customerName,
+            'address' => $this->address,
             'sequence' => $this->sequence,
             'eta_at' => $this->etaAt,
             'eta_minutes' => $this->etaMinutes,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Labels\Infrastructure\Persistence\Eloquent;
 
 use DateTimeImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
 use Logistics\Labels\Domain\Exception\DuplicateLabelException;
 use Logistics\Labels\Domain\Model\EmittedLabel;
@@ -34,7 +35,9 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
         $record->zpl = $label->zpl;
         $record->signed_json = $label->signedJson();
         // Se guarda como texto ISO-8601 con offset; la columna es timestamptz.
-        $record->created_at = (new DateTimeImmutable)->setTimestamp($label->emittedAt)->format('Y-m-d H:i:sP');
+        $record->created_at = self::toTimestamptz($label->emittedAt);
+        $record->revoked_at = $label->revokedAt === null ? null : self::toTimestamptz($label->revokedAt);
+        $record->revoked_reason = $label->revokedReason;
         $record->save();
     }
 
@@ -48,14 +51,62 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
      */
     public function forOrder(string $orderNumber): array
     {
-        return EmittedLabelRecord::query()
-            ->where('order_id', $orderNumber)
-            ->orderBy('created_at')
-            ->orderBy('label_id')
+        return $this->baseQuery($orderNumber)
             ->get()
             ->map(fn (EmittedLabelRecord $record): EmittedLabel => $this->toDomain($record))
             ->values()
             ->all();
+    }
+
+    /**
+     * @return list<EmittedLabel>
+     */
+    public function activeForOrder(string $orderNumber): array
+    {
+        return $this->baseQuery($orderNumber)
+            ->whereNull('revoked_at')
+            ->get()
+            ->map(fn (EmittedLabelRecord $record): EmittedLabel => $this->toDomain($record))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function revokeForOrder(string $orderNumber, int $revokedAt, string $reason): array
+    {
+        $labelIds = EmittedLabelRecord::query()
+            ->where('order_id', $orderNumber)
+            ->whereNull('revoked_at')
+            ->pluck('label_id')
+            ->all();
+
+        if ($labelIds === []) {
+            return [];
+        }
+
+        EmittedLabelRecord::query()
+            ->where('order_id', $orderNumber)
+            ->whereNull('revoked_at')
+            ->update([
+                'revoked_at' => self::toTimestamptz($revokedAt),
+                'revoked_reason' => $reason,
+            ]);
+
+        /** @var list<string> $labelIds */
+        return $labelIds;
+    }
+
+    /**
+     * @return Builder<EmittedLabelRecord>
+     */
+    private function baseQuery(string $orderNumber): Builder
+    {
+        return EmittedLabelRecord::query()
+            ->where('order_id', $orderNumber)
+            ->orderBy('created_at')
+            ->orderBy('label_id');
     }
 
     private function toDomain(EmittedLabelRecord $record): EmittedLabel
@@ -65,6 +116,13 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
             SignedLabel::fromQrContent($record->signed_json),
             $record->zpl,
             (new DateTimeImmutable($record->created_at))->getTimestamp(),
+            $record->revoked_at === null ? null : (new DateTimeImmutable($record->revoked_at))->getTimestamp(),
+            $record->revoked_reason,
         );
+    }
+
+    private static function toTimestamptz(int $epoch): string
+    {
+        return (new DateTimeImmutable)->setTimestamp($epoch)->format('Y-m-d H:i:sP');
     }
 }

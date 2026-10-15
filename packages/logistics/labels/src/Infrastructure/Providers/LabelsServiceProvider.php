@@ -8,12 +8,20 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
 use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabelsHandler;
+use Logistics\Labels\Application\Command\PreEmitOrderLabels\PreEmitOrderLabels;
+use Logistics\Labels\Application\Command\PreEmitOrderLabels\PreEmitOrderLabelsHandler;
+use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
+use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabelsHandler;
+use Logistics\Labels\Application\Query\GetPublicKeysBundle\GetPublicKeysBundle;
+use Logistics\Labels\Application\Query\GetPublicKeysBundle\GetPublicKeysBundleHandler;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabelsHandler;
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
 use Logistics\Labels\Domain\Contract\LabelRenderer;
 use Logistics\Labels\Domain\Contract\LabelSigner;
 use Logistics\Labels\Domain\Contract\LabelVerifier;
+use Logistics\Labels\Domain\Contract\PublicKeyDirectory;
+use Logistics\Labels\Infrastructure\Crypto\ConfigPublicKeyDirectory;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelSigner;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelVerifier;
 use Logistics\Labels\Infrastructure\Persistence\Eloquent\EloquentEmittedLabelRepository;
@@ -72,6 +80,9 @@ final class LabelsServiceProvider extends ServiceProvider
         // Renderizado ZPL para Zebra y persistencia de etiquetas emitidas.
         $this->app->bind(LabelRenderer::class, ZplLabelRenderer::class);
         $this->app->bind(EmittedLabelRepository::class, EloquentEmittedLabelRepository::class);
+
+        // Directorio de claves públicas para distribuir el bundle de verificación offline a la app.
+        $this->app->bind(PublicKeyDirectory::class, ConfigPublicKeyDirectory::class);
     }
 
     public function boot(): void
@@ -82,7 +93,10 @@ final class LabelsServiceProvider extends ServiceProvider
         // El bus los resuelve del contenedor, así reciben sus dependencias inyectadas.
         $registry = $this->app->make(HandlerRegistry::class);
         $registry->register(EmitShipmentLabels::class, EmitShipmentLabelsHandler::class);
+        $registry->register(PreEmitOrderLabels::class, PreEmitOrderLabelsHandler::class);
+        $registry->register(ReprintOrderLabels::class, ReprintOrderLabelsHandler::class);
         $registry->register(GetShipmentLabels::class, GetShipmentLabelsHandler::class);
+        $registry->register(GetPublicKeysBundle::class, GetPublicKeysBundleHandler::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([

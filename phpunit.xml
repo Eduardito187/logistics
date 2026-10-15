@@ -37,6 +37,10 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- Spectator (V-14): valida request/response contra el contrato OpenAPI. SPEC_PATH apunta a la
+             carpeta que contiene v1.yaml; cada test fija el archivo con Spectator::using('v1.yaml'). -->
+        <env name="SPEC_PATH" value="openapi"/>
+        <env name="SPEC_SOURCE" value="local"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="LABELS_SIGNING_KEY" value=""/>
     </php>

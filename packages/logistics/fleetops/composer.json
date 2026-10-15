@@ -1,0 +1,24 @@
+{
+    "name": "logistics/fleetops",
+    "description": "Operación y costos de la flota propia: combustible, mantenimiento, salidas/cargas, odómetro, perfil técnico, gastos y TCO — plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\FleetOps\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\FleetOps\\Infrastructure\\Providers\\FleetOpsServiceProvider"
+            ]
+        }
+    }
+}

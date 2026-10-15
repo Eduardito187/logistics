@@ -38,6 +38,19 @@ interface CapacityRepository
     ): ?CapacityBucket;
 
     /**
+     * Igual que findBucket(), pero toma un lock pesimista sobre la fila (SELECT … FOR UPDATE) para
+     * serializar el consumo concurrente del mismo cupo: dos reservas simultáneas de la misma franja no
+     * pueden leer ambas el disponible viejo y sobre-reservarlo. Debe invocarse DENTRO de la transacción
+     * del CommandBus; el lock se suelta al cerrarla. Devuelve null si el cupo no existe.
+     */
+    public function findBucketForUpdate(
+        BucketScope $scope,
+        SlotDate $date,
+        TimeSlot $slot,
+        CapacityUnit $unit,
+    ): ?CapacityBucket;
+
+    /**
      * Todos los buckets de una fecha, ordenados de forma estable (por franja y unidad).
      *
      * @return list<CapacityBucket>

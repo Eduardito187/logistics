@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Application\Command\OpenTracking;
 
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
@@ -27,6 +28,7 @@ final class OpenTrackingHandler implements CommandHandler
 
     public function __construct(
         private readonly TrackingRepository $trackings,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -52,8 +54,7 @@ final class OpenTrackingHandler implements CommandHandler
         $this->trackings->save($tracking);
         $this->lastTrackingId = $tracking->id();
 
-        // TODO(outbox): despachar estos eventos al outbox dentro de la misma transacción al integrar.
-        $tracking->releaseEvents();
+        $this->recordEvents->record($tracking->releaseEvents(), 'tracking.shipment_tracking');
     }
 
     /**

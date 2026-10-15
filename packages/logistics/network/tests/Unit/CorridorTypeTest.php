@@ -35,3 +35,28 @@ it('knows which corridors deliver to another node', function (): void {
         ->and(CorridorType::StoreToStore->deliversToNode())->toBeTrue()
         ->and(CorridorType::StoreToCd->deliversToNode())->toBeTrue();
 });
+
+it('derives the destination node type (null for terminal corridors)', function (): void {
+    expect(CorridorType::CdToCustomer->destinationNodeType())->toBeNull()
+        ->and(CorridorType::StorePickup->destinationNodeType())->toBeNull()
+        ->and(CorridorType::CdToCd->destinationNodeType())->toBe(NodeType::DistributionCenter)
+        ->and(CorridorType::StoreToCd->destinationNodeType())->toBe(NodeType::DistributionCenter)
+        ->and(CorridorType::CdToStore->destinationNodeType())->toBe(NodeType::Store)
+        ->and(CorridorType::StoreToStore->destinationNodeType())->toBe(NodeType::Store);
+});
+
+it('flags terminal corridors (end at the customer, not a node)', function (): void {
+    expect(CorridorType::CdToCustomer->isTerminal())->toBeTrue()
+        ->and(CorridorType::StorePickup->isTerminal())->toBeTrue()
+        ->and(CorridorType::CdToCd->isTerminal())->toBeFalse()
+        ->and(CorridorType::CdToCustomer->connectsNodes())->toBeFalse()
+        ->and(CorridorType::CdToStore->connectsNodes())->toBeTrue();
+});
+
+it('accepts endpoints only when both node types match an inter-node corridor', function (): void {
+    expect(CorridorType::CdToStore->acceptsEndpoints(NodeType::DistributionCenter, NodeType::Store))->toBeTrue()
+        ->and(CorridorType::CdToStore->acceptsEndpoints(NodeType::Store, NodeType::Store))->toBeFalse()
+        ->and(CorridorType::CdToStore->acceptsEndpoints(NodeType::DistributionCenter, NodeType::DistributionCenter))->toBeFalse()
+        // Un corredor terminal nunca acepta extremos: no une dos nodos.
+        ->and(CorridorType::CdToCustomer->acceptsEndpoints(NodeType::DistributionCenter, NodeType::PickupPoint))->toBeFalse();
+});

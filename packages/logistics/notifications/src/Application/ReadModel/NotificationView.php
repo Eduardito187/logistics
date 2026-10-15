@@ -27,9 +27,12 @@ final readonly class NotificationView
         public string $fcmTopic,
         public array $channels,
         public array $attempts,
+        // Referencia externa humana del envío (tabla shipments.external_id) resuelta en el QueryHandler.
+        // Null si el envío asociado ya no existe; el UUID crudo se mantiene en shipment_id.
+        public ?string $shipmentExternalId = null,
     ) {}
 
-    public static function fromNotification(Notification $notification): self
+    public static function fromNotification(Notification $notification, ?string $shipmentExternalId = null): self
     {
         return new self(
             $notification->id()->toString(),
@@ -40,6 +43,7 @@ final readonly class NotificationView
             $notification->fcmTopic()->value,
             array_map(static fn (Channel $c): string => $c->value, $notification->policy()->channels),
             $notification->attempts(),
+            $shipmentExternalId,
         );
     }
 
@@ -51,6 +55,7 @@ final readonly class NotificationView
         return [
             'id' => $this->id,
             'shipment_id' => $this->shipmentId,
+            'shipment_external_id' => $this->shipmentExternalId,
             'message_type' => $this->messageType,
             'status' => $this->status,
             'current_channel' => $this->currentChannel,

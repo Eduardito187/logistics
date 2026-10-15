@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Application\Command\ReceiveShipment;
 
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
@@ -12,8 +13,11 @@ use Logistics\Shipments\Domain\Exception\ShipmentsException;
 use Logistics\Shipments\Domain\Model\Shipment;
 use Logistics\Shipments\Domain\Model\ShipmentLine;
 use Logistics\Shipments\Domain\ValueObject\Address;
+use Logistics\Shipments\Domain\ValueObject\Customer;
 use Logistics\Shipments\Domain\ValueObject\GeoPoint;
+use Logistics\Shipments\Domain\ValueObject\Money;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
+use Logistics\Shipments\Domain\ValueObject\ProductImageUrl;
 use Logistics\Shipments\Domain\ValueObject\ProductName;
 use Logistics\Shipments\Domain\ValueObject\ShipmentId;
 use Logistics\Shipments\Domain\ValueObject\ShipmentLineId;
@@ -22,7 +26,8 @@ use Logistics\Shipments\Domain\ValueObject\SourceReference;
 
 /**
  * Único punto de ingreso de pedidos. Normaliza el DTO al modelo propio, puntúa la dirección, persiste
- * y libera los eventos de dominio.
+ * y publica sus eventos al outbox. El save y el append al outbox corren dentro de la misma transacción,
+ * que abre el decorador transaccional del CommandBus (Infrastructure); por eso acá no hay framework.
  *
  * Idempotente: si ya existe un envío para la misma referencia de origen, no duplica; deja disponible
  * el id del existente en lastShipmentId() y no vuelve a grabar eventos.
@@ -36,6 +41,7 @@ final class ReceiveShipmentHandler implements CommandHandler
     public function __construct(
         private readonly ShipmentRepository $shipments,
         private readonly AddressConfidenceScorer $scorer,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -47,8 +53,8 @@ final class ReceiveShipmentHandler implements CommandHandler
         $source = OrderSource::from($command->source);
         $sourceReference = SourceReference::of($source, $command->externalId);
 
-        // Idempotencia: el mismo pedido de la misma fuente entra una sola vez (TODO integrar el outbox
-        // al conectar los contextos; por ahora no se depende del package outbox).
+        // Idempotencia: el mismo pedido de la misma fuente entra una sola vez; si ya existe, no se
+        // persiste ni se publican eventos al outbox, solo se deja disponible el id del existente.
         $existing = $this->shipments->findBySourceReference($sourceReference);
         if ($existing !== null) {
             $this->lastShipmentId = $existing->id();
@@ -69,16 +75,25 @@ final class ReceiveShipmentHandler implements CommandHandler
                 Sku::of($line->sku),
                 ProductName::of($line->productName),
                 $line->quantity,
+                ProductImageUrl::fromNullable($line->imageUrl),
+                Money::fromNullable($line->price, $line->currency ?? 'BOB'),
             );
         }
 
         $confidence = $this->scorer->score($address);
 
+        $customer = Customer::of(
+            $command->customerName,
+            $command->customerDocumentId,
+            $command->customerPhone,
+            $command->customerEmail,
+        );
+
         $shipment = Shipment::receive(
             $this->shipments->nextIdentity(),
             $source,
             $sourceReference,
-            $command->customerName,
+            $customer,
             $address,
             $confidence,
             $lines,
@@ -87,8 +102,7 @@ final class ReceiveShipmentHandler implements CommandHandler
         $this->shipments->save($shipment);
         $this->lastShipmentId = $shipment->id();
 
-        // TODO(outbox): despachar estos eventos al outbox dentro de la misma transacción al integrar.
-        $shipment->releaseEvents();
+        $this->recordEvents->record($shipment->releaseEvents(), 'shipments.shipment');
     }
 
     /**

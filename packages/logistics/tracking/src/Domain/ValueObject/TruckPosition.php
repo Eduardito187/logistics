@@ -18,9 +18,24 @@ final readonly class TruckPosition
         public DateTimeImmutable $reportedAt,
     ) {}
 
+    /** Una posición se considera "en vivo" si se reportó dentro de esta ventana (segundos). */
+    public const int LIVE_WINDOW_SECONDS = 300;
+
     public static function at(GeoPoint $point, DateTimeImmutable $reportedAt): self
     {
         return new self($point, $reportedAt);
+    }
+
+    /**
+     * ¿La posición sigue siendo "en vivo" respecto de un instante dado? Una lectura más vieja que la
+     * ventana (por defecto 5 min) se considera añeja: la UI la muestra como última posición conocida,
+     * no como seguimiento en tiempo real. El instante lo provee el Clock de la app (nunca now() global).
+     */
+    public function isLiveAt(DateTimeImmutable $now, int $windowSeconds = self::LIVE_WINDOW_SECONDS): bool
+    {
+        $ageSeconds = $now->getTimestamp() - $this->reportedAt->getTimestamp();
+
+        return $ageSeconds >= 0 && $ageSeconds <= $windowSeconds;
     }
 
     public function equals(self $other): bool

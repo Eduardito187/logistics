@@ -36,6 +36,7 @@ final class DeliveryMapper
             'status' => $delivery->status()->value,
             'pod_confirmation' => $proof?->confirmation,
             'pod_photo_url' => $proof?->photoUrl,
+            'pod_photo_path' => $proof?->photoPath,
             'pod_captured_at' => $proof?->capturedAt->format(DATE_ATOM),
             'failure_reason' => $delivery->failureReason()?->value,
         ];
@@ -85,6 +86,7 @@ final class DeliveryMapper
                 $record->pod_confirmation,
                 $record->pod_photo_url,
                 new DateTimeImmutable($record->pod_captured_at),
+                $record->pod_photo_path,
             );
         }
 

@@ -7,6 +7,7 @@ namespace Logistics\Network\Infrastructure\Persistence\Eloquent;
 use Illuminate\Support\Facades\DB;
 use Logistics\Network\Domain\Contract\NodeRepository;
 use Logistics\Network\Domain\Node;
+use Logistics\Network\Domain\ValueObject\Department;
 use Logistics\Network\Domain\ValueObject\GeoPoint;
 use Logistics\Network\Domain\ValueObject\NodeCode;
 use Logistics\Network\Domain\ValueObject\NodeId;
@@ -42,6 +43,7 @@ final class EloquentNodeRepository implements NodeRepository
         $record->lat = (string) $latitude;
         $record->lng = (string) $longitude;
         $record->status = $node->status()->value;
+        $record->department = $node->department()?->value;
         $record->save();
 
         // La columna geográfica se puebla por SQL: PostGIS arma el punto (lng, lat) en SRID 4326.
@@ -87,6 +89,7 @@ final class EloquentNodeRepository implements NodeRepository
             NodeType::from($record->type),
             GeoPoint::of((float) $record->lat, (float) $record->lng),
             NodeStatus::from($record->status),
+            $record->department === null ? null : Department::from($record->department),
         );
     }
 }
