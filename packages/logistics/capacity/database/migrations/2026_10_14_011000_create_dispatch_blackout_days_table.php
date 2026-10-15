@@ -25,7 +25,10 @@ return new class extends Migration
             // NULL = bloqueo global (toda la red); poblado = solo ese municipio (UUID de coverage).
             $table->uuid('municipality_id')->nullable()->index();
             $table->string('reason');
-            $table->uuid('created_by')->nullable();
+            // Id de quien bloqueó: NO es un uuid de dominio sino el identificador del usuario Filament
+            // autenticado (users.id es bigint autoincrement), así que se guarda como string para no reventar
+            // al bloquear un día desde el admin. Consistente con las demás columnas de auditoría de capacity.
+            $table->string('created_by', 64)->nullable();
             $table->timestamps();
 
             // Clave natural: un bloqueo por fecha y municipio. Por los NULL distintos de PostgreSQL, la
