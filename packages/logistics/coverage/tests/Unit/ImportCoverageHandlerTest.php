@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use DateTimeImmutable;
 use Logistics\Coverage\Application\Command\ImportCoverage;
 use Logistics\Coverage\Application\Command\ImportCoverageHandler;
 use Logistics\Coverage\Application\Report\ImportCoverageReport;
