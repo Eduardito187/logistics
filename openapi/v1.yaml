@@ -22,6 +22,8 @@ servers:
 tags:
 - name: system
   description: Salud y metadatos de la API
+- name: auth
+  description: Authentication and device management across the three gates
 - name: capacity
   description: Capacity definition and consumption
 - name: Carriers
@@ -104,7 +106,7 @@ paths:
         '422':
           $ref: '#/components/responses/CapacityValidationError'
       security:
-      - appBearer: &id001 []
+      - appBearer: []
   /app/capacity/calendar:
     get:
       tags:
@@ -125,7 +127,7 @@ paths:
         '422':
           $ref: '#/components/responses/CapacityValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/capacity/effective:
     get:
       tags:
@@ -151,13 +153,16 @@ paths:
         '422':
           $ref: '#/components/responses/CapacityValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/carriers:
     get:
       tags:
       - Carriers
       summary: List carriers
       operationId: listCarriers
+      description: >-
+        Supports optional offset or cursor pagination (E-02). Without pagination parameters the full
+        collection is returned unchanged; otherwise it is sliced and a `meta` object is added.
       parameters:
       - name: status
         in: query
@@ -167,6 +172,9 @@ paths:
           enum:
           - active
           - suspended
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Carrier list
@@ -181,8 +189,12 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Carrier'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/carriers/assignment:
     get:
       tags:
@@ -227,7 +239,7 @@ paths:
                   data:
                     $ref: '#/components/schemas/Assignment'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/carriers/settlements:
     get:
       tags:
@@ -261,7 +273,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Settlement'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/carriers/settlements/{settlementId}:
     get:
       tags:
@@ -285,7 +297,7 @@ paths:
         '404':
           $ref: '#/components/responses/CarriersNotFound'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/carriers/settlements/{settlementId}/approve:
     post:
       tags:
@@ -304,7 +316,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/carriers/settlements/{settlementId}/dispute:
     post:
       tags:
@@ -329,7 +341,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/carriers/settlements/{settlementId}/pay:
     post:
       tags:
@@ -354,7 +366,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/carriers/tariffs/cheapest:
     get:
       tags:
@@ -392,7 +404,7 @@ paths:
         '404':
           $ref: '#/components/responses/CarriersNotFound'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/carriers/{carrierId}/tariff:
     get:
       tags:
@@ -436,7 +448,7 @@ paths:
         '404':
           $ref: '#/components/responses/CarriersNotFound'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/coverage/zones:
     get:
       tags:
@@ -459,7 +471,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/CoverageZone'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/coverage/zones/resolve:
     get:
       tags:
@@ -510,7 +522,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/deliveries/failed:
     post:
       tags:
@@ -531,7 +543,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/deliveries/photos:
     post:
       tags:
@@ -604,7 +616,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/deliveries/proof-of-delivery:
     post:
       tags:
@@ -625,7 +637,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/deliveries/scans/load:
     post:
       tags:
@@ -646,7 +658,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/deliveries/scans/node-reception:
     post:
       tags:
@@ -667,7 +679,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/node-receptions:
     post:
       tags:
@@ -690,7 +702,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/node-receptions/{shipmentId}/{nodeId}:
     get:
       tags:
@@ -721,7 +733,7 @@ paths:
                   data:
                     nullable: true
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/node-receptions/units:
     post:
       tags:
@@ -742,7 +754,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/node-receptions/reconcile:
     post:
       tags:
@@ -765,7 +777,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/deliveries/scans/preparation:
     post:
       tags:
@@ -786,7 +798,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/deliveries/scans/unload:
     post:
       tags:
@@ -807,7 +819,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/deliveries/{shipmentId}:
     get:
       tags:
@@ -835,7 +847,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExecutionError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleet/crews:
     post:
       tags:
@@ -874,7 +886,7 @@ paths:
         '422':
           $ref: '#/components/responses/FleetValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleet/documents:
     get:
       tags:
@@ -902,7 +914,7 @@ paths:
                   meta:
                     $ref: '#/components/schemas/CollectionMeta'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleet/drivers:
     get:
       tags:
@@ -930,7 +942,7 @@ paths:
                   meta:
                     $ref: '#/components/schemas/CollectionMeta'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleet/expiring-documents:
     get:
       tags:
@@ -966,7 +978,7 @@ paths:
                   meta:
                     $ref: '#/components/schemas/CollectionMeta'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleet/helpers:
     get:
       tags:
@@ -994,7 +1006,7 @@ paths:
                   meta:
                     $ref: '#/components/schemas/CollectionMeta'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleet/helpers/{helperId}/availability:
     patch:
       tags:
@@ -1041,7 +1053,7 @@ paths:
         '422':
           $ref: '#/components/responses/FleetValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleet/pre-trip-checklists:
     get:
       tags:
@@ -1075,7 +1087,7 @@ paths:
                   meta:
                     $ref: '#/components/schemas/CollectionMeta'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Fleet
@@ -1113,7 +1125,7 @@ paths:
         '422':
           $ref: '#/components/responses/FleetValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleet/vehicles:
     get:
       tags:
@@ -1141,7 +1153,7 @@ paths:
                   meta:
                     $ref: '#/components/schemas/CollectionMeta'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleet/vehicles/{vehicleId}/status:
     patch:
       tags:
@@ -1188,7 +1200,7 @@ paths:
         '422':
           $ref: '#/components/responses/FleetValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/fuel-prices:
     get:
       tags:
@@ -1216,7 +1228,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/FuelPrice'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Fleet Ops
@@ -1238,7 +1250,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/fuel-prices/current:
     get:
       tags:
@@ -1266,7 +1278,7 @@ paths:
         '404':
           description: No current price for the fuel type
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/refuels:
     get:
       tags:
@@ -1307,7 +1319,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Refuel'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Fleet Ops
@@ -1329,7 +1341,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/fuel/consumption:
     get:
       tags:
@@ -1368,7 +1380,7 @@ paths:
                   data:
                     type: object
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/fuel/daily-spend:
     get:
       tags:
@@ -1395,7 +1407,7 @@ paths:
                   data:
                     type: object
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/orders:
     get:
       tags:
@@ -1429,7 +1441,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/MaintenanceOrder'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Fleet Ops
@@ -1451,7 +1463,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/orders/{orderId}:
     get:
       tags:
@@ -1480,7 +1492,7 @@ paths:
         '404':
           description: No maintenance order for the id
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/orders/{orderId}/start:
     post:
       tags:
@@ -1504,7 +1516,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/orders/{orderId}/complete:
     post:
       tags:
@@ -1534,7 +1546,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/orders/{orderId}/cancel:
     post:
       tags:
@@ -1558,7 +1570,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/plans:
     get:
       tags:
@@ -1587,7 +1599,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/MaintenancePlan'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Fleet Ops
@@ -1609,7 +1621,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/plans/{planId}/service-done:
     post:
       tags:
@@ -1639,7 +1651,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/plans/{planId}/activate:
     post:
       tags:
@@ -1663,7 +1675,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/plans/{planId}/deactivate:
     post:
       tags:
@@ -1687,7 +1699,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/cost:
     get:
       tags:
@@ -1726,7 +1738,7 @@ paths:
                   data:
                     type: object
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/maintenance/due:
     get:
       tags:
@@ -1748,7 +1760,7 @@ paths:
                     items:
                       type: object
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/departures:
     get:
       tags:
@@ -1794,7 +1806,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Departure'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Fleet Ops
@@ -1816,7 +1828,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/departures/{departureId}:
     get:
       tags:
@@ -1845,7 +1857,7 @@ paths:
         '404':
           description: No departure for the id
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/departures/{departureId}/close:
     post:
       tags:
@@ -1875,7 +1887,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/odometer:
     get:
       tags:
@@ -1916,7 +1928,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/OdometerReading'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Fleet Ops
@@ -1938,7 +1950,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/utilization:
     get:
       tags:
@@ -1977,7 +1989,7 @@ paths:
                   data:
                     type: object
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/vehicle-profiles:
     get:
       tags:
@@ -1999,7 +2011,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/VehicleProfile'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Fleet Ops
@@ -2021,7 +2033,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/vehicle-profiles/{vehicleId}:
     get:
       tags:
@@ -2050,7 +2062,7 @@ paths:
         '404':
           description: No vehicle profile for the vehicle
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/vehicle-profiles/{vehicleId}/odometer:
     post:
       tags:
@@ -2080,7 +2092,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/expenses:
     get:
       tags:
@@ -2126,7 +2138,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Expense'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Fleet Ops
@@ -2148,7 +2160,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/expenses/total:
     get:
       tags:
@@ -2187,7 +2199,7 @@ paths:
                   data:
                     type: object
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/fleetops/cost-summary:
     get:
       tags:
@@ -2226,7 +2238,7 @@ paths:
                   data:
                     $ref: '#/components/schemas/VehicleCostSummary'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/labels/public-keys:
     get:
       tags:
@@ -2248,7 +2260,7 @@ paths:
                   data:
                     $ref: '#/components/schemas/PublicKeyBundle'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/labels/verify:
     post:
       tags:
@@ -2279,7 +2291,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/network/legs:
     get:
       tags:
@@ -2303,7 +2315,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegCollection'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/network/legs/{leg}:
     get:
       tags:
@@ -2332,7 +2344,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/network/corridors:
     get:
       tags:
@@ -2358,7 +2370,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OperationalCorridorCollection'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/network/nodes:
     get:
       tags:
@@ -2388,7 +2400,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/NodeCollection'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/network/nodes/{node}:
     get:
       tags:
@@ -2417,7 +2429,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/notification-rules:
     get:
       tags:
@@ -2439,7 +2451,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/MessageTypeRule'
       security:
-      - appBearer: *id001
+      - appBearer: []
     put:
       tags:
       - notifications
@@ -2466,7 +2478,7 @@ paths:
         '422':
           $ref: '#/components/responses/NotificationsValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/notification-sms-budget:
     get:
       tags:
@@ -2497,7 +2509,7 @@ paths:
         '422':
           $ref: '#/components/responses/NotificationsValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/notification-templates:
     get:
       tags:
@@ -2519,7 +2531,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/MessageTemplate'
       security:
-      - appBearer: *id001
+      - appBearer: []
     put:
       tags:
       - notifications
@@ -2537,7 +2549,7 @@ paths:
         '422':
           $ref: '#/components/responses/NotificationsValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/notifications:
     get:
       tags:
@@ -2563,7 +2575,7 @@ paths:
         '422':
           $ref: '#/components/responses/NotificationsValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/notifications/all:
     get:
       tags:
@@ -2589,7 +2601,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/NotificationListEnvelope'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/notifications/{notification}:
     get:
       tags:
@@ -2618,7 +2630,7 @@ paths:
         '404':
           description: Notification not found.
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/notifications/{notification}/suppress:
     post:
       tags:
@@ -2638,7 +2650,7 @@ paths:
         '202':
           description: Notification suppressed.
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/orders/{orderNumber}/labels:
     parameters:
     - $ref: '#/components/parameters/OrderNumber'
@@ -2657,7 +2669,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LabelCollection'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - labels
@@ -2687,7 +2699,7 @@ paths:
         '422':
           description: Invalid input
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/orders/{orderNumber}/labels/reprint:
     parameters:
     - $ref: '#/components/parameters/OrderNumber'
@@ -2714,7 +2726,7 @@ paths:
         '422':
           description: Invalid input
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/orders/{orderNumber}/labels/zpl:
     parameters:
     - $ref: '#/components/parameters/OrderNumber'
@@ -2735,7 +2747,7 @@ paths:
         '404':
           description: The order has no emitted labels
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/outbox/messages:
     get:
       tags:
@@ -2758,7 +2770,7 @@ paths:
         '422':
           $ref: '#/components/responses/OutboxValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/outbox/messages/stats:
     get:
       tags:
@@ -2774,7 +2786,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OutboxStatsEnvelope'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/outbox/messages/{id}:
     get:
       tags:
@@ -2794,7 +2806,7 @@ paths:
         '404':
           $ref: '#/components/responses/OutboxNotFound'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/outbox/messages/{id}/discard:
     post:
       tags:
@@ -2823,7 +2835,7 @@ paths:
         '422':
           $ref: '#/components/responses/OutboxValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/outbox/messages/{id}/retry:
     post:
       tags:
@@ -2846,7 +2858,7 @@ paths:
         '422':
           $ref: '#/components/responses/OutboxValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/plans:
     get:
       tags:
@@ -2890,7 +2902,7 @@ paths:
         '422':
           $ref: '#/components/responses/PlanningValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - planning
@@ -2912,7 +2924,7 @@ paths:
         '422':
           $ref: '#/components/responses/PlanningValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/plans/auto:
     get:
       tags:
@@ -2948,7 +2960,7 @@ paths:
         '422':
           $ref: '#/components/responses/PlanningValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - planning
@@ -2975,7 +2987,7 @@ paths:
         '422':
           $ref: '#/components/responses/PlanningValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/plans/{planId}:
     get:
       tags:
@@ -2994,7 +3006,7 @@ paths:
         '404':
           $ref: '#/components/responses/PlanningNotFound'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/plans/{planId}/eta:
     get:
       tags:
@@ -3032,7 +3044,7 @@ paths:
         '404':
           $ref: '#/components/responses/PlanningNotFound'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/plans/{planId}/publish:
     post:
       tags:
@@ -3051,7 +3063,7 @@ paths:
         '404':
           $ref: '#/components/responses/PlanningNotFound'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/plans/{planId}/sequence:
     put:
       tags:
@@ -3087,7 +3099,7 @@ paths:
         '422':
           $ref: '#/components/responses/PlanningValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/plans/{planId}/stops:
     post:
       tags:
@@ -3120,7 +3132,7 @@ paths:
         '422':
           $ref: '#/components/responses/PlanningValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/sap/material-mappings:
     get:
       tags:
@@ -3135,7 +3147,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MaterialMappingCollection'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - sap-connector
@@ -3171,7 +3183,7 @@ paths:
         '422':
           description: Validation error
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/sap/stock-transfers:
     post:
       tags:
@@ -3221,7 +3233,7 @@ paths:
         '422':
           description: Validation error
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/sap/stock-transfers/dispatch:
     post:
       tags:
@@ -3254,7 +3266,7 @@ paths:
                       message:
                         type: string
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/sap/stock-transfers/failed:
     get:
       tags:
@@ -3269,7 +3281,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/StockTransferCollection'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/sap/stock-transfers/pending:
     get:
       tags:
@@ -3284,7 +3296,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/StockTransferCollection'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/settings/{key}:
     get:
       tags:
@@ -3305,7 +3317,7 @@ paths:
         '404':
           $ref: '#/components/responses/SettingNotFound'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/settings/{key}/history:
     get:
       tags:
@@ -3323,13 +3335,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/SettingHistoryEnvelope'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/shipments:
     get:
       tags:
       - shipments
       operationId: listShipments
       summary: List received orders, optionally filtered by status and source
+      description: >-
+        Supports optional offset or cursor pagination (E-02). Without any pagination parameter the full
+        collection is returned unchanged; with `page`/`per_page` or `cursor` the response is sliced and
+        a `meta` object is added. Cursor pagination is preferred for this growing collection.
       parameters:
       - name: status
         in: query
@@ -3341,6 +3357,9 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/OrderSource'
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Orders matching the filters
@@ -3355,14 +3374,25 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Shipment'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/shipments/low-confidence-addresses:
     get:
       tags:
       - shipments
       operationId: listLowConfidenceAddresses
       summary: List orders whose delivery address has low confidence
+      description: >-
+        Supports optional offset or cursor pagination (E-02); see listShipments. Without pagination
+        parameters the full collection is returned unchanged.
+      parameters:
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Orders flagged for address confirmation before dispatch
@@ -3377,8 +3407,12 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Shipment'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/shipments/{shipment}:
     get:
       tags:
@@ -3411,7 +3445,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ShipmentsError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/shipments/{shipment}/geocode:
     post:
       tags:
@@ -3444,7 +3478,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ShipmentsError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/tracking/shipments/{shipmentId}:
     get:
       tags:
@@ -3474,7 +3508,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/tracking/shipments/{shipmentId}/units:
     get:
       tags:
@@ -3509,7 +3543,7 @@ paths:
                         items:
                           $ref: '#/components/schemas/UnitTracking'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/tracking/shipments/{shipmentId}/position:
     post:
       tags:
@@ -3536,7 +3570,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/vehicles/{vehicleId}/deliveries:
     get:
       tags:
@@ -3568,7 +3602,7 @@ paths:
                       count:
                         type: integer
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/vehicles/{vehicleId}/incidents:
     post:
       tags:
@@ -3651,7 +3685,7 @@ paths:
         '422':
           $ref: '#/components/responses/BusinessRuleError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /channels/capacity/available:
     get:
       tags:
@@ -3682,7 +3716,7 @@ paths:
         '422':
           $ref: '#/components/responses/CapacityValidationError'
       security:
-      - channelApiKey: &id002 []
+      - channelApiKey: []
   /channels/capacity/calendar:
     get:
       tags:
@@ -3703,7 +3737,7 @@ paths:
         '422':
           $ref: '#/components/responses/CapacityValidationError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/capacity/effective:
     get:
       tags:
@@ -3729,7 +3763,7 @@ paths:
         '422':
           $ref: '#/components/responses/CapacityValidationError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/promises:
     post:
       operationId: quotePromise
@@ -3757,7 +3791,7 @@ paths:
         '422':
           $ref: '#/components/responses/BusinessRuleError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/promises/available-slots:
     get:
       operationId: listAvailableSlots
@@ -3788,7 +3822,7 @@ paths:
         '422':
           $ref: '#/components/responses/PromiseValidationError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/promises/offers:
     get:
       operationId: listDeliveryPromiseOffers
@@ -3830,7 +3864,7 @@ paths:
         '422':
           $ref: '#/components/responses/PromiseValidationError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/promises/{promiseId}:
     get:
       operationId: getPromise
@@ -3854,7 +3888,7 @@ paths:
         '422':
           $ref: '#/components/responses/PromiseValidationError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/promises/{promiseId}/confirmation:
     post:
       operationId: confirmPromise
@@ -3878,7 +3912,7 @@ paths:
         '422':
           $ref: '#/components/responses/BusinessRuleError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/promises/{promiseId}/reservation:
     post:
       operationId: reservePromise
@@ -3908,7 +3942,7 @@ paths:
         '422':
           $ref: '#/components/responses/BusinessRuleError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
     delete:
       operationId: expireReservation
       summary: Expire a promise reservation and release its capacity (channel abandon)
@@ -3924,7 +3958,7 @@ paths:
         '422':
           $ref: '#/components/responses/BusinessRuleError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/shipments/{shipment}/notifications:
     get:
       tags:
@@ -3950,7 +3984,7 @@ paths:
         '422':
           $ref: '#/components/responses/NotificationsValidationError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/tracking/{token}:
     get:
       tags:
@@ -3986,7 +4020,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /channels/tracking/{token}/units:
     get:
       tags:
@@ -4029,7 +4063,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /integrations/capacity/buckets:
     post:
       tags:
@@ -4053,7 +4087,7 @@ paths:
         '422':
           $ref: '#/components/responses/CapacityValidationError'
       security:
-      - serviceCredential: &id003 []
+      - serviceCredential: []
   /integrations/capacity/consume:
     post:
       tags:
@@ -4077,7 +4111,7 @@ paths:
         '422':
           $ref: '#/components/responses/CapacityValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/capacity/release:
     post:
       tags:
@@ -4101,7 +4135,7 @@ paths:
         '422':
           $ref: '#/components/responses/CapacityValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/carriers:
     post:
       tags:
@@ -4126,7 +4160,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/carriers/settlements/{settlementId}/documents:
     post:
       tags:
@@ -4151,7 +4185,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/carriers/{carrierId}/ratings:
     post:
       tags:
@@ -4176,7 +4210,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/carriers/{carrierId}/reactivate:
     post:
       tags:
@@ -4195,7 +4229,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/carriers/{carrierId}/settlements:
     post:
       tags:
@@ -4220,7 +4254,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/carriers/{carrierId}/suspend:
     post:
       tags:
@@ -4239,7 +4273,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/carriers/{carrierId}/tariffs:
     post:
       tags:
@@ -4264,7 +4298,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/fleetops/refuels:
     post:
       tags:
@@ -4289,7 +4323,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/fleetops/odometer:
     post:
       tags:
@@ -4314,7 +4348,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/coverage/map:import:
     post:
       tags:
@@ -4352,7 +4386,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/coverage/map:import-kml:
     post:
       tags:
@@ -4397,7 +4431,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/CoverageError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/coverage/zones:
     get:
       tags:
@@ -4419,7 +4453,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/CoverageZone'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/coverage/zones/resolve:
     get:
       tags:
@@ -4462,7 +4496,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/CoverageError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/fleet/documents:
     post:
       tags:
@@ -4499,7 +4533,7 @@ paths:
         '422':
           $ref: '#/components/responses/FleetValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/fleet/drivers:
     post:
       tags:
@@ -4531,7 +4565,7 @@ paths:
         '422':
           $ref: '#/components/responses/FleetValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/fleet/helpers:
     post:
       tags:
@@ -4563,7 +4597,7 @@ paths:
         '422':
           $ref: '#/components/responses/FleetValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/fleet/vehicles:
     post:
       tags:
@@ -4595,7 +4629,7 @@ paths:
         '422':
           $ref: '#/components/responses/FleetValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/network/legs:
     post:
       tags:
@@ -4618,7 +4652,7 @@ paths:
         '422':
           description: Validation failed
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/network/legs/{leg}:
     delete:
       tags:
@@ -4637,7 +4671,7 @@ paths:
         '202':
           description: Removal accepted for processing
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/network/nodes:
     post:
       tags:
@@ -4670,7 +4704,7 @@ paths:
         '422':
           description: Validation failed
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/network/nodes/{node}:
     delete:
       tags:
@@ -4689,7 +4723,7 @@ paths:
         '202':
           description: Deactivation accepted for processing
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/notifications:
     post:
       tags:
@@ -4714,7 +4748,7 @@ paths:
         '422':
           $ref: '#/components/responses/NotificationsValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/notifications/{notification}/advance-cascade:
     post:
       tags:
@@ -4740,7 +4774,7 @@ paths:
         '422':
           $ref: '#/components/responses/NotificationsValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/orders/{orderNumber}/labels/pre-emit:
     parameters:
     - $ref: '#/components/parameters/OrderNumber'
@@ -4767,7 +4801,7 @@ paths:
         '422':
           description: Invalid input
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/outbox/relay:
     post:
       tags:
@@ -4792,7 +4826,7 @@ paths:
         '422':
           $ref: '#/components/responses/OutboxValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/outbox/stats:
     get:
       tags:
@@ -4808,7 +4842,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OutboxStatsEnvelope'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/sap/orders/import:
     post:
       tags:
@@ -4842,7 +4876,7 @@ paths:
                         type: integer
                         example: 3
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/sap/stock-transfers/acknowledge:
     post:
       tags:
@@ -4889,7 +4923,7 @@ paths:
         '422':
           description: Validation error
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/settings:
     post:
       tags:
@@ -4914,7 +4948,7 @@ paths:
         '422':
           $ref: '#/components/responses/SettingValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/settings/{key}:
     get:
       tags:
@@ -4935,7 +4969,7 @@ paths:
         '404':
           $ref: '#/components/responses/SettingNotFound'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/settings/{key}/history:
     get:
       tags:
@@ -4953,7 +4987,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SettingHistoryEnvelope'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/shipments:
     post:
       tags:
@@ -4982,7 +5016,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/shipments/import:
     post:
       tags:
@@ -5023,7 +5057,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /integrations/tracking/shipments/{shipmentId}/position:
     post:
       tags:
@@ -5050,7 +5084,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
   /app/access/permissions:
     get:
       tags:
@@ -5078,7 +5112,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Permission'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Access
@@ -5110,7 +5144,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/roles:
     get:
       tags:
@@ -5132,7 +5166,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Role'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Access
@@ -5171,7 +5205,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/roles/{roleId}:
     parameters:
     - name: roleId
@@ -5204,7 +5238,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
       security:
-      - appBearer: *id001
+      - appBearer: []
     patch:
       tags:
       - Access
@@ -5234,7 +5268,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
     delete:
       tags:
       - Access
@@ -5250,7 +5284,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/roles/{roleId}/permissions:
     parameters:
     - name: roleId
@@ -5287,7 +5321,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/roles/{roleId}/permissions/grant:
     parameters:
     - name: roleId
@@ -5322,7 +5356,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/roles/{roleId}/permissions/revoke:
     parameters:
     - name: roleId
@@ -5357,7 +5391,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/users:
     get:
       tags:
@@ -5389,7 +5423,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/User'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Access
@@ -5434,7 +5468,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/users/{userId}:
     parameters:
     - name: userId
@@ -5467,7 +5501,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/users/{userId}/suspend:
     parameters:
     - name: userId
@@ -5491,7 +5525,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/users/{userId}/reactivate:
     parameters:
     - name: userId
@@ -5515,7 +5549,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/users/{userId}/password:
     parameters:
     - name: userId
@@ -5551,7 +5585,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/users/{userId}/roles:
     parameters:
     - name: userId
@@ -5586,7 +5620,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/users/{userId}/roles/{roleKey}:
     parameters:
     - name: userId
@@ -5615,7 +5649,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/tokens:
     get:
       tags:
@@ -5646,7 +5680,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/IntegrationToken'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - Access
@@ -5689,7 +5723,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/tokens/{tokenId}:
     parameters:
     - name: tokenId
@@ -5722,7 +5756,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/tokens/{tokenId}/rotate:
     parameters:
     - name: tokenId
@@ -5753,7 +5787,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/tokens/{tokenId}/revoke:
     parameters:
     - name: tokenId
@@ -5777,7 +5811,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/access/tokens/{tokenId}/permissions:
     parameters:
     - name: tokenId
@@ -5814,7 +5848,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /integrations/access/token/verify:
     get:
       tags:
@@ -5844,7 +5878,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
         integrationToken: []
   /app/vehicles/{vehicleId}/route:
     get:
@@ -5884,7 +5918,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExecutionError'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - execution
@@ -5956,7 +5990,7 @@ paths:
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /channels/delivery-slots:
     post:
       tags:
@@ -5987,7 +6021,7 @@ paths:
         '422':
           $ref: '#/components/responses/BusinessRuleError'
       security:
-      - channelApiKey: *id002
+      - channelApiKey: []
   /app/telemetry/pings:
     post:
       tags:
@@ -6029,7 +6063,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/fleet/live:
     get:
       tags:
@@ -6051,7 +6085,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/VehicleLive'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/vehicles/{vehicleId}/track:
     get:
       tags:
@@ -6095,7 +6129,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/vehicles/{vehicleId}/summary:
     get:
       tags:
@@ -6128,7 +6162,7 @@ paths:
                   data:
                     $ref: '#/components/schemas/VehicleTelemetrySummary'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/trips:
     get:
       tags:
@@ -6163,7 +6197,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Trip'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/alerts:
     get:
       tags:
@@ -6201,7 +6235,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Alert'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/alerts/{alertId}/acknowledge:
     post:
       tags:
@@ -6225,7 +6259,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/geofences:
     get:
       tags:
@@ -6253,7 +6287,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Geofence'
       security:
-      - appBearer: *id001
+      - appBearer: []
     post:
       tags:
       - telemetry
@@ -6292,7 +6326,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/geofences/{geofenceId}/rename:
     post:
       tags:
@@ -6322,7 +6356,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/geofences/{geofenceId}/redraw:
     post:
       tags:
@@ -6355,7 +6389,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/geofences/{geofenceId}/activate:
     post:
       tags:
@@ -6374,7 +6408,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/geofences/{geofenceId}/deactivate:
     post:
       tags:
@@ -6393,7 +6427,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/geofences/{geofenceId}:
     delete:
       tags:
@@ -6412,7 +6446,7 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /app/telemetry/streets:
     get:
       tags:
@@ -6441,7 +6475,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/StreetTraffic'
       security:
-      - appBearer: *id001
+      - appBearer: []
   /integrations/telemetry/pings:
     post:
       tags:
@@ -6483,7 +6517,315 @@ paths:
         '422':
           $ref: '#/components/responses/DomainError'
       security:
-      - serviceCredential: *id003
+      - serviceCredential: []
+  /app/auth/login:
+    post:
+      tags:
+      - auth
+      operationId: appLogin
+      summary: Log in with user credentials bound to a device (gate /app)
+      description: >-
+        Public endpoint (rate limited). Validates the user's credentials, binds the device and issues a
+        new Sanctum token, revoking previous tokens for that same device.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppLoginRequest'
+      responses:
+        '200':
+          description: Session started; token issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppLoginResponse'
+        '422':
+          $ref: '#/components/responses/AppAuthValidationError'
+      security: []
+  /app/auth/logout:
+    post:
+      tags:
+      - auth
+      operationId: appLogout
+      summary: Log out, revoking only the token in use (gate /app)
+      responses:
+        '200':
+          description: Signed out.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+      security:
+      - appBearer: []
+  /app/auth/refresh:
+    post:
+      tags:
+      - auth
+      operationId: appRefresh
+      summary: Rotate the current token for the same device (gate /app)
+      responses:
+        '200':
+          description: New token issued; previous one revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppTokenResponse'
+        '422':
+          $ref: '#/components/responses/AppAuthValidationError'
+      security:
+      - appBearer: []
+  /app/auth/me:
+    get:
+      tags:
+      - auth
+      operationId: appMe
+      summary: Current user profile, device and abilities (gate /app)
+      responses:
+        '200':
+          description: Authenticated user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppMeResponse'
+      security:
+      - appBearer: []
+  /app/devices:
+    get:
+      tags:
+      - auth
+      operationId: listDevices
+      summary: List the authenticated user's devices (gate /app)
+      responses:
+        '200':
+          description: Devices bound to the user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeviceListItem'
+      security:
+      - appBearer: []
+  /app/devices/{uuid}:
+    delete:
+      tags:
+      - auth
+      operationId: revokeDevice
+      summary: Revoke one of the user's devices by UUID (gate /app)
+      parameters:
+      - name: uuid
+        in: path
+        required: true
+        description: Device UUID (UUID v7).
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Device revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: Device not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+      security:
+      - appBearer: []
+  /channels/auth/ping:
+    get:
+      tags:
+      - auth
+      operationId: channelPing
+      summary: Verify channel credentials (gate /channels)
+      responses:
+        '200':
+          description: Channel credentials are valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - status
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  channel:
+                    type:
+                    - string
+                    - 'null'
+      security:
+      - channelApiKey: []
+  /integrations/auth/ping:
+    get:
+      tags:
+      - auth
+      operationId: servicePing
+      summary: Verify service credentials (gate /integrations)
+      responses:
+        '200':
+          description: Service credentials are valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - status
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  client:
+                    type:
+                    - string
+                    - 'null'
+                  scopes:
+                    type: array
+                    items:
+                      type: string
+      security:
+      - serviceCredential: []
+  /channels/promises/delivery:
+    get:
+      tags:
+      - Promise
+      operationId: listMunicipalityDeliveryPromise
+      summary: List available delivery slots for a customer's municipality (K-05)
+      description: >-
+        Given a municipality, a coordinate (latitude + longitude) or a shipment, returns the dates and
+        time slots available for dispatch in that municipality, honouring coverage, capacity, holidays
+        and the horizon. The response carries no PII. Supports optional offset or cursor pagination
+        (E-02): without pagination parameters the full collection is returned (with `meta.count`).
+      parameters:
+      - name: municipality_id
+        in: query
+        required: false
+        description: Municipality id. One of municipality_id, latitude+longitude or shipment_id is required.
+        schema:
+          type: string
+          maxLength: 64
+      - name: shipment_id
+        in: query
+        required: false
+        description: Shipment id; its municipality is resolved. One destination vector is required.
+        schema:
+          type: string
+          format: uuid
+      - name: latitude
+        in: query
+        required: false
+        description: Latitude; must be sent together with longitude.
+        schema:
+          type: number
+          minimum: -90
+          maximum: 90
+      - name: longitude
+        in: query
+        required: false
+        description: Longitude; must be sent together with latitude.
+        schema:
+          type: number
+          minimum: -180
+          maximum: 180
+      - name: from_date
+        in: query
+        required: false
+        description: First day of the horizon (Y-m-d). Defaults to today.
+        schema:
+          type: string
+          format: date
+      - name: horizon_days
+        in: query
+        required: false
+        description: How many days ahead to explore (the start day included).
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 14
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Available delivery slots for the resolved municipality.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MunicipalitySlot'
+                  meta:
+                    anyOf:
+                    - type: object
+                      required:
+                      - count
+                      properties:
+                        count:
+                          type: integer
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
+        '404':
+          $ref: '#/components/responses/PromiseNotFound'
+        '422':
+          $ref: '#/components/responses/PromiseValidationError'
+      security:
+      - channelApiKey: []
+  /channels/shipments/slot-reservation:
+    post:
+      tags:
+      - Promise
+      operationId: reserveMunicipalitySlot
+      summary: Reserve a delivery slot for a shipment in its municipality (K-03)
+      description: >-
+        Atomically and idempotently resolves the shipment's municipality, validates the day, consumes
+        the municipality capacity and fixes the slot on the shipment. Distinguishes the rejections the
+        channel needs: slot already taken (409), day not dispatchable (422), shipment not found (404).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReserveMunicipalitySlotRequest'
+      responses:
+        '201':
+          description: Slot reserved for the shipment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReservedMunicipalitySlot'
+        '404':
+          $ref: '#/components/responses/PromiseNotFound'
+        '409':
+          description: The requested slot is already taken.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromiseError'
+        '422':
+          $ref: '#/components/responses/PromiseValidationError'
+      security:
+      - channelApiKey: []
 components:
   securitySchemes:
     appBearer:
@@ -6510,6 +6852,292 @@ components:
       description: Token de integración de la plataforma (prefix.secret) enviado como Bearer y validado por
         el middleware access.token. Convive con serviceCredential en la puerta /integrations/*.
   schemas:
+    PaginationMeta:
+      type: object
+      description: >-
+        Metadata added to a list response when offset pagination is requested (E-02). Absent when the
+        caller does not pass any pagination parameter (the full collection is returned unchanged).
+      required:
+      - count
+      - page
+      - per_page
+      - total
+      - total_pages
+      properties:
+        count:
+          type: integer
+          description: Number of items in this page.
+        page:
+          type: integer
+          description: 1-based page number of this page.
+        per_page:
+          type: integer
+          description: Page size used to slice the collection.
+        total:
+          type: integer
+          description: Total number of items across all pages.
+        total_pages:
+          type: integer
+          description: Total number of pages for the current page size.
+        next_page:
+          type:
+          - integer
+          - 'null'
+          description: Next page number, or null on the last page.
+        prev_page:
+          type:
+          - integer
+          - 'null'
+          description: Previous page number, or null on the first page.
+    CursorMeta:
+      type: object
+      description: >-
+        Metadata added to a list response when cursor pagination is requested (E-02), preferred for
+        large, growing collections. The caller follows `next_cursor` until it is null.
+      required:
+      - count
+      - per_page
+      - has_more
+      - next_cursor
+      properties:
+        count:
+          type: integer
+          description: Number of items in this page.
+        per_page:
+          type: integer
+          description: Page size used to slice the collection.
+        has_more:
+          type: boolean
+          description: Whether more items remain after this page.
+        next_cursor:
+          type:
+          - string
+          - 'null'
+          description: Opaque cursor for the next page, or null when exhausted.
+    MessageResponse:
+      type: object
+      required:
+      - message
+      properties:
+        message:
+          type: string
+    AppUserProfile:
+      type: object
+      required:
+      - id
+      - name
+      - email
+      - roles
+      properties:
+        id:
+          type: integer
+          description: User primary key (auto-increment).
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        roles:
+          type: array
+          items:
+            type: string
+    AppDevicePayload:
+      type: object
+      required:
+      - uuid
+      - platform
+      - name
+      - last_seen_at
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        platform:
+          type:
+          - string
+          - 'null'
+        name:
+          type:
+          - string
+          - 'null'
+        last_seen_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    DeviceListItem:
+      allOf:
+      - $ref: '#/components/schemas/AppDevicePayload'
+      - type: object
+        required:
+        - revoked
+        properties:
+          revoked:
+            type: boolean
+    AppLoginRequest:
+      type: object
+      required:
+      - email
+      - password
+      - device
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        device:
+          type: object
+          required:
+          - fingerprint
+          properties:
+            fingerprint:
+              type: string
+              maxLength: 255
+            platform:
+              type:
+              - string
+              - 'null'
+              maxLength: 64
+            name:
+              type:
+              - string
+              - 'null'
+              maxLength: 255
+            push_token:
+              type:
+              - string
+              - 'null'
+              maxLength: 512
+    AppLoginResponse:
+      type: object
+      required:
+      - token
+      - token_type
+      - expires_at
+      - user
+      - device
+      properties:
+        token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        user:
+          $ref: '#/components/schemas/AppUserProfile'
+        device:
+          $ref: '#/components/schemas/AppDevicePayload'
+    AppTokenResponse:
+      type: object
+      required:
+      - token
+      - token_type
+      - expires_at
+      properties:
+        token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    AppMeResponse:
+      type: object
+      required:
+      - user
+      - device
+      - abilities
+      properties:
+        user:
+          $ref: '#/components/schemas/AppUserProfile'
+        device:
+          oneOf:
+          - $ref: '#/components/schemas/AppDevicePayload'
+          - type: 'null'
+        abilities:
+          type: array
+          items:
+            type: string
+    MunicipalitySlot:
+      type: object
+      description: One promisable delivery slot for a customer's municipality. No PII.
+      required:
+      - municipality_id
+      - slot_date
+      - time_slot
+      - available
+      properties:
+        municipality_id:
+          type: string
+        slot_date:
+          type: string
+          format: date
+        time_slot:
+          type: string
+          example: 09:00-13:00
+        available:
+          type: number
+    ReserveMunicipalitySlotRequest:
+      type: object
+      required:
+      - shipment_id
+      - date
+      - window_start
+      - window_end
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        window_start:
+          type: string
+          example: '09:00'
+        window_end:
+          type: string
+          example: '13:00'
+        municipality_id:
+          type: string
+          maxLength: 64
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+    ReservedMunicipalitySlot:
+      type: object
+      required:
+      - shipment_id
+      - delivery_date
+      - delivery_window_start
+      - delivery_window_end
+      - status
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        delivery_date:
+          type: string
+          format: date
+        delivery_window_start:
+          type: string
+        delivery_window_end:
+          type: string
+        status:
+          type: string
+          example: reserved
     FuelType:
       type: string
       description: Fuel type of the fleet
@@ -11465,6 +12093,36 @@ components:
           items:
             type: integer
   parameters:
+    PageNumber:
+      name: page
+      in: query
+      required: false
+      description: >-
+        1-based page number for offset pagination (E-02). When present, the response is sliced and a
+        `meta` object is added. Omitting all pagination params returns the full collection unchanged.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      description: Page size for offset or cursor pagination (max 200).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: >-
+        Opaque cursor for cursor pagination (E-02), taken from a previous response's
+        `meta.next_cursor`. Preferred over `page` for large, growing collections.
+      schema:
+        type: string
     GeofenceId:
       name: geofenceId
       in: path
@@ -11646,6 +12304,24 @@ components:
         type: string
         format: uuid
   responses:
+    AppAuthValidationError:
+      description: Credentials or payload failed validation (Laravel ValidationException shape).
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - message
+            - errors
+            properties:
+              message:
+                type: string
+              errors:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
     BusinessRuleError:
       description: Business rule violation (no capacity, invalid transition, expired reservation).
       content:

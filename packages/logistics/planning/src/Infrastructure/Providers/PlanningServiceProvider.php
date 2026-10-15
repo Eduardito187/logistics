@@ -20,14 +20,20 @@ use Logistics\Planning\Application\Command\PublishPlan\PublishPlan;
 use Logistics\Planning\Application\Command\PublishPlan\PublishPlanHandler;
 use Logistics\Planning\Application\Command\ReassignShipmentToVehicle\ReassignShipmentToVehicle;
 use Logistics\Planning\Application\Command\ReassignShipmentToVehicle\ReassignShipmentToVehicleHandler;
+use Logistics\Planning\Application\Command\ReoptimizeRoute\ReoptimizeRoute;
+use Logistics\Planning\Application\Command\ReoptimizeRoute\ReoptimizeRouteHandler;
 use Logistics\Planning\Application\Command\ReorderStops\ReorderStops;
 use Logistics\Planning\Application\Command\ReorderStops\ReorderStopsHandler;
 use Logistics\Planning\Application\Command\ScheduleReplan\ScheduleReplan;
 use Logistics\Planning\Application\Command\ScheduleReplan\ScheduleReplanHandler;
+use Logistics\Planning\Application\Query\CompareRoutingBackends\CompareRoutingBackends;
+use Logistics\Planning\Application\Query\CompareRoutingBackends\CompareRoutingBackendsHandler;
 use Logistics\Planning\Application\Query\GetDailyPlanRun\GetDailyPlanRun;
 use Logistics\Planning\Application\Query\GetDailyPlanRun\GetDailyPlanRunHandler;
 use Logistics\Planning\Application\Query\GetPlan\GetPlan;
 use Logistics\Planning\Application\Query\GetPlan\GetPlanHandler;
+use Logistics\Planning\Application\Query\GetRouteQuality\GetRouteQuality;
+use Logistics\Planning\Application\Query\GetRouteQuality\GetRouteQualityHandler;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDate;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDateHandler;
 use Logistics\Planning\Domain\Contract\AutoPlanRunRepository;
@@ -39,7 +45,9 @@ use Logistics\Planning\Domain\Contract\PlanningOriginLocator;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Contract\ReplanBacklogRepository;
 use Logistics\Planning\Domain\Contract\RoadMatrixProvider;
+use Logistics\Planning\Domain\Contract\RouteComparisonProblemProvider;
 use Logistics\Planning\Domain\Contract\RouteGeometryProvider;
+use Logistics\Planning\Domain\Contract\RouteLoadProfileProvider;
 use Logistics\Planning\Domain\Contract\RouteOptimizer;
 use Logistics\Planning\Domain\Contract\RoutingBackend;
 use Logistics\Planning\Domain\Service\ClarkeWrightSolver;
@@ -49,6 +57,8 @@ use Logistics\Planning\Domain\Service\RouteSequencer;
 use Logistics\Planning\Domain\Service\VehicleCompatibility;
 use Logistics\Planning\Infrastructure\Adapter\BlackoutAwarePendingDeliveryProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentPendingDeliveryProvider;
+use Logistics\Planning\Infrastructure\Adapter\EloquentRouteComparisonProblemProvider;
+use Logistics\Planning\Infrastructure\Adapter\EloquentRouteLoadProfileProvider;
 use Logistics\Planning\Infrastructure\Adapter\FleetVehicleAvailabilityProvider;
 use Logistics\Planning\Infrastructure\Adapter\NetworkNodeOriginLocator;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
@@ -86,11 +96,14 @@ final class PlanningServiceProvider extends ServiceProvider
         AssignShipmentToVehicle::class => AssignShipmentToVehicleHandler::class,
         ReassignShipmentToVehicle::class => ReassignShipmentToVehicleHandler::class,
         ReorderStops::class => ReorderStopsHandler::class,
+        ReoptimizeRoute::class => ReoptimizeRouteHandler::class,
         ScheduleReplan::class => ScheduleReplanHandler::class,
         PublishPlan::class => PublishPlanHandler::class,
         GetPlan::class => GetPlanHandler::class,
         ListPlansByDate::class => ListPlansByDateHandler::class,
         GetDailyPlanRun::class => GetDailyPlanRunHandler::class,
+        GetRouteQuality::class => GetRouteQualityHandler::class,
+        CompareRoutingBackends::class => CompareRoutingBackendsHandler::class,
     ];
 
     public function register(): void
@@ -180,6 +193,37 @@ final class PlanningServiceProvider extends ServiceProvider
                 'vroom' => $this->vroomRoutingBackend($app),
                 default => $this->builtinRoutingBackend($app),
             };
+        });
+
+        // Métricas de calidad de ruta (R-06): puerta de lectura de carga de envíos y capacidad del camión.
+        $this->app->bind(RouteLoadProfileProvider::class, EloquentRouteLoadProfileProvider::class);
+
+        // Reconstrucción del problema de un plan para comparar backends (R-06).
+        $this->app->bind(RouteComparisonProblemProvider::class, EloquentRouteComparisonProblemProvider::class);
+
+        // Handler de comparación de backends (R-06): recibe los TRES backends nombrados (builtin/osrm/vroom)
+        // para correrlos sobre el mismo plan, más el costo/km configurable. Se bindea a mano por el array.
+        $this->app->bind(CompareRoutingBackendsHandler::class, function ($app): CompareRoutingBackendsHandler {
+            /** @var Config $config */
+            $config = $app->make(Config::class);
+
+            $backends = [
+                'builtin' => $this->builtinRoutingBackend($app),
+                'osrm_trip' => new OsrmTripRoutingBackend(
+                    $app->make(DailyPlanComposer::class),
+                    $this->osrmRouteOptimizer($app),
+                    $app->make(RouteGeometryProvider::class),
+                ),
+                'vroom' => $this->vroomRoutingBackend($app),
+            ];
+
+            return new CompareRoutingBackendsHandler(
+                $app->make(RouteComparisonProblemProvider::class),
+                $app->make(AutoPlanSettingsProvider::class),
+                $backends,
+                (int) $config->get('logistics-planning.routing.quality.cost_per_km_cents', 350),
+                (string) $config->get('logistics-planning.routing.quality.currency', 'BOB'),
+            );
         });
     }
 

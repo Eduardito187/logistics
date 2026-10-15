@@ -32,7 +32,7 @@ use Logistics\Planning\Domain\ValueObject\VehicleCapacitySpec;
 final readonly class DailyPlanComposer
 {
     public function __construct(
-        private VehicleCompatibility $compatibility = new VehicleCompatibility(),
+        private VehicleCompatibility $compatibility = new VehicleCompatibility,
     ) {}
 
     /**

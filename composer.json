@@ -43,6 +43,7 @@
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
+        "hotmeteor/spectator": "^3.0",
         "larastan/larastan": "^3.0",
         "laravel/pail": "^1.2.5",
         "laravel/pint": "^1.27",

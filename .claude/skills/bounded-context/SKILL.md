@@ -278,6 +278,29 @@ seguir esto (detalle en [[admin-ops-first-redesign]]):
 - **Mapas**: usar SIEMPRE el helper `window.DismacMaps.tileLayer(L, {url, fallbackUrl, ...})` (public/js/dismac-maps.js),
   nunca `L.tileLayer()` crudo — cae al OSM público si el tileserver self-host no responde. Ver [[admin-ui-maps]].
 
+## Gotchas de olas de agentes (2026-10-14)
+
+- **La regla "no ejecutar tests" fue DEROGADA.** La DoD (CLAUDE.md #1) exige correr Pest de verdad:
+  `docker compose exec -T app ./vendor/bin/pest` + PHPStan 8 + Pint + verificación real. Reportar números
+  (tests/aserciones). (Un agente de verify obedeció una memoria obsoleta y SALTÓ pest dejando la ola "verde"
+  sin correr la suite; la memoria se borró.)
+- **i18n = causa real del "spanglish".** El admin se muestra en español vía `lang/es.json`; toda clave `__()`
+  SIN entrada en es.json se renderiza en inglés. Al agregar texto visible: `__()` fuente en inglés + par en
+  es.json. Los tests de render del admin DEBEN afirmar `__('Key')` (locale es), NUNCA el literal inglés
+  (se rompen en cuanto se traduce la clave). Ver [[filament-v4-component-gotchas]] gotcha 5.
+- **Documentos polimórficos de flota**: `fleet_documents` (owner_type vehicle|driver|helper) + el helper de
+  presentación `OwnerDocuments` se comparten entre los 3 dueños; agregar un dueño nuevo = extender ese helper,
+  no duplicar. Campo `reference` para nº de póliza/serie (SOAT) o certificado (inspección).
+- **Scope multi-eje con índices únicos PARCIALES**: cuando una tabla puede scopearse por exactamente UNO de
+  varios ejes nullables (p.ej. `capacity_buckets` por municipio | zona | nodo), la clave natural va con
+  índices únicos PARCIALES por eje (cada uno exige NULL en los otros), no un unique compuesto simple.
+- **Activación masiva por rango = job encolado y troceado**: generar N×M filas (fechas × scopes) va async
+  (`ShouldQueue`+`ShouldBeUnique`, `afterCommit`) con chunking y re-encolado por cursor, cada fila idempotente
+  por su clave natural. No hacerlo síncrono en el request. Ver [[dispatch-calendar-municipality]].
+- **Coordinación entre sesiones paralelas en el mismo working tree**: particionar por archivos, dueño único
+  de los archivos calientes (es.json/openapi/compose/providers.php), serializar composer/npm/pest, no dos
+  pest a la vez. Olas de ~5 subagentes concurrentes queman el límite de sesión. Ver [[multisession-shared-tree]].
+
 ## Referencia
 
 `packages/logistics/network`, `fleet`, `coverage`, `shipments` ya siguen este patrón; `labels` para el

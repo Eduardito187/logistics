@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Presentation\Http\Controller;
 
+use App\Http\Support\ApiPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -45,6 +46,13 @@ final class ListShipmentsController
             source: $filters['source'] ?? null,
         ));
 
-        return $this->data(array_map(static fn (ShipmentView $view): array => $view->toArray(), $views));
+        $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $views);
+
+        // Paginación opcional y aditiva (E-02): solo si el cliente la pide; si no, colección completa.
+        if (ApiPagination::requested($request)) {
+            return new JsonResponse(ApiPagination::paginate($items, $request));
+        }
+
+        return $this->data($items);
     }
 }

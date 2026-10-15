@@ -81,7 +81,7 @@ final readonly class RouteSequencer
             return array_values($order);
         }
 
-        $improved = $this->twoOpt($matrix, array_values($order), $windows);
+        $improved = $this->twoOpt($matrix, $order, $windows);
 
         return $this->orOpt($matrix, $improved, $windows);
     }

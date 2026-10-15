@@ -293,8 +293,8 @@ final readonly class BuiltinRoutingBackend implements RoutingBackend
      * Parte el grupo en (servibles, infactibles): un envío es servible si AL MENOS un camión elegible
      * puede llevarlo (R-04). Los infactibles van directo a no asignados. Sin restricciones, todos servibles.
      *
-     * @param  list<DeliveryCandidate>                                  $group
-     * @param  list<VehicleCapacitySpec>                                $eligible
+     * @param  list<DeliveryCandidate>                                       $group
+     * @param  list<VehicleCapacitySpec>                                     $eligible
      * @return array{0: list<DeliveryCandidate>, 1: list<DeliveryCandidate>}
      */
     private function splitByServability(array $group, array $eligible): array

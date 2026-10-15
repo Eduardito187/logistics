@@ -41,6 +41,13 @@ return [
 
         // Velocidad media (km/h) para estimar tiempos cuando se degrada a haversine (OSRM caído).
         'fallback_speed_kmh' => (float) env('PLANNING_FALLBACK_SPEED_KMH', 30.0),
+
+        // Métricas de calidad de ruta (R-06): costo asumido por kilómetro recorrido, para comparar el
+        // costo/distancia de cada backend sobre un plan. En centavos de la moneda base (BOB por defecto).
+        'quality' => [
+            'cost_per_km_cents' => (int) env('PLANNING_COST_PER_KM_CENTS', 350),
+            'currency' => env('PLANNING_COST_CURRENCY', 'BOB'),
+        ],
     ],
 
     // Auto-planificador diario (comando GenerateDailyPlan). Parámetros CONFIGURABLES por defecto; el

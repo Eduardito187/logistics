@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Presentation\Http\Controller;
 
+use App\Http\Support\ApiPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shipments\Application\Query\ListLowConfidenceAddresses\ListLowConfidenceAddresses;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
@@ -22,11 +24,18 @@ final class ListLowConfidenceAddressesController
         private readonly QueryBus $queryBus,
     ) {}
 
-    public function __invoke(): JsonResponse
+    public function __invoke(Request $request): JsonResponse
     {
         /** @var list<ShipmentView> $views */
         $views = $this->queryBus->ask(new ListLowConfidenceAddresses);
 
-        return $this->data(array_map(static fn (ShipmentView $view): array => $view->toArray(), $views));
+        $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $views);
+
+        // Paginación opcional y aditiva (E-02): solo si el cliente la pide; si no, colección completa.
+        if (ApiPagination::requested($request)) {
+            return new JsonResponse(ApiPagination::paginate($items, $request));
+        }
+
+        return $this->data($items);
     }
 }

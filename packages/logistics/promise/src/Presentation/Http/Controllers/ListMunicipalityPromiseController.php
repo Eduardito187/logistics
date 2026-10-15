@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Promise\Presentation\Http\Controllers;
 
+use App\Http\Support\ApiPagination;
 use Illuminate\Http\JsonResponse;
 use Logistics\Promise\Application\Query\ListMunicipalityPromise\ListMunicipalityPromise;
 use Logistics\Promise\Application\ReadModel\MunicipalitySlotView;
@@ -49,9 +50,16 @@ final readonly class ListMunicipalityPromiseController
             return $this->domainError($exception);
         }
 
-        return $this->collection(array_map(
+        $items = array_map(
             static fn (MunicipalitySlotView $slot): array => $slot->toArray(),
             $slots,
-        ));
+        );
+
+        // Paginación opcional y aditiva (E-02): el cliente puede troceear franjas de un horizonte largo.
+        if (ApiPagination::requested($request)) {
+            return new JsonResponse(ApiPagination::paginate($items, $request));
+        }
+
+        return $this->collection($items);
     }
 }
