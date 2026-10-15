@@ -104,6 +104,28 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["php-fpm", "-F"]
 
 # ============================================================
+# Vendor stage — instala las dependencias PHP para alimentar el build del tema
+# ============================================================
+# El tema Filament (resources/css/filament/admin/theme.css) hace `@import` de
+# `vendor/filament/...` y app.css escanea `vendor/laravel/...` con `@source`. Como
+# `vendor/` está en .dockerignore, el stage `assets` (solo Node) no lo tendría y
+# `vite build` fallaría al resolver ese `@import`. Este stage produce `vendor/` y se
+# copia al stage `assets`. (Reemplaza el hack de copiar vendor/filament a mano, V-19.)
+FROM base AS vendor
+
+ARG UID=1000
+ARG GID=1000
+
+USER logistics
+
+# Se copia TODO el contexto porque composer.json usa repositorios de tipo `path`
+# (packages/logistics/*): sin esas carpetas, `composer install` falla al resolverlos.
+COPY --chown=${UID}:${GID} . /var/www/html
+
+RUN composer install --no-dev --no-interaction --prefer-dist --no-progress --no-scripts \
+    && composer clear-cache
+
+# ============================================================
 # Assets stage — compila el tema Filament y los assets con Vite
 # ============================================================
 # `public/build/` está en .gitignore, así que los assets NO vienen en el repo:
@@ -119,6 +141,12 @@ RUN npm ci
 
 # Fuente necesaria para `vite build` (resources/, vite.config.js, etc.).
 COPY . .
+
+# `vendor/` (filament + laravel) debe existir para que `vite build` resuelva el `@import`
+# del tema y los `@source` de Tailwind. Viene del stage `vendor` porque `.dockerignore`
+# lo excluye del contexto.
+COPY --from=vendor /var/www/html/vendor ./vendor
+
 RUN npm run build
 
 # ============================================================
