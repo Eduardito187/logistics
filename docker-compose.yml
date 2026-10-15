@@ -376,6 +376,26 @@ services:
         networks:
             - dismac_lg
 
+    # Servidor WebSocket OPEN-SOURCE (protocolo Pusher) para el fan-out en vivo de telemetría
+    # (posiciones de vehículos). Self-host, sin Pusher.com ni Google — solo el protocolo. Las
+    # credenciales deben coincidir con PUSHER_APP_* del .env. El app (Laravel) publica eventos a
+    # `soketi:6001` por la red docker; el navegador conecta a `localhost:6001` (puerto expuesto).
+    # NOTA: este bloque agrega SOLO el servicio `soketi` (otras oleadas editan este compose).
+    soketi:
+        image: quay.io/soketi/soketi:1.6-16-debian
+        container_name: dismac_lg_soketi
+        restart: unless-stopped
+        environment:
+            SOKETI_DEFAULT_APP_ID: ${PUSHER_APP_ID:-dismac}
+            SOKETI_DEFAULT_APP_KEY: ${PUSHER_APP_KEY:-dismaclocalkey}
+            SOKETI_DEFAULT_APP_SECRET: ${PUSHER_APP_SECRET:-dismaclocalsecret}
+            SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: 'false'
+            SOKETI_METRICS_ENABLED: 'true'
+        ports:
+            - "6001:6001"
+        networks:
+            - dismac_lg
+
 volumes:
     postgres_data:
     valkey_data:

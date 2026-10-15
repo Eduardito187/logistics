@@ -42,6 +42,16 @@ return [
         'timezone' => env('TELEMETRY_WORK_TZ', env('APP_TIMEZONE', 'America/La_Paz')),
     ],
 
+    // Fan-out en vivo (ADR 016): estado caliente en Valkey + throttle de difusión por WebSockets.
+    'live' => [
+        // Store de cache respaldado por Valkey (habla protocolo redis). Degrada con gracia si no está.
+        'cache_store' => env('TELEMETRY_LIVE_CACHE_STORE', 'redis'),
+        // TTL de la última posición caliente por vehículo (segundos): un espectador recién conectado la lee.
+        'ttl_seconds' => (int) env('TELEMETRY_LIVE_TTL_SECONDS', 300),
+        // Coalescing: como mucho una difusión por vehículo cada N segundos (corta el tráfico de fan-out).
+        'throttle_seconds' => (int) env('TELEMETRY_LIVE_THROTTLE_SECONDS', 3),
+    ],
+
     // Analítica de calles (map-matching OSRM). Reutiliza el host OSRM de planning por defecto.
     'streets' => [
         'osrm_host' => env('OSRM_HOST', 'https://router.project-osrm.org'),

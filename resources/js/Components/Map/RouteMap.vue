@@ -30,7 +30,11 @@ const resolveTileUrl = () => {
 
 const mapEl = ref(null);
 let map = null;
+let leaflet = null;
+let markerGroup = null;
 const markersBySeq = {};
+// Marcadores indexados por clave estable (placa) para la actualización en vivo (upsertVehicle).
+const markersByKey = {};
 
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
@@ -72,6 +76,8 @@ function render(L) {
     }).addTo(map);
 
     const group = L.featureGroup().addTo(map);
+    leaflet = L;
+    markerGroup = group;
     const plannedStyle = { color: '#2563eb', weight: 3, opacity: 0.85, dashArray: '6,8' };
     const fit = () => {
         if (group.getLayers().length) {
@@ -122,6 +128,9 @@ function render(L) {
             .bindPopup(`<strong>#${esc(s.seq)} · ${esc(s.order)}</strong><br>${esc(s.customer)}<br>${esc(s.status)}`)
             .addTo(group);
         markersBySeq[String(s.seq)] = marker;
+        if (s.order !== undefined && s.order !== null) {
+            markersByKey[String(s.order)] = marker;
+        }
     });
 
     fit();
@@ -141,7 +150,38 @@ function focusStop(seq) {
     return true;
 }
 
-defineExpose({ focusStop });
+// Crea o mueve EN VIVO el marcador de un vehículo (por clave estable = placa). La usa la torre de
+// control al recibir eventos de posición por WebSocket: si el marcador existe lo reubica, si no lo crea.
+function upsertVehicle({ key, lat, lng, status, label } = {}) {
+    if (!map || !leaflet || !markerGroup || key === undefined || key === null) {
+        return false;
+    }
+    const nLat = Number(lat);
+    const nLng = Number(lng);
+    if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) {
+        return false;
+    }
+    const id = String(key);
+    const popup = `<strong>${esc(id)}</strong><br>${esc(label ?? status ?? '')}`;
+    const existing = markersByKey[id];
+    if (existing) {
+        existing.setLatLng([nLat, nLng]);
+        existing.setPopupContent(popup);
+        return true;
+    }
+    const icon = leaflet.divIcon({
+        className: 'route-stop-marker',
+        html: '<div style="background:#E2231A;color:#fff;border-radius:9999px;width:22px;height:22px;'
+            + 'display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;'
+            + 'border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">●</div>',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+    });
+    markersByKey[id] = leaflet.marker([nLat, nLng], { icon }).bindPopup(popup).addTo(markerGroup);
+    return true;
+}
+
+defineExpose({ focusStop, upsertVehicle });
 
 onMounted(async () => {
     try {

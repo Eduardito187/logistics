@@ -223,7 +223,9 @@ final class IdempotentRequests
     {
         $store = config('api.idempotency.store');
 
-        return Cache::store(is_string($store) ? $store : null);
+        // Un string vacío (p.ej. API_IDEMPOTENCY_STORE= sin valor en el entorno/CI) NO es un store válido:
+        // se trata como null para caer al store por defecto (Valkey en prod, array en tests).
+        return Cache::store(is_string($store) && $store !== '' ? $store : null);
     }
 
     private function isValidKey(string $key): bool

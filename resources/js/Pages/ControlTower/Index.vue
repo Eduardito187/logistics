@@ -3,7 +3,7 @@
 // tabla lateral con su estado, entregas activas y última actualización. Clic en una fila con ubicación
 // centra el vehículo en el mapa (vía la ref de RouteMap). Solo lectura. Patrón: igual que Rutas.
 import { Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import PageHeader from '@/Components/UI/PageHeader.vue';
 import AppCard from '@/Components/UI/AppCard.vue';
 import DataTable from '@/Components/UI/DataTable.vue';
@@ -17,6 +17,44 @@ const props = defineProps({
 });
 
 const mapRef = ref(null);
+
+// Copia reactiva de la flota: se refresca en vivo con los eventos de posición (última actualización),
+// sin recargar la página. Si el tiempo real no está disponible, muestra la foto inicial del servidor.
+const liveFleet = ref(props.fleet.map((row) => ({ ...row })));
+const live = ref(false);
+
+// Movimiento reportado por telemetría (distinto del estado operativo del vehículo).
+const movementLabel = (s) => ({ moving: 'En movimiento', idle: 'Ralentí', stopped: 'Detenido' }[s] ?? s);
+
+// Tiempo real: suscripción al canal `fleet` por WebSocket (Soketi). Cada evento mueve el marcador del
+// vehículo (por placa) y refresca su "última actualización" en la tabla. Degrada con gracia si no hay Echo.
+let fleetChannel = null;
+onMounted(() => {
+    if (!window.Echo) {
+        return;
+    }
+    fleetChannel = window.Echo.channel('fleet');
+    fleetChannel.listen('.vehicle.position', (e) => {
+        live.value = true;
+        mapRef.value?.upsertVehicle({
+            key: e.plate ?? e.vehicle_id,
+            lat: e.lat,
+            lng: e.lng,
+            status: e.status,
+            label: movementLabel(e.status),
+        });
+        const row = liveFleet.value.find((r) => r.plate === e.plate);
+        if (row) {
+            row.last_update = e.occurred_at ?? row.last_update;
+        }
+    });
+});
+onBeforeUnmount(() => {
+    if (window.Echo && fleetChannel) {
+        window.Echo.leave('fleet');
+        fleetChannel = null;
+    }
+});
 
 // Estado del vehículo → etiqueta en español + color del badge. El valor crudo llega en minúsculas.
 const vehicleStatusMap = {
@@ -78,6 +116,15 @@ const focusVehicle = (row) => {
 
     <div class="grid grid-cols-1 gap-5 xl:grid-cols-5">
         <AppCard title="Mapa de la flota" class="xl:col-span-3">
+            <template #header>
+                <span
+                    class="inline-flex items-center gap-1.5 text-xs"
+                    :class="live ? 'text-emerald-400' : 'text-neutral-500'"
+                >
+                    <span class="inline-block h-2 w-2 rounded-full" :class="live ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-600'"></span>
+                    {{ live ? 'En vivo' : 'Esperando señal' }}
+                </span>
+            </template>
             <RouteMap ref="mapRef" :stops="map.stops" :planned="map.planned" :actual="map.actual" />
             <p class="mt-3 text-xs text-neutral-500">
                 Cada marcador es un vehículo en su última posición reportada. Haz clic en una fila de la
@@ -88,7 +135,7 @@ const focusVehicle = (row) => {
         <AppCard title="Flota" class="xl:col-span-2">
             <DataTable
                 :columns="columns"
-                :rows="fleet"
+                :rows="liveFleet"
                 clickable
                 empty-text="No hay vehículos en la flota."
                 @row-click="focusVehicle"

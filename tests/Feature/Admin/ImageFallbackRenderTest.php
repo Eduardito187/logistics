@@ -6,6 +6,7 @@ namespace Tests\Feature\Admin;
 
 use App\Enums\Role;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Logistics\Fleet\Database\Factories\DriverFactory;
 use Tests\TestCase;
 
@@ -16,6 +17,11 @@ use Tests\TestCase;
  */
 final class ImageFallbackRenderTest extends TestCase
 {
+    // Este test es una CLASE PHPUnit (no una closure de Pest), así que el `uses(RefreshDatabase)->in('Feature')`
+    // de tests/Pest.php NO lo alcanza: hay que aplicar el trait explícitamente para que corran las migraciones
+    // (si no, la tabla `users` no existe en una BD limpia de CI y el factory revienta).
+    use RefreshDatabase;
+
     public function test_drivers_list_renders_placeholder_when_photo_is_missing(): void
     {
         $admin = User::factory()->create();

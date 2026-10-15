@@ -24,6 +24,9 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    // Canales de broadcasting en vivo (telemetría): registra /broadcasting/auth (sesión web del SPA)
+    // y carga la autorización de canales de routes/channels.php (fleet/vehicle/shipment).
+    ->withBroadcasting(__DIR__.'/../routes/channels.php')
     ->withMiddleware(function (Middleware $middleware): void {
         // Inertia (app web Vue): comparte datos con el front y maneja las peticiones X-Inertia. Es
         // passthrough para respuestas que no son Inertia, así que no afecta al panel Filament (/admin).

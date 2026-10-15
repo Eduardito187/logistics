@@ -39,6 +39,7 @@
         "logistics/shipments": "^0.1",
         "logistics/telemetry": "^0.1",
         "logistics/tracking": "^0.1",
+        "pusher/pusher-php-server": "^7.3",
         "tightenco/ziggy": "^2.6"
     },
     "require-dev": {

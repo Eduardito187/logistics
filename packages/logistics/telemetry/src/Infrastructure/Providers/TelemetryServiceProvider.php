@@ -43,12 +43,16 @@ use Logistics\Telemetry\Application\Query\ListTrips\ListTrips;
 use Logistics\Telemetry\Application\Query\ListTrips\ListTripsHandler;
 use Logistics\Telemetry\Domain\Contract\AlertRepository;
 use Logistics\Telemetry\Domain\Contract\GeofenceRepository;
+use Logistics\Telemetry\Domain\Contract\LivePositionBroadcaster;
 use Logistics\Telemetry\Domain\Contract\MapMatcher;
 use Logistics\Telemetry\Domain\Contract\PingRepository;
 use Logistics\Telemetry\Domain\Contract\StreetStatsRepository;
 use Logistics\Telemetry\Domain\Contract\TripRepository;
 use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
 use Logistics\Telemetry\Infrastructure\Console\AggregateStreetTrafficCommand;
+use Logistics\Telemetry\Infrastructure\LiveState\BroadcastingLivePositionBroadcaster;
+use Logistics\Telemetry\Infrastructure\LiveState\FleetPlateResolver;
+use Logistics\Telemetry\Infrastructure\LiveState\LiveVehicleState;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentAlertRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentGeofenceRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentPingRepository;
@@ -105,6 +109,12 @@ final class TelemetryServiceProvider extends ServiceProvider
         $this->app->bind(AlertRepository::class, EloquentAlertRepository::class);
         $this->app->bind(StreetStatsRepository::class, EloquentStreetStatsRepository::class);
         $this->app->bind(MapMatcher::class, OsrmMapMatcher::class);
+
+        // Fan-out en vivo: adaptador que difunde por WebSockets + mantiene el hot-state en Valkey.
+        // El resolver de placas es singleton para memoizar id→placa (cross-context read-only) y evitar N+1.
+        $this->app->singleton(FleetPlateResolver::class);
+        $this->app->singleton(LiveVehicleState::class);
+        $this->app->bind(LivePositionBroadcaster::class, BroadcastingLivePositionBroadcaster::class);
     }
 
     public function boot(): void

@@ -11,6 +11,7 @@ use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Telemetry\Domain\Contract\AlertRepository;
 use Logistics\Telemetry\Domain\Contract\GeofenceRepository;
+use Logistics\Telemetry\Domain\Contract\LivePositionBroadcaster;
 use Logistics\Telemetry\Domain\Contract\PingRepository;
 use Logistics\Telemetry\Domain\Contract\TripRepository;
 use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
@@ -54,6 +55,7 @@ final readonly class RecordVehiclePingsHandler implements CommandHandler
         private GeofenceRepository $geofences,
         private AlertRepository $alerts,
         private MisuseAnalyzer $misuse,
+        private LivePositionBroadcaster $liveBroadcaster,
     ) {}
 
     public function handle(Command $command): void
@@ -145,6 +147,9 @@ final readonly class RecordVehiclePingsHandler implements CommandHandler
 
         if ($lastPing !== null) {
             $this->positions->upsertFromPing($lastPing, $lastMoving);
+            // Fan-out en vivo (aditivo): refresca el hot-state en Valkey y difunde la última posición a los
+            // espectadores con throttle. No cambia la semántica de la ingesta ni hace I/O síncrono bloqueante.
+            $this->liveBroadcaster->publish($lastPing, $lastMoving);
             $this->detectMisuse($lastPing, $active, $command->routeId !== null);
         }
     }
