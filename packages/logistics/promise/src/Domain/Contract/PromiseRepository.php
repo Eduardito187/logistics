@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Promise\Domain\Contract;
 
+use DateTimeImmutable;
 use Logistics\Promise\Domain\Model\DeliveryPromise;
 use Logistics\Promise\Domain\ValueObject\PromiseId;
 
@@ -21,4 +22,12 @@ interface PromiseRepository
     public function save(DeliveryPromise $promise): void;
 
     public function findById(PromiseId $id): ?DeliveryPromise;
+
+    /**
+     * Ids de las promesas reservadas cuya ventana ya venció al instante dado (reserved_until <= now).
+     * Las usa el barrido en lote para expirarlas y liberar su cupo. Lista vacía si no hay ninguna.
+     *
+     * @return list<PromiseId>
+     */
+    public function reservedExpiredAt(DateTimeImmutable $now): array;
 }

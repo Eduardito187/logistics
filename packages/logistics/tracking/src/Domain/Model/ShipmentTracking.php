@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Logistics\Tracking\Domain\Model;
 
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
+use Logistics\Tracking\Domain\Event\ShipmentPlacedOnRoute;
 use Logistics\Tracking\Domain\Event\TrackingOpened;
 use Logistics\Tracking\Domain\Event\TrackingStatusChanged;
 use Logistics\Tracking\Domain\Exception\TrackingException;
 use Logistics\Tracking\Domain\ValueObject\Eta;
+use Logistics\Tracking\Domain\ValueObject\RoutePosition;
 use Logistics\Tracking\Domain\ValueObject\TrackingId;
 use Logistics\Tracking\Domain\ValueObject\TrackingToken;
 use Logistics\Tracking\Domain\ValueObject\TruckPosition;
@@ -32,6 +34,8 @@ final class ShipmentTracking extends AggregateRoot
         private int $remainingStops,
         private ?Eta $eta,
         private ?TruckPosition $lastPosition,
+        private ?string $routeId,
+        private ?RoutePosition $routePosition,
     ) {}
 
     /**
@@ -60,6 +64,8 @@ final class ShipmentTracking extends AggregateRoot
             $remainingStops,
             null,
             null,
+            null,
+            null,
         );
 
         $tracking->recordEvent(new TrackingOpened(
@@ -84,6 +90,8 @@ final class ShipmentTracking extends AggregateRoot
         int $remainingStops,
         ?Eta $eta,
         ?TruckPosition $lastPosition,
+        ?string $routeId = null,
+        ?RoutePosition $routePosition = null,
     ): self {
         return new self(
             $id,
@@ -93,6 +101,8 @@ final class ShipmentTracking extends AggregateRoot
             $remainingStops,
             $eta,
             $lastPosition,
+            $routeId,
+            $routePosition,
         );
     }
 
@@ -125,10 +135,23 @@ final class ShipmentTracking extends AggregateRoot
     /**
      * Actualiza la posición en vivo del camión. No graba evento de dominio: es un dato de alta
      * frecuencia (telemetría), no un hecho de negocio.
+     *
+     * Robustez ante telemetría real: la ingesta llega a ~3 req/s y puede desordenarse (buffer del
+     * dispositivo offline, reintentos del relay, varios reportes casi simultáneos). La proyección es
+     * MONÓTONA: un reporte más viejo que el último conocido se descarta, para no "teletransportar" el
+     * camión hacia atrás en el mapa. Devuelve true si la posición se aplicó, false si se descartó.
      */
-    public function updatePosition(TruckPosition $position): void
+    public function updatePosition(TruckPosition $position): bool
     {
+        if ($this->lastPosition !== null
+            && $position->reportedAt < $this->lastPosition->reportedAt
+        ) {
+            return false;
+        }
+
         $this->lastPosition = $position;
+
+        return true;
     }
 
     /**
@@ -140,7 +163,41 @@ final class ShipmentTracking extends AggregateRoot
     }
 
     /**
-     * Descuenta una parada restante. No baja de cero.
+     * Ubica el envío en la ruta publicada del camión: fija la ruta y la posición en la secuencia, y
+     * deriva cuántas paradas faltan ANTES de la del cliente (stopsBefore). Graba ShipmentPlacedOnRoute.
+     *
+     * Es la proyección de la ruta publicada por planning (recibida como dato por el puente, sin acoplar
+     * el agregado de otro contexto). Idempotente por su efecto: reproyectar la misma ruta deja el mismo
+     * estado. No toca un seguimiento ya terminal (entregado/fallido): la ruta ya no lo mueve.
+     */
+    public function placeOnRoute(string $routeId, RoutePosition $position): void
+    {
+        if ($this->status->isTerminal()) {
+            return;
+        }
+
+        $routeId = trim($routeId);
+        if ($routeId === '') {
+            throw TrackingException::because('el id de la ruta no puede estar vacío');
+        }
+
+        $this->routeId = $routeId;
+        $this->routePosition = $position;
+        $this->remainingStops = $position->stopsBefore();
+
+        $this->recordEvent(new ShipmentPlacedOnRoute(
+            $this->id->toString(),
+            $this->shipmentId,
+            $routeId,
+            $position->value,
+            $this->remainingStops,
+        ));
+    }
+
+    /**
+     * Descuenta una parada restante: una parada previa de la ruta se completó, así que el envío queda
+     * una parada más cerca del cliente. No baja de cero ni graba evento (es un ajuste de proyección de
+     * alta frecuencia, no un hecho de negocio nuevo).
      */
     public function decrementStops(): void
     {
@@ -184,5 +241,15 @@ final class ShipmentTracking extends AggregateRoot
     public function lastPosition(): ?TruckPosition
     {
         return $this->lastPosition;
+    }
+
+    public function routeId(): ?string
+    {
+        return $this->routeId;
+    }
+
+    public function routePosition(): ?RoutePosition
+    {
+        return $this->routePosition;
     }
 }

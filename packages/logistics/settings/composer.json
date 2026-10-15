@@ -10,7 +10,9 @@
     },
     "autoload": {
         "psr-4": {
-            "Logistics\\Settings\\": "src/"
+            "Logistics\\Settings\\": "src/",
+            "Logistics\\Settings\\Database\\Factories\\": "database/factories/",
+            "Logistics\\Settings\\Database\\Seeders\\": "database/seeders/"
         }
     },
     "extra": {

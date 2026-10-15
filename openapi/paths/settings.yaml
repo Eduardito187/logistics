@@ -1,0 +1,241 @@
+# Fragmento OpenAPI del bounded context Settings (configuración versionada).
+#
+# Archivo NUEVO: el integrador mergea estos `paths` y `components.schemas` en openapi/v1.yaml.
+# Las rutas son relativas al server (http://.../api/v1); por eso empiezan en /app o /integrations
+# (las puertas que expone este contexto). No editar openapi/v1.yaml aquí.
+#
+# Settings es plomería de plataforma: la operación interna LEE reglas vigentes e historial (puerta
+# app); publicar una nueva versión es una acción de servicio/administración (puerta integrations).
+
+paths:
+  /app/settings/{key}:
+    get:
+      tags: [settings]
+      operationId: appGetSetting
+      summary: Effective value of a setting key (internal app)
+      description: Returns the value of a namespaced setting key effective at the given date.
+      parameters:
+        - $ref: '#/components/parameters/SettingKey'
+        - $ref: '#/components/parameters/SettingAt'
+      responses:
+        '200':
+          description: The effective value was found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingEnvelope'
+        '404':
+          $ref: '#/components/responses/SettingNotFound'
+
+  /app/settings/{key}/history:
+    get:
+      tags: [settings]
+      operationId: appGetSettingHistory
+      summary: Version history of a setting key (internal app)
+      description: Lists every version of a key, newest first. An unknown key returns an empty list.
+      parameters:
+        - $ref: '#/components/parameters/SettingKey'
+      responses:
+        '200':
+          description: The version history of the key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingHistoryEnvelope'
+
+  /integrations/settings:
+    post:
+      tags: [settings]
+      operationId: integrationsSetSetting
+      summary: Publish a new version of a setting key (service)
+      description: >-
+        Publishes the next version of a namespaced key. The previous version is never overwritten;
+        the domain assigns the id, version number and effective date. Write is asynchronous.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetSettingRequest'
+      responses:
+        '202':
+          description: The new version was accepted for publication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetSettingAccepted'
+        '422':
+          $ref: '#/components/responses/SettingValidationError'
+
+  /integrations/settings/{key}:
+    get:
+      tags: [settings]
+      operationId: integrationsGetSetting
+      summary: Effective value of a setting key (service)
+      description: Returns the value of a namespaced setting key effective at the given date.
+      parameters:
+        - $ref: '#/components/parameters/SettingKey'
+        - $ref: '#/components/parameters/SettingAt'
+      responses:
+        '200':
+          description: The effective value was found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingEnvelope'
+        '404':
+          $ref: '#/components/responses/SettingNotFound'
+
+  /integrations/settings/{key}/history:
+    get:
+      tags: [settings]
+      operationId: integrationsGetSettingHistory
+      summary: Version history of a setting key (service)
+      description: Lists every version of a key, newest first. An unknown key returns an empty list.
+      parameters:
+        - $ref: '#/components/parameters/SettingKey'
+      responses:
+        '200':
+          description: The version history of the key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingHistoryEnvelope'
+
+components:
+  parameters:
+    SettingKey:
+      name: key
+      in: path
+      required: true
+      description: Namespaced setting key, e.g. coverage.default_service_days.
+      schema:
+        type: string
+        pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+        example: coverage.default_service_days
+    SettingAt:
+      name: at
+      in: query
+      required: false
+      description: ISO 8601 date to read the value as of. Defaults to now.
+      schema:
+        type: string
+        format: date-time
+
+  responses:
+    SettingNotFound:
+      description: No effective value exists for the key at the requested date
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/SettingProblem'
+    SettingValidationError:
+      description: The request body failed validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SettingProblem'
+
+  schemas:
+    SettingVersion:
+      type: object
+      required: [id, key, version, value, effective_from, created_at, created_by]
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          example: coverage.default_service_days
+        version:
+          type: integer
+          minimum: 1
+        value:
+          type: object
+          additionalProperties: true
+        effective_from:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: [string, 'null']
+
+    SettingEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [key, value]
+          properties:
+            key:
+              type: string
+              example: coverage.default_service_days
+            value:
+              type: object
+              additionalProperties: true
+
+    SettingHistoryEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SettingVersion'
+        meta:
+          type: object
+          properties:
+            key:
+              type: string
+            count:
+              type: integer
+
+    SetSettingRequest:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+          pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+          example: coverage.default_service_days
+        value:
+          type: object
+          additionalProperties: true
+          example:
+            days: 3
+        effective_from:
+          type: [string, 'null']
+          format: date-time
+        created_by:
+          type: [string, 'null']
+
+    SetSettingAccepted:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [accepted, key]
+          properties:
+            accepted:
+              type: boolean
+              example: true
+            key:
+              type: string
+              example: coverage.default_service_days
+
+    SettingProblem:
+      type: object
+      required: [status, title]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

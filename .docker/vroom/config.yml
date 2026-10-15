@@ -1,0 +1,30 @@
+# ============================================================
+# config.yml — vroom-express (solver VRP/VRPTW, ADR 009)
+# ============================================================
+# Config del wrapper HTTP de VROOM dentro del contenedor `vroom`. Le indica contra qué OSRM
+# resolver las distancias/tiempos. `host`/`port` apuntan al servicio `osrm` de la red interna
+# (osrm-routed escucha en el 5000 del contenedor), NO al puerto publicado en el host.
+# Solo se usa cuando PLANNING_ROUTING_BACKEND=vroom; con `builtin` VROOM queda ocioso.
+
+cliArgs:
+    geometry: true          # devuelve la geometría de cada ruta (polyline) para pintarla en el mapa
+    planmode: false
+    threads: 4
+    explore: 5
+    limit: '1mb'
+    logdir: '/vroom/logs'
+    logsize: '100M'
+    maxlocations: 1000      # tope de puntos por problema (holgado para el volumen diario)
+    maxvehicles: 200
+    override: true
+    path: ''
+    port: 3000
+    router: 'osrm'
+    timeout: 300000         # 5 min: un VRP grande puede tardar
+    baseurl: '/'
+
+routingServers:
+    osrm:
+        car:
+            host: 'osrm'    # nombre del servicio OSRM en docker-compose
+            port: '5000'    # puerto interno de osrm-routed

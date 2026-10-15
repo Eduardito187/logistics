@@ -143,6 +143,39 @@ final class OutboxMessage
         $this->lastError = $error;
     }
 
+    /**
+     * Reencola el mensaje para que el relay lo vuelva a tomar (acción operativa del panel/API).
+     *
+     * Reinicia el contador de intentos, lo deja disponible de inmediato y limpia el último error. Es
+     * la única forma de sacar un mensaje de dead-letter: solo tiene sentido sobre mensajes fallidos o
+     * descartados; reencolar uno ya despachado con éxito provocaría un reenvío duplicado y se rechaza.
+     */
+    public function requeue(DateTimeImmutable $now): void
+    {
+        if ($this->status === OutboxStatus::Dispatched) {
+            throw OutboxException::cannotTransition($this->status, OutboxStatus::Pending->value);
+        }
+
+        $this->status = OutboxStatus::Pending;
+        $this->attempts = 0;
+        $this->availableAt = $now;
+        $this->dispatchedAt = null;
+        $this->lastError = null;
+    }
+
+    /**
+     * Descarta manualmente un mensaje despachable (lo manda a dead-letter sin esperar a agotar los
+     * reintentos). Útil para sacar de la cola un evento que nunca va a poder despacharse. No suma un
+     * intento: es una decisión del operador, no un fallo del relay.
+     */
+    public function discard(string $reason): void
+    {
+        $this->guardDispatchable(OutboxStatus::DeadLettered);
+
+        $this->status = OutboxStatus::DeadLettered;
+        $this->lastError = $reason;
+    }
+
     public function id(): OutboxMessageId
     {
         return $this->id;

@@ -7,6 +7,7 @@ namespace Logistics\Coverage\Infrastructure\Persistence\Eloquent;
 use Illuminate\Database\ConnectionInterface;
 use Logistics\Coverage\Domain\Contract\ZoneRepository;
 use Logistics\Coverage\Domain\Model\Zone;
+use Logistics\Coverage\Domain\ValueObject\GeoAreaId;
 use Logistics\Coverage\Domain\ValueObject\GeoPoint;
 use Logistics\Coverage\Domain\ValueObject\ZoneId;
 
@@ -52,6 +53,19 @@ final class EloquentZoneRepository implements ZoneRepository
         $rows = $this->connection()->select(
             'SELECT '.self::SELECT_COLUMNS.' FROM '.self::TABLE.' WHERE id = ? LIMIT 1',
             [$id->toString()],
+        );
+
+        return $rows === [] ? null : ZoneMapper::fromRow((array) $rows[0]);
+    }
+
+    public function findByNameAndParent(string $name, ?GeoAreaId $parentAreaId): ?Zone
+    {
+        // IS NOT DISTINCT FROM compara null con null como igualdad (evita el NULL != NULL de SQL),
+        // así la clave estable (nombre, área padre) también funciona para zonas sin jerarquía.
+        $rows = $this->connection()->select(
+            'SELECT '.self::SELECT_COLUMNS.' FROM '.self::TABLE.' '
+            .'WHERE name = ? AND parent_area_id IS NOT DISTINCT FROM ? LIMIT 1',
+            [$name, $parentAreaId?->toString()],
         );
 
         return $rows === [] ? null : ZoneMapper::fromRow((array) $rows[0]);

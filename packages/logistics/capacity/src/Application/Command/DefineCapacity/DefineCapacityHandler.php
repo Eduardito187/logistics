@@ -12,24 +12,31 @@ use Logistics\Capacity\Domain\ValueObject\CapacityUnit;
 use Logistics\Capacity\Domain\ValueObject\Quantity;
 use Logistics\Capacity\Domain\ValueObject\SlotDate;
 use Logistics\Capacity\Domain\ValueObject\TimeSlot;
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
 /**
- * Define un cupo: construye el agregado, lo persiste y libera sus eventos. Rechaza duplicar la clave
- * natural (scope/fecha/franja/unidad).
+ * Define un cupo: construye el agregado, lo persiste y publica sus eventos al outbox. Rechaza duplicar
+ * la clave natural (scope/fecha/franja/unidad).
+ *
+ * El save del repositorio y el append al outbox corren dentro de la misma transacción, que abre el
+ * decorador transaccional del CommandBus (Infrastructure); por eso acá no hay nada del framework.
  *
  * @implements CommandHandler<DefineCapacityCommand>
  */
 final readonly class DefineCapacityHandler implements CommandHandler
 {
-    public function __construct(private CapacityRepository $buckets) {}
+    public function __construct(
+        private CapacityRepository $buckets,
+        private RecordDomainEvents $recordEvents,
+    ) {}
 
     public function handle(Command $command): void
     {
         assert($command instanceof DefineCapacityCommand);
 
-        $scope = BucketScope::fromNullable($command->nodeId, $command->zoneId);
+        $scope = BucketScope::fromNullable($command->nodeId, $command->zoneId, $command->municipalityId);
         $date = SlotDate::fromString($command->date);
         $slot = TimeSlot::fromString($command->timeSlot);
         $unit = CapacityUnit::tryFrom($command->unit)
@@ -50,8 +57,6 @@ final readonly class DefineCapacityHandler implements CommandHandler
 
         $this->buckets->save($bucket);
 
-        // TODO(outbox): publicar estos eventos dentro de la misma transacción vía el servicio de
-        // outbox (ADR 002). Por ahora solo se liberan del agregado; no se depende del package outbox.
-        $bucket->releaseEvents();
+        $this->recordEvents->record($bucket->releaseEvents(), 'capacity.bucket');
     }
 }

@@ -1,0 +1,319 @@
+# Fragmento OpenAPI del contexto network (nodos y tramos).
+#
+# NO es un documento completo: el integrador lo mergea en openapi/v1.yaml (paths + components).
+# Las rutas son relativas al server base /api/v1 (igual que el resto del contrato).
+paths:
+  /app/network/nodes:
+    get:
+      tags: [network]
+      operationId: listNetworkNodes
+      summary: List network nodes (internal app gate)
+      description: |
+        Devuelve los nodos de la red para la app interna. Filtros opcionales por tipo y estado.
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: Filter by node type
+          schema:
+            $ref: '#/components/schemas/NodeType'
+        - name: status
+          in: query
+          required: false
+          description: Filter by operational status
+          schema:
+            $ref: '#/components/schemas/NodeStatus'
+      responses:
+        '200':
+          description: List of nodes matching the filters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeCollection'
+  /app/network/nodes/{node}:
+    get:
+      tags: [network]
+      operationId: getNetworkNode
+      summary: Get a single network node by id (internal app gate)
+      parameters:
+        - name: node
+          in: path
+          required: true
+          description: Node UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The requested node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeEnvelope'
+        '404':
+          description: No node exists with that id
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /integrations/network/nodes:
+    post:
+      tags: [network]
+      operationId: registerNetworkNode
+      summary: Register a network node (integrations gate, SAP master data)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterNodeRequest'
+      responses:
+        '202':
+          description: Registration accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [code]
+                    properties:
+                      code:
+                        type: string
+        '422':
+          description: Validation failed
+  /integrations/network/nodes/{node}:
+    delete:
+      tags: [network]
+      operationId: deactivateNetworkNode
+      summary: Deactivate a network node (integrations gate, SAP master data)
+      parameters:
+        - name: node
+          in: path
+          required: true
+          description: Node UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Deactivation accepted for processing
+  /app/network/legs:
+    get:
+      tags: [network]
+      operationId: listNetworkLegs
+      summary: List network corridor legs (internal app gate)
+      description: |
+        Devuelve los tramos/corredores de la red para la app interna. Filtro opcional por corredor.
+      parameters:
+        - name: corridor_type
+          in: query
+          required: false
+          description: Filter by corridor type
+          schema:
+            $ref: '#/components/schemas/CorridorType'
+      responses:
+        '200':
+          description: List of legs matching the filter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegCollection'
+  /app/network/legs/{leg}:
+    get:
+      tags: [network]
+      operationId: getNetworkLeg
+      summary: Get a single corridor leg by id (internal app gate)
+      parameters:
+        - name: leg
+          in: path
+          required: true
+          description: Leg UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The requested leg
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegEnvelope'
+        '404':
+          description: No leg exists with that id
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /integrations/network/legs:
+    post:
+      tags: [network]
+      operationId: defineNetworkLeg
+      summary: Define a corridor leg between two nodes (integrations gate)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefineLegRequest'
+      responses:
+        '202':
+          description: Definition accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegEnvelope'
+        '422':
+          description: Validation failed
+  /integrations/network/legs/{leg}:
+    delete:
+      tags: [network]
+      operationId: removeNetworkLeg
+      summary: Remove a corridor leg (integrations gate)
+      parameters:
+        - name: leg
+          in: path
+          required: true
+          description: Leg UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Removal accepted for processing
+components:
+  schemas:
+    NodeType:
+      type: string
+      enum: [distribution_center, store, pickup_point]
+    NodeStatus:
+      type: string
+      enum: [active, inactive]
+    CorridorType:
+      type: string
+      enum: [cd_to_customer, cd_to_cd, cd_to_store, store_to_store, store_to_cd, store_pickup]
+    Node:
+      type: object
+      required: [id, code, name, type, lat, lng, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/NodeType'
+        lat:
+          type: number
+          format: float
+        lng:
+          type: number
+          format: float
+        status:
+          $ref: '#/components/schemas/NodeStatus'
+    NodeEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Node'
+    NodeCollection:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+        meta:
+          type: object
+          required: [count]
+          properties:
+            count:
+              type: integer
+    RegisterNodeRequest:
+      type: object
+      required: [code, name, type, latitude, longitude]
+      properties:
+        code:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 255
+        type:
+          $ref: '#/components/schemas/NodeType'
+        latitude:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+    Leg:
+      type: object
+      required: [id, from_node_id, to_node_id, corridor_type]
+      properties:
+        id:
+          type: string
+          format: uuid
+        from_node_id:
+          type: string
+          format: uuid
+        to_node_id:
+          type: string
+          format: uuid
+        corridor_type:
+          $ref: '#/components/schemas/CorridorType'
+    LegEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Leg'
+    LegCollection:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Leg'
+        meta:
+          type: object
+          required: [count]
+          properties:
+            count:
+              type: integer
+    DefineLegRequest:
+      type: object
+      required: [from_node_id, to_node_id, corridor_type]
+      properties:
+        from_node_id:
+          type: string
+          format: uuid
+        to_node_id:
+          type: string
+          format: uuid
+        corridor_type:
+          $ref: '#/components/schemas/CorridorType'
+    Problem:
+      type: object
+      description: RFC 7807 problem+json
+      required: [title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

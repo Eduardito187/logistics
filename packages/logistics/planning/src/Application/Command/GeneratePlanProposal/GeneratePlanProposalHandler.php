@@ -6,6 +6,9 @@ namespace Logistics\Planning\Application\Command\GeneratePlanProposal;
 
 use DateTimeImmutable;
 use Exception;
+use Logistics\Outbox\Application\RecordDomainEvents;
+use Logistics\Planning\Application\Policy\ClientStopLocation;
+use Logistics\Planning\Application\Policy\RouteDepartmentPolicy;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Contract\RouteOptimizer;
 use Logistics\Planning\Domain\Contract\RouteStop;
@@ -33,6 +36,8 @@ final class GeneratePlanProposalHandler implements CommandHandler
     public function __construct(
         private readonly PlanRepository $plans,
         private readonly RouteOptimizer $optimizer,
+        private readonly RecordDomainEvents $recordEvents,
+        private readonly RouteDepartmentPolicy $geography,
     ) {}
 
     public function handle(Command $command): void
@@ -45,6 +50,18 @@ final class GeneratePlanProposalHandler implements CommandHandler
         }
 
         $departAt = $this->parseDepartAt($command->departAt);
+
+        // Invariante geográfica: todas las paradas de CLIENTE del camión deben ser del mismo
+        // departamento (mismo municipio o intermunicipales dentro de él). Las paradas sin cliente
+        // (traspasos CD→CD) quedan exentas: solo entran a la política las que tienen cliente.
+        $clientStops = [];
+        foreach ($command->stops as $input) {
+            if ($input->customerName === null) {
+                continue;
+            }
+            $clientStops[] = ClientStopLocation::of($input->shipmentId, $input->latitude, $input->longitude);
+        }
+        $this->geography->guard($clientStops);
 
         $routeStops = array_map(
             static fn (ProposalStopInput $input): RouteStop => RouteStop::of(
@@ -63,7 +80,13 @@ final class GeneratePlanProposalHandler implements CommandHandler
             $command->vehicleId,
         );
         foreach ($command->stops as $input) {
-            $plan->assignShipment(PlannedStopId::generate(), $input->shipmentId);
+            $plan->assignShipment(
+                PlannedStopId::generate(),
+                $input->shipmentId,
+                $input->orderReference,
+                $input->customerName,
+                $input->address,
+            );
         }
 
         $orderedShipmentIds = [];
@@ -80,8 +103,7 @@ final class GeneratePlanProposalHandler implements CommandHandler
         $this->plans->save($plan);
         $this->lastPlanId = $plan->id();
 
-        // TODO(outbox): despachar estos eventos al outbox dentro de la misma transacción al integrar.
-        $plan->releaseEvents();
+        $this->recordEvents->record($plan->releaseEvents(), 'planning.plan');
     }
 
     /**

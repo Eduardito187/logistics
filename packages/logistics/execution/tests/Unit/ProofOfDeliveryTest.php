@@ -33,3 +33,23 @@ it('compares by value', function (): void {
 
     expect($a->equals($b))->toBeTrue();
 });
+
+it('keeps the durable storage reference (photo path) and normalizes a blank one to null', function (): void {
+    $when = new DateTimeImmutable('2026-10-13T12:00:00+00:00');
+
+    $withPath = ProofOfDelivery::of('firma', null, $when, 'pod/SHP-1/abc.jpg');
+    $withBlank = ProofOfDelivery::of('firma', null, $when, '   ');
+    $default = ProofOfDelivery::of('firma', null, $when);
+
+    expect($withPath->photoPath)->toBe('pod/SHP-1/abc.jpg')
+        ->and($withBlank->photoPath)->toBeNull()
+        ->and($default->photoPath)->toBeNull();
+});
+
+it('distinguishes two proofs that differ only by photo path', function (): void {
+    $when = new DateTimeImmutable('2026-10-13T12:00:00+00:00');
+    $a = ProofOfDelivery::of('QR', null, $when, 'pod/a.jpg');
+    $b = ProofOfDelivery::of('QR', null, $when, 'pod/b.jpg');
+
+    expect($a->equals($b))->toBeFalse();
+});

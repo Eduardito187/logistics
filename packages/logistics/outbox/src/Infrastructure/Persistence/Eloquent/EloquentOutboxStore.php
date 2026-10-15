@@ -24,12 +24,17 @@ use Logistics\Outbox\Domain\ValueObject\OutboxStatus;
  */
 final readonly class EloquentOutboxStore implements OutboxStore
 {
-    /** Segundos que un mensaje tomado queda "en vuelo" antes de volver a ser elegible. */
-    private const LEASE_SECONDS = 60;
+    /** Segundos que un mensaje tomado queda "en vuelo" antes de volver a ser elegible, por defecto. */
+    private const DEFAULT_LEASE_SECONDS = 60;
+
+    private int $leaseSeconds;
 
     public function __construct(
         private ConnectionResolverInterface $connections,
-    ) {}
+        ?int $leaseSeconds = null,
+    ) {
+        $this->leaseSeconds = $leaseSeconds ?? self::DEFAULT_LEASE_SECONDS;
+    }
 
     public function append(OutboxMessage $message): void
     {
@@ -57,7 +62,7 @@ final readonly class EloquentOutboxStore implements OutboxStore
 
             // Lease: corremos available_at para que otro worker no reintente estas filas mientras
             // este las despacha. El estado definitivo lo fija save() tras despachar/fallar.
-            $leaseUntil = $now->add(new DateInterval('PT'.self::LEASE_SECONDS.'S'));
+            $leaseUntil = $now->add(new DateInterval('PT'.$this->leaseSeconds.'S'));
             OutboxMessageRecord::query()
                 ->whereIn('id', $records->pluck('id')->all())
                 ->update(['available_at' => $leaseUntil->format('Y-m-d H:i:sP')]);

@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Logistics\Coverage\Infrastructure\Persistence\Eloquent;
 
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Logistics\Coverage\Infrastructure\Persistence\Eloquent\Factory\ZoneRecordFactory;
 
 /**
  * Registro Eloquent de la tabla coverage_zones.
@@ -19,9 +23,15 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null          $parent_area_id
  * @property array<string, mixed> $rules
  * @property bool                 $active
+ * @property-read GeoAreaRecord|null $parentArea área administrativa padre (nombres legibles)
+ *
+ * @use HasFactory<ZoneRecordFactory>
  */
 final class ZoneRecord extends Model
 {
+    /** @use HasFactory<ZoneRecordFactory> */
+    use HasFactory;
+
     public const string TABLE = 'coverage_zones';
 
     protected $table = self::TABLE;
@@ -42,5 +52,27 @@ final class ZoneRecord extends Model
             'rules' => 'array',
             'active' => 'boolean',
         ];
+    }
+
+    /**
+     * Factory del package (vive en src/ para autoload PSR-4).
+     *
+     * @return Factory<self>
+     */
+    protected static function newFactory(): Factory
+    {
+        return ZoneRecordFactory::new();
+    }
+
+    /**
+     * Área administrativa padre a la que cuelga la zona.
+     *
+     * Permite al admin mostrar el nombre del área (ej. "La Paz") en lugar del UUID y eager-loadearla.
+     *
+     * @return BelongsTo<GeoAreaRecord, $this>
+     */
+    public function parentArea(): BelongsTo
+    {
+        return $this->belongsTo(GeoAreaRecord::class, 'parent_area_id');
     }
 }

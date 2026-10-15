@@ -63,4 +63,17 @@ final readonly class EloquentTariffRepository implements TariffRepository
 
         return $record instanceof TariffRecord ? $this->mapper->toDomain($record) : null;
     }
+
+    public function cheapestForCorridorAndClass(CorridorRef $corridor, VehicleClass $class): ?Tariff
+    {
+        $record = TariffRecord::query()
+            ->where('corridor_from', $corridor->from)
+            ->where('corridor_to', $corridor->to)
+            ->where('corridor_type', $corridor->type)
+            ->where('vehicle_class', $class->value)
+            ->orderBy('price_cents')
+            ->first();
+
+        return $record instanceof TariffRecord ? $this->mapper->toDomain($record) : null;
+    }
 }

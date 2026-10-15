@@ -18,15 +18,15 @@ function resolverNotification(): Notification
         NotificationId::generate(),
         'shp-1',
         MessageType::ConfirmLocation,
-        CascadePolicy::of([Channel::PushFcm, Channel::WebPush, Channel::Email, Channel::Sms]),
+        CascadePolicy::of([Channel::PushNtfy, Channel::WebPush, Channel::Email, Channel::Sms]),
     );
 }
 
-it('resolves the next channel in order PushFcm -> WebPush -> Email -> Sms', function (): void {
+it('resolves the next channel in order PushNtfy -> WebPush -> Email -> Sms', function (): void {
     $resolver = new CascadeResolver;
     $notification = resolverNotification();
 
-    // PushFcm -> WebPush
+    // PushNtfy -> WebPush
     expect($resolver->nextChannel($notification))->toBe(Channel::WebPush)
         ->and($resolver->canEscalate($notification))->toBeTrue();
 

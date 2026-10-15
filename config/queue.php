@@ -66,11 +66,59 @@ return [
             'after_commit' => false,
         ],
 
+        /*
+        | Conexión Redis/Valkey por defecto. En la plataforma todo I/O externo
+        | (SAP, FCM, email, SMS, transportistas) sale por el outbox y nunca por
+        | HTTP síncrono dentro de un request (ADR 002), así que las colas son el
+        | corazón del sistema asíncrono. Usamos cuatro colas nombradas sobre la
+        | MISMA conexión Valkey para poder darle a cada flujo su propio worker,
+        | prioridad y recorte de reintentos (ver .docker/supervisor y docs/deploy.md):
+        |
+        |   - default        trabajo general del dominio
+        |   - outbox         relay del outbox hacia destinos externos (lento, I/O)
+        |   - notifications  envío de notificaciones al cliente (FCM/email/SMS)
+        |   - planning        generación de planes diarios de ruteo (CPU, pesado)
+        |
+        | `retry_after` debe ser SIEMPRE mayor que el `--timeout` del worker de esa
+        | cola, si no Laravel liberaría un job que todavía se está procesando.
+        */
         'redis' => [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 120),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
+        // Relay del outbox: cada mensaje habla con un sistema externo, así que el
+        // procesamiento es lento. Reintentos holgados; el outbox es idempotente
+        // por event_id (ADR 002), por lo que reintentar es seguro.
+        'outbox' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_OUTBOX_QUEUE', 'outbox'),
+            'retry_after' => (int) env('REDIS_OUTBOX_RETRY_AFTER', 660),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
+        // Notificaciones al cliente (ADR 006): ráfagas cortas, muchos mensajes.
+        'notifications' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_NOTIFICATIONS_QUEUE', 'notifications'),
+            'retry_after' => (int) env('REDIS_NOTIFICATIONS_RETRY_AFTER', 180),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
+        // Planificación diaria de ruteo: jobs pesados de CPU y de larga duración.
+        'planning' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_PLANNING_QUEUE', 'planning'),
+            'retry_after' => (int) env('REDIS_PLANNING_RETRY_AFTER', 1260),
             'block_for' => null,
             'after_commit' => false,
         ],

@@ -54,6 +54,50 @@ enum CorridorType: string
     }
 
     /**
+     * Tipo de nodo en el que TERMINA el corredor cuando une dos nodos de la red, o null cuando es un
+     * corredor terminal (acaba en el cliente: CdToCustomer y StorePickup). Es el espejo de
+     * originNodeType() y la base de la validación de extremos de un tramo.
+     */
+    public function destinationNodeType(): ?NodeType
+    {
+        return match ($this) {
+            self::CdToCd, self::StoreToCd => NodeType::DistributionCenter,
+            self::CdToStore, self::StoreToStore => NodeType::Store,
+            self::CdToCustomer, self::StorePickup => null,
+        };
+    }
+
+    /**
+     * Un corredor que une dos nodos de la red (puede ser un tramo/Leg). Los corredores terminales
+     * (CdToCustomer, StorePickup) acaban en el cliente, no en un nodo, así que NO son tramos.
+     */
+    public function connectsNodes(): bool
+    {
+        return $this->deliversToNode();
+    }
+
+    /**
+     * Corredor terminal: acaba en el cliente y no en un nodo de la red. Se ofrece desde un único nodo
+     * (el CD para última milla, la tienda para recojo) y no se modela como tramo entre nodos.
+     */
+    public function isTerminal(): bool
+    {
+        return !$this->connectsNodes();
+    }
+
+    /**
+     * ¿Un tramo de este corredor entre un nodo de tipo $from y uno de tipo $to es válido? Un corredor
+     * terminal nunca lo es (no une dos nodos); el resto exige que origen y destino calcen con los
+     * tipos declarados. Es la regla pura que aplica Leg::define.
+     */
+    public function acceptsEndpoints(NodeType $from, NodeType $to): bool
+    {
+        return $this->connectsNodes()
+            && $from === $this->originNodeType()
+            && $to === $this->destinationNodeType();
+    }
+
+    /**
      * Etiqueta legible en inglés para el admin y la consola.
      */
     public function label(): string

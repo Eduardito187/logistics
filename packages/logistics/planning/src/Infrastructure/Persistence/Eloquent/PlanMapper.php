@@ -14,6 +14,7 @@ use Logistics\Planning\Domain\ValueObject\PlanDate;
 use Logistics\Planning\Domain\ValueObject\PlanId;
 use Logistics\Planning\Domain\ValueObject\PlannedStopId;
 use Logistics\Planning\Domain\ValueObject\PlanStatus;
+use Logistics\Planning\Domain\ValueObject\RouteGeometry;
 use Logistics\Planning\Domain\ValueObject\StopSequence;
 
 /**
@@ -27,11 +28,16 @@ final class PlanMapper
      */
     public function toPlanRow(DeliveryPlan $plan): array
     {
+        $geometry = $plan->geometry();
+
         return [
             'id' => $plan->id()->toString(),
             'plan_date' => $plan->date()->toString(),
             'vehicle_id' => $plan->vehicleId(),
             'status' => $plan->status()->value,
+            'route_geometry' => $geometry?->toArray(),
+            'route_distance_meters' => $geometry?->distanceMeters,
+            'route_duration_seconds' => $geometry?->durationSeconds,
         ];
     }
 
@@ -47,6 +53,9 @@ final class PlanMapper
             'id' => $stop->id()->toString(),
             'plan_id' => $plan->id()->toString(),
             'shipment_id' => $stop->shipmentId(),
+            'order_reference' => $stop->orderReference(),
+            'customer_name' => $stop->customerName(),
+            'address' => $stop->address(),
             'sequence' => $stop->sequence()->value,
             'eta' => $eta?->arrivalAt->format(DateTimeInterface::ATOM),
             'eta_minutes' => $eta?->minutesFromDeparture,
@@ -70,7 +79,22 @@ final class PlanMapper
             $record->vehicle_id,
             PlanStatus::from($record->status),
             $stops,
+            $this->toGeometry($record),
         );
+    }
+
+    /**
+     * Reconstruye la geometría de la ruta desde la columna jsonb, tolerando datos ausentes o mal formados
+     * (devuelve null sin romper la lectura del plan).
+     */
+    private function toGeometry(PlanRecord $record): ?RouteGeometry
+    {
+        $geometry = $record->route_geometry;
+        if (!is_array($geometry)) {
+            return null;
+        }
+
+        return RouteGeometry::fromArray($geometry);
     }
 
     private function toStopDomain(PlannedStopRecord $record): PlannedStop
@@ -88,6 +112,9 @@ final class PlanMapper
             StopSequence::of($record->sequence),
             $eta,
             $lane,
+            $record->order_reference,
+            $record->customer_name,
+            $record->address,
         );
     }
 }

@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Factory\TariffFactory;
 
 /**
  * Modelo Eloquent de la tabla `carrier_tariffs`. Es detalle de infraestructura: nunca cruza a Domain.
@@ -23,6 +26,9 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class TariffRecord extends Model
 {
+    /** @use HasFactory<TariffFactory> */
+    use HasFactory;
+
     protected $table = 'carrier_tariffs';
 
     protected $keyType = 'string';
@@ -30,6 +36,27 @@ final class TariffRecord extends Model
     public $incrementing = false;
 
     protected $guarded = [];
+
+    /**
+     * Fábrica de datos de demo/pruebas de este record (ver TariffFactory).
+     */
+    protected static function newFactory(): TariffFactory
+    {
+        return TariffFactory::new();
+    }
+
+    /**
+     * Transportista dueño de la tarifa.
+     *
+     * Relación de solo lectura para que el admin muestre el nombre del transportista en vez del UUID;
+     * las mutaciones siguen pasando por el comando SetTariff.
+     *
+     * @return BelongsTo<CarrierRecord, $this>
+     */
+    public function carrier(): BelongsTo
+    {
+        return $this->belongsTo(CarrierRecord::class, 'carrier_id');
+    }
 
     /**
      * @return array<string, string>

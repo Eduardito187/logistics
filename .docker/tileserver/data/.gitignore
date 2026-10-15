@@ -1,0 +1,6 @@
+# El mbtiles/pmtiles de Bolivia, el estilo osm-bright y su config.json son pesados y se generan con
+# el runbook (docs/maps-geocoder-selfhost.md): no se versionan.
+# Se mantiene el directorio en git con este .gitignore para que el bind-mount del
+# servicio `tileserver` exista en un clon limpio.
+*
+!.gitignore

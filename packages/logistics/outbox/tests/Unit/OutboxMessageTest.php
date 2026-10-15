@@ -126,6 +126,51 @@ it('marks a message as dead lettered after exhausting retries', function (): voi
         ->and($message->status()->isTerminal())->toBeTrue();
 });
 
+it('requeues a dead-lettered message resetting attempts and availability', function (): void {
+    $now = new DateTimeImmutable('2026-10-13T12:00:00+00:00');
+    $message = OutboxMessage::fromDomainEvent(fakeEvent(), 'network.node', $now);
+    $message->markFailed('boom', $now);
+    $message->markDeadLettered('final boom');
+
+    $requeuedAt = new DateTimeImmutable('2026-10-13T13:00:00+00:00');
+    $message->requeue($requeuedAt);
+
+    expect($message->status())->toBe(OutboxStatus::Pending)
+        ->and($message->attempts())->toBe(0)
+        ->and($message->availableAt())->toEqual($requeuedAt)
+        ->and($message->dispatchedAt())->toBeNull()
+        ->and($message->lastError())->toBeNull();
+});
+
+it('refuses to requeue a message already dispatched with success', function (): void {
+    $now = new DateTimeImmutable('2026-10-13T12:00:00+00:00');
+    $message = OutboxMessage::fromDomainEvent(fakeEvent(), 'network.node', $now);
+    $message->markDispatched($now);
+
+    expect(fn () => $message->requeue($now))->toThrow(OutboxException::class);
+});
+
+it('discards a dispatchable message to dead-letter without counting an attempt', function (): void {
+    $now = new DateTimeImmutable('2026-10-13T12:00:00+00:00');
+    $message = OutboxMessage::fromDomainEvent(fakeEvent(), 'network.node', $now);
+    $message->markFailed('boom', $now);
+
+    $message->discard('material blocked in SAP');
+
+    expect($message->status())->toBe(OutboxStatus::DeadLettered)
+        ->and($message->attempts())->toBe(1)
+        ->and($message->lastError())->toBe('material blocked in SAP')
+        ->and($message->status()->isTerminal())->toBeTrue();
+});
+
+it('refuses to discard a message already in a terminal state', function (): void {
+    $now = new DateTimeImmutable('2026-10-13T12:00:00+00:00');
+    $message = OutboxMessage::fromDomainEvent(fakeEvent(), 'network.node', $now);
+    $message->markDispatched($now);
+
+    expect(fn () => $message->discard('too late'))->toThrow(OutboxException::class);
+});
+
 it('refuses to transition a message that is already in a terminal state', function (callable $secondTransition): void {
     $now = new DateTimeImmutable('2026-10-13T12:00:00+00:00');
     $message = OutboxMessage::fromDomainEvent(fakeEvent(), 'network.node', $now);

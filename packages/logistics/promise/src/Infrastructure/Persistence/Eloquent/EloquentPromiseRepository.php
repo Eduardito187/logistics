@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Logistics\Promise\Infrastructure\Persistence\Eloquent;
 
+use DateTimeImmutable;
 use Logistics\Promise\Domain\Contract\PromiseRepository;
 use Logistics\Promise\Domain\Model\DeliveryPromise;
 use Logistics\Promise\Domain\ValueObject\PromiseId;
+use Logistics\Promise\Domain\ValueObject\PromiseStatus;
 
 /**
  * Implementación Eloquent del repositorio de promesas.
@@ -38,5 +40,19 @@ final class EloquentPromiseRepository implements PromiseRepository
         $record = PromiseRecord::query()->find($id->toString());
 
         return $record === null ? null : $this->mapper->toDomain($record);
+    }
+
+    public function reservedExpiredAt(DateTimeImmutable $now): array
+    {
+        $records = PromiseRecord::query()
+            ->where('status', PromiseStatus::Reserved->value)
+            ->whereNotNull('reserved_until')
+            ->where('reserved_until', '<=', $now->format(DateTimeImmutable::ATOM))
+            ->get();
+
+        return $records
+            ->map(static fn (PromiseRecord $record): PromiseId => PromiseId::fromString($record->id))
+            ->values()
+            ->all();
     }
 }

@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Logistics\Fleet\Domain\Model;
 
 use DateTimeImmutable;
+use Logistics\Fleet\Domain\Event\VehicleProfileUpdated;
 use Logistics\Fleet\Domain\Event\VehicleRegistered;
 use Logistics\Fleet\Domain\Event\VehicleStatusChanged;
 use Logistics\Fleet\Domain\ValueObject\Capacity;
 use Logistics\Fleet\Domain\ValueObject\DocumentExpiry;
 use Logistics\Fleet\Domain\ValueObject\PlateNumber;
 use Logistics\Fleet\Domain\ValueObject\VehicleId;
+use Logistics\Fleet\Domain\ValueObject\VehicleProfile;
 use Logistics\Fleet\Domain\ValueObject\VehicleStatus;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
@@ -20,6 +22,10 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * No sabe qué carga lleva ni a dónde va (eso es de planning/execution); solo su identidad, su aptitud
  * para operar y el vencimiento de sus documentos. `homeBaseNodeId` referencia a un nodo de network por
  * su id como texto, a propósito, para no acoplar este contexto al package network.
+ *
+ * Además lleva una ficha técnica opcional (marca, modelo, año, VIN, nº de motor, color) y las fotos de
+ * sus cuatro lados, que se completan por separado con `updateProfile()`. Son nullable porque la ficha se
+ * enriquece de a poco y los vehículos ya registrados siguen válidos sin esos datos.
  */
 final class Vehicle extends AggregateRoot
 {
@@ -33,10 +39,22 @@ final class Vehicle extends AggregateRoot
         private readonly string $homeBaseNodeId,
         private VehicleStatus $status,
         private array $documents,
+        private ?string $make = null,
+        private ?string $model = null,
+        private ?int $modelYear = null,
+        private ?string $vin = null,
+        private ?string $engineNumber = null,
+        private ?string $color = null,
+        private ?string $photoFront = null,
+        private ?string $photoBack = null,
+        private ?string $photoLeft = null,
+        private ?string $photoRight = null,
     ) {}
 
     /**
      * Registra un vehículo nuevo. Arranca disponible salvo que se indique otro estado.
+     *
+     * La ficha técnica es opcional y se puede completar luego con `updateProfile()`.
      *
      * @param list<DocumentExpiry> $documents
      */
@@ -73,8 +91,54 @@ final class Vehicle extends AggregateRoot
         string $homeBaseNodeId,
         VehicleStatus $status,
         array $documents,
+        ?string $make = null,
+        ?string $model = null,
+        ?int $modelYear = null,
+        ?string $vin = null,
+        ?string $engineNumber = null,
+        ?string $color = null,
+        ?string $photoFront = null,
+        ?string $photoBack = null,
+        ?string $photoLeft = null,
+        ?string $photoRight = null,
     ): self {
-        return new self($id, $plate, $capacity, $homeBaseNodeId, $status, array_values($documents));
+        return new self(
+            $id,
+            $plate,
+            $capacity,
+            $homeBaseNodeId,
+            $status,
+            array_values($documents),
+            $make,
+            $model,
+            $modelYear,
+            $vin,
+            $engineNumber,
+            $color,
+            $photoFront,
+            $photoBack,
+            $photoLeft,
+            $photoRight,
+        );
+    }
+
+    /**
+     * Reemplaza por completo la ficha técnica del vehículo y graba el evento de perfil actualizado.
+     */
+    public function updateProfile(VehicleProfile $profile): void
+    {
+        $this->make = $profile->make;
+        $this->model = $profile->model;
+        $this->modelYear = $profile->modelYear;
+        $this->vin = $profile->vin;
+        $this->engineNumber = $profile->engineNumber;
+        $this->color = $profile->color;
+        $this->photoFront = $profile->photoFront;
+        $this->photoBack = $profile->photoBack;
+        $this->photoLeft = $profile->photoLeft;
+        $this->photoRight = $profile->photoRight;
+
+        $this->recordEvent(new VehicleProfileUpdated($this->id->toString(), $profile->toArray()));
     }
 
     public function sendToMaintenance(): void
@@ -149,5 +213,55 @@ final class Vehicle extends AggregateRoot
     public function documents(): array
     {
         return $this->documents;
+    }
+
+    public function make(): ?string
+    {
+        return $this->make;
+    }
+
+    public function model(): ?string
+    {
+        return $this->model;
+    }
+
+    public function modelYear(): ?int
+    {
+        return $this->modelYear;
+    }
+
+    public function vin(): ?string
+    {
+        return $this->vin;
+    }
+
+    public function engineNumber(): ?string
+    {
+        return $this->engineNumber;
+    }
+
+    public function color(): ?string
+    {
+        return $this->color;
+    }
+
+    public function photoFront(): ?string
+    {
+        return $this->photoFront;
+    }
+
+    public function photoBack(): ?string
+    {
+        return $this->photoBack;
+    }
+
+    public function photoLeft(): ?string
+    {
+        return $this->photoLeft;
+    }
+
+    public function photoRight(): ?string
+    {
+        return $this->photoRight;
     }
 }

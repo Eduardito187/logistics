@@ -1,0 +1,293 @@
+# Fragmento OpenAPI del contexto Etiquetas (labels).
+#
+# Lo fusiona el integrador en openapi/v1.yaml; NO se edita v1.yaml aquí. Las rutas son relativas a
+# la base /api/v1 (igual que el resto del contrato). Puerta: app interna Flutter (/app/*).
+tags:
+  - name: labels
+    description: Etiquetas QR firmadas de un pedido y distribución de claves públicas
+
+paths:
+  /app/labels/public-keys:
+    get:
+      tags: [labels]
+      operationId: getLabelPublicKeys
+      summary: Public keys bundle for offline QR verification
+      description: >
+        Devuelve el conjunto de claves públicas vigentes (activa + anteriores aún aceptadas) que la
+        app usa para verificar la firma Ed25519 de los QR sin conexión. Solo claves públicas.
+      responses:
+        '200':
+          description: Bundle of currently accepted public keys
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PublicKeyBundle'
+
+  /app/orders/{orderNumber}/labels:
+    parameters:
+      - $ref: '#/components/parameters/OrderNumber'
+    get:
+      tags: [labels]
+      operationId: getShipmentLabels
+      summary: Emitted labels of an order
+      description: >
+        Etiquetas ya emitidas del pedido, para reimprimir o sincronizar la app offline. Cada etiqueta
+        trae su contenido de QR firmado y su ZPL.
+      responses:
+        '200':
+          description: Labels already emitted for the order (may be empty)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabelCollection'
+    post:
+      tags: [labels]
+      operationId: emitShipmentLabels
+      summary: Emit the label batch for an order
+      description: >
+        Emite una etiqueta por cada bulto físico de cada línea del pedido: arma el payload, lo firma
+        y renderiza su ZPL. Reemitir una etiqueta ya emitida es un conflicto (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmitLabelsRequest'
+      responses:
+        '201':
+          description: Labels emitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabelCollection'
+        '409':
+          description: A label with the same identity was already emitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Invalid input
+
+  /app/orders/{orderNumber}/labels/reprint:
+    parameters:
+      - $ref: '#/components/parameters/OrderNumber'
+    post:
+      tags: [labels]
+      operationId: reprintShipmentLabels
+      summary: Reprint the labels of an order
+      description: >
+        Revoca las etiquetas vigentes del pedido (quedan en la base, marcadas como revocadas para
+        auditoría) y emite un lote nuevo con identidades nuevas. Se usa cuando una etiqueta se dañó o
+        cambió el contenido del bulto. Requiere un motivo (ADR 004).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReprintLabelsRequest'
+      responses:
+        '201':
+          description: New labels emitted; previous labels revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabelCollection'
+        '422':
+          description: Invalid input
+
+  /integrations/orders/{orderNumber}/labels/pre-emit:
+    parameters:
+      - $ref: '#/components/parameters/OrderNumber'
+    post:
+      tags: [labels]
+      operationId: preEmitOrderLabels
+      summary: Pre-emit the labels of an order when a plan is published
+      description: >
+        Pre-emisión disparada por el worker/integrador al publicarse un plan
+        (planning.plan_published): deja las etiquetas firmadas y renderizadas listas antes de preparar
+        el pedido. Idempotente: si el pedido ya tiene etiquetas vigentes, no reemite (responde 200 con
+        el estado actual). Puerta de procesos internos (integrations).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmitLabelsRequest'
+      responses:
+        '200':
+          description: Labels pre-emitted (or already present; idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabelCollection'
+        '422':
+          description: Invalid input
+
+  /app/orders/{orderNumber}/labels/zpl:
+    parameters:
+      - $ref: '#/components/parameters/OrderNumber'
+    get:
+      tags: [labels]
+      operationId: getShipmentLabelsZpl
+      summary: Concatenated ZPL for the order labels
+      description: >
+        ZPL de todas las etiquetas del pedido, concatenado y listo para enviar a la impresora Zebra.
+      responses:
+        '200':
+          description: Raw ZPL stream for the Zebra printer
+          content:
+            application/x-zpl:
+              schema:
+                type: string
+        '404':
+          description: The order has no emitted labels
+
+components:
+  parameters:
+    OrderNumber:
+      name: orderNumber
+      in: path
+      required: true
+      description: Número de pedido
+      schema:
+        type: string
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: label_already_emitted
+            message:
+              type: string
+
+    EmitLabelsRequest:
+      type: object
+      required: [origin, destination, lines]
+      properties:
+        origin:
+          type: string
+          maxLength: 64
+          description: Nodo de origen
+        destination:
+          type: string
+          maxLength: 64
+          description: Nodo de destino
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/EmitLabelLine'
+
+    ReprintLabelsRequest:
+      allOf:
+        - $ref: '#/components/schemas/EmitLabelsRequest'
+        - type: object
+          required: [reason]
+          properties:
+            reason:
+              type: string
+              maxLength: 255
+              description: Motivo de la reimpresión; queda registrado al revocar el lote anterior
+
+    EmitLabelLine:
+      type: object
+      required: [sku, name, quantity]
+      properties:
+        sku:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 255
+          description: Nombre del producto; no viaja en el QR (ADR 004)
+        quantity:
+          type: integer
+          minimum: 1
+          description: Unidades del producto en la línea
+        pieces_per_unit:
+          type: integer
+          minimum: 1
+          default: 1
+          description: Piezas (cajas) por unidad; una etiqueta por pieza
+
+    LabelCollection:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmittedLabel'
+
+    EmittedLabel:
+      type: object
+      required: [order_number, label_id, key_id, sku, line_number, qr_content, zpl, emitted_at, revoked]
+      properties:
+        order_number:
+          type: string
+        label_id:
+          type: string
+          description: Identidad de negocio (campo `id` del payload), única por bulto físico
+        key_id:
+          type: integer
+          description: Clave con la que se firmó (campo `k` del QR)
+        sku:
+          type: string
+        line_number:
+          type: integer
+        qr_content:
+          type: string
+          description: JSON firmado exacto que lleva el QR
+        zpl:
+          type: string
+          description: Representación ZPL para la impresora Zebra
+        emitted_at:
+          type: integer
+          description: Marca de tiempo de emisión (epoch en segundos)
+        revoked:
+          type: boolean
+          description: true si la etiqueta fue revocada (p. ej. por reimpresión) y ya no es válida
+        revoked_at:
+          type: integer
+          nullable: true
+          description: Marca de tiempo de revocación (epoch en segundos), o null si está vigente
+        revoked_reason:
+          type: string
+          nullable: true
+          description: Motivo de la revocación, o null si está vigente
+
+    PublicKeyBundle:
+      type: object
+      required: [active_key_id, keys]
+      properties:
+        active_key_id:
+          type: integer
+          nullable: true
+          description: Id de la clave activa, o null si no hay ninguna configurada
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicKey'
+
+    PublicKey:
+      type: object
+      required: [id, public_key]
+      properties:
+        id:
+          type: integer
+          description: Id de la clave (campo `k` del QR)
+        public_key:
+          type: string
+          description: Clave pública Ed25519 en base64

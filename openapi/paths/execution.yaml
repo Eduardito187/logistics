@@ -1,0 +1,688 @@
+# Fragmento OpenAPI del contexto Ejecución (logistics/execution).
+#
+# El integrador lo mergea en openapi/v1.yaml (este archivo NO se edita por sí solo). Todas las rutas
+# cuelgan de la puerta app (/api/v1/app/*): token usuario + dispositivo, roles de la app Flutter.
+#
+# Todos los escaneos son idempotentes vía el header Idempotency-Key (o idempotency_key en el cuerpo)
+# y offline-first: occurred_at lo fija la app en terreno, no el servidor.
+tags:
+  - name: execution
+    description: Field execution — preparation, loading, routing, proof of delivery, failures and node reception
+paths:
+  /app/vehicles/{vehicleId}/deliveries:
+    get:
+      tags: [execution]
+      operationId: listVehicleDeliveries
+      summary: Driver route sheet — deliveries assigned to a vehicle
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+      responses:
+        '200':
+          description: The vehicle deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Delivery'
+                  meta:
+                    type: object
+                    required: [count]
+                    properties:
+                      count:
+                        type: integer
+  /app/deliveries/{shipmentId}:
+    get:
+      tags: [execution]
+      operationId: getDeliveryState
+      summary: Current state of a shipment delivery with its scans
+      parameters:
+        - $ref: '#/components/parameters/ShipmentId'
+      responses:
+        '200':
+          description: The delivery state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Delivery'
+        '404':
+          description: No delivery has been opened for this shipment yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /app/deliveries/scans/preparation:
+    post:
+      tags: [execution]
+      operationId: recordPreparationScan
+      summary: Record a preparation scan (EAN to label to lane) of a unit
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreparationScanRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /app/deliveries/scans/load:
+    post:
+      tags: [execution]
+      operationId: recordLoadScan
+      summary: Record a validated load scan of a unit onto the vehicle
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /app/deliveries/scans/unload:
+    post:
+      tags: [execution]
+      operationId: recordUnloadScan
+      summary: Record a guided unload of a unit at a stop (what comes off at each point)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnloadScanRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /app/deliveries/scans/node-reception:
+    post:
+      tags: [execution]
+      operationId: recordNodeReception
+      summary: Record the reception of a unit at a logistics node
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeReceptionRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /app/deliveries/proof-of-delivery:
+    post:
+      tags: [execution]
+      operationId: recordProofOfDelivery
+      summary: Record proof of delivery and close the delivery as delivered
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProofOfDeliveryRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /app/deliveries/failed:
+    post:
+      tags: [execution]
+      operationId: recordFailedDelivery
+      summary: Record a failed delivery attempt with its typed reason
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FailedDeliveryRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /app/deliveries/photos:
+    post:
+      tags: [execution]
+      operationId: uploadDeliveryPhoto
+      summary: Upload an evidence photo (proof of delivery or damage) and get its storage reference
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [shipment_id, photo]
+              properties:
+                shipment_id:
+                  type: string
+                  format: uuid
+                photo:
+                  type: string
+                  format: binary
+                kind:
+                  type: string
+                  enum: [pod, damage]
+                  default: pod
+                  description: Tipo de evidencia; elige el disco (pod = prueba de entrega, damage = daños). Por defecto pod.
+      responses:
+        '201':
+          description: The stored evidence reference
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [kind, disk, path, url]
+                    properties:
+                      kind:
+                        type: string
+                        enum: [pod, damage]
+                      disk:
+                        type: string
+                        description: Disco de evidencia donde quedó la foto
+                      path:
+                        type: string
+                        description: Referencia durable (relativa al disco); viaja como photo_path en la prueba de entrega
+                      url:
+                        type: string
+                        format: uri
+                        nullable: true
+                        description: URL de acceso si el disco la expone; null en discos privados
+        '500':
+          description: The evidence could not be stored after retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /app/labels/verify:
+    post:
+      tags: [execution]
+      operationId: verifyLabel
+      summary: Server-side counter-check of a scanned QR label signature (offline verification)
+      description: >-
+        The Flutter app verifies the signed label offline with the public key bundle; this endpoint
+        repeats the check on the server for dubious cases. A forged or edited label is a business
+        result (200 with valid=false), not a system error.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyLabelRequest'
+      responses:
+        '200':
+          description: The verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/LabelVerification'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /app/vehicles/{vehicleId}/route:
+    get:
+      tags: [execution]
+      operationId: getDriverRoute
+      summary: Driver route — the ordered stops of a vehicle for the day (my route)
+      description: >
+        Returns the driver route sheet: the ordered sequence of stops with what to drop at each one,
+        the current stop (next pending) and how many stops remain. With ?date it returns that day's
+        route; without it, the vehicle's open route in progress.
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+        - name: date
+          in: query
+          required: false
+          description: Route day (Y-m-d); omit for the vehicle's open route
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: The driver route
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DriverRoute'
+        '404':
+          description: No route assembled for this vehicle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags: [execution]
+      operationId: assembleDailyRoute
+      summary: Assemble the driver route of the day from the published plan stops
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [route_date, stops]
+              properties:
+                route_date:
+                  type: string
+                  format: date
+                stops:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [shipment_id, sequence]
+                    properties:
+                      shipment_id:
+                        type: string
+                        format: uuid
+                      sequence:
+                        type: integer
+                        minimum: 1
+                      order_reference:
+                        type: string
+                        nullable: true
+                      customer_name:
+                        type: string
+                        nullable: true
+                      address:
+                        type: string
+                        nullable: true
+                      eta_at:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      lat:
+                        type: number
+                        format: float
+                        nullable: true
+                      lng:
+                        type: number
+                        format: float
+                        nullable: true
+      responses:
+        '201':
+          description: The assembled driver route
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DriverRoute'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  parameters:
+    ShipmentId:
+      name: shipmentId
+      in: path
+      required: true
+      description: Shipment UUID
+      schema:
+        type: string
+        format: uuid
+    VehicleId:
+      name: vehicleId
+      in: path
+      required: true
+      description: Vehicle UUID
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        Offline idempotency key for the scan; a resend with the same key does not duplicate the fact.
+        REQUIRED for every write scan: send it here or in the body field idempotency_key. A write with
+        neither is rejected with 422.
+      schema:
+        type: string
+        maxLength: 128
+  responses:
+    DeliveryState:
+      description: The resulting delivery state after the scan
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: '#/components/schemas/Delivery'
+    ValidationError:
+      description: The request payload failed validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+    GeoScanBase:
+      type: object
+      description: Campos comunes a todo escaneo en terreno
+      required: [shipment_id, unit_id, lat, lng, occurred_at]
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        unit_id:
+          type: string
+          maxLength: 64
+          description: Bulto escaneado
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        occurred_at:
+          type: string
+          format: date-time
+          description: Momento del escaneo, fijado por la app en terreno (offline-first)
+        device_id:
+          type: string
+          maxLength: 128
+          description: Puede inyectarlo el token de Auth; opcional en el cuerpo
+        user_id:
+          type: string
+          maxLength: 128
+          description: Puede inyectarlo el token de Auth; opcional en el cuerpo
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Clave de idempotencia; alternativa al header Idempotency-Key. Obligatoria por una de las dos vías; no puede ir vacía.
+    ScanRequest:
+      allOf:
+        - $ref: '#/components/schemas/GeoScanBase'
+    PreparationScanRequest:
+      allOf:
+        - $ref: '#/components/schemas/GeoScanBase'
+        - type: object
+          required: [vehicle_id]
+          properties:
+            vehicle_id:
+              type: string
+              format: uuid
+              description: Si la entrega aún no existe, se abre con este vehículo
+    NodeReceptionRequest:
+      allOf:
+        - $ref: '#/components/schemas/GeoScanBase'
+        - type: object
+          required: [node_id]
+          properties:
+            node_id:
+              type: string
+              format: uuid
+    UnloadScanRequest:
+      allOf:
+        - $ref: '#/components/schemas/GeoScanBase'
+        - type: object
+          required: [node_id]
+          properties:
+            node_id:
+              type: string
+              format: uuid
+              description: Parada (nodo) donde se descarga el bulto
+    VerifyLabelRequest:
+      type: object
+      required: [payload, signature, key_id]
+      properties:
+        payload:
+          type: string
+          maxLength: 4096
+          description: JSON canónico del QR (exactamente lo que se firmó)
+        signature:
+          type: string
+          maxLength: 512
+          description: Firma de la etiqueta en base64url
+        key_id:
+          type: integer
+          minimum: 1
+          description: Id de la clave pública con la que se firmó (campo "k" del QR)
+    LabelVerification:
+      type: object
+      required: [valid, result]
+      properties:
+        valid:
+          type: boolean
+        result:
+          type: string
+          enum: [valid, invalid_signature, unknown_key]
+    ProofOfDeliveryRequest:
+      allOf:
+        - $ref: '#/components/schemas/GeoScanBase'
+        - type: object
+          required: [confirmation]
+          properties:
+            confirmation:
+              type: string
+              maxLength: 512
+              description: QR del cliente o firma
+            photo_url:
+              type: string
+              format: uri
+              maxLength: 2048
+              nullable: true
+              description: URL de acceso devuelta por el endpoint de subida de fotos (conveniencia)
+            photo_path:
+              type: string
+              maxLength: 1024
+              nullable: true
+              description: Referencia durable (path en el disco de evidencia) devuelta por la subida de fotos; es la que se guarda en la prueba de entrega
+    FailedDeliveryRequest:
+      allOf:
+        - $ref: '#/components/schemas/GeoScanBase'
+        - type: object
+          required: [reason]
+          properties:
+            reason:
+              $ref: '#/components/schemas/FailureReason'
+    FailureReason:
+      type: string
+      enum: [CUSTOMER_ABSENT, WRONG_ADDRESS, REJECTED, DAMAGED, OTHER]
+    DeliveryStatus:
+      type: string
+      enum: [PENDING, PREPARED, LOADED, IN_TRANSIT, DELIVERED, FAILED]
+    ScanType:
+      type: string
+      enum: [PREPARATION, LOAD, UNLOAD, PROOF_OF_DELIVERY, NODE_RECEPTION]
+    ScanEvent:
+      type: object
+      required: [id, delivery_id, type, unit_id, lat, lng, device_id, user_id, occurred_at, idempotency_key]
+      properties:
+        id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/ScanType'
+        unit_id:
+          type: string
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        device_id:
+          type: string
+        user_id:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        idempotency_key:
+          type: string
+    Delivery:
+      type: object
+      required: [id, shipment_id, vehicle_id, status, scans]
+      properties:
+        id:
+          type: string
+          format: uuid
+        shipment_id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/DeliveryStatus'
+        pod_confirmation:
+          type: string
+          nullable: true
+        pod_photo_url:
+          type: string
+          nullable: true
+        pod_photo_path:
+          type: string
+          nullable: true
+          description: Referencia durable de la foto en el disco de evidencia (privado)
+        failure_reason:
+          allOf:
+            - $ref: '#/components/schemas/FailureReason'
+          nullable: true
+        scans:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScanEvent'
+    DriverRouteStopStatus:
+      type: string
+      description: Stop state within the driver route
+      enum: [PENDING, COMPLETED, FAILED]
+    DriverRouteStatus:
+      type: string
+      description: Driver route state across the day
+      enum: [PLANNED, IN_PROGRESS, COMPLETED]
+    DriverRouteStop:
+      type: object
+      description: A stop of the driver route — what the driver drops at one point
+      required: [id, shipment_id, sequence, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        shipment_id:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+        order_reference:
+          type: string
+          nullable: true
+        customer_name:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        eta_at:
+          type: string
+          format: date-time
+          nullable: true
+        lat:
+          type: number
+          format: float
+          nullable: true
+        lng:
+          type: number
+          format: float
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DriverRouteStopStatus'
+        settled_at:
+          type: string
+          format: date-time
+          nullable: true
+    DriverRoute:
+      type: object
+      description: The driver route sheet of a vehicle for a day, with its ordered stops
+      required: [id, vehicle_id, route_date, status, total_stops, completed_stops, stops_remaining, stops]
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        route_date:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/DriverRouteStatus'
+        total_stops:
+          type: integer
+        completed_stops:
+          type: integer
+        stops_remaining:
+          type: integer
+        current_stop:
+          allOf:
+            - $ref: '#/components/schemas/DriverRouteStop'
+          nullable: true
+        stops:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverRouteStop'

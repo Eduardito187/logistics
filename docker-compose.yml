@@ -106,6 +106,108 @@ services:
         networks:
             - dismac_lg
 
+    # -------------------- OSRM (motor de rutas OpenStreetMap, ADR 009) --------------------
+    # Sirve las matrices `/table` y las geometrías `/route`/`/trip` para el ruteo de flota.
+    # Reemplaza al OSRM demo público (sin cuotas y sin que las coordenadas de clientes salgan
+    # a un tercero). Siempre encendido (sin `profiles`): planning y telemetry apuntan aquí vía
+    # OSRM_HOST=http://osrm:5000, y el ruteo cae a haversine solo si el servicio está caído.
+    #
+    # Requiere el extracto de Bolivia preprocesado (osrm-extract/partition/customize) dentro de
+    # `.docker/osrm/data`. El preprocesado NO corre aquí (es pesado): ver docs/routing-selfhost.md.
+    # Mientras no exista `bolivia-latest.osrm`, el contenedor reinicia en bucle a propósito: es la
+    # señal de que falta correr el runbook, no un fallo de configuración.
+    osrm:
+        image: osrm/osrm-backend:latest
+        container_name: dismac_lg_osrm
+        restart: unless-stopped
+        # Algoritmo MLD (partition + customize): permite actualizar tiempos sin recontraer todo el
+        # grafo. `--max-table-size` sube el tope de la matriz /table al volumen diario esperado.
+        command: osrm-routed --algorithm mld --max-table-size 10000 /data/bolivia-latest.osrm
+        ports:
+            - "${DOCKER_OSRM_PORT:-5010}:5000"
+        volumes:
+            # El extracto OSM de Bolivia y sus artefactos preprocesados viven aquí (fuera de git).
+            - ./.docker/osrm/data:/data
+        networks:
+            - dismac_lg
+
+    # -------------------- VROOM (solver VRP/VRPTW opcional, ADR 009) --------------------
+    # Backend de ruteo opt-in para escala y ventanas horarias duras (VRPTW). Se usa solo cuando
+    # PLANNING_ROUTING_BACKEND=vroom; con `builtin` (por defecto) queda ocioso pero encendido, así
+    # cambiar de backend no exige levantar servicios a mano. Resuelve apoyándose en el OSRM propio.
+    # vroom-express expone la API HTTP en :3000; planning lo alcanza vía VROOM_URL=http://vroom:3000.
+    vroom:
+        image: vroomvrp/vroom-docker:latest
+        container_name: dismac_lg_vroom
+        restart: unless-stopped
+        environment:
+            # Deja que vroom-express lea el config montado en lugar de regenerarlo en cada arranque.
+            VROOM_ROUTER: osrm
+        volumes:
+            - ./.docker/vroom/config.yml:/conf/config.yml:ro
+        ports:
+            - "${DOCKER_VROOM_PORT:-3010}:3000"
+        depends_on:
+            - osrm
+        networks:
+            - dismac_lg
+
+    # -------------------- Nominatim (geocoder OpenStreetMap self-host) --------------------
+    # Geocoder open-source (OSM) que resuelve direcciones → coordenada. Reemplaza a Google: cero
+    # servicios de pago, cero claves, y las direcciones de clientes no salen a un tercero. Siempre
+    # encendido (sin `profiles`): shipments apunta aquí vía NOMINATIM_URL=http://nominatim:8080 y, si
+    # está caído/sin datos, el geocoder cae al stub neutro (NullGeocoder) sin romper el ingreso.
+    #
+    # Requiere importar el extracto OSM de Bolivia (bolivia-latest.osm.pbf en `.docker/nominatim/data`).
+    # El import es MUY pesado y NO corre aquí automáticamente sin el PBF: ver docs/maps-geocoder-selfhost.md.
+    # Mientras no exista el PBF / no termine el import, el contenedor reinicia en bucle a propósito: es la
+    # señal de que falta correr el runbook, no un fallo de configuración.
+    nominatim:
+        image: mediagis/nominatim:4.4
+        container_name: dismac_lg_nominatim
+        restart: unless-stopped
+        environment:
+            # Extracto OSM a importar (montado abajo). Geofabrik publica `bolivia-latest.osm.pbf`.
+            PBF_PATH: /nominatim/data/bolivia-latest.osm.pbf
+            # Actualizaciones incrementales de Bolivia (opcional; el runbook explica cómo activarlas).
+            REPLICATION_URL: https://download.geofabrik.de/south-america/bolivia-updates/
+            # Contraseña de la base interna de Nominatim (solo dentro del contenedor).
+            NOMINATIM_PASSWORD: nominatim
+        ports:
+            - "${DOCKER_NOMINATIM_PORT:-8081}:8080"
+        volumes:
+            # Base PostgreSQL del índice de Nominatim (persiste el import, fuera de git).
+            - nominatim_data:/var/lib/postgresql/14/main
+            # Extracto OSM de Bolivia y artefactos del import (fuera de git).
+            - ./.docker/nominatim/data:/nominatim/data
+        # El import de Nominatim usa memoria compartida intensiva; sin esto, PostgreSQL falla.
+        shm_size: 1g
+        networks:
+            - dismac_lg
+
+    # -------------------- Tileserver (teselas de mapa OpenStreetMap self-host) --------------------
+    # Sirve las teselas raster del estilo osm-bright a los mapas Leaflet (admin + seguimiento público).
+    # Reemplaza a tile.openstreetmap.org / tiles de pago: todo OSM self-host. Siempre encendido (sin
+    # `profiles`): las vistas apuntan aquí vía MAP_TILE_URL=http://localhost:8082/styles/osm-bright/{z}/{x}/{y}.png
+    # (puerto del host, porque las teselas las pide el navegador). Si no hay self-host configurado, las
+    # vistas caen al tile público de OSM (solo demo).
+    #
+    # Requiere el mbtiles/pmtiles de Bolivia y la config del estilo en `.docker/tileserver/data` (config.json
+    # + estilo osm-bright + el .mbtiles). La generación es pesada y NO corre aquí: ver
+    # docs/maps-geocoder-selfhost.md. Sin esos datos el contenedor reinicia en bucle a propósito.
+    tileserver:
+        image: maptiler/tileserver-gl:latest
+        container_name: dismac_lg_tileserver
+        restart: unless-stopped
+        command: --config /data/config.json --port 8080
+        ports:
+            - "${DOCKER_TILESERVER_PORT:-8082}:8080"
+        volumes:
+            # config.json, estilo osm-bright y el .mbtiles de Bolivia (fuera de git).
+            - ./.docker/tileserver/data:/data
+        networks:
+            - dismac_lg
+
     # -------------------- Queue worker (siempre encendido) --------------------
     # Sin `profiles` a propósito: en dis-commerce un worker opcional que nadie levantó dejó
     # jobs sin procesar por más de 1 h. `--max-time` recicla el proceso para no correr código viejo.
@@ -167,6 +269,133 @@ services:
         profiles:
             - node
 
+    # ============================================================
+    # AÑADIDO — frente notificaciones (2026-10): servidor ntfy self-host.
+    # ------------------------------------------------------------
+    # Push de la app de clientes (UnifiedPush) y, opcionalmente, Web Push (VAPID) del
+    # contexto `notifications`. Es 100% open-source y gratis; reemplaza a Firebase/FCM.
+    # La plataforma publica con un simple HTTP POST a http://ntfy:80/shipment_<id>.
+    #
+    # NOTA: este bloque agrega SOLO el servicio `ntfy` (otra oleada también edita este
+    # compose). Usa un bind-mount para la caché (no toca el bloque `volumes:`) y la red
+    # `dismac_lg` ya existente. Por defecto, anónimo (dev): publicar/suscribir sin auth.
+    #
+    # Web Push (VAPID) — opcional, para la página de tracking web. ntfy lo soporta nativo
+    # pero exige las CUATRO variables juntas (si falta una, el server no arranca), así que
+    # queda COMENTADO hasta generar las claves:
+    #   docker compose exec ntfy ntfy webpush keys   # imprime VAPID_PUBLIC_KEY/PRIVATE_KEY
+    # y luego descomentar las líneas NTFY_WEB_PUSH_* de abajo (con las claves en .env).
+    # --------------------------------------------------------------
+    ntfy:
+        image: binwiederhier/ntfy:latest
+        container_name: dismac_lg_ntfy
+        restart: unless-stopped
+        command: serve
+        environment:
+            TZ: America/La_Paz
+            NTFY_BASE_URL: ${NTFY_URL:-http://ntfy:80}
+            NTFY_LISTEN_HTTP: ":80"
+            NTFY_BEHIND_PROXY: "true"
+            NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+            NTFY_ATTACHMENT_CACHE_DIR: /var/cache/ntfy/attachments
+            # --- Web Push (VAPID): descomentar las cuatro juntas tras generar las claves ---
+            # NTFY_WEB_PUSH_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+            # NTFY_WEB_PUSH_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+            # NTFY_WEB_PUSH_EMAIL_ADDRESS: ${VAPID_SUBJECT:-mailto:no-reply@dismac.test}
+            # NTFY_WEB_PUSH_FILE: /var/cache/ntfy/webpush.db
+        volumes:
+            - ./.docker/ntfy/cache:/var/cache/ntfy
+        ports:
+            - "${DOCKER_NTFY_PORT:-8120}:80"
+        networks:
+            - dismac_lg
+
+    # ============================================================
+    # AÑADIDO — frente almacenamiento de objetos (ROADMAP B2): MinIO self-host.
+    # ------------------------------------------------------------
+    # MinIO es S3-compatible y 100% open-source: permite probar LOCAL el flujo S3 real
+    # (POD, checklist, daños, collages, documentos de flota) sin cuentas AWS ni pago, y
+    # sin que la evidencia de clientes salga a un tercero. En producción se usa S3/MinIO/R2
+    # real por env (ver docs/deploy.md §5). Los discos de config/filesystems.php apuntan acá
+    # con AWS_ENDPOINT=http://minio:9000 + AWS_USE_PATH_STYLE_ENDPOINT=true (ver .env.example).
+    #
+    # NOTA: este bloque agrega SOLO los servicios `minio` y `createbuckets` (otra oleada
+    # también edita este compose). Usa su propio volumen `minio_data` y la red `dismac_lg`
+    # ya existente; no toca otros servicios. Credenciales de DESARROLLO (no usar en prod).
+    #
+    # Puertos del host: API S3 en 9010 y consola web en 9011 (propios, para correr en
+    # paralelo con los demás proyectos Dismac). La consola abre en http://localhost:9011
+    # (usuario/clave: minioadmin/minioadmin).
+    # --------------------------------------------------------------
+    minio:
+        image: minio/minio:latest
+        container_name: dismac_lg_minio
+        restart: unless-stopped
+        command: server /data --console-address ":9001"
+        environment:
+            MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-minioadmin}
+            MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+            # Región que anuncia el servidor (debe coincidir con AWS_DEFAULT_REGION).
+            MINIO_REGION_NAME: ${AWS_DEFAULT_REGION:-us-east-1}
+        ports:
+            - "${DOCKER_MINIO_API_PORT:-9010}:9000"
+            - "${DOCKER_MINIO_CONSOLE_PORT:-9011}:9001"
+        volumes:
+            - minio_data:/data
+        healthcheck:
+            test: ["CMD-SHELL", "mc ready local || exit 1"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 15s
+        networks:
+            - dismac_lg
+
+    # One-shot: crea el bucket por defecto (AWS_BUCKET) y deja público el prefijo `collages`
+    # (el collage de la notificación al cliente es la única evidencia pública — ADR 006 /
+    # config/filesystems.php). Corre, deja los buckets listos y termina (restart: "no").
+    # Usa el cliente oficial `mc`; es idempotente (`mb --ignore-existing`).
+    createbuckets:
+        image: minio/mc:latest
+        container_name: dismac_lg_createbuckets
+        restart: "no"
+        depends_on:
+            minio:
+                condition: service_healthy
+        environment:
+            MINIO_BUCKET: ${AWS_BUCKET:-logistics}
+            MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-minioadmin}
+            MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+        entrypoint: >
+            /bin/sh -c "
+            mc alias set local http://minio:9000 \"$${MINIO_ROOT_USER}\" \"$${MINIO_ROOT_PASSWORD}\";
+            mc mb --ignore-existing \"local/$${MINIO_BUCKET}\";
+            mc anonymous set download \"local/$${MINIO_BUCKET}/collages\";
+            echo \"MinIO listo: bucket '$${MINIO_BUCKET}' (prefijo 'collages' público).\";
+            "
+        networks:
+            - dismac_lg
+
+    # Servidor WebSocket OPEN-SOURCE (protocolo Pusher) para el fan-out en vivo de telemetría
+    # (posiciones de vehículos). Self-host, sin Pusher.com ni Google — solo el protocolo. Las
+    # credenciales deben coincidir con PUSHER_APP_* del .env. El app (Laravel) publica eventos a
+    # `soketi:6001` por la red docker; el navegador conecta a `localhost:6001` (puerto expuesto).
+    # NOTA: este bloque agrega SOLO el servicio `soketi` (otras oleadas editan este compose).
+    soketi:
+        image: quay.io/soketi/soketi:1.6-16-debian
+        container_name: dismac_lg_soketi
+        restart: unless-stopped
+        environment:
+            SOKETI_DEFAULT_APP_ID: ${PUSHER_APP_ID:-dismac}
+            SOKETI_DEFAULT_APP_KEY: ${PUSHER_APP_KEY:-dismaclocalkey}
+            SOKETI_DEFAULT_APP_SECRET: ${PUSHER_APP_SECRET:-dismaclocalsecret}
+            SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: 'false'
+            SOKETI_METRICS_ENABLED: 'true'
+        ports:
+            - "6001:6001"
+        networks:
+            - dismac_lg
+
 volumes:
     postgres_data:
     valkey_data:
@@ -174,6 +403,8 @@ volumes:
     node_modules:
     composer_cache:
     mailpit_data:
+    nominatim_data:
+    minio_data:
 
 networks:
     dismac_lg:

@@ -11,6 +11,7 @@ use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Shared\Infrastructure\Bus\LaravelCommandBus;
 use Logistics\Shared\Infrastructure\Bus\LaravelQueryBus;
+use Logistics\Shared\Infrastructure\Bus\TransactionalCommandBus;
 use Logistics\Shared\Infrastructure\Clock\SystemClock;
 
 /**
@@ -23,8 +24,13 @@ final class SharedServiceProvider extends ServiceProvider
     {
         $this->app->singleton(HandlerRegistry::class);
 
-        $this->app->singleton(CommandBus::class, function ($app): LaravelCommandBus {
-            return new LaravelCommandBus($app, $app->make(HandlerRegistry::class));
+        // El CommandBus expuesto es el transaccional: envuelve al bus síncrono en una transacción de
+        // base de datos para que el cambio de negocio y el append al outbox sean atómicos (ADR 002).
+        // El límite transaccional vive acá, en Infrastructure, no en los handlers (Application es PHP puro).
+        $this->app->singleton(CommandBus::class, function ($app): TransactionalCommandBus {
+            $inner = new LaravelCommandBus($app, $app->make(HandlerRegistry::class));
+
+            return new TransactionalCommandBus($inner, $app->make('db')->connection());
         });
 
         $this->app->singleton(QueryBus::class, function ($app): LaravelQueryBus {

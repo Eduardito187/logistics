@@ -18,5 +18,6 @@ final readonly class RegisterNodeCommand implements Command
         public string $type,
         public float $latitude,
         public float $longitude,
+        public ?string $department = null,
     ) {}
 }

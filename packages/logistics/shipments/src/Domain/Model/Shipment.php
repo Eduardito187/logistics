@@ -6,11 +6,14 @@ namespace Logistics\Shipments\Domain\Model;
 
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 use Logistics\Shipments\Domain\Event\ShipmentAddressRescored;
+use Logistics\Shipments\Domain\Event\ShipmentDeliverySlotAssigned;
 use Logistics\Shipments\Domain\Event\ShipmentPlanned;
 use Logistics\Shipments\Domain\Event\ShipmentReceived;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
 use Logistics\Shipments\Domain\ValueObject\Address;
 use Logistics\Shipments\Domain\ValueObject\AddressConfidence;
+use Logistics\Shipments\Domain\ValueObject\Customer;
+use Logistics\Shipments\Domain\ValueObject\DeliverySlot;
 use Logistics\Shipments\Domain\ValueObject\Fraction;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\PhysicalUnitId;
@@ -27,8 +30,6 @@ use Logistics\Shipments\Domain\ValueObject\SourceReference;
  */
 final class Shipment extends AggregateRoot
 {
-    private const MAX_CUSTOMER_NAME_LENGTH = 180;
-
     /**
      * @param list<ShipmentLine> $lines
      * @param list<PhysicalUnit> $units
@@ -37,12 +38,13 @@ final class Shipment extends AggregateRoot
         private readonly ShipmentId $id,
         private readonly OrderSource $source,
         private readonly SourceReference $sourceReference,
-        private readonly string $customerName,
+        private readonly Customer $customer,
         private Address $address,
         private AddressConfidence $addressConfidence,
         private ShipmentStatus $status,
         private array $lines,
         private array $units,
+        private ?DeliverySlot $deliverySlot = null,
     ) {}
 
     /**
@@ -54,7 +56,7 @@ final class Shipment extends AggregateRoot
         ShipmentId $id,
         OrderSource $source,
         SourceReference $sourceReference,
-        string $customerName,
+        Customer $customer,
         Address $address,
         AddressConfidence $addressConfidence,
         array $lines,
@@ -63,13 +65,6 @@ final class Shipment extends AggregateRoot
             throw ShipmentsException::because('la fuente del envío no coincide con la de su referencia de origen');
         }
 
-        $trimmedName = trim($customerName);
-        if ($trimmedName === '') {
-            throw ShipmentsException::because('el nombre del cliente no puede estar vacío');
-        }
-        if (mb_strlen($trimmedName) > self::MAX_CUSTOMER_NAME_LENGTH) {
-            throw ShipmentsException::because('el nombre del cliente excede '.self::MAX_CUSTOMER_NAME_LENGTH.' caracteres');
-        }
         if ($lines === []) {
             throw ShipmentsException::because('un envío debe tener al menos una línea');
         }
@@ -85,7 +80,7 @@ final class Shipment extends AggregateRoot
             $id,
             $source,
             $sourceReference,
-            $trimmedName,
+            $customer,
             $address,
             $addressConfidence,
             ShipmentStatus::Received,
@@ -117,23 +112,25 @@ final class Shipment extends AggregateRoot
         ShipmentId $id,
         OrderSource $source,
         SourceReference $sourceReference,
-        string $customerName,
+        Customer $customer,
         Address $address,
         AddressConfidence $addressConfidence,
         ShipmentStatus $status,
         array $lines,
         array $units,
+        ?DeliverySlot $deliverySlot = null,
     ): self {
         return new self(
             $id,
             $source,
             $sourceReference,
-            $customerName,
+            $customer,
             $address,
             $addressConfidence,
             $status,
             array_values($lines),
             array_values($units),
+            $deliverySlot,
         );
     }
 
@@ -182,6 +179,41 @@ final class Shipment extends AggregateRoot
         $this->recordEvent(new ShipmentPlanned($this->id->toString()));
     }
 
+    /**
+     * Asigna (o reemplaza) la franja de entrega comprometida con el cliente. Solo mientras el envío no
+     * salió de recepción: una vez planificado, el día y la ventana ya alimentaron el plan y no se
+     * cambian desde aquí.
+     *
+     * Idempotente: si la franja pedida es la misma que ya tiene, no graba un hecho nuevo (así reservar
+     * dos veces el mismo slot no duplica eventos ni consumo aguas abajo).
+     */
+    public function assignDeliverySlot(DeliverySlot $slot): void
+    {
+        if ($this->status !== ShipmentStatus::Received) {
+            throw ShipmentsException::because('no se puede cambiar la franja de un envío que ya salió de recepción');
+        }
+
+        if ($this->deliverySlot !== null && $this->deliverySlot->equals($slot)) {
+            return;
+        }
+
+        $this->deliverySlot = $slot;
+        $this->recordEvent(new ShipmentDeliverySlotAssigned(
+            $this->id->toString(),
+            $slot->date,
+            $slot->windowStart,
+            $slot->windowEnd,
+        ));
+    }
+
+    /**
+     * Franja de entrega comprometida, o null si el envío todavía no tiene una reservada.
+     */
+    public function deliverySlot(): ?DeliverySlot
+    {
+        return $this->deliverySlot;
+    }
+
     public function id(): ShipmentId
     {
         return $this->id;
@@ -197,9 +229,17 @@ final class Shipment extends AggregateRoot
         return $this->sourceReference;
     }
 
+    /**
+     * Datos completos del cliente (nombre + contacto). La ficha del panel y el notificador leen de aquí.
+     */
+    public function customer(): Customer
+    {
+        return $this->customer;
+    }
+
     public function customerName(): string
     {
-        return $this->customerName;
+        return $this->customer->name;
     }
 
     public function address(): Address

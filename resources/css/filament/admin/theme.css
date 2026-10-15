@@ -1,0 +1,12 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+/* Escanear TODAS nuestras vistas para que sus clases Tailwind se compilen. */
+@source '../../../../app/Filament/**/*.php';
+@source '../../../../app/Providers/Filament/**/*.php';
+@source '../../../../resources/views/filament/**/*.blade.php';
+@source '../../../../packages/logistics/*/src/Presentation/Filament/**/*.php';
+@source '../../../../packages/logistics/*/resources/views/**/*.blade.php';
+
+@theme {
+    --font-sans: 'Open Sans', ui-sans-serif, system-ui, sans-serif;
+}

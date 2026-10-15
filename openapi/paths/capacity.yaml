@@ -1,0 +1,435 @@
+# Fragmento OpenAPI del bounded context Capacity (cupos).
+#
+# Archivo NUEVO: el integrador mergea estos `paths` y `components.schemas` en openapi/v1.yaml.
+# Las rutas son relativas al server (http://.../api/v1); por eso empiezan en /app, /channels o
+# /integrations (las tres puertas). No editar openapi/v1.yaml aquí.
+
+paths:
+  /app/capacity/available:
+    get:
+      tags: [capacity]
+      operationId: appGetAvailableCapacity
+      summary: Available capacity for a bucket (internal app)
+      description: Returns the capacity bucket for a given scope, date, time slot and unit.
+      parameters:
+        - $ref: '#/components/parameters/CapacityNodeId'
+        - $ref: '#/components/parameters/CapacityZoneId'
+        - $ref: '#/components/parameters/CapacityDate'
+        - $ref: '#/components/parameters/CapacityTimeSlot'
+        - $ref: '#/components/parameters/CapacityUnit'
+      responses:
+        '200':
+          description: The capacity bucket was found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityBucketEnvelope'
+        '404':
+          description: No bucket exists for the requested key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityError'
+        '422':
+          $ref: '#/components/responses/CapacityValidationError'
+
+  /app/capacity/calendar:
+    get:
+      tags: [capacity]
+      operationId: appListCapacityCalendar
+      summary: Capacity calendar for a date (internal app)
+      description: Lists every capacity bucket of a day across all scopes, slots and units.
+      parameters:
+        - $ref: '#/components/parameters/CapacityDate'
+      responses:
+        '200':
+          description: Buckets for the requested date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityCalendarEnvelope'
+        '422':
+          $ref: '#/components/responses/CapacityValidationError'
+
+  /channels/capacity/available:
+    get:
+      tags: [capacity]
+      operationId: channelsGetAvailableCapacity
+      summary: Available capacity for a bucket (channels)
+      description: Read-only availability lookup used by client apps, web and call center.
+      parameters:
+        - $ref: '#/components/parameters/CapacityNodeId'
+        - $ref: '#/components/parameters/CapacityZoneId'
+        - $ref: '#/components/parameters/CapacityDate'
+        - $ref: '#/components/parameters/CapacityTimeSlot'
+        - $ref: '#/components/parameters/CapacityUnit'
+      responses:
+        '200':
+          description: The capacity bucket was found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityBucketEnvelope'
+        '404':
+          description: No bucket exists for the requested key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityError'
+        '422':
+          $ref: '#/components/responses/CapacityValidationError'
+
+  /channels/capacity/calendar:
+    get:
+      tags: [capacity]
+      operationId: channelsListCapacityCalendar
+      summary: Capacity calendar for a date (channels)
+      description: Read-only calendar used by channels to offer dates and slots to the customer.
+      parameters:
+        - $ref: '#/components/parameters/CapacityDate'
+      responses:
+        '200':
+          description: Buckets for the requested date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityCalendarEnvelope'
+        '422':
+          $ref: '#/components/responses/CapacityValidationError'
+
+  /integrations/capacity/buckets:
+    post:
+      tags: [capacity]
+      operationId: integrationsDefineCapacity
+      summary: Define a capacity bucket (integrations)
+      description: Provisions a new bucket for a scope/date/slot/unit. Returns the resulting bucket.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefineCapacityRequest'
+      responses:
+        '201':
+          description: The bucket was defined
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityBucketEnvelope'
+        '422':
+          $ref: '#/components/responses/CapacityValidationError'
+
+  /integrations/capacity/consume:
+    post:
+      tags: [capacity]
+      operationId: integrationsConsumeCapacity
+      summary: Consume capacity from a bucket (integrations)
+      description: Charges an amount to a bucket (e.g. when planning a shipment). Returns the updated bucket.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapacityAmountRequest'
+      responses:
+        '200':
+          description: The capacity was consumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityBucketEnvelope'
+        '422':
+          $ref: '#/components/responses/CapacityValidationError'
+
+  /integrations/capacity/release:
+    post:
+      tags: [capacity]
+      operationId: integrationsReleaseCapacity
+      summary: Release capacity from a bucket (integrations)
+      description: Returns an amount to a bucket (e.g. on reschedule or failed delivery). Returns the updated bucket.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapacityAmountRequest'
+      responses:
+        '200':
+          description: The capacity was released
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityBucketEnvelope'
+        '422':
+          $ref: '#/components/responses/CapacityValidationError'
+
+  /app/capacity/effective:
+    get:
+      tags: [capacity]
+      operationId: appGetEffectiveCapacity
+      summary: Effective capacity for a key (internal app)
+      description: >-
+        Returns the effective capacity for a scope/date/slot/unit: the explicit bucket when it exists,
+        otherwise the default total from the configurable rules, or zero when neither applies. Never 404s.
+      parameters:
+        - $ref: '#/components/parameters/CapacityNodeId'
+        - $ref: '#/components/parameters/CapacityZoneId'
+        - $ref: '#/components/parameters/CapacityDate'
+        - $ref: '#/components/parameters/CapacityTimeSlot'
+        - $ref: '#/components/parameters/CapacityUnit'
+      responses:
+        '200':
+          description: Effective capacity for the requested key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectiveCapacityEnvelope'
+        '422':
+          $ref: '#/components/responses/CapacityValidationError'
+
+  /channels/capacity/effective:
+    get:
+      tags: [capacity]
+      operationId: channelsGetEffectiveCapacity
+      summary: Effective capacity for a key (channels)
+      description: >-
+        Read-only effective capacity used by client apps, web and call center to offer dates and slots.
+        Returns the explicit bucket, the rule default, or zero when neither applies. Never 404s.
+      parameters:
+        - $ref: '#/components/parameters/CapacityNodeId'
+        - $ref: '#/components/parameters/CapacityZoneId'
+        - $ref: '#/components/parameters/CapacityDate'
+        - $ref: '#/components/parameters/CapacityTimeSlot'
+        - $ref: '#/components/parameters/CapacityUnit'
+      responses:
+        '200':
+          description: Effective capacity for the requested key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectiveCapacityEnvelope'
+        '422':
+          $ref: '#/components/responses/CapacityValidationError'
+
+components:
+  parameters:
+    CapacityNodeId:
+      name: node_id
+      in: query
+      required: false
+      description: Node that owns the bucket. Exactly one of node_id/zone_id must be provided.
+      schema:
+        type: string
+        format: uuid
+    CapacityZoneId:
+      name: zone_id
+      in: query
+      required: false
+      description: Zone that owns the bucket. Exactly one of node_id/zone_id must be provided.
+      schema:
+        type: string
+        format: uuid
+    CapacityDate:
+      name: date
+      in: query
+      required: true
+      description: Slot date (YYYY-MM-DD).
+      schema:
+        type: string
+        format: date
+    CapacityTimeSlot:
+      name: time_slot
+      in: query
+      required: true
+      description: Time slot within the same day, HH:MM-HH:MM.
+      schema:
+        type: string
+        pattern: '^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$'
+        example: 09:00-13:00
+    CapacityUnit:
+      name: unit
+      in: query
+      required: true
+      description: Capacity unit of the bucket.
+      schema:
+        $ref: '#/components/schemas/CapacityUnit'
+
+  responses:
+    CapacityValidationError:
+      description: Input validation or business rule violation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CapacityError'
+
+  schemas:
+    CapacityUnit:
+      type: string
+      enum: [deliveries, weight, volume]
+      description: Unit a bucket is measured in.
+
+    CapacityBucket:
+      type: object
+      required: [id, date, time_slot, unit, total, used, available, full]
+      properties:
+        id:
+          type: string
+          format: uuid
+        node_id:
+          type: [string, 'null']
+          format: uuid
+        zone_id:
+          type: [string, 'null']
+          format: uuid
+        date:
+          type: string
+          format: date
+        time_slot:
+          type: string
+          example: 09:00-13:00
+        unit:
+          $ref: '#/components/schemas/CapacityUnit'
+        total:
+          type: number
+          format: float
+        used:
+          type: number
+          format: float
+        available:
+          type: number
+          format: float
+        full:
+          type: boolean
+
+    CapacityBucketEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CapacityBucket'
+
+    EffectiveCapacity:
+      type: object
+      required: [date, time_slot, unit, total, used, available, full, source]
+      description: >-
+        Effective capacity for a key. `source` tells where the figures come from: `bucket` (an explicit
+        bucket exists), `rule` (no bucket, but the configurable rules give a default total with zero
+        used) or `none` (no bucket and no rule: capacity unknown, reported as zero).
+      properties:
+        bucket_id:
+          type: [string, 'null']
+          format: uuid
+        node_id:
+          type: [string, 'null']
+          format: uuid
+        zone_id:
+          type: [string, 'null']
+          format: uuid
+        date:
+          type: string
+          format: date
+        time_slot:
+          type: string
+          example: 09:00-13:00
+        unit:
+          $ref: '#/components/schemas/CapacityUnit'
+        total:
+          type: number
+          format: float
+        used:
+          type: number
+          format: float
+        available:
+          type: number
+          format: float
+        full:
+          type: boolean
+        source:
+          type: string
+          enum: [bucket, rule, none]
+
+    EffectiveCapacityEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/EffectiveCapacity'
+
+    CapacityCalendarEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapacityBucket'
+        meta:
+          type: object
+          properties:
+            date:
+              type: string
+              format: date
+            count:
+              type: integer
+
+    DefineCapacityRequest:
+      type: object
+      required: [date, time_slot, unit, total]
+      description: Exactly one of node_id/zone_id must be present.
+      properties:
+        node_id:
+          type: [string, 'null']
+          format: uuid
+        zone_id:
+          type: [string, 'null']
+          format: uuid
+        date:
+          type: string
+          format: date
+        time_slot:
+          type: string
+          example: 09:00-13:00
+        unit:
+          $ref: '#/components/schemas/CapacityUnit'
+        total:
+          type: number
+          format: float
+          minimum: 0
+
+    CapacityAmountRequest:
+      type: object
+      required: [date, time_slot, unit, amount]
+      description: Exactly one of node_id/zone_id must be present.
+      properties:
+        node_id:
+          type: [string, 'null']
+          format: uuid
+        zone_id:
+          type: [string, 'null']
+          format: uuid
+        date:
+          type: string
+          format: date
+        time_slot:
+          type: string
+          example: 09:00-13:00
+        unit:
+          $ref: '#/components/schemas/CapacityUnit'
+        amount:
+          type: number
+          format: float
+          exclusiveMinimum: 0
+
+    CapacityError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [type, message]
+          properties:
+            type:
+              type: string
+              example: capacity_rule
+            message:
+              type: string

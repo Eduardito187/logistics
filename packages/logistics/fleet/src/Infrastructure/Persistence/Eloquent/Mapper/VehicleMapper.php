@@ -35,11 +35,21 @@ final class VehicleMapper
             $model->home_base_node_id,
             VehicleStatus::from($model->status),
             array_values($documents),
+            $model->make,
+            $model->model,
+            $model->model_year,
+            $model->vin,
+            $model->engine_number,
+            $model->color,
+            $model->photo_front,
+            $model->photo_back,
+            $model->photo_left,
+            $model->photo_right,
         );
     }
 
     /**
-     * @return array{id: string, plate: string, capacity_kg: int, capacity_m3: float, home_base_node_id: string, status: string, documents: list<array{type: string, expires_on: string}>}
+     * @return array{id: string, plate: string, capacity_kg: int, capacity_m3: float, home_base_node_id: string, status: string, documents: list<array{type: string, expires_on: string}>, make: string|null, model: string|null, model_year: int|null, vin: string|null, engine_number: string|null, color: string|null, photo_front: string|null, photo_back: string|null, photo_left: string|null, photo_right: string|null}
      */
     public function toRow(Vehicle $vehicle): array
     {
@@ -51,6 +61,16 @@ final class VehicleMapper
             'home_base_node_id' => $vehicle->homeBaseNodeId(),
             'status' => $vehicle->status()->value,
             'documents' => array_values(array_map(static fn (DocumentExpiry $document) => $document->toArray(), $vehicle->documents())),
+            'make' => $vehicle->make(),
+            'model' => $vehicle->model(),
+            'model_year' => $vehicle->modelYear(),
+            'vin' => $vehicle->vin(),
+            'engine_number' => $vehicle->engineNumber(),
+            'color' => $vehicle->color(),
+            'photo_front' => $vehicle->photoFront(),
+            'photo_back' => $vehicle->photoBack(),
+            'photo_left' => $vehicle->photoLeft(),
+            'photo_right' => $vehicle->photoRight(),
         ];
     }
 }

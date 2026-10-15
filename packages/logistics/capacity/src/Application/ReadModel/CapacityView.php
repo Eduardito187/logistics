@@ -16,6 +16,7 @@ final readonly class CapacityView
         public string $id,
         public ?string $nodeId,
         public ?string $zoneId,
+        public ?string $municipalityId,
         public string $date,
         public string $timeSlot,
         public string $unit,
@@ -31,6 +32,7 @@ final readonly class CapacityView
             $bucket->id()->toString(),
             $bucket->scope()->nodeId,
             $bucket->scope()->zoneId,
+            $bucket->scope()->municipalityId,
             $bucket->date()->toString(),
             $bucket->slot()->toString(),
             $bucket->unit()->value,
@@ -42,7 +44,7 @@ final readonly class CapacityView
     }
 
     /**
-     * @return array{id: string, node_id: string|null, zone_id: string|null, date: string, time_slot: string, unit: string, total: float, used: float, available: float, full: bool}
+     * @return array{id: string, node_id: string|null, zone_id: string|null, municipality_id: string|null, date: string, time_slot: string, unit: string, total: float, used: float, available: float, full: bool}
      */
     public function toArray(): array
     {
@@ -50,6 +52,7 @@ final readonly class CapacityView
             'id' => $this->id,
             'node_id' => $this->nodeId,
             'zone_id' => $this->zoneId,
+            'municipality_id' => $this->municipalityId,
             'date' => $this->date,
             'time_slot' => $this->timeSlot,
             'unit' => $this->unit,

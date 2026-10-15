@@ -16,6 +16,12 @@ use Logistics\Planning\Domain\ValueObject\StopSequence;
  * contiene. Referencia al envío SOLO por id string (no se acopla al contexto de envíos). La secuencia,
  * la ETA y el carril los fija el agregado al proponer o recomputar; por eso son mutables y, hasta la
  * propuesta, ETA y carril pueden estar vacíos.
+ *
+ * Además de la referencia al envío, la parada guarda una FOTO legible del destino —referencia del
+ * pedido, cliente y dirección— que aporta quien conoce el envío al asignarlo. Es un dato denormalizado
+ * a propósito: deja que el plan (y la ruta del chofer que se arma a partir de él) se muestren y se
+ * entreguen sin volver a consultar el contexto de envíos. Son opcionales: una parada mínima solo trae
+ * el id del envío.
  */
 final class PlannedStop
 {
@@ -25,14 +31,33 @@ final class PlannedStop
         private StopSequence $sequence,
         private ?Eta $eta,
         private ?LoadLane $lane,
+        private readonly ?string $orderReference,
+        private readonly ?string $customerName,
+        private readonly ?string $address,
     ) {}
 
     /**
-     * Crea una parada recién asignada: con posición, todavía sin ETA ni carril.
+     * Crea una parada recién asignada: con posición y la foto legible del destino, todavía sin ETA ni
+     * carril. La referencia del pedido, el cliente y la dirección las aporta quien conoce el envío.
      */
-    public static function assign(PlannedStopId $id, string $shipmentId, StopSequence $sequence): self
-    {
-        return new self($id, $shipmentId, $sequence, null, null);
+    public static function assign(
+        PlannedStopId $id,
+        string $shipmentId,
+        StopSequence $sequence,
+        ?string $orderReference = null,
+        ?string $customerName = null,
+        ?string $address = null,
+    ): self {
+        return new self(
+            $id,
+            $shipmentId,
+            $sequence,
+            null,
+            null,
+            self::clean($orderReference),
+            self::clean($customerName),
+            self::clean($address),
+        );
     }
 
     /**
@@ -44,8 +69,11 @@ final class PlannedStop
         StopSequence $sequence,
         ?Eta $eta,
         ?LoadLane $lane,
+        ?string $orderReference = null,
+        ?string $customerName = null,
+        ?string $address = null,
     ): self {
-        return new self($id, $shipmentId, $sequence, $eta, $lane);
+        return new self($id, $shipmentId, $sequence, $eta, $lane, $orderReference, $customerName, $address);
     }
 
     /**
@@ -95,5 +123,43 @@ final class PlannedStop
     public function lane(): ?LoadLane
     {
         return $this->lane;
+    }
+
+    /**
+     * Referencia legible del pedido (p. ej. el id externo del envío), o null si no se aportó.
+     */
+    public function orderReference(): ?string
+    {
+        return $this->orderReference;
+    }
+
+    /**
+     * Nombre del cliente que recibe en esta parada, o null si no se aportó.
+     */
+    public function customerName(): ?string
+    {
+        return $this->customerName;
+    }
+
+    /**
+     * Dirección de entrega de esta parada, o null si no se aportó.
+     */
+    public function address(): ?string
+    {
+        return $this->address;
+    }
+
+    /**
+     * Normaliza un texto opcional: recorta espacios y convierte el vacío en null.
+     */
+    private static function clean(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? null : $trimmed;
     }
 }

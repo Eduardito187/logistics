@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Application\Command\EnqueueStockTransfer;
 
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\SapConnector\Domain\Contract\MaterialMappingRepository;
 use Logistics\SapConnector\Domain\Contract\StockTransferRepository;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
@@ -28,6 +29,7 @@ final class EnqueueStockTransferHandler implements CommandHandler
     public function __construct(
         private readonly StockTransferRepository $transfers,
         private readonly MaterialMappingRepository $mappings,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -63,8 +65,7 @@ final class EnqueueStockTransferHandler implements CommandHandler
         $this->transfers->save($transfer);
         $this->lastTransferId = $transfer->id();
 
-        // TODO(outbox): despachar estos eventos al outbox en la misma transacción al integrar.
-        $transfer->releaseEvents();
+        $this->recordEvents->record($transfer->releaseEvents(), 'sap.stock_transfer');
     }
 
     /**
