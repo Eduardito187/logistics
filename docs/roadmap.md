@@ -57,7 +57,29 @@ pendiente de commit/push autorizado por el dueño:
 
 **Lo que NO existe aún (mundo real):** deploy a staging/producción, credenciales de servicios externos
 (VAPID/ntfy/SMS gateway/Telegram/SMTP prod/SAP/Magento), app Flutter (`logistics-app`, repo aparte),
-tablero interactivo de arrastre, datos reales de Fase 0, piloto y Fase 3.
+datos reales de Fase 0, piloto y Fase 3 avanzada.
+
+### Actualización 2026-10-14 — backlog agent-doable CERRADO (3 commits: 840ad01, 58c19dc, a4d2606)
+Verificado verde: **Pest 1153 passed (3341 aserciones), PHPStan 8 limpio, Pint limpio (2550 archivos)**.
+Completado esta sesión (antes `[ ]`, ahora hecho):
+- **Flota ampliada**: vehículos (marca/modelo/año/VIN/fotos 4 lados + docs SOAT/Inspección Técnica con
+  nº de póliza y vencimiento) y choferes (ciudad); **sistema de alertas de vencimiento 30d/7d/vencido**
+  (widget + scheduler + notificación) para licencias y documentos.
+- **Calendario de despacho por municipio** (7 días, feriados/bloqueos global o por municipio, activación
+  de cupos por rango de fechas asíncrona, horizonte activo, enforcement en promise/planning).
+- **R-04/R-05/R-06** (restricciones de vehículo en el solver, re-opt incremental, métricas de ruta +
+  comparación de backends). **K-03/K-05** (reserva de slot por el cliente + promesa a canales por municipio).
+- **E-02** paginación cursor+offset (opt-in). **V-14** tests de contrato OpenAPI (spectator, 12 tests) +
+  auth/devices documentados. **V-15** gate de cobertura en CI. **V-19** build de assets documentado.
+  **E-05** idempotencia de API (ya existía; tests). **MinIO** local (B2). **C-PLN-03** tablero de arrastre
+  (ya existía). **Fase 3** base: costos por vehículo/corredor/tercero + rentabilidad (3-01/3-06).
+- **Sin Google / open-source**: Nominatim por defecto, tiles self-host configurables, push ntfy/VAPID,
+  Open Sans self-host, CSP sin Google Fonts. **i18n**: admin 100% español (es.json 1605 claves).
+- **Fix crítico**: `personal_access_tokens` nunca publicada → login daba 500 en toda la plataforma; resuelto.
+
+**Pendiente = SOLO mundo real:** deploy staging/prod, credenciales reales, app Flutter (Fase A), Fase 0
+(datos del negocio), piloto (Fase P), Fase 3 avanzada (3-02..3-09: pronóstico/simulador/BI), y el `push`/PR
+(pendiente de autorización del dueño; hoy 3 commits locales).
 
 ---
 
