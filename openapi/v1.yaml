@@ -1054,6 +1054,43 @@ paths:
           $ref: '#/components/responses/FleetValidationError'
       security:
       - appBearer: []
+  /app/fleet/my-crew:
+    get:
+      tags: [Fleet]
+      summary: Get the authenticated driver's crew assignment for a date
+      description: >-
+        Returns the vehicle (truck) and crew (driver + helpers) the admin assembled for the
+        AUTHENTICATED driver on a date. The driver does not pick the vehicle; it is assigned. The
+        account→driver link is `users.driver_id` (a by-value reference to fleet_drivers.id). Responds
+        404 (RFC 7807) when the authenticated account is not linked to a driver, or has no crew
+        assembled for the date.
+      operationId: fleetGetMyCrew
+      parameters:
+      - name: date
+        in: query
+        required: false
+        description: Assembly date to query (Y-m-d). Defaults to today in America/La_Paz.
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: The authenticated driver's crew assignment for the date
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MyCrew'
+        '404':
+          description: The account is not a driver, or has no assignment for the date
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
   /app/fleet/pre-trip-checklists:
     get:
       tags:
@@ -9288,6 +9325,81 @@ components:
             cache:
               type: boolean
               description: Valkey reachable
+    MyCrew:
+      type: object
+      description: >-
+        The crew (driver + helpers) and vehicle assigned to the authenticated driver for a date.
+        Read-only projection returned by fleetGetMyCrew.
+      required: [crew_id, date, vehicle, driver, helpers, shift]
+      properties:
+        crew_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        vehicle:
+          type: object
+          description: >-
+            Assigned vehicle. `id` is always present; the other fields are null when the vehicle
+            master record cannot be resolved.
+          required: [id, plate, capacity_kg, capacity_m3, status]
+          properties:
+            id:
+              type: string
+              format: uuid
+            plate:
+              type: string
+              nullable: true
+            capacity_kg:
+              type: integer
+              nullable: true
+            capacity_m3:
+              type: number
+              format: float
+              nullable: true
+            status:
+              type: string
+              nullable: true
+        driver:
+          type: object
+          description: The driver leading the crew. `name`/`license_number` are null when the driver record is missing.
+          required: [id, name, license_number]
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+              nullable: true
+            license_number:
+              type: string
+              nullable: true
+        helpers:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+                nullable: true
+        shift:
+          type: object
+          nullable: true
+          description: Work-shift hours, or null when the crew was assembled without fixed hours.
+          required: [starts_at, ends_at]
+          properties:
+            starts_at:
+              type: string
+              format: date-time
+            ends_at:
+              type: string
+              format: date-time
+
     Helper:
       type: object
       properties:

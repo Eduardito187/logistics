@@ -6,6 +6,8 @@
 @source '../../../../resources/views/filament/**/*.blade.php';
 @source '../../../../packages/logistics/*/src/Presentation/Filament/**/*.php';
 @source '../../../../packages/logistics/*/resources/views/**/*.blade.php';
+@source '../../../../resources/views/components/**/*.blade.php';
+@source '../../../../resources/views/fleetops/**/*.blade.php';
 
 @theme {
     --font-sans: 'Open Sans', ui-sans-serif, system-ui, sans-serif;

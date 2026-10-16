@@ -9,6 +9,7 @@ use Illuminate\Contracts\Database\Query\Builder;
 use Logistics\Fleet\Domain\Contract\CrewRepository;
 use Logistics\Fleet\Domain\Model\Crew;
 use Logistics\Fleet\Domain\ValueObject\CrewId;
+use Logistics\Fleet\Domain\ValueObject\DriverId;
 use Logistics\Fleet\Domain\ValueObject\WorkShift;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Mapper\CrewMapper;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\CrewModel;
@@ -71,5 +72,16 @@ final readonly class EloquentCrewRepository implements CrewRepository
         }
 
         return $shifts;
+    }
+
+    public function findForDriverOn(DriverId $driverId, DateTimeImmutable $date): ?Crew
+    {
+        $model = CrewModel::query()
+            ->where('driver_id', $driverId->toString())
+            ->where('assembled_for', $date->format('Y-m-d'))
+            ->orderByDesc('shift_starts_at')
+            ->first();
+
+        return $model instanceof CrewModel ? $this->mapper->toDomain($model) : null;
     }
 }

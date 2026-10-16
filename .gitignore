@@ -100,3 +100,8 @@ package-lock.json.rejected
 
 # Husky se instala vía `npm install` (script `prepare`); su runtime interno no se versiona.
 .husky/_
+
+# Cache de runtime de ntfy (SQLite + attachments). El contenedor corre como root y, si se bind-montea,
+# deja archivos root-owned en el árbol de trabajo que rompen `git add`. Ahora usa un volumen nombrado;
+# este patrón ignora cualquier residuo del bind-mount anterior.
+/.docker/ntfy/cache/
