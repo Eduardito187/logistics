@@ -30,6 +30,7 @@ use Logistics\Capacity\Presentation\Filament\Resources\CapacityBucketResource\Pa
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\ZoneRecord;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin Filament de cupos de capacidad (capacity buckets): un tope por scope (nodo o zona), fecha,
@@ -49,6 +50,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class CapacityBucketResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = CapacityBucketRecord::class;
 
     protected static ?int $navigationSort = 50;

@@ -28,10 +28,14 @@ final class MaterialMapping
         private readonly SapMaterial $material,
         private readonly SapCenter $center,
         private readonly SapWarehouse $warehouse,
+        // Dimensión de seller (ADR 017, roadmap §6.4): null = mapeo propio de Dismac (comportamiento
+        // histórico); no nulo = coordenada SAP del material de un seller (consignación).
+        private readonly ?string $sellerId = null,
     ) {}
 
     /**
-     * Define un mapeo nuevo entre un sku propio y su coordenada SAP.
+     * Define un mapeo nuevo entre un sku propio y su coordenada SAP. El `sellerId` es opcional y aditivo:
+     * omitirlo mantiene el mapeo propio de Dismac tal como funciona hoy.
      */
     public static function define(
         MaterialMappingId $id,
@@ -39,6 +43,7 @@ final class MaterialMapping
         SapMaterial $material,
         SapCenter $center,
         SapWarehouse $warehouse,
+        ?string $sellerId = null,
     ): self {
         $trimmedSku = trim($sku);
         if ($trimmedSku === '') {
@@ -48,7 +53,9 @@ final class MaterialMapping
             throw SapConnectorException::because('el sku del mapeo excede '.self::MAX_SKU_LENGTH.' caracteres');
         }
 
-        return new self($id, $trimmedSku, $material, $center, $warehouse);
+        $trimmedSeller = $sellerId !== null ? trim($sellerId) : null;
+
+        return new self($id, $trimmedSku, $material, $center, $warehouse, $trimmedSeller === '' ? null : $trimmedSeller);
     }
 
     /**
@@ -60,8 +67,9 @@ final class MaterialMapping
         SapMaterial $material,
         SapCenter $center,
         SapWarehouse $warehouse,
+        ?string $sellerId = null,
     ): self {
-        return new self($id, $sku, $material, $center, $warehouse);
+        return new self($id, $sku, $material, $center, $warehouse, $sellerId);
     }
 
     /**
@@ -95,5 +103,21 @@ final class MaterialMapping
     public function warehouse(): SapWarehouse
     {
         return $this->warehouse;
+    }
+
+    /**
+     * Id del seller dueño del material en una coordenada de consignación; null si es mapeo propio de Dismac.
+     */
+    public function sellerId(): ?string
+    {
+        return $this->sellerId;
+    }
+
+    /**
+     * ¿Es el mapeo propio de Dismac (sin seller)? El flujo retail histórico usa solo estos.
+     */
+    public function isOwnMapping(): bool
+    {
+        return $this->sellerId === null;
     }
 }

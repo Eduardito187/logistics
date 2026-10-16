@@ -29,6 +29,7 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\ScanEventRecord;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\VehicleRouteRecord;
 use Logistics\Execution\Presentation\Filament\Resources\VehicleRouteResource\Pages\ListVehicleRoutes;
 use Logistics\Execution\Presentation\Filament\Resources\VehicleRouteResource\Pages\ViewVehicleRoute;
+use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
 
 /**
@@ -46,6 +47,18 @@ use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
  */
 final class VehicleRouteResource extends Resource
 {
+    use ResolvesUserRoles;
+
+    /**
+     * Rutas de vehículo: la oficina planifica/supervisa y el chofer consulta la suya. Resto oculto.
+     *
+     * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
+     */
+    public static function canAccess(): bool
+    {
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer');
+    }
+
     protected static ?string $model = VehicleRouteRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map-pin';

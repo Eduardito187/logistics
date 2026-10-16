@@ -8,7 +8,7 @@ namespace Logistics\Notifications\Domain\ValueObject;
  * Mensaje ya renderizado y listo para despachar por un canal: asunto (solo email) y cuerpo en texto.
  *
  * Es el resultado de aplicar las variables del envío sobre una plantilla (MessageTemplate). Inmutable:
- * el canal concreto (ntfy, web push, email, SMS) lo consume tal cual.
+ * el canal concreto (FCM, Telegram, email, SMS) lo consume tal cual.
  */
 final readonly class RenderedMessage
 {

@@ -26,13 +26,16 @@ it('renderiza la torre de control como landing operativo', function (): void {
     Livewire::test(ControlTower::class)->assertOk();
 });
 
-it('gatea la torre de control a roles con alcance operativo global', function (): void {
+it('deja la torre de control como landing universal para cualquier rol del panel', function (): void {
+    // Admin (del beforeEach) accede.
     expect(ControlTower::canAccess())->toBeTrue();
 
+    // Un rol de campo también accede al landing: los widgets se gatean solos por rol, así nadie recibe
+    // un 403 al iniciar sesión (la torre es la página de aterrizaje del admin para todos los roles).
     $driver = User::factory()->create();
     $driver->assignRole(Role::Chofer);
     $this->actingAs($driver);
-    expect(ControlTower::canAccess())->toBeFalse();
+    expect(ControlTower::canAccess())->toBeTrue();
 });
 
 it('renderiza el mapa de cobertura y reinicia el formulario de zona', function (): void {

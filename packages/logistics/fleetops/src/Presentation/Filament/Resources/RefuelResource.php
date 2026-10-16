@@ -20,6 +20,7 @@ use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Model\RefuelRecord;
 use Logistics\FleetOps\Presentation\Filament\Resources\RefuelResource\Pages\CreateRefuel;
 use Logistics\FleetOps\Presentation\Filament\Resources\RefuelResource\Pages\ListRefuels;
 use Logistics\FleetOps\Presentation\Filament\Support\VehiclePlates;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de cargas de combustible de la flota propia.
@@ -32,6 +33,8 @@ use Logistics\FleetOps\Presentation\Filament\Support\VehiclePlates;
  */
 final class RefuelResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = RefuelRecord::class;
 
     public static function getNavigationGroup(): string

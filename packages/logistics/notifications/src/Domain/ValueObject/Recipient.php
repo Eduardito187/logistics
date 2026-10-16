@@ -7,9 +7,9 @@ namespace Logistics\Notifications\Domain\ValueObject;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
 
 /**
- * Destinatario de una notificación. El canal primario (push ntfy / web push VAPID) va por el topic del
- * envío, sin datos de contacto; email, SMS y Telegram son respaldos y necesitan, respectivamente, un
- * email, un teléfono (SMS) o un chat id de Telegram.
+ * Destinatario de una notificación. El canal primario (push FCM) va por el topic del envío, sin datos
+ * de contacto; email, SMS y Telegram son respaldos y necesitan, respectivamente, un email, un teléfono
+ * (SMS) o un chat id de Telegram.
  *
  * La plataforma no guarda tokens de la app de clientes (ADR 006): el destinatario se identifica por el
  * envío, y los contactos de respaldo son opcionales.
@@ -56,9 +56,8 @@ final readonly class Recipient
     }
 
     /**
-     * Topic del envío de este destinatario (canal primario push ntfy y web push VAPID). El nombre
-     * `FcmTopic` se conserva por compatibilidad del contrato de eventos; el valor (`shipment_<id>`) es
-     * el nombre de topic que usan ntfy/UnifiedPush y el web push.
+     * Topic del envío de este destinatario (canal primario push FCM). El valor (`shipment_<id>`) es el
+     * nombre de topic al que se publica en Firebase Cloud Messaging.
      */
     public function fcmTopic(): FcmTopic
     {
@@ -66,13 +65,13 @@ final readonly class Recipient
     }
 
     /**
-     * Indica si el destinatario tiene contacto para el canal dado. Push y web push van por topic y no
-     * requieren contacto; email, SMS y Telegram sí.
+     * Indica si el destinatario tiene contacto para el canal dado. El push (FCM) va por topic y no
+     * requiere contacto; email, SMS y Telegram sí.
      */
     public function canReceiveVia(Channel $channel): bool
     {
         return match ($channel) {
-            Channel::PushNtfy, Channel::WebPush => true,
+            Channel::Fcm => true,
             Channel::Email => $this->email !== null,
             Channel::Sms => $this->phone !== null,
             Channel::Telegram => $this->telegramChatId !== null,

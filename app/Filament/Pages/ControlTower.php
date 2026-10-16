@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
-use App\Enums\Role;
 use App\Filament\Widgets\AutoPlanRunsWidget;
 use App\Filament\Widgets\DeliveriesTodayWidget;
 use App\Filament\Widgets\FailedDeliveriesTodayWidget;
@@ -62,15 +61,15 @@ final class ControlTower extends Dashboard
     }
 
     /**
-     * Visible solo para cuentas con alcance operativo global (administrador o supervisor), mismo
-     * criterio que los widgets ({@see ReadsControlTowerData::canView()}). El panel ya gatea a estos
-     * dos roles; esto es defensa en profundidad para que la página nunca sea el landing de otro rol.
+     * Landing universal del panel (ruta '/'): accesible a cualquier cuenta que pueda entrar al admin,
+     * para que ningún rol reciba un 403 al iniciar sesión. El CONTENIDO sí se gatea por rol: los
+     * widgets operativos globales se muestran solo a administrador y supervisor
+     * ({@see ReadsControlTowerData::canView()} y {@see PlatformStatsWidget::canView()}), así que un rol
+     * de campo ve una torre de control reducida y opera desde las secciones que su rol sí habilita.
      */
     public static function canAccess(): bool
     {
-        $user = Auth::user();
-
-        return $user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor);
+        return Auth::user() instanceof User;
     }
 
     /**

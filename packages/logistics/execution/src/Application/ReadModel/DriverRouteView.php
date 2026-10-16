@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Application\ReadModel;
 
+use Logistics\Execution\Domain\Model\RouteStop;
 use Logistics\Execution\Domain\Model\VehicleRoute;
 
 /**
@@ -11,11 +12,16 @@ use Logistics\Execution\Domain\Model\VehicleRoute;
  *
  * Expone la secuencia completa de paradas, la PARADA ACTUAL (la siguiente a atender) y cuántas quedan,
  * para que el chofer sepa dónde está parado y el cliente a cuántas paradas está su pedido.
+ *
+ * Lleva además la GEOMETRÍA de la ruta por calles (GeoJSON LineString, forma primitiva), enriquecida
+ * cross-context desde el plan publicado (planning). Es nula hasta que el ruteo la calcula; el dominio de
+ * ejecución no la conoce (la resuelve el QueryHandler por lectura directa).
  */
 final readonly class DriverRouteView
 {
     /**
-     * @param list<RouteStopView> $stops
+     * @param list<RouteStopView>       $stops
+     * @param array<string, mixed>|null $routeGeometry GeoJSON LineString + totales (esquema RouteGeometry) o null
      */
     public function __construct(
         public string $id,
@@ -27,13 +33,24 @@ final readonly class DriverRouteView
         public int $stopsRemaining,
         public ?RouteStopView $currentStop,
         public array $stops,
+        public ?array $routeGeometry = null,
     ) {}
 
-    public static function fromRoute(VehicleRoute $route): self
-    {
+    /**
+     * Construye la vista desde el agregado, con el enriquecimiento cross-context opcional.
+     *
+     * @param array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>}> $enrichmentByShipment
+     *                                                                                                                                                                                                      mapa id de envío => datos del envío (teléfono, referencia, líneas) para cada parada
+     * @param array<string, mixed>|null                                                                                                                                               $routeGeometry        geometría de la ruta (esquema RouteGeometry) o null
+     */
+    public static function fromRoute(
+        VehicleRoute $route,
+        array $enrichmentByShipment = [],
+        ?array $routeGeometry = null,
+    ): self {
         $stops = [];
         foreach ($route->stops() as $stop) {
-            $stops[] = RouteStopView::fromStop($stop);
+            $stops[] = self::enrichStop($stop, $enrichmentByShipment);
         }
 
         $current = $route->currentStop();
@@ -46,8 +63,26 @@ final readonly class DriverRouteView
             $route->totalStops(),
             $route->settledCount(),
             $route->stopsRemaining(),
-            $current === null ? null : RouteStopView::fromStop($current),
+            $current === null ? null : self::enrichStop($current, $enrichmentByShipment),
             $stops,
+            $routeGeometry,
+        );
+    }
+
+    /**
+     * Construye la vista de una parada aplicando su enriquecimiento (si lo hay) por id de envío.
+     *
+     * @param array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>}> $enrichmentByShipment
+     */
+    private static function enrichStop(RouteStop $stop, array $enrichmentByShipment): RouteStopView
+    {
+        $data = $enrichmentByShipment[$stop->shipmentId()] ?? null;
+
+        return RouteStopView::fromStop(
+            $stop,
+            $data['customer_phone'] ?? null,
+            $data['address_reference'] ?? null,
+            $data['items'] ?? [],
         );
     }
 
@@ -66,6 +101,7 @@ final readonly class DriverRouteView
             'stops_remaining' => $this->stopsRemaining,
             'current_stop' => $this->currentStop?->toArray(),
             'stops' => array_map(static fn (RouteStopView $stop): array => $stop->toArray(), $this->stops),
+            'route_geometry' => $this->routeGeometry,
         ];
     }
 }

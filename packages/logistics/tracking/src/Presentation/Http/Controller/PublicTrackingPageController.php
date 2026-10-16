@@ -52,25 +52,11 @@ final class PublicTrackingPageController
                 static fn (PublicUnitView $unit): array => $unit->toArray(),
                 is_array($units) ? $units : [],
             ),
-            // El token de la URL se usa como action de los formularios públicos (encuesta y push). No es
-            // PII: es la misma credencial por la que se llegó a la página.
+            // El token de la URL se usa como action del formulario público de la encuesta. No es PII: es
+            // la misma credencial por la que se llegó a la página.
             'publicToken' => $token,
             'canSurvey' => $canSurvey,
             'surveyRecorded' => $surveyRecorded,
-            // Clave pública VAPID (K-04): habilita el botón "Notify me". Si falta, el botón queda oculto
-            // (degradación elegante). Se lee de la config del contexto de notificaciones (no se toca su
-            // sender): solo es un valor público pensado para el navegador.
-            'vapidPublicKey' => $this->vapidPublicKey(),
         ]);
-    }
-
-    /**
-     * Clave pública VAPID expuesta a la página, o null si no está configurada.
-     */
-    private function vapidPublicKey(): ?string
-    {
-        $key = config('logistics-notifications.web_push.vapid_public_key');
-
-        return is_string($key) && trim($key) !== '' ? $key : null;
     }
 }

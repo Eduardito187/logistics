@@ -21,6 +21,7 @@ use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\TariffRecord;
 use Logistics\Carriers\Presentation\Filament\Resources\TariffResource\Pages\CreateTariff;
 use Logistics\Carriers\Presentation\Filament\Resources\TariffResource\Pages\ListTariffs;
 use Logistics\Carriers\Presentation\Filament\Resources\TariffResource\Pages\ViewTariff;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de tarifas por corredor de los transportistas.
@@ -33,6 +34,8 @@ use Logistics\Carriers\Presentation\Filament\Resources\TariffResource\Pages\View
  */
 final class TariffResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = TariffRecord::class;
 
     /**

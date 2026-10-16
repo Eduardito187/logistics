@@ -20,9 +20,12 @@ use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
  * string por Eloquent; el mapper los convierte a Quantity.
  *
  * @property string      $id
+ * @property string      $scope_kind
  * @property string|null $node_id
  * @property string|null $zone_id
  * @property string|null $municipality_id
+ * @property string|null $warehouse_id
+ * @property string|null $dock_id
  * @property string      $slot_date
  * @property string      $time_slot
  * @property string      $unit
@@ -45,9 +48,12 @@ final class CapacityBucketRecord extends Model
     /** @var list<string> */
     protected $fillable = [
         'id',
+        'scope_kind',
         'node_id',
         'zone_id',
         'municipality_id',
+        'warehouse_id',
+        'dock_id',
         'slot_date',
         'time_slot',
         'unit',
@@ -96,5 +102,16 @@ final class CapacityBucketRecord extends Model
     public function municipality(): BelongsTo
     {
         return $this->belongsTo(GeoAreaRecord::class, 'municipality_id');
+    }
+
+    /**
+     * Almacén central al que pertenece el cupo cuando su scope es de RECEPCIÓN (inbound). Proyección de
+     * lectura: permite mostrar el código/nombre del almacén en vez del UUID y eager-loadearlo sin N+1.
+     *
+     * @return BelongsTo<NodeRecord, $this>
+     */
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(NodeRecord::class, 'warehouse_id');
     }
 }

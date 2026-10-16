@@ -16,6 +16,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 use Logistics\Tracking\Domain\ValueObject\SurveyReason;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\SatisfactionSurveyRecord;
@@ -37,6 +38,8 @@ use Logistics\Tracking\Presentation\Filament\Resources\SatisfactionSurveyResourc
  */
 final class SatisfactionSurveyResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = SatisfactionSurveyRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-star';

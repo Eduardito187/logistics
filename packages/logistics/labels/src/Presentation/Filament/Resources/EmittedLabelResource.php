@@ -28,6 +28,7 @@ use Logistics\Labels\Infrastructure\Persistence\Eloquent\EmittedLabelRecord;
 use Logistics\Labels\Presentation\Filament\Resources\EmittedLabelResource\Pages\ListEmittedLabels;
 use Logistics\Labels\Presentation\Filament\Resources\EmittedLabelResource\Pages\ViewEmittedLabel;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de las etiquetas QR emitidas (auditoría y reimpresión).
@@ -47,6 +48,8 @@ use Logistics\Shared\Application\Query\QueryBus;
  */
 final class EmittedLabelResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = EmittedLabelRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = Heroicon::OutlinedQrCode;

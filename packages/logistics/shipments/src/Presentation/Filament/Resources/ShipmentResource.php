@@ -26,6 +26,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddress;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
@@ -46,6 +47,8 @@ use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource\Relatio
  */
 final class ShipmentResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = ShipmentRecord::class;
 
     protected static ?int $navigationSort = 10;

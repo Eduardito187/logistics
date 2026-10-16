@@ -24,6 +24,7 @@ use Logistics\Network\Presentation\Filament\Resources\LegResource\Pages\CreateLe
 use Logistics\Network\Presentation\Filament\Resources\LegResource\Pages\ListLegs;
 use Logistics\Network\Presentation\Filament\Resources\LegResource\Pages\ViewLeg;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin Filament de tramos/corredores entre nodos.
@@ -39,6 +40,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class LegResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = LegRecord::class;
 
     protected static ?int $navigationSort = 12;

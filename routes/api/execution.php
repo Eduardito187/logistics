@@ -17,6 +17,7 @@ use Logistics\Execution\Presentation\Http\RecordNodeReceptionController;
 use Logistics\Execution\Presentation\Http\RecordPreparationScanController;
 use Logistics\Execution\Presentation\Http\RecordProofOfDeliveryController;
 use Logistics\Execution\Presentation\Http\RecordUnloadScanController;
+use Logistics\Execution\Presentation\Http\ReportDeliveryIssueController;
 use Logistics\Execution\Presentation\Http\ReportVehicleIncidentController;
 use Logistics\Execution\Presentation\Http\UploadDeliveryPhotoController;
 use Logistics\Execution\Presentation\Http\VerifyLabelController;
@@ -66,18 +67,23 @@ return [
             Route::post('deliveries/scans/unload', RecordUnloadScanController::class)
                 ->name('scans.unload');
             Route::post('deliveries/scans/node-reception', RecordNodeReceptionController::class)
+                ->middleware('enforce.store.node:body.node_id')
                 ->name('scans.node-reception');
 
             // Recepción conciliada en nodo (CD→CD, CD→tienda, tienda→tienda, tienda→CD): se abre con los
             // bultos esperados, se escanea cada bulto recibido, y se concilia (faltantes/sobrantes). Todo
             // idempotente y offline-first. El evento de conciliación alimenta tracking y el conector SAP.
             Route::post('node-receptions', OpenNodeReceptionController::class)
+                ->middleware('enforce.store.node:body.destination_node_id')
                 ->name('node-receptions.open');
             Route::get('node-receptions/{shipmentId}/{nodeId}', GetNodeReceptionController::class)
+                ->middleware('enforce.store.node:route.nodeId')
                 ->name('node-receptions.show');
             Route::post('node-receptions/units', ReceiveUnitAtNodeController::class)
+                ->middleware('enforce.store.node:body.destination_node_id')
                 ->name('node-receptions.units.receive');
             Route::post('node-receptions/reconcile', ReconcileNodeReceptionController::class)
+                ->middleware('enforce.store.node:body.destination_node_id')
                 ->name('node-receptions.reconcile');
 
             // Contraverificación del servidor de la firma de una etiqueta QR (verificación offline).
@@ -89,6 +95,12 @@ return [
                 ->name('proof-of-delivery');
             Route::post('deliveries/failed', RecordFailedDeliveryController::class)
                 ->name('failed');
+
+            // Inconveniente de una entrega EN CURSO (no la cierra): retraso, acceso, pedido del cliente,
+            // dirección poco clara u otro. Idempotente por Idempotency-Key. Deja constancia y avisa por
+            // el outbox. Distinto de la entrega fallida y del incidente del camión.
+            Route::post('deliveries/{shipmentId}/issues', ReportDeliveryIssueController::class)
+                ->name('issues.report');
 
             // Subida de fotos de evidencia (devuelve la URL para el POD).
             Route::post('deliveries/photos', UploadDeliveryPhotoController::class)

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Domain\Model;
 
+use Logistics\Shared\Domain\ValueObject\Ownership;
 use Logistics\Shipments\Domain\ValueObject\Fraction;
 use Logistics\Shipments\Domain\ValueObject\PhysicalUnitId;
 use Logistics\Shipments\Domain\ValueObject\ShipmentLineId;
@@ -24,11 +25,22 @@ final class PhysicalUnit
         private readonly ShipmentLineId $lineId,
         private readonly Fraction $unit,
         private readonly Fraction $piece,
+        private readonly Ownership $ownership,
     ) {}
 
-    public static function create(PhysicalUnitId $id, ShipmentLineId $lineId, Fraction $unit, Fraction $piece): self
-    {
-        return new self($id, $lineId, $unit, $piece);
+    /**
+     * Crea un bulto. La propiedad (`ownership`) es opcional y por defecto es Dismac (retail, `OWNED`),
+     * así toda construcción existente sigue funcionando sin cambios. El contexto `inbound` pasará aquí
+     * la propiedad del seller cuando etiquete unidades recibidas (ADR 017).
+     */
+    public static function create(
+        PhysicalUnitId $id,
+        ShipmentLineId $lineId,
+        Fraction $unit,
+        Fraction $piece,
+        ?Ownership $ownership = null,
+    ): self {
+        return new self($id, $lineId, $unit, $piece, $ownership ?? Ownership::dismacOwned());
     }
 
     public function id(): PhysicalUnitId
@@ -49,5 +61,13 @@ final class PhysicalUnit
     public function piece(): Fraction
     {
         return $this->piece;
+    }
+
+    /**
+     * Propiedad del bulto: a quién pertenece y bajo qué modo de fulfillment. Por defecto Dismac (retail).
+     */
+    public function ownership(): Ownership
+    {
+        return $this->ownership;
     }
 }

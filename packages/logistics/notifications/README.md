@@ -3,18 +3,15 @@
 ## Responsabilidad
 
 Capa de notificaciones con cascada de canales y reglas configurables por tipo de mensaje: push de la
-app de clientes por **ntfy/UnifiedPush** y web push por **VAPID**, ambos por **topic por envío**
-(`shipment_<id>`), más Telegram, email y SMS (respaldo crítico con tope). La plataforma publica al topic
-y NO guarda tokens ni endpoints de los dispositivos.
+app por **Firebase Cloud Messaging (FCM)** por **topic por envío** (`shipment_<id>`, API HTTP v1 con
+service account), más Telegram, email y SMS (respaldo crítico con tope). La plataforma publica al topic
+y NO guarda tokens de los dispositivos.
 
-## Todo open-source y gratis (decisión del dueño, 2026-10)
+## Stack de notificaciones (decisión del dueño, 2026-10)
 
-El stack de notificaciones es **100% open-source y sin servicios de pago ni de Google**:
-
-- **Push de la app** → **ntfy** self-host (compatible con **UnifiedPush**). Reemplaza a Firebase/FCM,
-  que exigía cuenta y proyecto de Google. Es un simple `HTTP POST` al topic del envío (`NTFY_URL`).
-- **Web push** → protocolo estándar **Web Push (VAPID)**, entregado por el mismo servidor ntfy (soporte
-  nativo de Web Push con claves VAPID, `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`). Open-source.
+- **Push de la app** → **Firebase Cloud Messaging (FCM)**: `HTTP POST` al topic del envío por la **API
+  HTTP v1**, autenticada con una **service account** (`FCM_PROJECT_ID` / `FCM_CREDENTIALS`). La app
+  Flutter usa `firebase_messaging` y se suscribe al topic `shipment_<id>` (ADR 014).
 - **WhatsApp eliminado**: la Meta WhatsApp Cloud API (y Twilio) son de pago; se quitó el canal del enum,
   los adapters, la cascada y el admin.
 - **Telegram** (Bot API, gratis/open) **queda** como canal de mensajería del cliente.
@@ -22,11 +19,11 @@ El stack de notificaciones es **100% open-source y sin servicios de pago ni de G
   `SMS_GATEWAY_URL`), no un SaaS de pago. Sigue siendo el último recurso por su costo de operador (tope
   mensual atómico).
 
-Nueva cascada por defecto: `PushNtfy → WebPush → Telegram → Email → Sms`. Mientras no se actualice el
-ADR formal en `docs/adr/006`, este README es el registro del cambio (este contexto no toca los ADR).
+Cascada por defecto: `Fcm → Telegram → Email → Sms`. El detalle del transporte de push está en el
+ADR 014; este contexto no toca los ADR.
 
 El envío real es asíncrono (por outbox): este contexto define el dominio, el estado de la cascada y los
-contratos de canal; el despacho a ntfy/email/SMS corre en el relay.
+contratos de canal; el despacho a FCM/Telegram/email/SMS corre en el relay.
 
 ## No es responsable de
 
@@ -55,7 +52,7 @@ Cuatro capas (Clean Architecture), igual que el resto de los packages:
 
 ## Cascada por defecto
 
-`PushNtfy → WebPush → Telegram → Email → Sms`, escalando cuando no hubo apertura
+`Fcm → Telegram → Email → Sms`, escalando cuando no hubo apertura
 (`EscalateCondition::NoOpen`). La resuelve `DefaultNotificationRulesProvider`; se puede reemplazar por
 reglas en base o panel sin tocar el dominio.
 
@@ -66,10 +63,9 @@ El despacho real corre en el relay del outbox por el `NotificationChannelDispatc
 (`NotificationContentRenderer`: plantilla o default por tipo) y lo envía por el `RoutingChannelSender`,
 que enruta a un sender real por canal (todos open-source):
 
-- `NtfyChannelSender` (P1-NOT-02): push de la app al topic `shipment_<id>` del servidor **ntfy**
-  self-host (`HTTP POST` a `{NTFY_URL}/{topic}`), compatible con **UnifiedPush**. Sin Google.
-- `WebPushChannelSender` (P1-NOT-03): **Web Push (VAPID)** sobre el mismo topic, entregado por el soporte
-  nativo de Web Push de ntfy. Requiere `NTFY_URL` + `VAPID_PUBLIC_KEY`.
+- `FcmChannelSender` (P1-NOT-02): push de la app al topic `shipment_<id>` por **Firebase Cloud
+  Messaging** (`HTTP POST` a la API HTTP v1), autenticado con la service account
+  (`FCM_PROJECT_ID` / `FCM_CREDENTIALS`). La app Flutter recibe por `firebase_messaging`.
 - `TelegramChannelSender`: Bot API (`sendMessage`/`sendPhoto`). Config `TELEGRAM_BOT_TOKEN`. Resuelve el
   `chat_id` del destinatario (columna `telegram_chat_id`).
 - `EmailChannelSender` (P1-NOT-04): mailer de Laravel (Mailpit en dev). Arma el HTML con la vista
@@ -90,7 +86,7 @@ dev sí sale por Mailpit. La configuración vive en `config/logistics-notificati
 - **Email**: vista Blade `resources/views/email/order.blade.php` con el listado de productos del pedido
   (thumbnail + nombre + cantidad). Los productos los da el contrato `ProductImageResolver`
   (`LineItemProductImageResolver` lee `shipment_lines.product_image_url`; placeholder si no hay imagen).
-- **Push (ntfy y web push) y Telegram**: imagen **collage** de los productos. `CollageImageBuilder`
+- **Push (FCM) y Telegram**: imagen **collage** de los productos. `CollageImageBuilder`
   (`GdCollageImageBuilder`, extensión GD) arma una grilla de **hasta 4 productos**; con más de 4 muestra
   3 + una celda **"+N"**. `PushImageResolver` compone resolutor + armador + `CollageImageStore`
   (`FilesystemCollageImageStore`, disco `public`/S3) y pone la URL en el campo `image` del payload. Si GD

@@ -25,6 +25,7 @@ use Logistics\Capacity\Presentation\Filament\Resources\BlackoutDayResource\Pages
 use Logistics\Capacity\Presentation\Filament\Support\MunicipalityOptions;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\GeoAreaRecord;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin Filament de días bloqueados de despacho (feriados u otros motivos). Un bloqueo es GLOBAL
@@ -40,6 +41,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class BlackoutDayResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = DispatchBlackoutDayRecord::class;
 
     protected static ?int $navigationSort = 21;

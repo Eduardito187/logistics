@@ -73,22 +73,9 @@ estrellas + comentario opcional + motivo opcional si la nota es baja).
 - Admin (solo lectura): `SatisfactionSurveyResource` lista las respuestas (estrellas, motivo, comentario,
   envío) y la cabecera muestra `SatisfactionStatsWidget` (NPS, promedio, volumen). Texto en inglés.
 
-### Web Push en la página pública (K-04)
-
-Botón "Notificarme" que suscribe el navegador a Web Push estándar (`PushManager.subscribe` con la clave
-pública VAPID expuesta por config). Degrada con gracia: el botón solo aparece si el navegador soporta
-Service Worker + Push **y** hay clave VAPID configurada (`logistics-notifications.web_push.vapid_public_key`).
-
-- Agregado `TrackingPushSubscription` + VO `WebPushSubscription` (endpoint https + claves p256dh/auth).
-  Comando `RegisterPushSubscription` por el `CommandBus`; **idempotente por endpoint** (upsert). No hace
-  I/O externo ni emite eventos: solo persiste la suscripción.
-- **El envío real de web push REUSA el `WebPushChannelSender`/VAPID existente** (ADR 014, ntfy): lo hace
-  el relay del outbox a partir de los eventos del envío; este contexto NO reimplementa el envío.
-- Service worker servido en `/t/sw.js` (scope `/t/`): recibe el evento `push` y muestra la notificación.
-
 ## Aplicación (CQRS)
 
-- Commands: `OpenTracking`, `RecordSatisfactionSurvey`, `RegisterPushSubscription`, `ProjectExecutionEvent` (puente de proyección de eventos de ejecución; avanza
+- Commands: `OpenTracking`, `RecordSatisfactionSurvey`, `ProjectExecutionEvent` (puente de proyección de eventos de ejecución; avanza
   la cascada de paradas), `ProjectUnitExecutionEvent` (puente per-bulto: proyecta preparado/cargado/
   descargado/recepción y, sin unit_id, aplica el desenlace del envío en cascada a sus bultos),
   `PlaceShipmentOnRoute` (puente que recibe la secuencia de la ruta publicada), `UpdateTruckPosition`.
@@ -108,9 +95,8 @@ Service Worker + Push **y** hay clave VAPID configurada (`logistics-notification
   "a N paradas", ETA, mapa Leaflet + OpenStreetMap con la posición del camión y el desglose de bultos.
   Token inexistente → 404 `tracking::not-found`, sin revelar si el token existe.
 - Escrituras públicas por token (fuera de las puertas `/api/v1`, con `throttle` por IP, sin sesión ni
-  CSRF; la credencial es el token): `POST /t/{token}/survey` (encuesta K-06) y
-  `POST /t/{token}/push-subscriptions` (suscripción web push K-04); `GET /t/sw.js` (service worker).
-  No van a `openapi/v1.yaml`: son parte de la página pública, igual que `GET /t/{token}` (que tampoco
+  CSRF; la credencial es el token): `POST /t/{token}/survey` (encuesta K-06).
+  No va a `openapi/v1.yaml`: es parte de la página pública, igual que `GET /t/{token}` (que tampoco
   está en el contrato de API). Códigos: 201 ok, 404 token inválido/inexistente (genérico), 422 no
   elegible/validación, 409 ya calificado.
 

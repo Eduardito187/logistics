@@ -118,7 +118,7 @@ it('materializa el envío de una notificación encolada y cierra la cascada', fu
         $id,
         Uuid::generate()->value,
         MessageType::EnRoute,
-        CascadePolicy::of([Channel::PushNtfy, Channel::Email]),
+        CascadePolicy::of([Channel::Fcm, Channel::Email]),
         'cliente@dismac.test',
     );
     $repo->save($notification);
@@ -136,7 +136,7 @@ it('materializa el envío de una notificación encolada y cierra la cascada', fu
     ]));
 
     expect($sender->sent)->toHaveCount(1)
-        ->and($sender->sent[0]['channel'])->toBe(Channel::PushNtfy->value);
+        ->and($sender->sent[0]['channel'])->toBe(Channel::Fcm->value);
 
     $reloaded = $repo->findById($id);
     expect($reloaded)->not->toBeNull()

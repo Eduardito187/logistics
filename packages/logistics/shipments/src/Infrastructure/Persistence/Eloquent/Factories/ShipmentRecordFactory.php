@@ -49,11 +49,23 @@ final class ShipmentRecordFactory extends Factory
             'address_confidence' => $score,
             'address_confidence_level' => AddressConfidenceLevel::fromScore($score)->value,
             'status' => ShipmentStatus::Received->value,
+            // Nodo destino: por defecto null (lo pobla el ingest/SAP; ver la migración aditiva).
+            'destination_node_id' => null,
             // Franja de entrega: por defecto sin reservar (se asigna al reservar el cupo de despacho).
             'delivery_date' => null,
             'delivery_window_start' => null,
             'delivery_window_end' => null,
         ];
+    }
+
+    /**
+     * Fija el nodo destino del envío (UUID de un nodo de red).
+     */
+    public function forNode(string $destinationNodeId): self
+    {
+        return $this->state(fn (): array => [
+            'destination_node_id' => $destinationNodeId,
+        ]);
     }
 
     /**

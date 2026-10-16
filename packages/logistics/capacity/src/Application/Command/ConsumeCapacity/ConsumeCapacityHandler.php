@@ -45,7 +45,11 @@ final readonly class ConsumeCapacityHandler implements CommandHandler
     {
         assert($command instanceof ConsumeCapacityCommand);
 
-        $scope = BucketScope::fromNullable($command->nodeId, $command->zoneId, $command->municipalityId);
+        // El eje inbound (recepción) se detecta por la presencia del almacén; si no, es un cupo de
+        // despacho con exactamente uno de nodo/zona/municipio.
+        $scope = $command->warehouseId !== null
+            ? BucketScope::forReceivingDock($command->warehouseId, $command->dockId)
+            : BucketScope::fromNullable($command->nodeId, $command->zoneId, $command->municipalityId);
         $date = SlotDate::fromString($command->date);
         $slot = TimeSlot::fromString($command->timeSlot);
         $unit = CapacityUnit::tryFrom($command->unit)
@@ -71,6 +75,13 @@ final readonly class ConsumeCapacityHandler implements CommandHandler
      */
     private function guardDispatchable(BucketScope $scope, SlotDate $date): void
     {
+        // El calendario de bloqueos y el horizonte activo son del eje de DESPACHO (por municipio). Un
+        // cupo de RECEPCIÓN (inbound) tiene su propio calendario de andenes: no se le aplican los
+        // feriados ni el horizonte de despacho; solo rige el tope de capacidad del andén.
+        if ($scope->isInbound()) {
+            return;
+        }
+
         $municipalityId = $scope->municipalityId;
 
         if ($this->availability->isBlocked($date, $municipalityId)) {

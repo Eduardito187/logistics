@@ -24,6 +24,7 @@ use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\DeliveryRecord;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 
@@ -44,6 +45,18 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
  */
 final class LastMileBoard extends Page
 {
+    use ResolvesUserRoles;
+
+    /**
+     * Tablero de última milla: la oficina despacha y el chofer trabaja su cola de entregas del día.
+     *
+     * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
+     */
+    public static function canAccess(): bool
+    {
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer');
+    }
+
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-truck';
 
     protected static ?int $navigationSort = 5;

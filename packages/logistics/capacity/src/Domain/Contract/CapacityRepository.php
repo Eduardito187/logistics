@@ -56,4 +56,12 @@ interface CapacityRepository
      * @return list<CapacityBucket>
      */
     public function byDate(SlotDate $date): array;
+
+    /**
+     * Cupos de RECEPCIÓN (inbound) de un almacén central en una fecha, ordenados de forma estable (por
+     * andén, franja y unidad). Es la lectura del calendario de andenes que consume el cockpit de inbound.
+     *
+     * @return list<CapacityBucket>
+     */
+    public function inboundByWarehouseAndDate(string $warehouseId, SlotDate $date): array;
 }

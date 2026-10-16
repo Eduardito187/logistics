@@ -22,7 +22,7 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * escala al siguiente, y al agotarse la cascada queda fallida.
  *
  * El envío real es asíncrono (por outbox): el agregado solo registra el estado y los hechos; no habla
- * con ntfy, email ni SMS.
+ * con FCM, email ni SMS.
  */
 final class Notification extends AggregateRoot
 {
@@ -47,7 +47,7 @@ final class Notification extends AggregateRoot
      * hecho de encolado (que el outbox usará para despachar el primer envío).
      *
      * El email y el teléfono son contactos de respaldo de la cascada (email y SMS). El canal primario
-     * (push / web push) va por el topic FCM del envío y no necesita contacto.
+     * (push FCM) va por el topic del envío y no necesita contacto.
      */
     public static function queue(
         NotificationId $id,
@@ -211,7 +211,7 @@ final class Notification extends AggregateRoot
     }
 
     /**
-     * Topic FCM del envío (canal primario y web push).
+     * Topic FCM del envío (canal primario push).
      */
     public function fcmTopic(): FcmTopic
     {

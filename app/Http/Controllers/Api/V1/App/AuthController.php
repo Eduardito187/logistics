@@ -180,6 +180,8 @@ final class AuthController
             'name' => $user->name,
             'email' => $user->email,
             'roles' => array_map(static fn ($role): string => $role->value, $user->roles()),
+            // Nodo de tienda al que pertenece la cuenta (o null para roles sin tienda).
+            'node' => $user->assignedNode(),
         ];
     }
 

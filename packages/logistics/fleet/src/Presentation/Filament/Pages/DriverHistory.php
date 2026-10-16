@@ -15,6 +15,7 @@ use Logistics\Fleet\Application\Query\GetDriverHistory\GetDriverHistory;
 use Logistics\Fleet\Application\ReadModel\DriverHistoryView;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\DriverModel;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Historial operativo del chofer (desempeño cuantificable): elegido un chofer y un rango de fechas,
@@ -26,6 +27,8 @@ use Logistics\Shared\Application\Query\QueryBus;
  */
 final class DriverHistory extends Page
 {
+    use OfficeOnly;
+
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-chart-bar';
 
     protected static ?int $navigationSort = 8;

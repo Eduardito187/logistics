@@ -11,7 +11,7 @@ use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
- * Resuelve la URL de la imagen a adjuntar en un push (ntfy/web push) o en Telegram: toma los
+ * Resuelve la URL de la imagen a adjuntar en un push (FCM) o en Telegram: toma los
  * productos del envío, arma el collage con GD y lo guarda en el store, devolviendo su URL pública.
  *
  * Degrada sin romper: si no hay productos con imagen, si GD no está o si falla la construcción/guardado,

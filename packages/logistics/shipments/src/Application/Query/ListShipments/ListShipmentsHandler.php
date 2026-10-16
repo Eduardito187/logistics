@@ -46,6 +46,9 @@ final class ListShipmentsHandler implements QueryHandler
             if ($source !== null && $shipment->source() !== $source) {
                 continue;
             }
+            if ($query->destinationNodeId !== null && $shipment->destinationNodeId() !== $query->destinationNodeId) {
+                continue;
+            }
             $views[] = ShipmentView::fromShipment($shipment);
         }
 

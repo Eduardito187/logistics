@@ -15,7 +15,7 @@ function templateWithBody(string $body, ?string $subject = null): MessageTemplat
     return MessageTemplate::define(
         MessageTemplateId::generate(),
         MessageType::EnRoute,
-        Channel::PushNtfy,
+        Channel::Fcm,
         'es',
         $subject,
         $body,

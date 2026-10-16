@@ -283,49 +283,6 @@ services:
             - node
 
     # ============================================================
-    # AÑADIDO — frente notificaciones (2026-10): servidor ntfy self-host.
-    # ------------------------------------------------------------
-    # Push de la app de clientes (UnifiedPush) y, opcionalmente, Web Push (VAPID) del
-    # contexto `notifications`. Es 100% open-source y gratis; reemplaza a Firebase/FCM.
-    # La plataforma publica con un simple HTTP POST a http://ntfy:80/shipment_<id>.
-    #
-    # NOTA: este bloque agrega SOLO el servicio `ntfy` (otra oleada también edita este
-    # compose). Usa un bind-mount para la caché (no toca el bloque `volumes:`) y la red
-    # `dismac_lg` ya existente. Por defecto, anónimo (dev): publicar/suscribir sin auth.
-    #
-    # Web Push (VAPID) — opcional, para la página de tracking web. ntfy lo soporta nativo
-    # pero exige las CUATRO variables juntas (si falta una, el server no arranca), así que
-    # queda COMENTADO hasta generar las claves:
-    #   docker compose exec ntfy ntfy webpush keys   # imprime VAPID_PUBLIC_KEY/PRIVATE_KEY
-    # y luego descomentar las líneas NTFY_WEB_PUSH_* de abajo (con las claves en .env).
-    # --------------------------------------------------------------
-    ntfy:
-        image: binwiederhier/ntfy:latest
-        container_name: dismac_lg_ntfy
-        restart: unless-stopped
-        command: serve
-        environment:
-            TZ: America/La_Paz
-            NTFY_BASE_URL: ${NTFY_URL:-http://ntfy:80}
-            NTFY_LISTEN_HTTP: ":80"
-            NTFY_BEHIND_PROXY: "true"
-            NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
-            NTFY_ATTACHMENT_CACHE_DIR: /var/cache/ntfy/attachments
-            # --- Web Push (VAPID): descomentar las cuatro juntas tras generar las claves ---
-            # NTFY_WEB_PUSH_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
-            # NTFY_WEB_PUSH_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
-            # NTFY_WEB_PUSH_EMAIL_ADDRESS: ${VAPID_SUBJECT:-mailto:no-reply@dismac.test}
-            # NTFY_WEB_PUSH_FILE: /var/cache/ntfy/webpush.db
-        volumes:
-            # Volumen NOMBRADO (no bind-mount al repo): ntfy corre como root y creaba archivos root-owned
-            # en .docker/ntfy/cache dentro del árbol de trabajo (rompía `git add` por permisos). Fuera del repo.
-            - ntfy_cache:/var/cache/ntfy
-        ports:
-            - "${DOCKER_NTFY_PORT:-8120}:80"
-        networks:
-            - dismac_lg
-
-    # ============================================================
     # AÑADIDO — frente almacenamiento de objetos (ROADMAP B2): MinIO self-host.
     # ------------------------------------------------------------
     # MinIO es S3-compatible y 100% open-source: permite probar LOCAL el flujo S3 real
@@ -397,7 +354,6 @@ volumes:
     mailpit_data:
     nominatim_data:
     minio_data:
-    ntfy_cache:
 
 networks:
     dismac_lg:

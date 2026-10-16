@@ -24,7 +24,7 @@ final class MessageTemplateRecordFactory extends Factory
         return [
             'id' => Uuid::generate()->value,
             'message_type' => MessageType::EnRoute->value,
-            'channel' => Channel::PushNtfy->value,
+            'channel' => Channel::Fcm->value,
             'locale' => 'es',
             'subject' => 'Tu pedido va en camino',
             'body' => 'Tu pedido {{shipment_id}} salió en ruta hacia tu dirección.',

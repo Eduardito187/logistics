@@ -24,6 +24,8 @@ use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\Factories\StockTr
  * @property int         $quantity
  * @property string      $status
  * @property string|null $last_error
+ * @property string      $transfer_kind
+ * @property string|null $owner_party_id
  *
  * @use HasFactory<StockTransferRecordFactory>
  */

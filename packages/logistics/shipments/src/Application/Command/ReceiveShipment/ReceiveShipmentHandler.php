@@ -7,6 +7,7 @@ namespace Logistics\Shipments\Application\Command\ReceiveShipment;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
+use Logistics\Shared\Domain\ValueObject\Ownership;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
@@ -89,6 +90,14 @@ final class ReceiveShipmentHandler implements CommandHandler
             $command->customerEmail,
         );
 
+        // Propiedad del envío (ADR 017): por defecto Dismac (retail). fromPrimitives valida la invariante
+        // (owned ⇒ sin dueño; fbd/dropship ⇒ con dueño).
+        $ownership = Ownership::fromPrimitives(
+            $command->fulfillmentMode,
+            $command->ownerPartyId,
+            $command->sellerSkuRef,
+        );
+
         $shipment = Shipment::receive(
             $this->shipments->nextIdentity(),
             $source,
@@ -97,6 +106,8 @@ final class ReceiveShipmentHandler implements CommandHandler
             $address,
             $confidence,
             $lines,
+            $command->destinationNodeId,
+            $ownership,
         );
 
         $this->shipments->save($shipment);

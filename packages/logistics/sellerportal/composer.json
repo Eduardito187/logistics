@@ -1,0 +1,23 @@
+{
+    "name": "logistics/sellerportal",
+    "description": "Portal/API de autoservicio del seller (solo lectura) — plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\SellerPortal\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\SellerPortal\\Infrastructure\\Providers\\SellerPortalServiceProvider"
+            ]
+        }
+    }
+}

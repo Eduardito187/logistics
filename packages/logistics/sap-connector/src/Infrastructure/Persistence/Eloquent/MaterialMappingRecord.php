@@ -15,11 +15,12 @@ use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\Factories\Materia
  * Detalle de Infrastructure: nunca cruza a Application ni Domain. El mapeo a/desde la entidad lo hace
  * MaterialMappingMapper.
  *
- * @property string $id
- * @property string $sku
- * @property string $sap_material
- * @property string $center
- * @property string $warehouse
+ * @property string      $id
+ * @property string      $sku
+ * @property string      $sap_material
+ * @property string      $center
+ * @property string      $warehouse
+ * @property string|null $seller_id
  *
  * @use HasFactory<MaterialMappingRecordFactory>
  */
