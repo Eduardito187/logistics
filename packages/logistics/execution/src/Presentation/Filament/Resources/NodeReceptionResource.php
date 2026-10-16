@@ -19,6 +19,7 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\NodeReceptionRecord;
 use Logistics\Execution\Presentation\Filament\Resources\NodeReceptionResource\Pages\ListNodeReceptions;
 use Logistics\Execution\Presentation\Filament\Resources\NodeReceptionResource\Pages\ViewNodeReception;
 use Logistics\Execution\Presentation\Filament\Support\NodeNames;
+use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 
 /**
  * Admin de solo lectura de las recepciones en nodo (CD→CD, CD→tienda, tienda→tienda, tienda→CD).
@@ -33,6 +34,18 @@ use Logistics\Execution\Presentation\Filament\Support\NodeNames;
  */
 final class NodeReceptionResource extends Resource
 {
+    use ResolvesUserRoles;
+
+    /**
+     * Recepción en nodo: además de la oficina, la ve la tienda, que confirma la recepción en su nodo.
+     *
+     * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
+     */
+    public static function canAccess(): bool
+    {
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'tienda');
+    }
+
     protected static ?string $model = NodeReceptionRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-inbox-arrow-down';

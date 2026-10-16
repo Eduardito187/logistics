@@ -18,6 +18,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentLineResource\Pages\CreateShipmentLine;
@@ -36,6 +37,8 @@ use Logistics\Shipments\Presentation\Filament\Resources\ShipmentLineResource\Pag
  */
 final class ShipmentLineResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = ShipmentLineRecord::class;
 
     protected static ?int $navigationSort = 12;

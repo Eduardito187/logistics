@@ -40,7 +40,7 @@ function covSeedQueuedNotification(): string
         $id,
         Uuid::generate()->value,
         MessageType::EnRoute,
-        CascadePolicy::of([Channel::PushNtfy, Channel::Email]),
+        CascadePolicy::of([Channel::Fcm, Channel::Email]),
         'cliente@dismac.test',
     );
     app(NotificationRepository::class)->save($notification);
@@ -75,7 +75,7 @@ it('PUT /notification-templates valida la entrada (422 sin cuerpo)', function ()
 it('PUT /notification-rules configura la cascada y GET lista las reglas efectivas', function (): void {
     $this->putJson('/api/v1/app/notification-rules', [
         'message_type' => MessageType::Delivered->value,
-        'channels' => [Channel::PushNtfy->value, Channel::Email->value],
+        'channels' => [Channel::Fcm->value, Channel::Email->value],
         'escalate_when' => EscalateCondition::NoOpen->value,
     ])->assertOk()
         ->assertJsonPath('data.message_type', MessageType::Delivered->value);
@@ -153,12 +153,12 @@ it('el repositorio de reglas guarda, lee, lista y borra la política', function 
     /** @var EloquentMessageTypeRuleRepository $repo */
     $repo = app(MessageTypeRuleRepository::class);
 
-    $policy = CascadePolicy::of([Channel::PushNtfy, Channel::Email], EscalateCondition::OnFailure);
+    $policy = CascadePolicy::of([Channel::Fcm, Channel::Email], EscalateCondition::OnFailure);
     $repo->save(MessageType::Arriving, $policy);
 
     $read = $repo->policyFor(MessageType::Arriving);
     expect($read)->toBeInstanceOf(CascadePolicy::class)
-        ->and($read->first())->toBe(Channel::PushNtfy);
+        ->and($read->first())->toBe(Channel::Fcm);
 
     expect($repo->all())->toHaveKey(MessageType::Arriving->value);
 

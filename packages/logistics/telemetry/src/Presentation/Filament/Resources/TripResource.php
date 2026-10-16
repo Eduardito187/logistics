@@ -17,6 +17,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Telemetry\Domain\ValueObject\TripStatus;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\TripRecord;
 use Logistics\Telemetry\Presentation\Filament\Resources\TripResource\Pages\ListTrips;
@@ -32,6 +33,8 @@ use Logistics\Telemetry\Presentation\Filament\Support\VehiclePlates;
  */
 final class TripResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = TripRecord::class;
 
     public static function getNavigationGroup(): string

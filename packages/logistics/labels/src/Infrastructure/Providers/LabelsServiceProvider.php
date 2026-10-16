@@ -19,12 +19,14 @@ use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabelsHandle
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
 use Logistics\Labels\Domain\Contract\LabelRenderer;
 use Logistics\Labels\Domain\Contract\LabelSigner;
+use Logistics\Labels\Domain\Contract\LabelSymbologyProvider;
 use Logistics\Labels\Domain\Contract\LabelVerifier;
 use Logistics\Labels\Domain\Contract\PublicKeyDirectory;
 use Logistics\Labels\Infrastructure\Crypto\ConfigPublicKeyDirectory;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelSigner;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelVerifier;
 use Logistics\Labels\Infrastructure\Persistence\Eloquent\EloquentEmittedLabelRepository;
+use Logistics\Labels\Infrastructure\Settings\SettingsLabelSymbologyProvider;
 use Logistics\Labels\Infrastructure\Zpl\ZplLabelRenderer;
 use Logistics\Labels\Presentation\Console\ExportPublicKeysCommand;
 use Logistics\Labels\Presentation\Console\GenerateSigningKeyCommand;
@@ -80,6 +82,10 @@ final class LabelsServiceProvider extends ServiceProvider
         // Renderizado ZPL para Zebra y persistencia de etiquetas emitidas.
         $this->app->bind(LabelRenderer::class, ZplLabelRenderer::class);
         $this->app->bind(EmittedLabelRepository::class, EloquentEmittedLabelRepository::class);
+
+        // Simbología de la etiqueta (QR / Code128 / ambos): regla versionada en settings, con caída a la
+        // config del package. El contenedor autoinyecta el QueryBus y el repositorio de config.
+        $this->app->bind(LabelSymbologyProvider::class, SettingsLabelSymbologyProvider::class);
 
         // Directorio de claves públicas para distribuir el bundle de verificación offline a la app.
         $this->app->bind(PublicKeyDirectory::class, ConfigPublicKeyDirectory::class);

@@ -25,6 +25,7 @@ use Logistics\Network\Presentation\Filament\Resources\NodeResource\Pages\CreateN
 use Logistics\Network\Presentation\Filament\Resources\NodeResource\Pages\ListNodes;
 use Logistics\Network\Presentation\Filament\Resources\NodeResource\Pages\ViewNode;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin Filament de nodos de la red (CDs, tiendas, puntos de recojo).
@@ -41,6 +42,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class NodeResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = NodeRecord::class;
 
     protected static ?int $navigationSort = 10;

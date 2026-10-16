@@ -10,6 +10,7 @@ use Logistics\SapConnector\Domain\Contract\StockTransferRepository;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
+use Logistics\SapConnector\Domain\ValueObject\TransferKind;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
@@ -60,6 +61,8 @@ final class EnqueueStockTransferHandler implements CommandHandler
             $mapping->center(),
             $mapping->warehouse(),
             $command->quantity,
+            TransferKind::from($command->transferKind),
+            $command->ownerPartyId,
         );
 
         $this->transfers->save($transfer);

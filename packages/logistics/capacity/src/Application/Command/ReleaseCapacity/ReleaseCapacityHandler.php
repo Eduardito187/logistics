@@ -35,7 +35,11 @@ final readonly class ReleaseCapacityHandler implements CommandHandler
     {
         assert($command instanceof ReleaseCapacityCommand);
 
-        $scope = BucketScope::fromNullable($command->nodeId, $command->zoneId, $command->municipalityId);
+        // El eje inbound (recepción) se detecta por la presencia del almacén; si no, es un cupo de
+        // despacho con exactamente uno de nodo/zona/municipio.
+        $scope = $command->warehouseId !== null
+            ? BucketScope::forReceivingDock($command->warehouseId, $command->dockId)
+            : BucketScope::fromNullable($command->nodeId, $command->zoneId, $command->municipalityId);
         $date = SlotDate::fromString($command->date);
         $slot = TimeSlot::fromString($command->timeSlot);
         $unit = CapacityUnit::tryFrom($command->unit)

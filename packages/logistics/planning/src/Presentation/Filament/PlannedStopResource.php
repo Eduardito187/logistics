@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\PlannedStopRecord;
 use Logistics\Planning\Presentation\Filament\PlannedStopResource\Pages;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de solo lectura de las paradas del plan (la asignación de un envío a una posición de reparto).
@@ -33,6 +34,8 @@ use Logistics\Planning\Presentation\Filament\PlannedStopResource\Pages;
  */
 final class PlannedStopResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = PlannedStopRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-flag';

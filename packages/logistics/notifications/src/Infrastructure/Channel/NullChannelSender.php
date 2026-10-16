@@ -14,7 +14,7 @@ use Psr\Log\LoggerInterface;
  * Sender por defecto de todos los canales: no envía nada a ningún sistema externo, solo deja rastro en
  * el log. Es el binding inicial del contrato, pensado para desarrollo y pruebas.
  *
- * Cada canal real (ntfy, web push, Telegram, email, SMS) reemplaza este binding con su propia implementación, que
+ * Cada canal real (FCM, Telegram, email, SMS) reemplaza este binding con su propia implementación, que
  * corre en el relay del outbox (asíncrono, idempotente).
  */
 final readonly class NullChannelSender implements ChannelSender

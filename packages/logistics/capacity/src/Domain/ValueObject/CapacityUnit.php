@@ -20,6 +20,12 @@ enum CapacityUnit: string
     case Volume = 'volume';
 
     /**
+     * Número de citas de recepción (camiones/turnos de andén). Unidad natural del eje inbound: cuántos
+     * ASN caben en una franja de andén de un almacén central.
+     */
+    case Appointments = 'appointments';
+
+    /**
      * Etiqueta legible en inglés para el admin y la consola.
      */
     public function label(): string
@@ -28,6 +34,7 @@ enum CapacityUnit: string
             self::Deliveries => 'Deliveries',
             self::Weight => 'Weight (kg)',
             self::Volume => 'Volume (m³)',
+            self::Appointments => 'Appointments',
         };
     }
 }

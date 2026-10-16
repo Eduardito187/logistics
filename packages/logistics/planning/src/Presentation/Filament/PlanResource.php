@@ -42,6 +42,7 @@ use Logistics\Planning\Infrastructure\Persistence\Eloquent\PlanRecord;
 use Logistics\Planning\Presentation\Filament\PlanResource\Pages;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 /**
@@ -63,6 +64,8 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  */
 final class PlanResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = PlanRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map';

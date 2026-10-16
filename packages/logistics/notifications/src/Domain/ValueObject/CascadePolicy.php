@@ -11,7 +11,7 @@ use Logistics\Notifications\Domain\Exception\NotificationsException;
  * siguiente (ver EscalateCondition). Es un contrato de dominio inmutable; las reglas concretas por
  * tipo de mensaje las resuelve un NotificationRulesProvider en la capa de aplicación.
  *
- * La cascada por defecto del ADR 006 es PushNtfy → WebPush → Email → Sms.
+ * La cascada por defecto del ADR 006 es Fcm → Telegram → Email → Sms.
  */
 final readonly class CascadePolicy
 {

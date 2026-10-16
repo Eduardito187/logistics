@@ -28,6 +28,8 @@ use Logistics\Capacity\Application\Query\GetCapacityRuleset\GetCapacityRulesetHa
 use Logistics\Capacity\Application\Query\GetCapacityRuleset\GetCapacityRulesetQuery;
 use Logistics\Capacity\Application\Query\GetEffectiveCapacity\GetEffectiveCapacityHandler;
 use Logistics\Capacity\Application\Query\GetEffectiveCapacity\GetEffectiveCapacityQuery;
+use Logistics\Capacity\Application\Query\GetReceivingDockCalendar\GetReceivingDockCalendarHandler;
+use Logistics\Capacity\Application\Query\GetReceivingDockCalendar\GetReceivingDockCalendarQuery;
 use Logistics\Capacity\Application\Query\ListBlackoutDays\ListBlackoutDaysHandler;
 use Logistics\Capacity\Application\Query\ListBlackoutDays\ListBlackoutDaysQuery;
 use Logistics\Capacity\Application\Query\ListBucketsByDate\ListBucketsByDateHandler;
@@ -113,6 +115,8 @@ final class CapacityServiceProvider extends ServiceProvider
         $registry->register(GetAvailableCapacityQuery::class, GetAvailableCapacityHandler::class);
         $registry->register(GetEffectiveCapacityQuery::class, GetEffectiveCapacityHandler::class);
         $registry->register(ListBucketsByDateQuery::class, ListBucketsByDateHandler::class);
+        // Espejo de recepción (marketplace/inbound): lectura del calendario de andenes por almacén/día.
+        $registry->register(GetReceivingDockCalendarQuery::class, GetReceivingDockCalendarHandler::class);
         $registry->register(GetCapacityRulesetQuery::class, GetCapacityRulesetHandler::class);
         $registry->register(CheckDispatchDayQuery::class, CheckDispatchDayHandler::class);
         $registry->register(ListBlackoutDaysQuery::class, ListBlackoutDaysHandler::class);

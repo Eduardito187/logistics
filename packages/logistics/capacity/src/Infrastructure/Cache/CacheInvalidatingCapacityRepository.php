@@ -75,4 +75,12 @@ final readonly class CacheInvalidatingCapacityRepository implements CapacityRepo
     {
         return $this->inner->byDate($date);
     }
+
+    /**
+     * @return list<CapacityBucket>
+     */
+    public function inboundByWarehouseAndDate(string $warehouseId, SlotDate $date): array
+    {
+        return $this->inner->inboundByWarehouseAndDate($warehouseId, $date);
+    }
 }

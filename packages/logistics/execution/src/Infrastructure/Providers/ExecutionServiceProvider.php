@@ -7,6 +7,10 @@ namespace Logistics\Execution\Infrastructure\Providers;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRoute;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRouteHandler;
+use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDropshipDelivery;
+use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDropshipDeliveryHandler;
+use Logistics\Execution\Application\Command\ConfirmDropshipDispatch\ConfirmDropshipDispatch;
+use Logistics\Execution\Application\Command\ConfirmDropshipDispatch\ConfirmDropshipDispatchHandler;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReception;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReceptionHandler;
 use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNode;
@@ -25,9 +29,14 @@ use Logistics\Execution\Application\Command\RecordProofOfDelivery\RecordProofOfD
 use Logistics\Execution\Application\Command\RecordProofOfDelivery\RecordProofOfDeliveryHandler;
 use Logistics\Execution\Application\Command\RecordUnloadScan\RecordUnloadScan;
 use Logistics\Execution\Application\Command\RecordUnloadScan\RecordUnloadScanHandler;
+use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIssue;
+use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIssueHandler;
 use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleIncident;
 use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleIncidentHandler;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
+use Logistics\Execution\Application\Contract\RouteGeometryReader;
+use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
+use Logistics\Execution\Application\Contract\StopEnrichmentReader;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryState;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryStateHandler;
 use Logistics\Execution\Application\Query\GetDriverRoute\GetDriverRoute;
@@ -38,6 +47,7 @@ use Logistics\Execution\Application\Query\ListDeliveriesByVehicle\ListDeliveries
 use Logistics\Execution\Application\Query\ListDeliveriesByVehicle\ListDeliveriesByVehicleHandler;
 use Logistics\Execution\Application\Query\VerifyLabel\VerifyLabel;
 use Logistics\Execution\Application\Query\VerifyLabel\VerifyLabelHandler;
+use Logistics\Execution\Domain\Contract\DeliveryIssueRepository;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Contract\LabelVerificationGateway;
 use Logistics\Execution\Domain\Contract\NodeReceptionRepository;
@@ -45,10 +55,14 @@ use Logistics\Execution\Domain\Contract\VehicleIncidentRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
 use Logistics\Execution\Infrastructure\Labels\SodiumLabelVerificationGateway;
 use Logistics\Execution\Infrastructure\Labels\StubLabelVerificationGateway;
+use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryIssueRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentNodeReceptionRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleIncidentRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleRouteRepository;
+use Logistics\Execution\Infrastructure\ReadModel\DbRouteGeometryReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbShipmentFulfillmentReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbStopEnrichmentReader;
 use Logistics\Execution\Infrastructure\Storage\FilesystemEvidenceStorage;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\HandlerRegistry;
@@ -73,11 +87,14 @@ final class ExecutionServiceProvider extends ServiceProvider
         RecordProofOfDelivery::class => RecordProofOfDeliveryHandler::class,
         RecordFailedDelivery::class => RecordFailedDeliveryHandler::class,
         RecordNodeReception::class => RecordNodeReceptionHandler::class,
+        ConfirmDropshipDispatch::class => ConfirmDropshipDispatchHandler::class,
+        ConfirmDropshipDelivery::class => ConfirmDropshipDeliveryHandler::class,
         OpenNodeReception::class => OpenNodeReceptionHandler::class,
         ReceiveUnitAtNode::class => ReceiveUnitAtNodeHandler::class,
         ReconcileNodeReception::class => ReconcileNodeReceptionHandler::class,
         AssembleDailyRoute::class => AssembleDailyRouteHandler::class,
         ReportVehicleIncident::class => ReportVehicleIncidentHandler::class,
+        ReportDeliveryIssue::class => ReportDeliveryIssueHandler::class,
         GetDeliveryState::class => GetDeliveryStateHandler::class,
         GetNodeReception::class => GetNodeReceptionHandler::class,
         GetDriverRoute::class => GetDriverRouteHandler::class,
@@ -93,6 +110,22 @@ final class ExecutionServiceProvider extends ServiceProvider
         $this->app->bind(NodeReceptionRepository::class, EloquentNodeReceptionRepository::class);
         $this->app->bind(VehicleRouteRepository::class, EloquentVehicleRouteRepository::class);
         $this->app->bind(VehicleIncidentRepository::class, EloquentVehicleIncidentRepository::class);
+        $this->app->bind(DeliveryIssueRepository::class, EloquentDeliveryIssueRepository::class);
+
+        // Enriquecedores cross-context de la ruta del chofer (lectura directa, sin acoplar el dominio):
+        // teléfono/referencia/líneas desde shipments y la geometría de la ruta desde el plan (planning).
+        $this->app->bind(StopEnrichmentReader::class, static function ($app): StopEnrichmentReader {
+            return new DbStopEnrichmentReader($app->make('db')->connection());
+        });
+        $this->app->bind(RouteGeometryReader::class, static function ($app): RouteGeometryReader {
+            return new DbRouteGeometryReader($app->make('db')->connection());
+        });
+
+        // Lectura del fulfillment_mode del envío (desde shipments, read-only) para bifurcar la ejecución
+        // dropship vs. OWNED/FBD sin acoplar el dominio al contexto shipments.
+        $this->app->bind(ShipmentFulfillmentReader::class, static function ($app): ShipmentFulfillmentReader {
+            return new DbShipmentFulfillmentReader($app->make('db')->connection());
+        });
 
         // El handler de incidentes necesita los minutos de retraso (incidente MENOR) de la config, que
         // no se autoinyectan como primitivo: se arma acá leyéndolos del contexto.

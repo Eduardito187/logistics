@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
 use Logistics\Coverage\Domain\ValueObject\AdminLevel;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\GeoAreaRecord;
 use Logistics\Coverage\Presentation\Filament\Resource\GeoAreaResource\Pages;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de la jerarquía geográfica administrativa (Departamento > Provincia > Municipio > Ciudad).
@@ -35,6 +36,8 @@ use Logistics\Coverage\Presentation\Filament\Resource\GeoAreaResource\Pages;
  */
 final class GeoAreaResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = GeoAreaRecord::class;
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-map';

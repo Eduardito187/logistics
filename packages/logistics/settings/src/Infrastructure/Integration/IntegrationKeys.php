@@ -23,6 +23,9 @@ final class IntegrationKeys
     /** Almacenamiento S3-compatible de documentos y evidencias (discos de config/filesystems.php). */
     public const STORAGE = 'integrations.storage';
 
+    /** Push de la app de clientes por Firebase Cloud Messaging (contexto Notificaciones). */
+    public const FCM = 'integrations.fcm';
+
     /**
      * Nombres de los parámetros SECRETOS por clave: se cifran al guardar y se descifran al leer.
      *
@@ -31,5 +34,7 @@ final class IntegrationKeys
     public const SECRET_PARAMS = [
         self::SAP => ['password'],
         self::STORAGE => ['key', 'secret'],
+        // El JSON de la cuenta de servicio de Firebase es un secreto: se guarda cifrado.
+        self::FCM => ['credentials_json'],
     ];
 }

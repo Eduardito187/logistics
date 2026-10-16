@@ -33,6 +33,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource\Pages\Creat
 use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource\Pages\ListDocuments;
 use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource\Pages\ViewDocument;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Throwable;
 
 /**
@@ -47,6 +48,8 @@ use Throwable;
  */
 final class DocumentResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = FleetDocumentModel::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-document-text';

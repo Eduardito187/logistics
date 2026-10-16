@@ -30,5 +30,13 @@ final readonly class ReceiveShipment implements Command
         public ?string $customerDocumentId = null,
         public ?string $customerPhone = null,
         public ?string $customerEmail = null,
+        // Nodo destino del envío (UUID de un nodo de red): opcional; lo pobla el ingest/SAP cuando lo
+        // conoce. Mientras sea null, el listado por tienda no mostrará el envío (seguro por defecto).
+        public ?string $destinationNodeId = null,
+        // Dimensión de propiedad/fulfillment (ADR 017): por defecto 'owned' (retail, Dismac dueño), así
+        // toda llamada existente sigue igual. Para marketplace: 'fbd'/'dropship' + el seller en ownerPartyId.
+        public string $fulfillmentMode = 'owned',
+        public ?string $ownerPartyId = null,
+        public ?string $sellerSkuRef = null,
     ) {}
 }

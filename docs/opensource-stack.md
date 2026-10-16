@@ -15,8 +15,7 @@ decisiones formales están en el ADR 013 (mapas/geocoder/ruteo), el ADR 014 (pus
 | **Matriz / geometría de ruta** | Google Directions / Distance Matrix | **OSRM** self-host (`/table`, `/route`, `/trip`) | `OSRM_HOST` · ADR 009/013 |
 | **Optimización VRP/VRPTW** | Google Route Optimization | **VRP propio** (Clarke-Wright + 2-opt) + **VROOM** self-host opcional | `PLANNING_ROUTING_BACKEND`, `VROOM_URL` · ADR 009 |
 | **Cliente de mapa** | Google Maps JS | **Leaflet / MapLibre** + OSM | ADR 009/013 |
-| **Push navegador** | Web push vía FCM (Firebase) | **Web Push estándar con VAPID** (sin Firebase) | `WEBPUSH_VAPID_*` · ADR 014 |
-| **Push app interna** | FCM / Google Play Services | **ntfy + UnifiedPush** self-host | `NTFY_URL` · ADR 014 |
+| **Push de la app** | — | **Firebase Cloud Messaging (FCM)** — topic por envío, API HTTP v1 con service account (*excepción: es Google; se acepta por fiabilidad de entrega*) | `FCM_PROJECT_ID`, `FCM_CREDENTIALS` · ADR 014 |
 | **WhatsApp** | WhatsApp Business API (Meta/Twilio, de pago) | **Deshabilitado** (de pago) | ADR 015 |
 | **Mensajería de cliente** | — | **Telegram** (bot propio, gratis) | `TELEGRAM_BOT_TOKEN` · ADR 015 |
 | **SMS de respaldo** | Proveedor SaaS de pago | **Gateway open-source** (Kannel / Jasmin / gateway Android) con tope | `SMS_DRIVER`, `SMS_GATEWAY_URL` · ADR 015 |
@@ -32,7 +31,7 @@ decisiones formales están en el ADR 013 (mapas/geocoder/ruteo), el ADR 014 (pus
    contrato en la capa Infrastructure, seleccionable por entorno. Sin el servicio configurado, el
    driver cae a un **stub/null** (degradación, nunca caída).
 2. **Self-host primero.** Un solo extracto OSM de Bolivia alimenta tiles, geocoder y ruteo. Los
-   servicios (TileServer/Protomaps, Nominatim/Photon, OSRM/VROOM, ntfy, MinIO) corren como contenedores
+   servicios (TileServer/Protomaps, Nominatim/Photon, OSRM/VROOM, MinIO) corren como contenedores
    propios; ver `docs/routing-selfhost.md` (OSRM/VROOM), `docs/maps-geocoder-selfhost.md` (Nominatim +
    teselas) y `docs/deploy.md`.
 3. **Todo I/O externo por outbox.** Ninguna llamada a estos servicios es síncrona dentro de un request
@@ -52,7 +51,7 @@ El stack está **decidido y con los adaptadores detrás de contrato**; activarlo
 desplegar los servicios y poblar unas pocas variables de entorno:
 
 - Levantar y preprocesar los servicios OSM (OSRM/VROOM ya en compose; falta tiles y Nominatim/Photon).
-- Generar claves **VAPID** y levantar un servidor **ntfy** propio.
+- Crear el proyecto de **Firebase** y su **service account** para el push (`FCM_PROJECT_ID` / `FCM_CREDENTIALS`).
 - Levantar un **gateway SMS** libre y dar de alta el **bot de Telegram**.
 - Apuntar `FILESYSTEM_DISK` a **MinIO**/S3-compatible propio.
 

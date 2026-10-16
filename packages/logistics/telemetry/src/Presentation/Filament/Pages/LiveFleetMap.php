@@ -10,6 +10,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Telemetry\Application\Command\AcknowledgeAlert\AcknowledgeAlert;
 use Logistics\Telemetry\Application\Query\GetLiveFleetPositions\GetLiveFleetPositions;
 use Logistics\Telemetry\Application\Query\GetVehicleTrack\GetVehicleTrack;
@@ -37,6 +38,8 @@ use Logistics\Telemetry\Presentation\Filament\Support\VehiclePlates;
  */
 final class LiveFleetMap extends Page
 {
+    use OfficeOnly;
+
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map';
 
     protected string $view = 'logistics-telemetry::filament.pages.live-fleet-map';

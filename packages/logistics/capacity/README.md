@@ -39,6 +39,41 @@ planning.
   hay ni cupo ni regla (`source` = `bucket` | `rule` | `none`).
 - Consulta `ListBucketsByDate(date)` → lista de `CapacityView` de esa fecha.
 
+## Espejo de RECEPCIÓN (inbound) — contrato para el contexto `inbound`
+
+Aditivo (roadmap marketplace §5). El mismo motor de cupos administra ahora un segundo eje: los **cupos
+de andén** de los almacenes centrales que reciben de proveedores (ASN). El eje lo discrimina el
+`ScopeKind` del `BucketScope`:
+
+- **Despacho** (`ScopeKind::Dispatch`, histórico): municipio **o** zona **o** nodo (exactamente uno).
+- **Recepción** (`ScopeKind::Inbound`): un **almacén central** (`warehouseId`) y, opcional, un **andén**
+  concreto (`dockId`, null = capacidad de todo el almacén). Se construye con
+  `BucketScope::forReceivingDock(warehouseId, dockId?)`.
+
+Persistencia aditiva en `capacity_buckets`: `scope_kind` (default `'dispatch'`), `warehouse_id`, `dock_id`.
+La clave natural inbound la fuerza un índice único parcial `(warehouse_id, COALESCE(dock_id, nil), slot_date,
+time_slot, unit) WHERE scope_kind = 'inbound'`. Los cupos de despacho quedan intactos.
+
+**CONTRATO que usa `inbound`** (reserva/libera un cupo de recepción vía el `CommandBus`, reutilizando los
+comandos existentes; los campos de despacho van en null y el eje inbound se detecta por `warehouseId`):
+
+- Preparar el cupo del andén (una vez por almacén/andén/día/franja):
+  `DefineCapacityCommand(nodeId: null, zoneId: null, date, timeSlot, unit: 'appointments', total,
+  municipalityId: null, warehouseId: <almacén>, dockId: <andén|null>)`.
+- Agendar un ASN (consume una cita de andén):
+  `ConsumeCapacityCommand(nodeId: null, zoneId: null, date, timeSlot, unit: 'appointments', amount: 1,
+  municipalityId: null, warehouseId: <almacén>, dockId: <andén|null>)`.
+- Cancelar/reprogramar un ASN (libera la cita):
+  `ReleaseCapacityCommand(... mismos campos ..., amount: 1, warehouseId: <almacén>, dockId: <andén|null>)`.
+
+`unit` es libre, pero la unidad natural del andén es `CapacityUnit::Appointments` (`'appointments'`:
+citas/camiones por franja). Un cupo inbound **NO** aplica el calendario de bloqueos ni el horizonte de
+despacho (son del eje municipio): solo rige el tope de capacidad del andén; la recepción tiene su propio
+calendario.
+
+- Lectura: `GetReceivingDockCalendar(warehouseId, date)` → `list<ReceivingDockCapacityView>` (cupos de
+  andén del almacén en el día, ordenados por andén/franja/unidad). Lo consume el cockpit de inbound.
+
 ## API (tres puertas)
 
 - `app` / `channels` (solo lectura): `GET capacity/available`, `GET capacity/effective`,

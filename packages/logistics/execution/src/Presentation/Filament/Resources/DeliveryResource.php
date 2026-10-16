@@ -44,6 +44,7 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
@@ -64,6 +65,19 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  */
 final class DeliveryResource extends Resource
 {
+    use ResolvesUserRoles;
+
+    /**
+     * Entregas de última milla: las gestiona la oficina (admin/supervisor) y las ejecuta el chofer
+     * desde su ruta. Los demás roles no ven esta sección.
+     *
+     * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
+     */
+    public static function canAccess(): bool
+    {
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer');
+    }
+
     protected static ?string $model = DeliveryRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-truck';

@@ -29,6 +29,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\DepartureResource\Pages\C
 use Logistics\FleetOps\Presentation\Filament\Resources\DepartureResource\Pages\ListDepartures;
 use Logistics\FleetOps\Presentation\Filament\Resources\DepartureResource\Pages\ViewDeparture;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de salidas/despachos de la flota propia: qué vehículo salió, con qué carga y odómetro, y cuándo
@@ -43,6 +44,7 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class DepartureResource extends Resource
 {
+    use OfficeOnly;
     use ResolvesVehiclePlate;
 
     protected static ?string $model = DepartureRecord::class;

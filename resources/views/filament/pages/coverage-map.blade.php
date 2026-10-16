@@ -9,11 +9,12 @@
                     <div>
                         <x-dismac-select
                             property="zoneId"
+                            live
                             :label="__('Edit existing zone')"
                             :placeholder="'— ' . __('New zone') . ' —'"
                             :options="array_merge(
                                 [['value' => '', 'label' => '— ' . __('New zone') . ' —']],
-                                array_map(fn ($z) => ['value' => $z['id'], 'label' => $z['name']], $zones),
+                                array_map(fn ($z) => ['value' => $z['id'], 'label' => $z['name']], $zoneOptions),
                             )"
                         />
                         <div class="mt-2 flex gap-2">
@@ -30,6 +31,7 @@
                     <div>
                         <x-dismac-select
                             property="parentAreaId"
+                            live
                             :label="__('Municipality / City')"
                             placeholder="—"
                             :options="array_merge(
@@ -130,7 +132,31 @@
                 editLayer.eachLayer((l) => {
                     if (l.pm) { l.pm.enable({ allowSelfIntersection: false }); l.on('pm:edit', () => pushDrawn(l)); }
                 });
-                map.fitBounds(editLayer.getBounds().pad(0.2));
+                map.fitBounds(editLayer.getBounds().pad(0.2), { animate: true, duration: 0.8 });
+            } catch (e) {}
+        });
+
+        // Zoom animado al conjunto de zonas del municipio elegido (dropdown Municipio/Ciudad con `live`).
+        $wire.on('focus-area', (ev) => {
+            const geojsons = Array.isArray(ev) ? ev[0]?.geojsons : ev.geojsons;
+            if (!Array.isArray(geojsons) || !geojsons.length) return;
+            try {
+                const group = L.featureGroup();
+                geojsons.forEach((raw) => {
+                    try { L.geoJSON(JSON.parse(raw)).addTo(group); } catch (x) {}
+                });
+                if (group.getLayers().length) {
+                    map.fitBounds(group.getBounds().pad(0.2), { animate: true, duration: 0.8 });
+                }
+            } catch (e) {}
+        });
+
+        // Municipio vacío (o sin zonas con geometría): re-encuadra todas las zonas del mapa.
+        $wire.on('focus-reset', () => {
+            try {
+                if (zonesLayer.getLayers().length) {
+                    map.fitBounds(zonesLayer.getBounds().pad(0.2), { animate: true, duration: 0.8 });
+                }
             } catch (e) {}
         });
 

@@ -51,6 +51,17 @@ final class DispatchPendingTransfersHandler implements CommandHandler
 
     private function dispatchOne(StockTransfer $transfer): void
     {
+        // Regla dura (ADR 017, roadmap §6.4): el stock de un seller (consignación) NUNCA se postea a SAP
+        // como material propio de Dismac. Se trata como movimiento logístico: queda Sent sin tocar SAP.
+        if (!$transfer->kind()->postsOwnershipToSap()) {
+            $transfer->markSent();
+            $this->lastSent++;
+            $this->transfers->save($transfer);
+            $this->recordEvents->record($transfer->releaseEvents(), 'sap.stock_transfer');
+
+            return;
+        }
+
         try {
             $this->sap->pushStockTransfer($transfer);
             $transfer->markSent();

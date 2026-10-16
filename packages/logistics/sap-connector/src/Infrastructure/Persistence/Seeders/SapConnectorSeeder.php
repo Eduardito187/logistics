@@ -7,9 +7,11 @@ namespace Logistics\SapConnector\Infrastructure\Persistence\Seeders;
 use Illuminate\Database\Seeder;
 use Logistics\SapConnector\Domain\ValueObject\MaterialMappingId;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
+use Logistics\SapConnector\Domain\ValueObject\TransferKind;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\MaterialMappingRecord;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\StockTransferRecord;
+use Logistics\Sellers\Infrastructure\Persistence\Eloquent\Model\SellerRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 /**
@@ -39,6 +41,7 @@ final class SapConnectorSeeder extends Seeder
     {
         $this->seedMappings();
         $this->seedTransfers();
+        $this->seedConsignmentDemo();
     }
 
     private function seedMappings(): void
@@ -91,6 +94,49 @@ final class SapConnectorSeeder extends Seeder
                 ],
             );
         }
+    }
+
+    /**
+     * Demo de la dimensión de propiedad (ADR 017): un mapeo de consignación de un seller y un traspaso de
+     * consignación, para poder filtrar por propiedad en el admin. Es aditivo e idempotente, y solo corre
+     * si hay al menos un seller sembrado (si no, el conector sigue siendo 100% retail).
+     */
+    private function seedConsignmentDemo(): void
+    {
+        /** @var string|null $sellerId */
+        $sellerId = SellerRecord::query()->orderBy('legal_name')->value('id');
+        if (!is_string($sellerId) || $sellerId === '') {
+            return;
+        }
+
+        // Mapeo de la coordenada SAP del material de un seller (consignación), con su propio sku de seller.
+        MaterialMappingRecord::query()->updateOrCreate(
+            ['sku' => 'SELLER-AUDIO-9001'],
+            [
+                'id' => MaterialMappingId::generate()->toString(),
+                'sap_material' => '900009001',
+                'center' => 'C1001',
+                'warehouse' => 'W30',
+                'seller_id' => $sellerId,
+            ],
+        );
+
+        // Traspaso de consignación: nunca se postea a SAP como material propio de Dismac.
+        StockTransferRecord::query()->updateOrCreate(
+            ['event_id' => $this->deterministicUuid('sap-demo-consignment-1')],
+            [
+                'id' => StockTransferId::generate()->toString(),
+                'shipment_ref' => 'SHP-CONSIGN-9001',
+                'material' => '900009001',
+                'center' => 'C1001',
+                'warehouse' => 'W30',
+                'quantity' => 4,
+                'status' => TransferStatus::Pending->value,
+                'last_error' => null,
+                'transfer_kind' => TransferKind::Consignment->value,
+                'owner_party_id' => $sellerId,
+            ],
+        );
     }
 
     /**

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "64d9731396059a46a4a3b84e2d6edf21",
+    "content-hash": "4940500f69728c052f749e73128d6f9c",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -2330,78 +2330,6 @@
             "time": "2026-08-24T17:13:02+00:00"
         },
         {
-            "name": "inertiajs/inertia-laravel",
-            "version": "v3.5.1",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/inertiajs/inertia-laravel.git",
-                "reference": "35a27ea62b8a53ec40269c4c675db5d9d0e02426"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/inertiajs/inertia-laravel/zipball/35a27ea62b8a53ec40269c4c675db5d9d0e02426",
-                "reference": "35a27ea62b8a53ec40269c4c675db5d9d0e02426",
-                "shasum": ""
-            },
-            "require": {
-                "ext-json": "*",
-                "laravel/framework": "^11.35|^12.0|^13.0",
-                "php": "^8.2.0",
-                "symfony/console": "^7.0|^8.0"
-            },
-            "conflict": {
-                "laravel/boost": "<2.5.0"
-            },
-            "require-dev": {
-                "guzzlehttp/guzzle": "^7.15.2|^8.0",
-                "larastan/larastan": "^3.0",
-                "laravel/pint": "^1.16",
-                "mockery/mockery": "^1.3.3",
-                "orchestra/testbench": "^9.2|^10.0|^11.0",
-                "phpunit/phpunit": "^11.5|^12.0"
-            },
-            "suggest": {
-                "ext-pcntl": "Recommended when running the Inertia SSR server via the `inertia:start-ssr` artisan command."
-            },
-            "type": "library",
-            "extra": {
-                "laravel": {
-                    "providers": [
-                        "Inertia\\ServiceProvider"
-                    ]
-                }
-            },
-            "autoload": {
-                "files": [
-                    "./helpers.php"
-                ],
-                "psr-4": {
-                    "Inertia\\": "src"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Jonathan Reinink",
-                    "email": "jonathan@reinink.ca",
-                    "homepage": "https://reinink.ca"
-                }
-            ],
-            "description": "The Laravel adapter for Inertia.js.",
-            "keywords": [
-                "inertia",
-                "laravel"
-            ],
-            "support": {
-                "issues": "https://github.com/inertiajs/inertia-laravel/issues",
-                "source": "https://github.com/inertiajs/inertia-laravel/tree/v3.5.1"
-            },
-            "time": "2026-10-01T10:38:10+00:00"
-        },
-        {
             "name": "kirschbaum-development/eloquent-power-joins",
             "version": "4.3.4",
             "source": {
@@ -4059,6 +3987,80 @@
             }
         },
         {
+            "name": "logistics/inbound",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/logistics/inbound",
+                "reference": "391fa5bb04cd5d924e6e6b5af9c58060159266d0"
+            },
+            "require": {
+                "logistics/capacity": "^0.1",
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Logistics\\Inbound\\Infrastructure\\Providers\\InboundServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Logistics\\Inbound\\": "src/",
+                    "Logistics\\Inbound\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Inbound\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Inbound — ASN/cita, cupos de andén y recepción (goods receipt + QC) de sellers; plataforma logística Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "logistics/inventory",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/logistics/inventory",
+                "reference": "7360f70b0130d6dc161fc5924f8a83e3c7c23429"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Logistics\\Inventory\\Infrastructure\\Providers\\InventoryServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Logistics\\Inventory\\": "src/",
+                    "Logistics\\Inventory\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Inventario con atribución de dueño (consignación vs. propio) — plataforma logística Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "logistics/labels",
             "version": "0.1.0",
             "dist": {
@@ -4280,6 +4282,43 @@
             }
         },
         {
+            "name": "logistics/returns",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/logistics/returns",
+                "reference": "c1db7c7e49417d719e167224e1d1dd818e0f7e96"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Logistics\\Returns\\Infrastructure\\Providers\\ReturnsServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Logistics\\Returns\\": "src/",
+                    "Logistics\\Returns\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Returns\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Returns — logística inversa (devoluciones de cliente y RTV) con disposición y restock; plataforma logística Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "logistics/sap-connector",
             "version": "0.1.0",
             "dist": {
@@ -4309,6 +4348,77 @@
                 "proprietary"
             ],
             "description": "Conector SAP (capa anti-corrupción) — plataforma logística Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "logistics/sellerportal",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/logistics/sellerportal",
+                "reference": "cef6799036f70ad119d188104092f1442546b33f"
+            },
+            "require": {
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Logistics\\SellerPortal\\Infrastructure\\Providers\\SellerPortalServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Logistics\\SellerPortal\\": "src/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Portal/API de autoservicio del seller (solo lectura) — plataforma logística Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "logistics/sellers",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/logistics/sellers",
+                "reference": "0be9f9303f1866f4a099f9f69e348259eef625c1"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Logistics\\Sellers\\Infrastructure\\Providers\\SellersServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Logistics\\Sellers\\": "src/",
+                    "Logistics\\Sellers\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Sellers\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Sellers / proveedores de marketplace — plataforma logística Dismac",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -4345,6 +4455,43 @@
                 "proprietary"
             ],
             "description": "Reglas configurables y versionadas (coberturas, cupos, cortes, tarifas) — plataforma logística Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "logistics/settlement",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/logistics/settlement",
+                "reference": "9522941514bc3b152913a5d414e0f051125accdf"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Logistics\\Settlement\\Infrastructure\\Providers\\SettlementServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Logistics\\Settlement\\": "src/",
+                    "Logistics\\Settlement\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Settlement\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Liquidación de sellers de marketplace — plataforma logística Dismac",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -9440,76 +9587,6 @@
                 }
             ],
             "time": "2026-08-30T20:10:52+00:00"
-        },
-        {
-            "name": "tightenco/ziggy",
-            "version": "v2.6.5",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/tighten/ziggy.git",
-                "reference": "d250c158c75bb10d33e6ebc9b67d65872593ae1a"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/tighten/ziggy/zipball/d250c158c75bb10d33e6ebc9b67d65872593ae1a",
-                "reference": "d250c158c75bb10d33e6ebc9b67d65872593ae1a",
-                "shasum": ""
-            },
-            "require": {
-                "ext-json": "*",
-                "laravel/framework": ">=9.0",
-                "php": ">=8.1"
-            },
-            "require-dev": {
-                "laravel/folio": "^1.1",
-                "orchestra/testbench": "^8.0 || ^9.0 || ^10.0 || ^11.0",
-                "pestphp/pest": "^2.0 || ^3.0 || ^4.0",
-                "pestphp/pest-plugin-laravel": "^2.0 || ^3.0 || ^4.0"
-            },
-            "type": "library",
-            "extra": {
-                "laravel": {
-                    "providers": [
-                        "Tighten\\Ziggy\\ZiggyServiceProvider"
-                    ]
-                }
-            },
-            "autoload": {
-                "psr-4": {
-                    "Tighten\\Ziggy\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Daniel Coulbourne",
-                    "email": "daniel@tighten.co"
-                },
-                {
-                    "name": "Jake Bathman",
-                    "email": "jake@tighten.co"
-                },
-                {
-                    "name": "Jacob Baker-Kretzmar",
-                    "email": "jacob@tighten.co"
-                }
-            ],
-            "description": "Use your Laravel named routes in JavaScript.",
-            "homepage": "https://github.com/tighten/ziggy",
-            "keywords": [
-                "Ziggy",
-                "javascript",
-                "laravel",
-                "routes"
-            ],
-            "support": {
-                "issues": "https://github.com/tighten/ziggy/issues",
-                "source": "https://github.com/tighten/ziggy/tree/v2.6.5"
-            },
-            "time": "2026-10-10T22:16:55+00:00"
         },
         {
             "name": "tijsverkoyen/css-to-inline-styles",

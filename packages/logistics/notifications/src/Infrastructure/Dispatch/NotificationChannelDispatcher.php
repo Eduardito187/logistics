@@ -19,7 +19,7 @@ use Logistics\Shared\Application\Command\CommandBus;
  * real por el canal actual de la cascada cuando el relay procesa un `notifications.notification_queued`.
  *
  * Al consumir el evento: reconstruye la notificación, renderiza el contenido del canal actual y lo
- * envía por el ChannelSender (push ntfy, web push, Telegram, email o SMS). Si el envío sale bien, despacha el
+ * envía por el ChannelSender (push FCM, Telegram, email o SMS). Si el envío sale bien, despacha el
  * comando MarkNotificationSent para cerrar la cascada. Si falla, deja propagar la excepción: el relay
  * aplica backoff; el salto de canal lo dispara AdvanceCascade al vencer la ventana sin apertura.
  *

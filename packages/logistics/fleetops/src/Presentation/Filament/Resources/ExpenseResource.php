@@ -22,6 +22,7 @@ use Logistics\FleetOps\Presentation\Filament\Concerns\ResolvesVehiclePlate;
 use Logistics\FleetOps\Presentation\Filament\Resources\ExpenseResource\Pages\CreateExpense;
 use Logistics\FleetOps\Presentation\Filament\Resources\ExpenseResource\Pages\ListExpenses;
 use Logistics\FleetOps\Presentation\Filament\Resources\ExpenseResource\Pages\ViewExpense;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de gastos de flota (que no son combustible ni mantenimiento): peajes, multas, llantas, etc.
@@ -34,6 +35,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\ExpenseResource\Pages\Vie
  */
 final class ExpenseResource extends Resource
 {
+    use OfficeOnly;
     use ResolvesVehiclePlate;
 
     protected static ?string $model = ExpenseRecord::class;

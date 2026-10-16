@@ -27,6 +27,7 @@ use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\SettlementRecor
 use Logistics\Carriers\Presentation\Filament\Resources\SettlementResource\Pages\ListSettlements;
 use Logistics\Carriers\Presentation\Filament\Resources\SettlementResource\Pages\ViewSettlement;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de liquidaciones de transportistas (P2-CAR-04).
@@ -41,6 +42,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class SettlementResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = SettlementRecord::class;
 
     /**

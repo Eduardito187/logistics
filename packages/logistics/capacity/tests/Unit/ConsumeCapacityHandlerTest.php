@@ -166,6 +166,11 @@ function inMemoryBuckets(CapacityBucket $bucket): CapacityRepository
         {
             return [$this->bucket];
         }
+
+        public function inboundByWarehouseAndDate(string $warehouseId, SlotDate $date): array
+        {
+            return [];
+        }
     };
 }
 
@@ -302,6 +307,11 @@ it('fails when no bucket exists for the natural key', function (): void {
         }
 
         public function byDate(SlotDate $date): array
+        {
+            return [];
+        }
+
+        public function inboundByWarehouseAndDate(string $warehouseId, SlotDate $date): array
         {
             return [];
         }

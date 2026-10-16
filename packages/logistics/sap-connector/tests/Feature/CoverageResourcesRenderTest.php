@@ -36,6 +36,8 @@ it('renderiza el listado de traspasos de stock con datos en todos los estados', 
     StockTransferRecord::factory()->sent()->create();
     StockTransferRecord::factory()->acknowledged()->create();
     StockTransferRecord::factory()->failed()->create();
+    // Consignación de seller: ejercita la columna/filtro de propiedad y la resolución de dueño legible.
+    StockTransferRecord::factory()->pending()->consignment()->create();
 
     Livewire::test(ListStockTransfers::class)->assertOk();
 });
@@ -54,6 +56,8 @@ it('renderiza la vista de un traspaso fallido con su último error', function ()
 
 it('renderiza el listado de mapeos de material', function (): void {
     MaterialMappingRecord::factory()->count(3)->create();
+    // Mapeo de consignación de seller: ejercita la columna/filtro de propiedad y el dueño legible.
+    MaterialMappingRecord::factory()->forSeller()->create();
 
     Livewire::test(ListMaterialMappings::class)->assertOk();
 });

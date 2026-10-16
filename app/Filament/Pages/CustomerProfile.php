@@ -6,6 +6,7 @@ namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
 use Illuminate\Support\Collection;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 /**
@@ -20,6 +21,10 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  */
 final class CustomerProfile extends Page
 {
+    // Ficha de cliente: alcance de oficina (admin/supervisor), igual que el resto del frente Commerce.
+    // No se lista en el menú (shouldRegisterNavigation = false), pero igual se gatea el acceso directo.
+    use OfficeOnly;
+
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-identification';
 
     protected string $view = 'filament.pages.customer-profile';

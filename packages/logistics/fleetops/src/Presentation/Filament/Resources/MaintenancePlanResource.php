@@ -23,6 +23,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\MaintenancePlanResource\P
 use Logistics\FleetOps\Presentation\Filament\Resources\MaintenancePlanResource\Pages\ListMaintenancePlans;
 use Logistics\FleetOps\Presentation\Filament\Support\VehiclePlates;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de planes de mantenimiento preventivo (por km y/o por días) de la flota propia.
@@ -35,6 +36,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class MaintenancePlanResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = MaintenancePlanRecord::class;
 
     protected static ?string $recordTitleAttribute = 'service_kind';

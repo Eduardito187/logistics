@@ -85,7 +85,7 @@ it('avanza la cascada de una notificación encolada', function (): void {
 it('marca una notificación como enviada por un canal', function (): void {
     $id = coverageQueueNotification();
 
-    app(CommandBus::class)->dispatch(new MarkNotificationSent($id, Channel::PushNtfy->value));
+    app(CommandBus::class)->dispatch(new MarkNotificationSent($id, Channel::Fcm->value));
 
     $view = app(QueryBus::class)->ask(new GetNotification($id));
     expect($view->status)->toBe('SENT');

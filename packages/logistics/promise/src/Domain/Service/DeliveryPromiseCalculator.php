@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Promise\Domain\Service;
 
 use DateTimeImmutable;
+use Logistics\Promise\Domain\ValueObject\LeadTime;
 use Logistics\Promise\Domain\ValueObject\PromiseOption;
 use Logistics\Promise\Domain\ValueObject\SlotCapacity;
 use Logistics\Promise\Domain\ValueObject\ZoneServiceProfile;
@@ -31,6 +32,10 @@ final class DeliveryPromiseCalculator
      * `$now + leadMinutes`. El horizonte se recorre desde `$from` (inclusive) por `$horizonDays` días.
      * Sin corredor o sin días de servicio, no hay nada que prometer.
      *
+     * `$additionalLeadTime` es el tiempo EXTRA del marketplace (seller): se SUMA al tiempo base de la zona
+     * antes de calcular la fecha más temprana, empujando la promesa más adelante. Para retail (OWNED) es
+     * `null`/`LeadTime::none()` y el resultado es idéntico al histórico (el camino retail no cambia).
+     *
      * @return list<DateTimeImmutable> días a medianoche, en orden ascendente
      */
     public function serviceableDates(
@@ -39,12 +44,14 @@ final class DeliveryPromiseCalculator
         DateTimeImmutable $from,
         DateTimeImmutable $now,
         int $horizonDays,
+        ?LeadTime $additionalLeadTime = null,
     ): array {
         if (!$corridorServed || !$profile->hasServiceDays() || $horizonDays < 1) {
             return [];
         }
 
-        $earliest = $now->modify("+{$profile->leadMinutes} minutes")->setTime(0, 0, 0);
+        $leadMinutes = $profile->leadMinutes + ($additionalLeadTime !== null ? $additionalLeadTime->minutes : 0);
+        $earliest = $now->modify("+{$leadMinutes} minutes")->setTime(0, 0, 0);
         $start = $from->setTime(0, 0, 0);
 
         $dates = [];

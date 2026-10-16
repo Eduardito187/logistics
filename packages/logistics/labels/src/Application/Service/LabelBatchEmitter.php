@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Logistics\Labels\Application\Service;
 
+use DateTimeImmutable;
 use Logistics\Labels\Application\Dto\OrderLineInput;
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
 use Logistics\Labels\Domain\Contract\LabelRenderer;
 use Logistics\Labels\Domain\Contract\LabelSigner;
+use Logistics\Labels\Domain\Contract\LabelSymbologyProvider;
 use Logistics\Labels\Domain\Event\LabelsEmitted;
 use Logistics\Labels\Domain\Model\EmittedLabel;
 use Logistics\Labels\Domain\Service\LabelBatchFactory;
@@ -27,6 +29,7 @@ final readonly class LabelBatchEmitter
         private LabelBatchFactory $factory,
         private LabelSigner $signer,
         private LabelRenderer $renderer,
+        private LabelSymbologyProvider $symbology,
         private EmittedLabelRepository $repository,
         private RecordDomainEvents $recordEvents,
     ) {}
@@ -48,6 +51,10 @@ final readonly class LabelBatchEmitter
     ): array {
         $keyId = $this->signer->activeKeyId();
 
+        // La simbología (QR, Code128 o ambos) es una regla versionada; se resuelve a la fecha de emisión
+        // del lote y se aplica a todas sus etiquetas, para que un mismo pedido imprima homogéneo.
+        $symbology = $this->symbology->current((new DateTimeImmutable)->setTimestamp($issuedAt));
+
         $payloads = $this->factory->build(
             keyId: $keyId,
             orderNumber: $orderNumber,
@@ -67,7 +74,7 @@ final readonly class LabelBatchEmitter
         $labelIds = [];
         foreach ($payloads as $payload) {
             $signed = $this->signer->sign($payload);
-            $zpl = $this->renderer->render($signed);
+            $zpl = $this->renderer->render($signed, $symbology);
 
             $this->repository->add(EmittedLabel::of($orderNumber, $signed, $zpl, $issuedAt));
             $labelIds[] = $payload->id;

@@ -9,6 +9,7 @@ use Logistics\SapConnector\Domain\ValueObject\SapCenter;
 use Logistics\SapConnector\Domain\ValueObject\SapMaterial;
 use Logistics\SapConnector\Domain\ValueObject\SapWarehouse;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
+use Logistics\SapConnector\Domain\ValueObject\TransferKind;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 
 /**
@@ -32,6 +33,8 @@ final class StockTransferMapper
             'quantity' => $transfer->quantity(),
             'status' => $transfer->status()->value,
             'last_error' => $transfer->lastError(),
+            'transfer_kind' => $transfer->kind()->value,
+            'owner_party_id' => $transfer->ownerPartyId(),
         ];
     }
 
@@ -47,6 +50,8 @@ final class StockTransferMapper
             $record->quantity,
             TransferStatus::from($record->status),
             $record->last_error,
+            TransferKind::from($record->transfer_kind),
+            $record->owner_party_id,
         );
     }
 }

@@ -1,0 +1,26 @@
+{
+    "name": "logistics/returns",
+    "description": "Returns — logística inversa (devoluciones de cliente y RTV) con disposición y restock; plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\Returns\\": "src/",
+            "Logistics\\Returns\\Database\\Factories\\": "database/factories/",
+            "Logistics\\Returns\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\Returns\\Infrastructure\\Providers\\ReturnsServiceProvider"
+            ]
+        }
+    }
+}

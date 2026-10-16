@@ -19,5 +19,9 @@ final readonly class EnqueueStockTransfer implements Command
         public string $shipmentRef,
         public string $sku,
         public int $quantity,
+        // Dimensión de propiedad (ADR 017), opcional y aditiva: por defecto 'owned' (stock propio de
+        // Dismac), que es el flujo retail de hoy. 'consignment' exige `ownerPartyId` (seller dueño).
+        public string $transferKind = 'owned',
+        public ?string $ownerPartyId = null,
     ) {}
 }

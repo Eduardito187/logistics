@@ -53,6 +53,11 @@ function inMemoryCapacityRepository(?CapacityBucket $preloaded): CapacityReposit
         {
             return $this->preloaded === null ? [] : [$this->preloaded];
         }
+
+        public function inboundByWarehouseAndDate(string $warehouseId, SlotDate $date): array
+        {
+            return [];
+        }
     };
 }
 

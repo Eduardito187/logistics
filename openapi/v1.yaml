@@ -28,6 +28,14 @@ tags:
   description: Capacity definition and consumption
 - name: Carriers
   description: Third-party carriers, tariffs and rating
+- name: Sellers
+  description: Marketplace sellers (onboarding, settlement terms, SKU catalog)
+- name: Inbound
+  description: Marketplace inbound (ASN announcement, dock scheduling, goods receipt, labeling)
+- name: Inventory
+  description: Stock on-hand, available-to-promise and lots with ownership attribution
+- name: Settlement
+  description: Seller settlement (drafting, confirmation and payment)
 - name: coverage
   description: Geographic coverage and serviceability
 - name: execution
@@ -56,6 +64,10 @@ tags:
 - name: settings
 - name: Access
   description: Identity, dynamic RBAC and integration tokens
+- name: Returns
+  description: Reverse logistics (customer returns and return-to-vendor, reception and disposition)
+- name: SellerPortal
+  description: Seller self-service portal (read-only, scoped by integration token)
 paths:
   /health:
     get:
@@ -820,6 +832,65 @@ paths:
           $ref: '#/components/responses/ExecutionValidationError'
       security:
       - appBearer: []
+  /app/deliveries/{shipmentId}/issues:
+    post:
+      tags:
+      - execution
+      operationId: reportDeliveryIssue
+      summary: Report an issue during an in-progress delivery (does not close it)
+      description: |
+        The driver reports an obstacle during a delivery that is still IN PROGRESS. It is distinct from
+        a failed delivery (which closes the delivery) and from a vehicle incident (breakdown/accident).
+        The delivery is NOT closed: the platform records the issue as an immutable fact and notifies the
+        control tower / customer through the outbox. Idempotent by `Idempotency-Key`.
+      parameters:
+      - $ref: '#/components/parameters/ExecutionShipmentId'
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+          maxLength: 128
+        description: Offline-first idempotency key; resending the same report does not duplicate the fact.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliveryIssueRequest'
+      responses:
+        '202':
+          description: Issue accepted and recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                    - shipment_id
+                    - type
+                    - status
+                    properties:
+                      shipment_id:
+                        type: string
+                        format: uuid
+                      type:
+                        $ref: '#/components/schemas/DeliveryIssueType'
+                      status:
+                        type: string
+                        enum: [REPORTED]
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionError'
+      security:
+      - appBearer: []
   /app/deliveries/{shipmentId}:
     get:
       tags:
@@ -1052,6 +1123,43 @@ paths:
                         type: boolean
         '422':
           $ref: '#/components/responses/FleetValidationError'
+      security:
+      - appBearer: []
+  /app/fleet/my-crew:
+    get:
+      tags: [Fleet]
+      summary: Get the authenticated driver's crew assignment for a date
+      description: >-
+        Returns the vehicle (truck) and crew (driver + helpers) the admin assembled for the
+        AUTHENTICATED driver on a date. The driver does not pick the vehicle; it is assigned. The
+        account→driver link is `users.driver_id` (a by-value reference to fleet_drivers.id). Responds
+        404 (RFC 7807) when the authenticated account is not linked to a driver, or has no crew
+        assembled for the date.
+      operationId: fleetGetMyCrew
+      parameters:
+      - name: date
+        in: query
+        required: false
+        description: Assembly date to query (Y-m-d). Defaults to today in America/La_Paz.
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: The authenticated driver's crew assignment for the date
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MyCrew'
+        '404':
+          description: The account is not a driver, or has no assignment for the date
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/fleet/pre-trip-checklists:
@@ -3357,6 +3465,15 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/OrderSource'
+      - name: destination_node_id
+        in: query
+        required: false
+        description: >-
+          Filtra por nodo destino. Para el rol Tienda se fuerza server-side a su nodo asignado e ignora
+          este parámetro, de modo que una tienda solo ve sus propios envíos.
+        schema:
+          type: string
+          format: uuid
       - $ref: '#/components/parameters/PageNumber'
       - $ref: '#/components/parameters/PerPage'
       - $ref: '#/components/parameters/Cursor'
@@ -6612,6 +6729,42 @@ paths:
                       $ref: '#/components/schemas/DeviceListItem'
       security:
       - appBearer: []
+  /app/devices/current/push-token:
+    put:
+      tags:
+      - auth
+      operationId: updateDevicePushToken
+      summary: Update the push token (FCM FID) of the current device (gate /app)
+      description: >-
+        Sets the FCM push token (Firebase Installation ID) of the device bound to the current Sanctum
+        token. A null token opts the device out of push. Idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - push_token
+              properties:
+                push_token:
+                  type: string
+                  nullable: true
+                  maxLength: 512
+                  description: Firebase Installation ID, or null to opt out of push.
+      responses:
+        '204':
+          description: Push token updated.
+        '404':
+          description: The current token is not bound to a device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '422':
+          description: Validation error.
+      security:
+      - appBearer: []
   /app/devices/{uuid}:
     delete:
       tags:
@@ -6826,6 +6979,837 @@ paths:
           $ref: '#/components/responses/PromiseValidationError'
       security:
       - channelApiKey: []
+  /integrations/sellers:
+    post:
+      tags:
+      - Sellers
+      summary: Register a seller
+      operationId: registerSeller
+      description: |
+        Da de alta un seller (proveedor de marketplace). El id lo genera el dominio; la respuesta es un acuse 202.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterSellerRequest'
+      responses:
+        '202':
+          description: Seller registration accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+    get:
+      tags:
+      - Sellers
+      summary: List sellers
+      operationId: listSellers
+      parameters:
+      - name: status
+        in: query
+        required: false
+        description: Optional filter by seller status.
+        schema:
+          type: string
+          enum:
+          - onboarding
+          - active
+          - suspended
+      responses:
+        '200':
+          description: The list of sellers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SellerCollection'
+      security:
+      - serviceCredential: []
+  /integrations/sellers/{sellerId}:
+    get:
+      tags:
+      - Sellers
+      summary: Get a seller
+      operationId: getSeller
+      parameters:
+      - name: sellerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The seller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SellerEnvelope'
+        '404':
+          description: Seller not found
+      security:
+      - serviceCredential: []
+  /integrations/sellers/{sellerId}/settlement-terms:
+    put:
+      tags:
+      - Sellers
+      summary: Set a seller's settlement terms
+      operationId: setSellerSettlementTerms
+      parameters:
+      - name: sellerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetSettlementTermsRequest'
+      responses:
+        '202':
+          description: Settlement terms accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/sellers/{sellerId}/skus:
+    post:
+      tags:
+      - Sellers
+      summary: Upsert a seller SKU
+      operationId: upsertSellerSku
+      parameters:
+      - name: sellerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertSellerSkuRequest'
+      responses:
+        '202':
+          description: Seller SKU accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/inbound/asn:
+    post:
+      tags:
+      - Inbound
+      summary: Announce an ASN
+      operationId: announceAsn
+      description: |
+        El seller anuncia un ASN (Advance Shipment Notice) declarando qué va a enviar. El id lo genera el
+        dominio; la respuesta es un acuse 202.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnounceAsnRequest'
+      responses:
+        '202':
+          description: ASN announcement accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+    get:
+      tags:
+      - Inbound
+      summary: List ASNs
+      operationId: listAsns
+      parameters:
+      - name: seller_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: warehouse_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/AsnStatus'
+      - name: appointment_date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: The list of ASNs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsnCollection'
+      security:
+      - serviceCredential: []
+  /integrations/inbound/asn/arrival:
+    post:
+      tags:
+      - Inbound
+      summary: Record the arrival of a seller's truck
+      operationId: recordAsnArrival
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordArrivalRequest'
+      responses:
+        '202':
+          description: Arrival accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/inbound/asn/receipt:
+    post:
+      tags:
+      - Inbound
+      summary: Record a goods receipt with per-line QC
+      operationId: recordGoodsReceipt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordGoodsReceiptRequest'
+      responses:
+        '202':
+          description: Goods receipt accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/inbound/asn/label:
+    post:
+      tags:
+      - Inbound
+      summary: Label the accepted units of an ASN receipt
+      operationId: labelReceivedUnits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LabelReceivedUnitsRequest'
+      responses:
+        '202':
+          description: Labeling accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/inbound/asn/{asnId}:
+    get:
+      tags:
+      - Inbound
+      summary: Get an ASN
+      operationId: getAsn
+      parameters:
+      - name: asnId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The ASN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsnEnvelope'
+        '404':
+          description: ASN not found
+      security:
+      - serviceCredential: []
+  /integrations/inbound/asn/{asnId}/schedule:
+    put:
+      tags:
+      - Inbound
+      summary: Schedule an ASN appointment
+      operationId: scheduleAsn
+      description: |
+        Agenda la ventana de cita del ASN y reserva el cupo de andén vía capacity. 202 de acuse.
+      parameters:
+      - name: asnId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleAsnRequest'
+      responses:
+        '202':
+          description: Appointment accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/inbound/receiving-calendar:
+    get:
+      tags:
+      - Inbound
+      summary: Receiving dock calendar
+      operationId: getReceivingCalendar
+      description: |
+        Devuelve el calendario de andén de recepción: por día y franja, cuántas citas hay agendadas.
+      parameters:
+      - name: from
+        in: query
+        required: false
+        description: Start date (YYYY-MM-DD). Defaults to today.
+        schema:
+          type: string
+          format: date
+      - name: days
+        in: query
+        required: false
+        description: Number of days to return. Defaults to 7.
+        schema:
+          type: integer
+          minimum: 1
+          default: 7
+      - name: warehouse_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The receiving dock calendar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceivingCalendarCollection'
+      security:
+      - serviceCredential: []
+  /integrations/inventory/on-hand:
+    get:
+      tags:
+      - Inventory
+      summary: Stock on-hand by owner
+      operationId: getStockOnHand
+      description: |
+        Stock on-hand de un almacén/sku agregado por dueño (propio de Dismac vs. consignación de cada seller).
+      parameters:
+      - name: warehouse_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: sku
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: owner_party_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: fulfillment_mode
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/FulfillmentMode'
+      responses:
+        '200':
+          description: Stock on-hand rows aggregated by owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockOnHandCollection'
+      security:
+      - serviceCredential: []
+  /integrations/inventory/available-to-promise:
+    get:
+      tags:
+      - Inventory
+      summary: Available-to-Promise for a warehouse/sku
+      operationId: getAvailableToPromise
+      description: |
+        Stock disponible, no reservado, que el motor de promesa puede comprometer para un almacén/sku,
+        opcionalmente por dueño.
+      parameters:
+      - name: warehouse_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: sku
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: owner_party_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Available-to-Promise for the requested key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailableToPromiseEnvelope'
+      security:
+      - serviceCredential: []
+  /integrations/inventory/lots:
+    get:
+      tags:
+      - Inventory
+      summary: List stock lots
+      operationId: listLots
+      parameters:
+      - name: warehouse_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: sku
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: owner_party_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: fulfillment_mode
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/FulfillmentMode'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 100
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      responses:
+        '200':
+          description: The list of lots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LotCollection'
+      security:
+      - serviceCredential: []
+  /integrations/settlements:
+    get:
+      tags:
+      - Settlement
+      summary: List seller settlements
+      operationId: listSellerSettlements
+      parameters:
+      - name: seller_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/SellerSettlementStatus'
+      - name: period_from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: period_to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: The list of seller settlements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SellerSettlementCollection'
+      security:
+      - serviceCredential: []
+  /integrations/settlements/draft:
+    post:
+      tags:
+      - Settlement
+      summary: Draft a seller settlement
+      operationId: draftSellerSettlement
+      description: |
+        Arma el borrador de una liquidación de seller agregando sus despachos del periodo. Los términos
+        (comisión/fee) llegan en el cuerpo porque settlement no depende del contexto sellers. 202 de acuse.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftSellerSettlementRequest'
+      responses:
+        '202':
+          description: Settlement draft accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/settlements/{settlementId}:
+    get:
+      tags:
+      - Settlement
+      summary: Get a seller settlement
+      operationId: getSellerSettlement
+      parameters:
+      - name: settlementId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The seller settlement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SellerSettlementEnvelope'
+        '404':
+          description: Settlement not found
+      security:
+      - serviceCredential: []
+  /integrations/settlements/{settlementId}/confirm:
+    post:
+      tags:
+      - Settlement
+      summary: Confirm a draft seller settlement
+      operationId: confirmSellerSettlement
+      parameters:
+      - name: settlementId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Confirmation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/settlements/{settlementId}/pay:
+    post:
+      tags:
+      - Settlement
+      summary: Mark a seller settlement as paid
+      operationId: paySellerSettlement
+      parameters:
+      - name: settlementId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SellerSettlementMarkPaidRequest'
+      responses:
+        '202':
+          description: Payment accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/returns:
+    post:
+      tags:
+      - Returns
+      summary: Initiate a return
+      operationId: initiateReturn
+      description: |
+        Inicia una devolución (logística inversa). El id lo genera el dominio; la respuesta es un acuse 202
+        (la escritura confirma vía outbox).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateReturnRequest'
+      responses:
+        '202':
+          description: Return initiation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+    get:
+      tags:
+      - Returns
+      summary: List returns
+      operationId: listReturns
+      parameters:
+      - name: seller_id
+        in: query
+        required: false
+        description: Optional filter by owning seller.
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        description: Optional filter by return status.
+        schema:
+          $ref: '#/components/schemas/ReturnOrderStatus'
+      responses:
+        '200':
+          description: The list of returns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnOrderCollection'
+      security:
+      - serviceCredential: []
+  /integrations/returns/{returnId}:
+    get:
+      tags:
+      - Returns
+      summary: Get a return
+      operationId: getReturn
+      parameters:
+      - name: returnId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The return
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnOrderEnvelope'
+        '404':
+          description: Return not found
+      security:
+      - serviceCredential: []
+  /integrations/returns/{returnId}/receive:
+    post:
+      tags:
+      - Returns
+      summary: Receive a return
+      operationId: receiveReturn
+      description: |
+        Registra la recepción física de una devolución. Respuesta de acuse 202.
+      parameters:
+      - name: returnId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Return reception accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/returns/{returnId}/disposition:
+    post:
+      tags:
+      - Returns
+      summary: Disposition a return
+      operationId: dispositionReturn
+      description: |
+        Decide la disposición de una devolución recibida (restock / return_to_seller / scrap). Respuesta de
+        acuse 202.
+      parameters:
+      - name: returnId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispositionReturnRequest'
+      responses:
+        '202':
+          description: Return disposition accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/seller-portal/asns:
+    get:
+      tags:
+      - SellerPortal
+      summary: List the authenticated seller's ASNs
+      operationId: sellerPortalListAsns
+      description: |
+        ASNs (inbound) del seller autenticado. El sellerId se resuelve del token de integración, así que un
+        seller solo puede leer lo suyo.
+      responses:
+        '200':
+          description: The seller's ASNs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SellerPortalAsnCollection'
+        '401':
+          description: Token ausente, inválido o expirado
+        '403':
+          description: El token no concede sellerportal.read o no identifica a un seller
+      security:
+      - integrationToken: []
+  /integrations/seller-portal/stock:
+    get:
+      tags:
+      - SellerPortal
+      summary: Get the authenticated seller's on-hand stock
+      operationId: sellerPortalGetStock
+      description: |
+        Stock on-hand (inventory) del seller autenticado. El sellerId se resuelve del token de integración.
+      responses:
+        '200':
+          description: The seller's on-hand stock lots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SellerPortalStockCollection'
+        '401':
+          description: Token ausente, inválido o expirado
+        '403':
+          description: El token no concede sellerportal.read o no identifica a un seller
+      security:
+      - integrationToken: []
+  /integrations/seller-portal/settlements:
+    get:
+      tags:
+      - SellerPortal
+      summary: List the authenticated seller's settlements
+      operationId: sellerPortalListSettlements
+      description: |
+        Liquidaciones (settlement) del seller autenticado. El sellerId se resuelve del token de integración.
+      responses:
+        '200':
+          description: The seller's settlements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SellerPortalSettlementCollection'
+        '401':
+          description: Token ausente, inválido o expirado
+        '403':
+          description: El token no concede sellerportal.read o no identifica a un seller
+      security:
+      - integrationToken: []
 components:
   securitySchemes:
     appBearer:
@@ -6852,6 +7836,684 @@ components:
       description: Token de integración de la plataforma (prefix.secret) enviado como Bearer y validado por
         el middleware access.token. Convive con serviceCredential en la puerta /integrations/*.
   schemas:
+    Seller:
+      type: object
+      required:
+      - id
+      - legal_name
+      - tax_id
+      - status
+      - contact
+      properties:
+        id:
+          type: string
+          format: uuid
+        legal_name:
+          type: string
+        tax_id:
+          type: string
+        status:
+          type: string
+          enum:
+          - onboarding
+          - active
+          - suspended
+        contact:
+          $ref: '#/components/schemas/SellerContact'
+        settlement_terms:
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/SellerSettlementTerms'
+    SellerContact:
+      type: object
+      required:
+      - contact_name
+      - email
+      properties:
+        contact_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+    SellerSettlementTerms:
+      type: object
+      required:
+      - commission_basis_points
+      - fixed_fee
+      - payment_cycle
+      properties:
+        commission_basis_points:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          description: Commission in basis points (1500 = 15%).
+        fixed_fee:
+          type: object
+          required:
+          - cents
+          - currency
+          properties:
+            cents:
+              type: integer
+              minimum: 0
+            currency:
+              type: string
+        payment_cycle:
+          type: string
+          enum:
+          - weekly
+          - biweekly
+          - monthly
+    SellerEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Seller'
+    SellerCollection:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Seller'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    RegisterSellerRequest:
+      type: object
+      required:
+      - legal_name
+      - tax_id
+      - contact_name
+      - email
+      properties:
+        legal_name:
+          type: string
+          maxLength: 255
+        tax_id:
+          type: string
+          maxLength: 64
+        contact_name:
+          type: string
+          maxLength: 255
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          maxLength: 32
+          nullable: true
+    SetSettlementTermsRequest:
+      type: object
+      required:
+      - commission_basis_points
+      - fixed_fee_cents
+      - payment_cycle
+      properties:
+        commission_basis_points:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        fixed_fee_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          default: BOB
+        payment_cycle:
+          type: string
+          enum:
+          - weekly
+          - biweekly
+          - monthly
+    UpsertSellerSkuRequest:
+      type: object
+      required:
+      - sku
+      properties:
+        sku:
+          type: string
+          maxLength: 128
+        sap_material:
+          type: string
+          maxLength: 128
+          nullable: true
+    FulfillmentMode:
+      type: string
+      description: 'Titularidad/modo de fulfillment de un stock: propio de Dismac o del seller.'
+      enum:
+      - owned
+      - fbd
+      - dropship
+    AsnStatus:
+      type: string
+      description: Estado del ciclo de vida de un ASN / cita de recepción.
+      enum:
+      - announced
+      - scheduled
+      - arrived
+      - receiving
+      - received
+      - closed
+      - cancelled
+    AsnLine:
+      type: object
+      required:
+      - sku
+      - expected_quantity
+      properties:
+        sku:
+          type: string
+        expected_quantity:
+          type: integer
+          minimum: 1
+    AsnAppointment:
+      type: object
+      required:
+      - date
+      - start_time
+      - end_time
+      - time_slot
+      properties:
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          description: Window start time (HH:MM).
+        end_time:
+          type: string
+          description: Window end time (HH:MM).
+        time_slot:
+          type: string
+          description: Time slot as HH:MM-HH:MM.
+    Asn:
+      type: object
+      required:
+      - id
+      - seller_id
+      - warehouse_id
+      - status
+      - lines
+      - appointment
+      properties:
+        id:
+          type: string
+          format: uuid
+        seller_id:
+          type: string
+          format: uuid
+        warehouse_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/AsnStatus'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/AsnLine'
+        appointment:
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/AsnAppointment'
+    AsnEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Asn'
+    AsnCollection:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Asn'
+    ReceivingDockSlot:
+      type: object
+      required:
+      - time_slot
+      - appointments
+      properties:
+        time_slot:
+          type: string
+          description: Time slot as HH:MM-HH:MM.
+        appointments:
+          type: integer
+          minimum: 0
+    ReceivingDockDay:
+      type: object
+      required:
+      - date
+      - appointments
+      - slots
+      properties:
+        date:
+          type: string
+          format: date
+        appointments:
+          type: integer
+          minimum: 0
+          description: Total appointments scheduled for the day.
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceivingDockSlot'
+    ReceivingCalendarCollection:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceivingDockDay'
+    AnnounceAsnRequest:
+      type: object
+      required:
+      - seller_id
+      - warehouse_id
+      - lines
+      properties:
+        seller_id:
+          type: string
+          format: uuid
+        warehouse_id:
+          type: string
+          format: uuid
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+            - sku
+            - expected_quantity
+            properties:
+              sku:
+                type: string
+                maxLength: 128
+              expected_quantity:
+                type: integer
+                minimum: 1
+    ScheduleAsnRequest:
+      type: object
+      required:
+      - appointment_date
+      - start_time
+      - end_time
+      properties:
+        appointment_date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          description: Window start time (HH:MM).
+        end_time:
+          type: string
+          description: Window end time (HH:MM).
+    RecordArrivalRequest:
+      type: object
+      required:
+      - asn_id
+      properties:
+        asn_id:
+          type: string
+          format: uuid
+        carrier_reference:
+          type: string
+          maxLength: 128
+          nullable: true
+    RecordGoodsReceiptRequest:
+      type: object
+      required:
+      - asn_id
+      - lines
+      properties:
+        asn_id:
+          type: string
+          format: uuid
+        seller_sku_ref:
+          type: string
+          maxLength: 128
+          nullable: true
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+            - sku
+            - accepted
+            - rejected
+            - damaged
+            - qc_outcome
+            properties:
+              sku:
+                type: string
+                maxLength: 128
+              accepted:
+                type: integer
+                minimum: 0
+              rejected:
+                type: integer
+                minimum: 0
+              damaged:
+                type: integer
+                minimum: 0
+              qc_outcome:
+                type: string
+                enum:
+                - accepted
+                - rejected
+                - partial_damage
+    LabelReceivedUnitsRequest:
+      type: object
+      required:
+      - asn_id
+      properties:
+        asn_id:
+          type: string
+          format: uuid
+    StockOnHand:
+      type: object
+      required:
+      - fulfillment_mode
+      - owner_party_id
+      - available
+      - reserved
+      - on_hand
+      - lots
+      properties:
+        fulfillment_mode:
+          $ref: '#/components/schemas/FulfillmentMode'
+        owner_party_id:
+          type: string
+          nullable: true
+        available:
+          type: integer
+          minimum: 0
+        reserved:
+          type: integer
+          minimum: 0
+        on_hand:
+          type: integer
+          minimum: 0
+        lots:
+          type: integer
+          minimum: 0
+          description: Number of lots aggregated into this row.
+    StockOnHandCollection:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockOnHand'
+    AvailableToPromise:
+      type: object
+      required:
+      - warehouse_id
+      - sku
+      - owner_party_id
+      - available_to_promise
+      properties:
+        warehouse_id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        owner_party_id:
+          type: string
+          nullable: true
+        available_to_promise:
+          type: integer
+          minimum: 0
+    AvailableToPromiseEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AvailableToPromise'
+    Money:
+      type: object
+      required:
+      - cents
+      - currency
+      properties:
+        cents:
+          type: integer
+        currency:
+          type: string
+    Lot:
+      type: object
+      required:
+      - id
+      - warehouse_id
+      - sku
+      - fulfillment_mode
+      - owner_party_id
+      - seller_sku_ref
+      - available_quantity
+      - reserved_quantity
+      - on_hand
+      - unit_cost
+      - received_at
+      - goods_receipt_ref
+      properties:
+        id:
+          type: string
+          format: uuid
+        warehouse_id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        fulfillment_mode:
+          $ref: '#/components/schemas/FulfillmentMode'
+        owner_party_id:
+          type: string
+          nullable: true
+        seller_sku_ref:
+          type: string
+          nullable: true
+        available_quantity:
+          type: integer
+          minimum: 0
+        reserved_quantity:
+          type: integer
+          minimum: 0
+        on_hand:
+          type: integer
+          minimum: 0
+        unit_cost:
+          $ref: '#/components/schemas/Money'
+        received_at:
+          type: string
+          format: date-time
+        goods_receipt_ref:
+          type: string
+          nullable: true
+    LotCollection:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lot'
+    SellerSettlementStatus:
+      type: string
+      description: Estado del ciclo de vida de una liquidación de seller.
+      enum:
+      - draft
+      - confirmed
+      - paid
+    SettlementLine:
+      type: object
+      required:
+      - shipment_id
+      - dispatch_reference
+      - base_amount_cents
+      - currency
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        dispatch_reference:
+          type: string
+        base_amount_cents:
+          type: integer
+        currency:
+          type: string
+    SettlementFees:
+      type: object
+      required:
+      - commission_basis_points
+      - commission_cents
+      - fixed_fee_cents
+      - storage_fee_cents
+      - fulfillment_fee_cents
+      - last_mile_fee_cents
+      - total_cents
+      - currency
+      properties:
+        commission_basis_points:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        commission_cents:
+          type: integer
+        fixed_fee_cents:
+          type: integer
+        storage_fee_cents:
+          type: integer
+        fulfillment_fee_cents:
+          type: integer
+        last_mile_fee_cents:
+          type: integer
+        total_cents:
+          type: integer
+        currency:
+          type: string
+    SellerSettlement:
+      type: object
+      required:
+      - id
+      - seller_id
+      - seller_name
+      - period_from
+      - period_to
+      - lines
+      - gross_cents
+      - fees
+      - net_cents
+      - currency
+      - status
+      - payment_reference
+      properties:
+        id:
+          type: string
+          format: uuid
+        seller_id:
+          type: string
+          format: uuid
+        seller_name:
+          type: string
+          nullable: true
+          description: Readable seller name resolved in the query handler; null if the seller no longer exists.
+        period_from:
+          type: string
+          format: date
+        period_to:
+          type: string
+          format: date
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/SettlementLine'
+        gross_cents:
+          type: integer
+        fees:
+          $ref: '#/components/schemas/SettlementFees'
+        net_cents:
+          type: integer
+        currency:
+          type: string
+        status:
+          $ref: '#/components/schemas/SellerSettlementStatus'
+        payment_reference:
+          type: string
+          nullable: true
+    SellerSettlementEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/SellerSettlement'
+    SellerSettlementCollection:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SellerSettlement'
+    DraftSellerSettlementRequest:
+      type: object
+      required:
+      - seller_id
+      - period_from
+      - period_to
+      - commission_basis_points
+      - fixed_fee_cents
+      properties:
+        seller_id:
+          type: string
+          format: uuid
+        period_from:
+          type: string
+          format: date
+        period_to:
+          type: string
+          format: date
+        commission_basis_points:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        fixed_fee_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          default: BOB
+    SellerSettlementMarkPaidRequest:
+      type: object
+      required:
+      - payment_reference
+      properties:
+        payment_reference:
+          type: string
+          maxLength: 255
     PaginationMeta:
       type: object
       description: >-
@@ -6941,6 +8603,11 @@ components:
           type: array
           items:
             type: string
+        node:
+          description: Store node the account belongs to, or null for roles without a store.
+          oneOf:
+          - $ref: '#/components/schemas/Node'
+          - type: 'null'
     AppDevicePayload:
       type: object
       required:
@@ -7908,6 +9575,7 @@ components:
       - shipment_id
       - sequence
       - status
+      - items
       properties:
         id:
           type: string
@@ -7923,9 +9591,36 @@ components:
         customer_name:
           type: string
           nullable: true
+        customer_phone:
+          type: string
+          nullable: true
+          description: Customer phone resolved from the shipment (cross-context). Null if unknown.
         address:
           type: string
           nullable: true
+        address_reference:
+          type: string
+          nullable: true
+          description: Address reference/landmark (gate, floor) resolved from the shipment. Null if unknown.
+        items:
+          type: array
+          description: Order lines dropped at this stop, resolved from the shipment. Always present (empty when unknown).
+          items:
+            type: object
+            required:
+            - sku
+            - name
+            - quantity
+            properties:
+              sku:
+                type: string
+              name:
+                type: string
+              quantity:
+                type: integer
+              image_url:
+                type: string
+                nullable: true
         eta_at:
           type: string
           format: date-time
@@ -7982,6 +9677,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DriverRouteStop'
+        route_geometry:
+          oneOf:
+          - $ref: '#/components/schemas/RouteGeometry'
+          - type: 'null'
+          description: >-
+            Street-level route geometry from the published plan (planning), matched by vehicle+date.
+            Null until the routing run computes it or if no plan matches.
     ReserveDeliverySlotRequest:
       type: object
       required:
@@ -8522,12 +10224,11 @@ components:
     Channel:
       type: string
       enum:
-      - PUSH_NTFY
-      - WEB_PUSH
+      - FCM
       - TELEGRAM
       - EMAIL
       - SMS
-      description: Delivery channel; the cascade walks them in cost order (all open-source transports).
+      description: Delivery channel; the cascade walks them in cost order (FCM push, then Telegram, Email, SMS).
     CollectionMeta:
       type: object
       properties:
@@ -9288,6 +10989,81 @@ components:
             cache:
               type: boolean
               description: Valkey reachable
+    MyCrew:
+      type: object
+      description: >-
+        The crew (driver + helpers) and vehicle assigned to the authenticated driver for a date.
+        Read-only projection returned by fleetGetMyCrew.
+      required: [crew_id, date, vehicle, driver, helpers, shift]
+      properties:
+        crew_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        vehicle:
+          type: object
+          description: >-
+            Assigned vehicle. `id` is always present; the other fields are null when the vehicle
+            master record cannot be resolved.
+          required: [id, plate, capacity_kg, capacity_m3, status]
+          properties:
+            id:
+              type: string
+              format: uuid
+            plate:
+              type: string
+              nullable: true
+            capacity_kg:
+              type: integer
+              nullable: true
+            capacity_m3:
+              type: number
+              format: float
+              nullable: true
+            status:
+              type: string
+              nullable: true
+        driver:
+          type: object
+          description: The driver leading the crew. `name`/`license_number` are null when the driver record is missing.
+          required: [id, name, license_number]
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+              nullable: true
+            license_number:
+              type: string
+              nullable: true
+        helpers:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+                nullable: true
+        shift:
+          type: object
+          nullable: true
+          description: Work-shift hours, or null when the crew was assembled without fixed hours.
+          required: [starts_at, ends_at]
+          properties:
+            starts_at:
+              type: string
+              format: date-time
+            ends_at:
+              type: string
+              format: date-time
+
     Helper:
       type: object
       properties:
@@ -9916,7 +11692,7 @@ components:
           $ref: '#/components/schemas/Channel'
         fcm_topic:
           type: string
-          description: FCM topic of the shipment (primary and web-push channel).
+          description: Firebase Cloud Messaging topic of the shipment (shipment_<id>); the app subscribes to it.
         channels:
           type: array
           description: Policy channels, in cascade order.
@@ -11273,6 +13049,12 @@ components:
           $ref: '#/components/schemas/AddressConfidenceLevel'
         status:
           $ref: '#/components/schemas/ShipmentStatus'
+        destination_node_id:
+          description: UUID del nodo destino del envío (network_nodes). Null mientras el ingest/SAP no lo pueble.
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
         lines:
           type: array
           items:
@@ -11294,6 +13076,59 @@ components:
           type: string
         quantity:
           type: integer
+        image_url:
+          type: string
+          nullable: true
+          description: Product image URL. Null if unknown.
+        price:
+          type: number
+          format: double
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+    DeliveryIssueType:
+      type: string
+      enum:
+      - DELAY
+      - ACCESS
+      - CUSTOMER_REQUEST
+      - ADDRESS_UNCLEAR
+      - OTHER
+      description: Type of in-progress delivery issue reported by the driver.
+    DeliveryIssueRequest:
+      type: object
+      required:
+      - type
+      - occurred_at
+      properties:
+        type:
+          $ref: '#/components/schemas/DeliveryIssueType'
+        note:
+          type: string
+          nullable: true
+          maxLength: 1000
+        lat:
+          type: number
+          format: float
+          nullable: true
+        lng:
+          type: number
+          format: float
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the issue happened in the field (sealed by the app, even offline).
+        photo_path:
+          type: string
+          nullable: true
+          maxLength: 2048
+          description: Optional evidence photo path (uploaded via the delivery photos endpoint).
+        idempotency_key:
+          type: string
+          maxLength: 128
+          description: Fallback idempotency key when the Idempotency-Key header is not sent.
     ShipmentStatus:
       type: string
       enum:
@@ -12092,6 +13927,318 @@ components:
           type: array
           items:
             type: integer
+    ReturnOrderStatus:
+      type: string
+      description: Estado del ciclo de vida de una devolución.
+      enum:
+      - initiated
+      - received
+      - dispositioned
+      - closed
+    ReturnOrderKind:
+      type: string
+      description: Tipo de devolución (de cliente o al proveedor).
+      enum:
+      - customer_return
+      - return_to_vendor
+    ReturnDisposition:
+      type: string
+      description: Disposición de una devolución recibida.
+      enum:
+      - restock
+      - return_to_seller
+      - scrap
+    ReturnFulfillmentMode:
+      type: string
+      description: Modo de fulfillment del inventario asociado a la devolución.
+      enum:
+      - owned
+      - fbd
+      - dropship
+    ReturnLine:
+      type: object
+      required:
+      - sku
+      - quantity
+      - reason
+      properties:
+        sku:
+          type: string
+          maxLength: 128
+        quantity:
+          type: integer
+          minimum: 1
+        reason:
+          type: string
+          maxLength: 255
+    ReturnOrder:
+      type: object
+      required:
+      - id
+      - original_reference
+      - seller_id
+      - warehouse_id
+      - fulfillment_mode
+      - kind
+      - disposition
+      - status
+      - lines
+      properties:
+        id:
+          type: string
+          format: uuid
+        original_reference:
+          type: string
+          maxLength: 128
+        seller_id:
+          type: string
+          format: uuid
+          nullable: true
+        warehouse_id:
+          type: string
+          format: uuid
+        fulfillment_mode:
+          $ref: '#/components/schemas/ReturnFulfillmentMode'
+        kind:
+          $ref: '#/components/schemas/ReturnOrderKind'
+        disposition:
+          allOf:
+          - $ref: '#/components/schemas/ReturnDisposition'
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ReturnOrderStatus'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReturnLine'
+    ReturnOrderEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/ReturnOrder'
+    ReturnOrderCollection:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReturnOrder'
+    InitiateReturnRequest:
+      type: object
+      required:
+      - original_reference
+      - warehouse_id
+      - kind
+      - lines
+      properties:
+        original_reference:
+          type: string
+          maxLength: 128
+        warehouse_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/ReturnOrderKind'
+        owner_party_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Seller dueño del inventario; nulo para inventario propio.
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ReturnLine'
+    DispositionReturnRequest:
+      type: object
+      required:
+      - disposition
+      properties:
+        disposition:
+          $ref: '#/components/schemas/ReturnDisposition'
+    SellerPortalAsn:
+      type: object
+      required:
+      - id
+      - seller_id
+      - warehouse_id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        seller_id:
+          type: string
+          format: uuid
+        warehouse_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - announced
+          - scheduled
+          - arrived
+          - receiving
+          - received
+          - closed
+          - cancelled
+        appointment_date:
+          type: string
+          format: date
+          nullable: true
+        appointment_start:
+          type: string
+          nullable: true
+          example: "08:00"
+        appointment_end:
+          type: string
+          nullable: true
+          example: "10:00"
+    SellerPortalStockLot:
+      type: object
+      required:
+      - id
+      - owner_party_id
+      - warehouse_id
+      - sku
+      - fulfillment_mode
+      - available_quantity
+      - reserved_quantity
+      - unit_cost_cents
+      - currency
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_party_id:
+          type: string
+          format: uuid
+        warehouse_id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        fulfillment_mode:
+          type: string
+          enum:
+          - owned
+          - fbd
+          - dropship
+        seller_sku_ref:
+          type: string
+          nullable: true
+        available_quantity:
+          type: integer
+        reserved_quantity:
+          type: integer
+        unit_cost_cents:
+          type: integer
+        currency:
+          type: string
+          example: BOB
+        received_at:
+          type: string
+          format: date-time
+          nullable: true
+        goods_receipt_ref:
+          type: string
+          nullable: true
+    SellerPortalSettlement:
+      type: object
+      required:
+      - id
+      - seller_id
+      - period_from
+      - period_to
+      - gross_cents
+      - currency
+      - net_cents
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        seller_id:
+          type: string
+          format: uuid
+        period_from:
+          type: string
+          format: date
+        period_to:
+          type: string
+          format: date
+        gross_cents:
+          type: integer
+        currency:
+          type: string
+          example: BOB
+        commission_basis_points:
+          type: integer
+        commission_cents:
+          type: integer
+        fixed_fee_cents:
+          type: integer
+        storage_fee_cents:
+          type: integer
+        fulfillment_fee_cents:
+          type: integer
+        last_mile_fee_cents:
+          type: integer
+        net_cents:
+          type: integer
+        status:
+          type: string
+          enum:
+          - draft
+          - confirmed
+          - paid
+        payment_reference:
+          type: string
+          nullable: true
+    SellerPortalAsnCollection:
+      type: object
+      required:
+      - seller_id
+      - data
+      properties:
+        seller_id:
+          type: string
+          format: uuid
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SellerPortalAsn'
+    SellerPortalStockCollection:
+      type: object
+      required:
+      - seller_id
+      - data
+      properties:
+        seller_id:
+          type: string
+          format: uuid
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SellerPortalStockLot'
+    SellerPortalSettlementCollection:
+      type: object
+      required:
+      - seller_id
+      - data
+      properties:
+        seller_id:
+          type: string
+          format: uuid
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SellerPortalSettlement'
   parameters:
     PageNumber:
       name: page

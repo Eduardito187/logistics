@@ -119,6 +119,9 @@ services:
     osrm:
         image: osrm/osrm-backend:latest
         container_name: dismac_lg_osrm
+        # OPT-IN: requiere el mapa .osrm preprocesado (datos pesados). Sin él reinicia en bucle. La app
+        # degrada a ruteo por cercanía/haversine, así que NO arranca por defecto: `docker compose --profile geo up`.
+        profiles: ["geo"]
         restart: unless-stopped
         # Algoritmo MLD (partition + customize): permite actualizar tiempos sin recontraer todo el
         # grafo. `--max-table-size` sube el tope de la matriz /table al volumen diario esperado.
@@ -137,8 +140,12 @@ services:
     # cambiar de backend no exige levantar servicios a mano. Resuelve apoyándose en el OSRM propio.
     # vroom-express expone la API HTTP en :3000; planning lo alcanza vía VROOM_URL=http://vroom:3000.
     vroom:
-        image: vroomvrp/vroom-docker:latest
+        # vroom-docker NO publica el tag `latest` (da "not found"); se pinnea a una release versionada.
+        image: vroomvrp/vroom-docker:v1.13.0
         container_name: dismac_lg_vroom
+        # OPT-IN (perfil geo): el optimizador VRP depende de osrm; sin osrm no sirve. La app cae al
+        # optimizador builtin. Solo arranca con `docker compose --profile geo up`.
+        profiles: ["geo"]
         restart: unless-stopped
         environment:
             # Deja que vroom-express lea el config montado en lugar de regenerarlo en cada arranque.
@@ -165,6 +172,9 @@ services:
     nominatim:
         image: mediagis/nominatim:4.4
         container_name: dismac_lg_nominatim
+        # OPT-IN (perfil geo): requiere importar un extracto OSM (varios GB, bolivia-latest.osm.pbf). Sin él
+        # hace FATAL y reinicia en bucle. La app cae al NullGeocoder. `docker compose --profile geo up`.
+        profiles: ["geo"]
         restart: unless-stopped
         environment:
             # Extracto OSM a importar (montado abajo). Geofabrik publica `bolivia-latest.osm.pbf`.
@@ -198,6 +208,9 @@ services:
     tileserver:
         image: maptiler/tileserver-gl:latest
         container_name: dismac_lg_tileserver
+        # OPT-IN (perfil geo): necesita un .mbtiles real; sin datos intenta el demo y falla. El mapa del
+        # frontend cae a las teselas públicas de OSM (config/maps.php). `docker compose --profile geo up`.
+        profiles: ["geo"]
         restart: unless-stopped
         command: --config /data/config.json --port 8080
         ports:
@@ -270,47 +283,6 @@ services:
             - node
 
     # ============================================================
-    # AÑADIDO — frente notificaciones (2026-10): servidor ntfy self-host.
-    # ------------------------------------------------------------
-    # Push de la app de clientes (UnifiedPush) y, opcionalmente, Web Push (VAPID) del
-    # contexto `notifications`. Es 100% open-source y gratis; reemplaza a Firebase/FCM.
-    # La plataforma publica con un simple HTTP POST a http://ntfy:80/shipment_<id>.
-    #
-    # NOTA: este bloque agrega SOLO el servicio `ntfy` (otra oleada también edita este
-    # compose). Usa un bind-mount para la caché (no toca el bloque `volumes:`) y la red
-    # `dismac_lg` ya existente. Por defecto, anónimo (dev): publicar/suscribir sin auth.
-    #
-    # Web Push (VAPID) — opcional, para la página de tracking web. ntfy lo soporta nativo
-    # pero exige las CUATRO variables juntas (si falta una, el server no arranca), así que
-    # queda COMENTADO hasta generar las claves:
-    #   docker compose exec ntfy ntfy webpush keys   # imprime VAPID_PUBLIC_KEY/PRIVATE_KEY
-    # y luego descomentar las líneas NTFY_WEB_PUSH_* de abajo (con las claves en .env).
-    # --------------------------------------------------------------
-    ntfy:
-        image: binwiederhier/ntfy:latest
-        container_name: dismac_lg_ntfy
-        restart: unless-stopped
-        command: serve
-        environment:
-            TZ: America/La_Paz
-            NTFY_BASE_URL: ${NTFY_URL:-http://ntfy:80}
-            NTFY_LISTEN_HTTP: ":80"
-            NTFY_BEHIND_PROXY: "true"
-            NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
-            NTFY_ATTACHMENT_CACHE_DIR: /var/cache/ntfy/attachments
-            # --- Web Push (VAPID): descomentar las cuatro juntas tras generar las claves ---
-            # NTFY_WEB_PUSH_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
-            # NTFY_WEB_PUSH_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
-            # NTFY_WEB_PUSH_EMAIL_ADDRESS: ${VAPID_SUBJECT:-mailto:no-reply@dismac.test}
-            # NTFY_WEB_PUSH_FILE: /var/cache/ntfy/webpush.db
-        volumes:
-            - ./.docker/ntfy/cache:/var/cache/ntfy
-        ports:
-            - "${DOCKER_NTFY_PORT:-8120}:80"
-        networks:
-            - dismac_lg
-
-    # ============================================================
     # AÑADIDO — frente almacenamiento de objetos (ROADMAP B2): MinIO self-host.
     # ------------------------------------------------------------
     # MinIO es S3-compatible y 100% open-source: permite probar LOCAL el flujo S3 real
@@ -319,8 +291,8 @@ services:
     # real por env (ver docs/deploy.md §5). Los discos de config/filesystems.php apuntan acá
     # con AWS_ENDPOINT=http://minio:9000 + AWS_USE_PATH_STYLE_ENDPOINT=true (ver .env.example).
     #
-    # NOTA: este bloque agrega SOLO los servicios `minio` y `createbuckets` (otra oleada
-    # también edita este compose). Usa su propio volumen `minio_data` y la red `dismac_lg`
+    # NOTA: este bloque agrega SOLO el servicio `minio` (otra oleada también edita este
+    # compose). Usa su propio volumen `minio_data` y la red `dismac_lg`
     # ya existente; no toca otros servicios. Credenciales de DESARROLLO (no usar en prod).
     #
     # Puertos del host: API S3 en 9010 y consola web en 9011 (propios, para correr en
@@ -328,51 +300,28 @@ services:
     # (usuario/clave: minioadmin/minioadmin).
     # --------------------------------------------------------------
     minio:
-        image: minio/minio:latest
+        # MinIO cerró sus imágenes públicas en 2025 (Docker Hub minio/* borrado, quay.io/minio privado →
+        # "pull access denied" sin login). Se usa la imagen de Bitnami en su namespace LEGACY, que sigue
+        # siendo de acceso público y sin login. El bucket por defecto se crea solo con MINIO_DEFAULT_BUCKETS,
+        # así que ya NO hace falta el contenedor `createbuckets` con el cliente `mc`.
+        # El disco S3 es OPT-IN: en dev FILESYSTEM_DISK=local, así que la app no necesita a MinIO para
+        # levantar; nada depende de este servicio (si fallara, no bloquea el resto del `up`).
+        image: bitnamilegacy/minio:2025.7.23-debian-12-r5
         container_name: dismac_lg_minio
         restart: unless-stopped
-        command: server /data --console-address ":9001"
         environment:
             MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-minioadmin}
             MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+            # Crea el bucket por defecto al arrancar (idempotente). Para servir `collages` públicamente con
+            # S3 en dev, fijar la policy del prefijo a mano (`mc anonymous set download .../collages`).
+            MINIO_DEFAULT_BUCKETS: ${AWS_BUCKET:-logistics}
             # Región que anuncia el servidor (debe coincidir con AWS_DEFAULT_REGION).
             MINIO_REGION_NAME: ${AWS_DEFAULT_REGION:-us-east-1}
         ports:
             - "${DOCKER_MINIO_API_PORT:-9010}:9000"
             - "${DOCKER_MINIO_CONSOLE_PORT:-9011}:9001"
         volumes:
-            - minio_data:/data
-        healthcheck:
-            test: ["CMD-SHELL", "mc ready local || exit 1"]
-            interval: 10s
-            timeout: 5s
-            retries: 10
-            start_period: 15s
-        networks:
-            - dismac_lg
-
-    # One-shot: crea el bucket por defecto (AWS_BUCKET) y deja público el prefijo `collages`
-    # (el collage de la notificación al cliente es la única evidencia pública — ADR 006 /
-    # config/filesystems.php). Corre, deja los buckets listos y termina (restart: "no").
-    # Usa el cliente oficial `mc`; es idempotente (`mb --ignore-existing`).
-    createbuckets:
-        image: minio/mc:latest
-        container_name: dismac_lg_createbuckets
-        restart: "no"
-        depends_on:
-            minio:
-                condition: service_healthy
-        environment:
-            MINIO_BUCKET: ${AWS_BUCKET:-logistics}
-            MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-minioadmin}
-            MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
-        entrypoint: >
-            /bin/sh -c "
-            mc alias set local http://minio:9000 \"$${MINIO_ROOT_USER}\" \"$${MINIO_ROOT_PASSWORD}\";
-            mc mb --ignore-existing \"local/$${MINIO_BUCKET}\";
-            mc anonymous set download \"local/$${MINIO_BUCKET}/collages\";
-            echo \"MinIO listo: bucket '$${MINIO_BUCKET}' (prefijo 'collages' público).\";
-            "
+            - minio_data:/bitnami/minio/data
         networks:
             - dismac_lg
 

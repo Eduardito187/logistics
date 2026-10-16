@@ -6,6 +6,7 @@ namespace Logistics\SapConnector\Infrastructure\Persistence\Eloquent\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
+use Logistics\SapConnector\Domain\ValueObject\TransferKind;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\StockTransferRecord;
 
@@ -31,7 +32,21 @@ final class StockTransferRecordFactory extends Factory
             'quantity' => $this->faker->numberBetween(1, 20),
             'status' => TransferStatus::Pending->value,
             'last_error' => null,
+            // Por defecto, stock propio de Dismac (retail), sin seller dueño: el comportamiento histórico.
+            'transfer_kind' => TransferKind::Owned->value,
+            'owner_party_id' => null,
         ];
+    }
+
+    /**
+     * Traspasos de consignación (stock de un seller): nunca se postean a SAP como material propio.
+     */
+    public function consignment(?string $ownerPartyId = null): self
+    {
+        return $this->state(fn (): array => [
+            'transfer_kind' => TransferKind::Consignment->value,
+            'owner_party_id' => $ownerPartyId ?? StockTransferId::generate()->toString(),
+        ]);
     }
 
     /**

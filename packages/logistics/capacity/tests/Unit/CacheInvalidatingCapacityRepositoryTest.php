@@ -53,6 +53,11 @@ function fakeCapacityRepository(): CapacityRepository
         {
             return [];
         }
+
+        public function inboundByWarehouseAndDate(string $warehouseId, SlotDate $date): array
+        {
+            return [];
+        }
     };
 }
 

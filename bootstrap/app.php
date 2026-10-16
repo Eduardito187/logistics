@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Problem\ProblemExceptionRenderer;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -28,20 +27,12 @@ return Application::configure(basePath: dirname(__DIR__))
     // y carga la autorización de canales de routes/channels.php (fleet/vehicle/shipment).
     ->withBroadcasting(__DIR__.'/../routes/channels.php')
     ->withMiddleware(function (Middleware $middleware): void {
-        // Inertia (app web Vue): comparte datos con el front y maneja las peticiones X-Inertia. Es
-        // passthrough para respuestas que no son Inertia, así que no afecta al panel Filament (/admin).
         $middleware->web(append: [
-            HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        // Invitado en una ruta protegida (p.ej. /app) → al login. Reusamos el login de Filament para no
-        // duplicar auth; al compartir la sesión web, tras entrar el SPA queda autenticado.
-        // Invitado en ruta protegida del SPA (/app) → login del SPA (Vue) si ya existe; si aún no, cae al
-        // login de Filament. La sesión web es compartida, así que tras entrar el SPA queda autenticado.
-        $middleware->redirectGuestsTo(static fn (): string => Route::has('app.login')
-            ? route('app.login')
-            : route('filament.admin.auth.login'));
+        // Invitado en una ruta web protegida → al login del panel admin (único frontend).
+        $middleware->redirectGuestsTo(static fn (): string => route('filament.admin.auth.login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
