@@ -19,7 +19,7 @@ return [
     'connections' => [
 
         // Protocolo Pusher contra Soketi (self-host, open-source). Host/puerto apuntan al
-        // servicio `soketi`; en el cliente, VITE_PUSHER_* (ver resources/js/echo.js).
+        // servicio `soketi`; en el cliente, VITE_PUSHER_* del cliente web.
         'pusher' => [
             'driver' => 'pusher',
             'key' => env('PUSHER_APP_KEY'),

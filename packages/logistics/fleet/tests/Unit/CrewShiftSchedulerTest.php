@@ -7,6 +7,7 @@ use Logistics\Fleet\Domain\Exception\FleetException;
 use Logistics\Fleet\Domain\Model\Crew;
 use Logistics\Fleet\Domain\Service\CrewShiftScheduler;
 use Logistics\Fleet\Domain\ValueObject\CrewId;
+use Logistics\Fleet\Domain\ValueObject\DriverId;
 use Logistics\Fleet\Domain\ValueObject\ShiftRules;
 use Logistics\Fleet\Domain\ValueObject\WorkShift;
 
@@ -42,6 +43,11 @@ function fakeCrewRepository(array $shiftsByMember): CrewRepository
         public function workShiftsForMemberBetween(string $memberId, DateTimeImmutable $from, DateTimeImmutable $to): array
         {
             return $this->shiftsByMember[$memberId] ?? [];
+        }
+
+        public function findForDriverOn(DriverId $driverId, DateTimeImmutable $date): ?Crew
+        {
+            return null;
         }
     };
 }

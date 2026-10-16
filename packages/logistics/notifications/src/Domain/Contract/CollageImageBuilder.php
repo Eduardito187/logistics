@@ -8,7 +8,7 @@ use Logistics\Notifications\Domain\ValueObject\ProductThumbnail;
 
 /**
  * Puerto de dominio: arma una imagen tipo collage con las imágenes de los productos de un envío, para
- * el push (ntfy y web push) y, opcionalmente, para Telegram.
+ * el push (FCM) y, opcionalmente, para Telegram.
  *
  * Regla de composición (pedido del dueño): hasta 4 productos en grilla; si hay más de 4, se muestran
  * los primeros 3 y una cuarta celda "+N" con el resto. La implementación real usa GD; si GD no está

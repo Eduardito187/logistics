@@ -15,6 +15,24 @@ Nodos (CD, tiendas, puntos de recojo; más adelante lockers o agentes) con su ub
 
 Cada nodo lleva su `Department` (uno de los nueve de Bolivia); es opcional (un nodo importado de SAP puede llegar sin él y asignarse después).
 
+### Almacén central y andenes de recepción (inbound / marketplace)
+
+Aditivo (roadmap marketplace §5). `NodeType::CentralWarehouse` marca un nodo como **almacén central**:
+recibe mercadería de proveedores (inbound/ASN), la etiqueta y la distribuye como un CD (aguas abajo se
+comporta como `DistributionCenter`: ofrece última milla). Es el único tipo con `receivesInbound() === true`.
+No requiere cambio de esquema en los nodos: reutiliza la columna `type` existente; los nodos previos
+quedan en su tipo actual.
+
+El **andén de recepción** (`ReceivingDock`, agregado) es por dónde entra la mercadería del proveedor.
+Cuelga de un almacén central e incluye su capacidad nominal (`DockCapacity`: citas por franja). Tabla
+aditiva `receiving_docks` (`warehouse_id`, `code` único por almacén, `name`, `appointments_per_slot`,
+`active`). El andén NO lleva la cuenta de cupos agendados: ese agendamiento vive en `capacity` (eje
+inbound), que toma esta capacidad como tope de referencia.
+
+- Comando `RegisterReceivingDock(warehouseId, code, name, appointmentsPerSlot)` → registra el andén
+  (valida que el nodo exista y sea almacén central; rechaza códigos duplicados dentro del almacén).
+- Consulta `ListReceivingDocks(warehouseId)` → `list<ReceivingDockView>`.
+
 ## No es responsable de
 
 Decidir rutas o camiones: eso es planificación. Tampoco resuelve la jerarquía geográfica fina (provincia, municipio, ciudad, zona): eso es coverage.

@@ -27,6 +27,7 @@ final class MaterialMappingMapper
             'sap_material' => $mapping->material()->value,
             'center' => $mapping->center()->value,
             'warehouse' => $mapping->warehouse()->value,
+            'seller_id' => $mapping->sellerId(),
         ];
     }
 
@@ -38,6 +39,7 @@ final class MaterialMappingMapper
             SapMaterial::of($record->sap_material),
             SapCenter::of($record->center),
             SapWarehouse::of($record->warehouse),
+            $record->seller_id,
         );
     }
 }

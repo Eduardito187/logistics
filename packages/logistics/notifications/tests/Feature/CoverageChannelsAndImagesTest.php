@@ -311,13 +311,13 @@ it('el sender nulo solo deja rastro y nunca lanza', function (): void {
     };
 
     (new NullChannelSender($logger))->send(
-        covChanNotification(Channel::PushNtfy),
-        Channel::PushNtfy,
+        covChanNotification(Channel::Fcm),
+        Channel::Fcm,
         RenderedMessage::of('t', 'cuerpo'),
     );
     (new NullChannelSender)->send(
-        covChanNotification(Channel::PushNtfy),
-        Channel::PushNtfy,
+        covChanNotification(Channel::Fcm),
+        Channel::Fcm,
         RenderedMessage::of('t', 'cuerpo'),
     );
 

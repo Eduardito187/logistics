@@ -38,6 +38,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\VehicleResource\Pages\ViewVe
 use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 
 /**
@@ -52,6 +53,8 @@ use Logistics\Shared\Presentation\Filament\ImageFallback;
  */
 final class VehicleResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = VehicleModel::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-truck';

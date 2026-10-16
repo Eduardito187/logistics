@@ -100,8 +100,7 @@ final class MessageTemplateResource extends Resource
     private static function channels(): array
     {
         return [
-            'PUSH_NTFY' => __('Push'),
-            'WEB_PUSH' => __('Web push'),
+            'FCM' => __('Push'),
             'TELEGRAM' => __('Telegram'),
             'EMAIL' => __('Email'),
             'SMS' => __('SMS'),

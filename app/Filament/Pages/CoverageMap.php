@@ -60,7 +60,42 @@ final class CoverageMap extends Page
         return [
             'zones' => $this->zonesGeoJson(),
             'cities' => $this->cities(),
+            // Opciones del dropdown "Editar zona existente", ya filtradas por el municipio elegido.
+            // getViewData se recomputa en cada render de Livewire, así que al cambiar parentAreaId
+            // (prop `live`) el dropdown de zonas se re-renderiza filtrado automáticamente.
+            'zoneOptions' => $this->zoneOptions(),
         ];
+    }
+
+    /**
+     * Reacciona al cambio del municipio/ciudad: hace zoom animado al conjunto de sus zonas.
+     * El dropdown de zonas ya queda filtrado por el re-render (ver getViewData/zoneOptions).
+     */
+    public function updatedParentAreaId(): void
+    {
+        $geojsons = $this->zoneGeoJsonsForParent($this->parentAreaId);
+
+        if ($geojsons === []) {
+            // Municipio vacío (o sin zonas con geometría): el mapa vuelve a encuadrar todas las zonas.
+            $this->dispatch('focus-reset');
+
+            return;
+        }
+
+        $this->dispatch('focus-area', geojsons: $geojsons);
+    }
+
+    /**
+     * Reacciona a la selección de una zona: carga su polígono y hace zoom animado a él.
+     * Reutiliza la misma lógica que el botón "Load".
+     */
+    public function updatedZoneId(): void
+    {
+        if ($this->zoneId === null || $this->zoneId === '') {
+            return;
+        }
+
+        $this->loadZone();
     }
 
     /**
@@ -160,6 +195,50 @@ final class CoverageMap extends Page
                 'active' => (bool) $r->active,
                 'geojson' => (string) $r->geojson,
             ])
+            ->all());
+    }
+
+    /**
+     * Zonas para el dropdown "Editar zona existente", filtradas por el municipio elegido.
+     * Si no hay municipio seleccionado, devuelve todas las zonas.
+     *
+     * @return list<array{id: string, name: string}>
+     */
+    private function zoneOptions(): array
+    {
+        $query = DB::table('coverage_zones')->orderBy('name');
+
+        if ($this->parentAreaId !== null && $this->parentAreaId !== '') {
+            $query->where('parent_area_id', $this->parentAreaId);
+        }
+
+        return array_values($query
+            ->get(['id', 'name'])
+            ->map(fn ($r): array => [
+                'id' => (string) $r->id,
+                'name' => (string) $r->name,
+            ])
+            ->all());
+    }
+
+    /**
+     * GeoJSON de las zonas de un municipio (para el zoom animado del mapa).
+     * Devuelve [] si no hay municipio o ninguna de sus zonas tiene geometría.
+     *
+     * @return list<string>
+     */
+    private function zoneGeoJsonsForParent(?string $parentAreaId): array
+    {
+        if ($parentAreaId === null || $parentAreaId === '') {
+            return [];
+        }
+
+        return array_values(DB::table('coverage_zones')
+            ->where('parent_area_id', $parentAreaId)
+            ->whereNotNull('area')
+            ->selectRaw('ST_AsGeoJSON(area) as geojson')
+            ->get()
+            ->map(fn ($r): string => (string) $r->geojson)
             ->all());
     }
 

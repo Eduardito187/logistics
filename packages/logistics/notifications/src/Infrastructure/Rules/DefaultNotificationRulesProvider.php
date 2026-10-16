@@ -12,12 +12,12 @@ use Logistics\Notifications\Domain\ValueObject\MessageType;
 
 /**
  * Reglas de cascada por defecto: para todo tipo de mensaje, la cascada va de lo gratuito a lo caro,
- * escalando cuando no hay apertura: PushNtfy → WebPush → Telegram → Email → Sms.
+ * escalando cuando no hay apertura: Fcm → Telegram → Email → Sms (ADR 006).
  *
- * NOTA (decisión del dueño, 2026-10): TODO el stack de notificaciones es open-source y gratis. El push
- * ya NO usa Firebase/FCM (se reemplazó por ntfy/UnifiedPush self-host) y se quitó WhatsApp (Meta/Twilio,
- * de pago). Telegram (gratis/open) queda como canal de mensajería antes del email; el SMS crítico (por
- * gateway open-source) sigue al final. El detalle queda en el README.
+ * NOTA (decisión del dueño, 2026-10-16): el push de la plataforma usa Firebase Cloud Messaging (FCM) por
+ * topic del envío (API HTTP v1). Telegram (gratis/open)
+ * queda como canal de mensajería antes del email; el SMS crítico (por gateway open-source) sigue al
+ * final. El detalle queda en el README.
  *
  * Mañana esto puede leerse de base o de un panel (PersistedNotificationRulesProvider); hoy es el default.
  */
@@ -29,8 +29,7 @@ final class DefaultNotificationRulesProvider implements NotificationRulesProvide
         // respaldo cuando no hubo apertura en los canales previos.
         return CascadePolicy::of(
             [
-                Channel::PushNtfy,
-                Channel::WebPush,
+                Channel::Fcm,
                 Channel::Telegram,
                 Channel::Email,
                 Channel::Sms,

@@ -27,6 +27,10 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * @property string|null $pod_photo_path
  * @property string|null $pod_captured_at
  * @property string|null $failure_reason
+ * @property string      $fulfillment_mode
+ * @property string|null $dropship_handling
+ * @property string|null $dispatch_confirmation_key
+ * @property string|null $delivery_confirmation_key
  */
 final class DeliveryRecord extends Model
 {

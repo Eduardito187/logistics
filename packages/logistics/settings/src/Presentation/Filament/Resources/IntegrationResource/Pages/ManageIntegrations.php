@@ -49,6 +49,7 @@ final class ManageIntegrations extends Page
             $this->configureRoutingAction(),
             $this->configureSapAction(),
             $this->configureStorageAction(),
+            $this->configureFcmAction(),
         ];
     }
 
@@ -286,6 +287,75 @@ final class ManageIntegrations extends Page
         ];
     }
 
+    // --- Push Firebase Cloud Messaging (FCM) ---------------------------------------------------------
+
+    private function configureFcmAction(): Action
+    {
+        return Action::make('configure_fcm')
+            ->label(__('Configure push (FCM)'))
+            ->icon('heroicon-o-bell-alert')
+            ->color('gray')
+            ->modalHeading(__('Firebase Cloud Messaging integration'))
+            ->modalDescription(__('Credentials for push notifications to the customer app via Firebase Cloud Messaging.'))
+            ->modalSubmitActionLabel(__('Save'))
+            ->fillForm(fn (): array => $this->fcmFormState())
+            ->schema([
+                Toggle::make('enabled')
+                    ->label(__('Enabled')),
+                TextInput::make('project_id')
+                    ->label(__('Project ID'))
+                    ->maxLength(255)
+                    ->helperText(__('Firebase project ID that owns the service account.')),
+                TextInput::make('credentials_path')
+                    ->label(__('Service account path'))
+                    ->maxLength(255)
+                    ->helperText(__('Path to the service-account.json, e.g. storage/app/firebase/service-account.json. Used when no inline JSON is stored.')),
+                TextInput::make('credentials_json')
+                    ->label(__('Service account JSON'))
+                    ->password()
+                    ->revealable()
+                    ->placeholder($this->secretPlaceholder(IntegrationKeys::FCM, 'credentials_json'))
+                    ->helperText(__('Stored encrypted. Paste the service account JSON to store it inline, or leave blank to keep the current value and use the path above.')),
+                TextInput::make('timeout')
+                    ->label(__('Timeout (seconds)'))
+                    ->numeric()
+                    ->minValue(1)
+                    ->maxValue(120),
+            ])
+            ->action(function (array $data): void {
+                $integrations = app(IntegrationConfig::class);
+                $existing = $integrations->config(IntegrationKeys::FCM);
+
+                $value = [
+                    'enabled' => $this->boolInput($data, 'enabled'),
+                    'project_id' => $this->strInput($data, 'project_id'),
+                    'credentials_path' => $this->strInput($data, 'credentials_path'),
+                    'timeout' => $this->intInput($data, 'timeout', 10),
+                ];
+
+                $value = $this->mergeSecret($value, $existing, $data, 'credentials_json');
+
+                $this->publish(IntegrationKeys::FCM, $value, __('Firebase Cloud Messaging integration saved'));
+            });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fcmFormState(): array
+    {
+        $integrations = app(IntegrationConfig::class);
+
+        return [
+            'enabled' => $integrations->enabled(IntegrationKeys::FCM, false),
+            'project_id' => (string) config('logistics-notifications.fcm.project_id', ''),
+            'credentials_path' => (string) config('logistics-notifications.fcm.credentials', ''),
+            // El secreto nunca se precarga: en blanco se conserva el guardado.
+            'credentials_json' => '',
+            'timeout' => (int) config('logistics-notifications.fcm.timeout', 10),
+        ];
+    }
+
     // --- Datos para la vista (estado de cada integración + solo lectura) -----------------------------
 
     /**
@@ -327,9 +397,15 @@ final class ManageIntegrations extends Page
                 'nominatim_endpoint' => (string) config('logistics-shipments.geocoder.nominatim.endpoint', ''),
                 'tile_url' => (string) config('maps.tile_url', ''),
             ],
+            // Push por Firebase Cloud Messaging: integración configurable desde este panel.
+            'fcm' => [
+                'configured' => $integrations->config(IntegrationKeys::FCM) !== [],
+                'enabled' => $integrations->enabled(IntegrationKeys::FCM, false),
+                'project_id' => (string) config('logistics-notifications.fcm.project_id', ''),
+                'credentials_path' => (string) config('logistics-notifications.fcm.credentials', ''),
+                'has_credentials' => $integrations->hasSecret(IntegrationKeys::FCM, 'credentials_json'),
+            ],
             'notifications' => [
-                'ntfy' => (string) config('logistics-notifications.ntfy.url', '') !== '',
-                'web_push' => (string) config('logistics-notifications.web_push.vapid_public_key', '') !== '',
                 'telegram' => (string) config('logistics-notifications.telegram.bot_token', '') !== '',
                 'sms' => (string) config('logistics-notifications.sms.url', '') !== '',
                 'email_mailer' => (string) config('logistics-notifications.email.mailer', ''),

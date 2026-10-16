@@ -1,0 +1,26 @@
+{
+    "name": "logistics/sellers",
+    "description": "Sellers / proveedores de marketplace — plataforma logística Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Logistics\\Sellers\\": "src/",
+            "Logistics\\Sellers\\Database\\Factories\\": "database/factories/",
+            "Logistics\\Sellers\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Logistics\\Sellers\\Infrastructure\\Providers\\SellersServiceProvider"
+            ]
+        }
+    }
+}

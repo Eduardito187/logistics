@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Shipments\Domain\Model;
 
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
+use Logistics\Shared\Domain\ValueObject\Ownership;
 use Logistics\Shipments\Domain\Event\ShipmentAddressRescored;
 use Logistics\Shipments\Domain\Event\ShipmentDeliverySlotAssigned;
 use Logistics\Shipments\Domain\Event\ShipmentPlanned;
@@ -44,7 +45,9 @@ final class Shipment extends AggregateRoot
         private ShipmentStatus $status,
         private array $lines,
         private array $units,
+        private readonly Ownership $ownership,
         private ?DeliverySlot $deliverySlot = null,
+        private ?string $destinationNodeId = null,
     ) {}
 
     /**
@@ -60,6 +63,8 @@ final class Shipment extends AggregateRoot
         Address $address,
         AddressConfidence $addressConfidence,
         array $lines,
+        ?string $destinationNodeId = null,
+        ?Ownership $ownership = null,
     ): self {
         if ($sourceReference->source !== $source) {
             throw ShipmentsException::because('la fuente del envío no coincide con la de su referencia de origen');
@@ -69,9 +74,13 @@ final class Shipment extends AggregateRoot
             throw ShipmentsException::because('un envío debe tener al menos una línea');
         }
 
+        // Propiedad por defecto: Dismac (retail, `OWNED`). Así el flujo existente no cambia; los bultos
+        // heredan la propiedad del envío (un envío de un seller genera bultos de ese seller).
+        $ownership ??= Ownership::dismacOwned();
+
         $units = [];
         foreach ($lines as $line) {
-            foreach (self::unitsForLine($line) as $unit) {
+            foreach (self::unitsForLine($line, $ownership) as $unit) {
                 $units[] = $unit;
             }
         }
@@ -86,6 +95,9 @@ final class Shipment extends AggregateRoot
             ShipmentStatus::Received,
             array_values($lines),
             $units,
+            $ownership,
+            null,
+            $destinationNodeId,
         );
 
         $shipment->recordEvent(new ShipmentReceived(
@@ -119,6 +131,8 @@ final class Shipment extends AggregateRoot
         array $lines,
         array $units,
         ?DeliverySlot $deliverySlot = null,
+        ?string $destinationNodeId = null,
+        ?Ownership $ownership = null,
     ): self {
         return new self(
             $id,
@@ -130,7 +144,9 @@ final class Shipment extends AggregateRoot
             $status,
             array_values($lines),
             array_values($units),
+            $ownership ?? Ownership::dismacOwned(),
             $deliverySlot,
+            $destinationNodeId,
         );
     }
 
@@ -144,7 +160,7 @@ final class Shipment extends AggregateRoot
         }
 
         $this->lines[] = $line;
-        foreach (self::unitsForLine($line) as $unit) {
+        foreach (self::unitsForLine($line, $this->ownership) as $unit) {
             $this->units[] = $unit;
         }
     }
@@ -212,6 +228,25 @@ final class Shipment extends AggregateRoot
     public function deliverySlot(): ?DeliverySlot
     {
         return $this->deliverySlot;
+    }
+
+    /**
+     * Nodo destino del envío (UUID de un nodo de red), o null si el ingest/SAP todavía no lo pobló.
+     *
+     * Es el vínculo envío→nodo usado para acotar el listado a la tienda del usuario (rol Tienda).
+     */
+    public function destinationNodeId(): ?string
+    {
+        return $this->destinationNodeId;
+    }
+
+    /**
+     * Propiedad del envío: a quién pertenece el producto y bajo qué modo de fulfillment entró a la
+     * operación. Por defecto Dismac (retail, `OWNED`); los bultos del envío heredan esta propiedad.
+     */
+    public function ownership(): Ownership
+    {
+        return $this->ownership;
     }
 
     public function id(): ShipmentId
@@ -282,7 +317,7 @@ final class Shipment extends AggregateRoot
      *
      * @return list<PhysicalUnit>
      */
-    private static function unitsForLine(ShipmentLine $line): array
+    private static function unitsForLine(ShipmentLine $line, Ownership $ownership): array
     {
         $units = [];
         $total = $line->quantity();
@@ -292,6 +327,7 @@ final class Shipment extends AggregateRoot
                 $line->id(),
                 Fraction::of($index, $total),
                 Fraction::single(),
+                $ownership,
             );
         }
 

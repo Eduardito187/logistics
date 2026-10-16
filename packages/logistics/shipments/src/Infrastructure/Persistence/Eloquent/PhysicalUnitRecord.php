@@ -12,13 +12,16 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\PhysicalUn
 /**
  * Fila de la tabla `shipment_units` (bultos). PK uuid string no incremental.
  *
- * @property string $id
- * @property string $shipment_id
- * @property string $line_id
- * @property int    $unit_index
- * @property int    $unit_total
- * @property int    $piece_index
- * @property int    $piece_total
+ * @property string      $id
+ * @property string      $shipment_id
+ * @property string      $line_id
+ * @property string|null $owner_party_id
+ * @property string      $fulfillment_mode
+ * @property string|null $seller_sku_ref
+ * @property int         $unit_index
+ * @property int         $unit_total
+ * @property int         $piece_index
+ * @property int         $piece_total
  */
 final class PhysicalUnitRecord extends Model
 {

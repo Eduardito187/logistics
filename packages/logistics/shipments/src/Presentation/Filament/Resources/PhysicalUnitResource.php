@@ -18,6 +18,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource\Pages\CreatePhysicalUnit;
@@ -36,6 +37,8 @@ use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource\Pag
  */
 final class PhysicalUnitResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = PhysicalUnitRecord::class;
 
     protected static ?int $navigationSort = 14;

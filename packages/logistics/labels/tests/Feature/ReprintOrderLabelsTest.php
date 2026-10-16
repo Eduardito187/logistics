@@ -60,6 +60,19 @@ it('gives the reprinted labels brand new ids', function (): void {
     expect(array_intersect($initialIds, $activeIds))->toBe([]);
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
+it('renders the reprinted labels with both the QR and the Code128 barcode', function (): void {
+    $active = EmittedLabelRecord::query()
+        ->where('order_id', 'DM-260030001')
+        ->whereNull('revoked_at')
+        ->firstOrFail();
+
+    // La reimpresión usa el mismo renderer: el lote nuevo trae QR firmado y Code128 (simbología `both`).
+    expect($active->zpl)->toContain('^BQN,2,6')
+        ->and($active->zpl)->toContain('^FDMA,'.$active->signed_json.'^FS')
+        ->and($active->zpl)->toContain('^BCN,90,Y,N,N')
+        ->and($active->zpl)->toContain('^FD'.$active->label_id.'^FS');
+})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
+
 it('publishes both the revocation and the new emission to the outbox', function (): void {
     $revoked = OutboxMessageRecord::query()
         ->where('event_name', 'labels.labels_revoked')

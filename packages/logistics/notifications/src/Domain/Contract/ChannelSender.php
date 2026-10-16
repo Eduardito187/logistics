@@ -9,7 +9,7 @@ use Logistics\Notifications\Domain\ValueObject\Channel;
 use Logistics\Notifications\Domain\ValueObject\RenderedMessage;
 
 /**
- * Contrato de un canal de entrega concreto (push ntfy, web push, Telegram, email, SMS).
+ * Contrato de un canal de entrega concreto (push FCM, Telegram, email, SMS).
  *
  * La implementación real corre en el relay del outbox (envío asíncrono, idempotente): nunca dentro de
  * un request de usuario. El dominio solo declara la forma del contrato; las implementaciones viven en

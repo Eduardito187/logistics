@@ -42,8 +42,9 @@ pendiente de commit/push autorizado por el dueño:
   (builtin/osrm/vroom), VRPTW con VROOM, persistencia de geometría; auto-planner 2 modos
   (optimization/slots) async por colas; calendario de despacho + reserva de slots; promesa de entrega.
 - `[x]` Notificaciones multicanal (push, Telegram, email, SMS de respaldo) con 14 tipos de mensaje,
-  plantillas + interpolación de variables, reglas versionadas por tipo, collage GD en push. Transporte
-  **sin Firebase** (Web Push VAPID + ntfy/UnifiedPush) y **sin WhatsApp de pago** (ADR 014/015).
+  plantillas + interpolación de variables, reglas versionadas por tipo, collage GD en push. Push de la
+  app por **Firebase Cloud Messaging (FCM)** (topic por envío, API HTTP v1) y **sin WhatsApp de pago**
+  (ADR 014/015); cascada **FCM → Telegram → Email → SMS**.
 - `[x]` Geocoder OSM self-host detrás de contrato (Nominatim/Photon, ADR 013), con cache; índices de BD
   en accesos calientes; cache de ReadModels en forma primitiva (regla #7).
 - `[x]` Fleet (turnos de tripulación, documentos con alertas de vencimiento, estados de vehículo);
@@ -56,7 +57,7 @@ pendiente de commit/push autorizado por el dueño:
   configurable (America/La_Paz, ADR 011), panel de outbox.
 
 **Lo que NO existe aún (mundo real):** deploy a staging/producción, credenciales de servicios externos
-(VAPID/ntfy/SMS gateway/Telegram/SMTP prod/SAP/Magento), app Flutter (`logistics-app`, repo aparte),
+(FCM/SMS gateway/Telegram/SMTP prod/SAP/Magento), app Flutter (`logistics-app`, repo aparte),
 datos reales de Fase 0, piloto y Fase 3 avanzada.
 
 ### Actualización 2026-10-14 — backlog agent-doable CERRADO (3 commits: 840ad01, 58c19dc, a4d2606)
@@ -73,8 +74,8 @@ Completado esta sesión (antes `[ ]`, ahora hecho):
   auth/devices documentados. **V-15** gate de cobertura en CI. **V-19** build de assets documentado.
   **E-05** idempotencia de API (ya existía; tests). **MinIO** local (B2). **C-PLN-03** tablero de arrastre
   (ya existía). **Fase 3** base: costos por vehículo/corredor/tercero + rentabilidad (3-01/3-06).
-- **Sin Google / open-source**: Nominatim por defecto, tiles self-host configurables, push ntfy/VAPID,
-  Open Sans self-host, CSP sin Google Fonts. **i18n**: admin 100% español (es.json 1605 claves).
+- **Sin Google / open-source**: Nominatim por defecto, tiles self-host configurables (el push de la app
+  es la excepción: FCM/Firebase, ADR 014), Open Sans self-host, CSP sin Google Fonts. **i18n**: admin 100% español (es.json 1605 claves).
 - **Fix crítico**: `personal_access_tokens` nunca publicada → login daba 500 en toda la plataforma; resuelto.
 
 **Pendiente = SOLO mundo real:** deploy staging/prod, credenciales reales, app Flutter (Fase A), Fase 0
@@ -141,8 +142,8 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
 - `[ ]` **S-09** Rotación de claves de firma de etiquetas (`k`) operada; distribución de claves públicas
   a la app (requiere la app).
 - `[ ]` **S-10** Secret scanning + revisión de dependencias (composer/npm) en CI; Dependabot/renovate.
-- `[ ]` **S-11** Gestión de secretos fuera del repo (APP_KEY, claves etiquetas, VAPID/ntfy, SAP, SMS,
-  Telegram) — vault/variables del orquestador (requiere infra desplegada).
+- `[ ]` **S-11** Gestión de secretos fuera del repo (APP_KEY, claves etiquetas, credenciales FCM, SAP,
+  SMS, Telegram) — vault/variables del orquestador (requiere infra desplegada).
 - `[x]` **S-12** Cabeceras de seguridad (CSP para el admin con los CDN de Leaflet/Geoman; HSTS; CORS por
   puerta).
 - `[x]` **S-13** Resuelto por ADR 013: OSRM/geocoder/tiles **self-host**; las coordenadas no salen a
@@ -185,8 +186,8 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
 - `[x]` **I-09** **VROOM self-host** (opcional) sobre el OSRM propio para VRP a escala; `VROOM_URL`.
 - `[ ]` **I-10** **Tiles OSM self-host** (OpenMapTiles/TileServer-GL o Protomaps, ADR 013): decidido y
   con `MAP_TILES_URL`; falta **desplegar** el servicio de tiles propio.
-- `[ ]` **I-11** **Push self-host (ADR 014):** generar claves **VAPID** y levantar servidor **ntfy**
-  propio (sin Firebase). Requiere claves/servidor.
+- `[ ]` **I-11** **Push por FCM (ADR 014):** crear el proyecto Firebase y la **service account**
+  (`FCM_PROJECT_ID` / `FCM_CREDENTIALS`) para publicar por topic. Requiere credenciales.
 - `[ ]` **I-12** Gestión de secretos del orquestador (ver S-11).
 - `[ ]` **I-13** Plan de capacidad medido con carga real: ~3 req/s de GPS, picos de notificación,
   auto-plan diario (`docs/performance.md` documenta el plan; falta la prueba de carga).
@@ -263,9 +264,9 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
 - `[x]` **C-TRK-03** Página pública como gancho para instalar la app de clientes.
 
 ### notifications
-- `[ ]` **C-NOT-01** Integraciones **reales**: Web Push VAPID + ntfy/UnifiedPush (ADR 014), email
-  (SMTP prod), SMS por **gateway open-source** con tope, Telegram (bot real) (ADR 015). **Sin Firebase
-  ni WhatsApp de pago.** Requiere claves/servidores/cuentas.
+- `[ ]` **C-NOT-01** Integraciones **reales**: push por **FCM** (topic por envío, API HTTP v1, ADR 014),
+  email (SMTP prod), SMS por **gateway open-source** con tope, Telegram (bot real) (ADR 015). **Sin
+  WhatsApp de pago.** Requiere credenciales/servidores/cuentas.
 - `[x]` **C-NOT-02** Motor de cascada por resultado con reglas versionadas por tipo (settings).
 - `[x]` **C-NOT-03** Plantillas por evento/canal + preferencias de notificación del cliente + opt-out.
 - `[x]` **C-NOT-04** Deliverability: reintentos, dead-letter, métricas de entrega/apertura, tope de SMS.
@@ -320,7 +321,7 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
 ## FASE A — App interna Flutter (`logistics-app`, repo aparte)
 
 > Repo aparte, **fuera de este workspace**. El contrato `openapi/v1.yaml` ya está listo para generar el
-> cliente Dart. Push a la app Android sin Firebase vía ntfy/UnifiedPush (ADR 014).
+> cliente Dart. Push a la app Android por Firebase Cloud Messaging (FCM) con `firebase_messaging` (ADR 014).
 
 - `[ ]` **A-01** Scaffold Flutter + generación del cliente Dart desde `openapi/v1.yaml` (pipeline).
 - `[ ]` **A-02** Login usuario + dispositivo; manejo de token; vista por rol.
@@ -331,7 +332,7 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
   **reportar incidente**.
 - `[ ]` **A-07** Flujo tienda / transportista / supervisor (mínimo del piloto).
 - `[ ]` **A-08** Modo offline: cola local de eventos, sync idempotente al recuperar señal.
-- `[ ]` **A-09** Distribución interna (APK gestionado / MDM propio) + push ntfy/UnifiedPush (sin Firebase).
+- `[ ]` **A-09** Distribución interna (APK gestionado / MDM propio) + push por FCM (`firebase_messaging`).
 - `[ ]` **A-10** Gestión de versiones (compatibilidad `/v1`, choferes con versión vieja).
 - `[ ]` **A-11** Pruebas E2E preparar→cargar→entregar contra staging.
 
@@ -342,8 +343,8 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
 - `[ ]` **K-01** API `/channels/*` estable para app de clientes / web / call center (consumidores reales).
 - `[x]` **K-02** Tracking público: ETA, estado, "a N paradas", mapa, sin PII.
 - `[ ]` **K-03** Selección de slot por el cliente (día+franja) integrada punta a punta (web/app).
-- `[ ]` **K-04** Web push en la página de tracking (VAPID, ADR 014) — requiere claves VAPID y el flujo
-  de suscripción activado.
+- `[ ]` **K-04** Push en la página de tracking por FCM web (ADR 014) — requiere credenciales FCM y el
+  flujo de suscripción activado.
 - `[ ]` **K-05** Promesa de entrega expuesta a los canales (fechas/franjas disponibles).
 - `[ ]` **K-06** Encuesta de satisfacción post-entrega (instrumento Fase 0) y captura.
 
@@ -356,7 +357,7 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
 - `[ ]` **F0-03** Mapa de cobertura actual (KML/GeoJSON) por departamento e importarlo.
 - `[ ]` **F0-04** Inventario real de flota, choferes/ayudantes, nodos (CDs/tiendas/puntos de recojo).
 - `[ ]` **F0-05** Formatos reales de pedidos (SAP, Magento, Excel) y mapeo bulto↔material↔centro↔almacén.
-- `[ ]` **F0-06** Medición del % de clientes alcanzables por push (web/ntfy) / Telegram / email / SMS.
+- `[ ]` **F0-06** Medición del % de clientes alcanzables por push (FCM) / Telegram / email / SMS.
 - `[ ]` **F0-07** Inventario de impresoras Zebra (modelos/firmware/conectividad) y celulares de la operación.
 - `[ ]` **F0-08** Gateway SMS open-source (chip/modem o gateway Android), costo del operador y tope mensual.
 
@@ -412,7 +413,7 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
 - `[ ]` **D-03** ¿`public/build` versionado o buildeado en deploy?
 - `[ ]` **D-04** ¿Extraer `outbox`/`settings`/`shared` a repo compartido o quedan como packages locales?
 - `[x]` **D-05** Geocoder Google vs OSM — **resuelto**: ADR 013 (Nominatim/Photon self-host).
-- `[x]` **D-06** Push Firebase vs open-source — **resuelto**: ADR 014 (Web Push VAPID + ntfy/UnifiedPush).
+- `[x]` **D-06** Transporte del push — **resuelto**: ADR 014 (Firebase Cloud Messaging, topic por envío).
 
 ---
 
@@ -420,7 +421,7 @@ El backend está verde contra containers; queda la higiene de repo y el primer c
 1. **Autorizar commit + push + PR** de `feature/plataforma-logistica-completa` (V-21) — hoy el trabajo
    está solo local; desbloquea CI (V-06) y el resto.
 2. **Desplegar staging** (I-02) con la infra ya lista como código, y levantar los servicios self-host
-   que faltan: **tiles** (I-10), **ntfy + claves VAPID** (I-11), **gateway SMS + bot Telegram** (F0-08).
+   que faltan: **tiles** (I-10), **credenciales FCM** (I-11), **gateway SMS + bot Telegram** (F0-08).
 3. **Fase A (app Flutter)** + activar las integraciones reales de canales (C-NOT-01) — sin app no hay piloto.
 4. **Fase 0** (datos reales) y el **tablero interactivo** (C-PLN-03), en paralelo.
 5. **Piloto (Fase P)**.

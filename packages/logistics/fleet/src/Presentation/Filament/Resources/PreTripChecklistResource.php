@@ -27,6 +27,7 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pages\CreatePreTripChecklist;
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pages\ListPreTripChecklists;
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pages\ViewPreTripChecklist;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Resource de administración del checklist pre-salida (inspección ejecutada sobre un vehículo).
@@ -39,6 +40,8 @@ use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pag
  */
 final class PreTripChecklistResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = PreTripInspectionModel::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-clipboard-document-check';

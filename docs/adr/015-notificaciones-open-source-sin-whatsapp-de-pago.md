@@ -15,7 +15,7 @@ La WhatsApp Business API **cuesta por mensaje** y pasa por Meta o un proveedor d
 auto-hospedables, sin degradar demasiado el alcance al cliente.
 
 Esta ADR solo trata la **selección de canales** (WhatsApp/Telegram/SMS/email). El **transporte de
-push** (FCM → Web Push VAPID + ntfy/UnifiedPush) lo decide el ADR 014.
+push** (Firebase Cloud Messaging) lo decide el ADR 014.
 
 ## Decisión
 
@@ -34,7 +34,8 @@ Se redefine la cascada de canales del ADR 006/010 para que sea **100% sin pago**
   último recurso, con **tope configurable** (el costo del SMS es del operador móvil, no una suscripción
   SaaS).
 - **Email transaccional** sigue como canal casi gratuito (SMTP propio / Mailpit en dev).
-- **Push** por Web Push VAPID + ntfy/UnifiedPush (ADR 014).
+- **Push** de la app por Firebase Cloud Messaging (FCM), topic por envío (ADR 014). Es el primer canal
+  de la cascada: **FCM → Telegram → Email → SMS**.
 
 La **elección de canal por tipo de mensaje sigue siendo configuración versionada**, no código:
 habilitar/acotar un canal es cambiar una regla, no desplegar. El envío sigue por **outbox** (ADR 008).
@@ -59,10 +60,11 @@ habilitar/acotar un canal es cambiar una regla, no desplegar. El envío sigue po
 ### Positivas
 - Notificaciones sin ninguna suscripción de pago; Telegram cubre buena parte del alcance que motivaba
   WhatsApp, y es gratuito y auto-operable (bot propio).
-- Coherencia con la regla open-source de todo el proyecto (ADR 013/014).
+- Coherencia con la regla open-source de todo el proyecto (ADR 013); el push de la app es la excepción
+  explícita (FCM/Firebase, ADR 014).
 
 ### Negativas / trade-offs aceptados
-- Se pierde el alcance de WhatsApp en el segmento que no usa app, web push ni Telegram; se compensa con
+- Se pierde el alcance de WhatsApp en el segmento que no usa app ni Telegram; se compensa con
   Telegram + email + SMS de respaldo, y se vigila el % alcanzado en el piloto.
 - Operar un gateway SMS libre (Kannel/Jasmin/Android gateway) y un bot de Telegram es infraestructura y
   operación propias (números, plantillas, deliverability, dead-letter).

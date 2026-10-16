@@ -26,6 +26,18 @@ final class MaterialMappingRecordFactory extends Factory
             'sap_material' => (string) $this->faker->unique()->numberBetween(100000, 999999),
             'center' => 'C'.$this->faker->numberBetween(1000, 9999),
             'warehouse' => 'W'.$this->faker->numberBetween(10, 99),
+            // Por defecto, mapeo propio de Dismac (sin seller): el comportamiento histórico.
+            'seller_id' => null,
         ];
+    }
+
+    /**
+     * Mapeo de la coordenada SAP del material de un seller (consignación).
+     */
+    public function forSeller(?string $sellerId = null): self
+    {
+        return $this->state(fn (): array => [
+            'seller_id' => $sellerId ?? MaterialMappingId::generate()->toString(),
+        ]);
     }
 }

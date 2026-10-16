@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Logistics\Promise\Domain\Service\DeliveryPromiseCalculator;
+use Logistics\Promise\Domain\ValueObject\LeadTime;
 use Logistics\Promise\Domain\ValueObject\PromiseOption;
 use Logistics\Promise\Domain\ValueObject\ServiceWindow;
 use Logistics\Promise\Domain\ValueObject\SlotCapacity;
@@ -122,6 +123,52 @@ it('drops days earlier than the base lead time counted from now', function (): v
     );
 
     expect(datesToStrings($dates))->toBe(['2026-10-14', '2026-10-15']);
+});
+
+it('leaves the serviceable dates unchanged for retail (no additional lead time)', function (): void {
+    $calculator = new DeliveryPromiseCalculator;
+
+    // Sin lead adicional explícito y con LeadTime::none() el resultado debe ser idéntico (camino retail).
+    $args = [promiseProfile([1, 2, 3, 4, 5, 6, 7]), true, new DateTimeImmutable('2026-10-13'), new DateTimeImmutable('2026-10-13T10:00:00'), 3];
+
+    $retailDefault = $calculator->serviceableDates(...$args);
+    $retailNone = $calculator->serviceableDates(...[...$args, LeadTime::none()]);
+
+    expect(datesToStrings($retailDefault))->toBe(['2026-10-13', '2026-10-14', '2026-10-15'])
+        ->and(datesToStrings($retailNone))->toBe(datesToStrings($retailDefault));
+});
+
+it('pushes the earliest serviceable date forward by the additional seller lead time', function (): void {
+    $calculator = new DeliveryPromiseCalculator;
+
+    // Zona sin tiempo base; a las 10:00 del martes 13 el retail entregaría el mismo 13. Un lead adicional
+    // de 1 día (seller) empuja la fecha más temprana al 14.
+    $dates = $calculator->serviceableDates(
+        promiseProfile([1, 2, 3, 4, 5, 6, 7]),
+        true,
+        new DateTimeImmutable('2026-10-13'),
+        new DateTimeImmutable('2026-10-13T10:00:00'),
+        3,
+        LeadTime::ofDays(1),
+    );
+
+    expect(datesToStrings($dates))->toBe(['2026-10-14', '2026-10-15']);
+});
+
+it('adds the additional lead on top of the base lead of the zone', function (): void {
+    $calculator = new DeliveryPromiseCalculator;
+
+    // Tiempo base 1 día + lead adicional 2 días = 3 días desde el 13 → la más temprana es el 16.
+    $dates = $calculator->serviceableDates(
+        promiseProfile([1, 2, 3, 4, 5, 6, 7], 1440),
+        true,
+        new DateTimeImmutable('2026-10-13'),
+        new DateTimeImmutable('2026-10-13T10:00:00'),
+        5,
+        LeadTime::ofDays(2),
+    );
+
+    expect(datesToStrings($dates))->toBe(['2026-10-16', '2026-10-17']);
 });
 
 it('normalizes serviceable dates to midnight', function (): void {

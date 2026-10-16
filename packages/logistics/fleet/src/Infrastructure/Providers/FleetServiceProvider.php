@@ -31,6 +31,8 @@ use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfil
 use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfileHandler;
 use Logistics\Fleet\Application\Query\GetDriverHistory\GetDriverHistory;
 use Logistics\Fleet\Application\Query\GetDriverHistory\GetDriverHistoryHandler;
+use Logistics\Fleet\Application\Query\GetMyCrew\GetMyCrew;
+use Logistics\Fleet\Application\Query\GetMyCrew\GetMyCrewHandler;
 use Logistics\Fleet\Application\Query\ListDocuments\ListDocuments;
 use Logistics\Fleet\Application\Query\ListDocuments\ListDocumentsHandler;
 use Logistics\Fleet\Application\Query\ListDrivers\ListDrivers;
@@ -97,6 +99,7 @@ final class FleetServiceProvider extends ServiceProvider
         ListDocuments::class => ListDocumentsHandler::class,
         ListExpiringDocuments::class => ListExpiringDocumentsHandler::class,
         GetDriverHistory::class => GetDriverHistoryHandler::class,
+        GetMyCrew::class => GetMyCrewHandler::class,
         AlertExpiringDocuments::class => AlertExpiringDocumentsHandler::class,
     ];
 

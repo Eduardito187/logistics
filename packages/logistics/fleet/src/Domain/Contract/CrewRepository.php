@@ -7,6 +7,7 @@ namespace Logistics\Fleet\Domain\Contract;
 use DateTimeImmutable;
 use Logistics\Fleet\Domain\Model\Crew;
 use Logistics\Fleet\Domain\ValueObject\CrewId;
+use Logistics\Fleet\Domain\ValueObject\DriverId;
 use Logistics\Fleet\Domain\ValueObject\WorkShift;
 
 /**
@@ -32,4 +33,10 @@ interface CrewRepository
      * @return list<WorkShift>
      */
     public function workShiftsForMemberBetween(string $memberId, DateTimeImmutable $from, DateTimeImmutable $to): array;
+
+    /**
+     * Tripulación armada para un chofer en una fecha de armado concreta, o null si ese día no tiene
+     * asignación. Es la lectura que usa el chofer para consultar SU vehículo y tripulación del día.
+     */
+    public function findForDriverOn(DriverId $driverId, DateTimeImmutable $date): ?Crew;
 }

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
+use Logistics\Inventory\Infrastructure\Dispatch\GoodsReceivedStockDispatcher;
+use Logistics\Inventory\Infrastructure\Dispatch\ReturnRestockDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\DomainEventNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\FleetDocumentExpiryNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationDispatcher;
@@ -52,6 +54,14 @@ return [
         // Alerta de documentos de flota por vencer / vencidos (P1-FLT-04): el barrido programado emite
         // este resumen y notificaciones avisa al supervisor con un correo consolidado.
         'fleet.documents_expiry_alerted' => FleetDocumentExpiryNotificationDispatcher::class,
+
+        // Marketplace (ADR 017): la recepción de proveedores se vuelve stock con dueño. El evento
+        // `inbound.goods_received` crea un lote de inventario por cada línea aceptada (propio o consignación).
+        'inbound.goods_received' => GoodsReceivedStockDispatcher::class,
+
+        // Logística inversa (Fase 4): una devolución dispuesta como "restock" reingresa su producto al
+        // lote del dueño correcto. El dispatcher ignora disposiciones return_to_seller/scrap.
+        'returns.return_dispositioned' => ReturnRestockDispatcher::class,
     ],
 
     // Abanico por evento: eventos que disparan reacciones en varios contextos a la vez. El

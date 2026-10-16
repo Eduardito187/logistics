@@ -46,6 +46,18 @@ it('pre-emits the order labels marked as pre-emitted in the outbox', function ()
         ->and($message->payload['label_count'])->toBe(3);
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
+it('renders the pre-emitted labels with both the QR and the Code128 barcode', function (): void {
+    preEmit('DM-260020003');
+
+    $record = EmittedLabelRecord::query()->where('order_id', 'DM-260020003')->firstOrFail();
+
+    // La pre-emisión usa el mismo renderer: QR firmado + Code128 con el id del bulto (simbología `both`).
+    expect($record->zpl)->toContain('^BQN,2,6')
+        ->and($record->zpl)->toContain('^FDMA,'.$record->signed_json.'^FS')
+        ->and($record->zpl)->toContain('^BCN,90,Y,N,N')
+        ->and($record->zpl)->toContain('^FD'.$record->label_id.'^FS');
+})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
+
 it('is idempotent: re-running does not duplicate labels nor the outbox fact', function (): void {
     preEmit('DM-260020002');
     preEmit('DM-260020002');

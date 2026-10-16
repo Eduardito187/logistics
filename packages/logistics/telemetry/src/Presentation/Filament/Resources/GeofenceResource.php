@@ -20,6 +20,7 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Telemetry\Application\Command\ActivateGeofence\ActivateGeofence;
 use Logistics\Telemetry\Application\Command\DeactivateGeofence\DeactivateGeofence;
 use Logistics\Telemetry\Application\Command\DeleteGeofence\DeleteGeofence;
@@ -42,6 +43,8 @@ use Logistics\Telemetry\Presentation\Filament\Support\NodeNames;
  */
 final class GeofenceResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = GeofenceRecord::class;
 
     protected static ?string $recordTitleAttribute = 'name';

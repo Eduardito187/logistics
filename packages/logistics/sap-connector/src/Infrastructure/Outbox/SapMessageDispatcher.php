@@ -74,9 +74,21 @@ final readonly class SapMessageDispatcher implements MessageDispatcher
     /**
      * Empuja un traspaso a SAP. Éxito → Sent (a la espera del callback de confirmación). Fallo → Failed
      * con el motivo y se relanza, para que el relay reintente con backoff.
+     *
+     * Bifurcación por propiedad (ADR 017, roadmap §6.4): el stock de un seller (consignación) NUNCA se
+     * postea a SAP como material propio de Dismac. Un traspaso de consignación es un movimiento puramente
+     * logístico: se marca Sent sin empujar el posteo de titularidad a SAP. El stock propio (Owned) se
+     * postea exactamente como hoy.
      */
     private function pushToSap(StockTransfer $transfer): void
     {
+        if (!$transfer->kind()->postsOwnershipToSap()) {
+            $transfer->markSent();
+            $this->transfers->save($transfer);
+
+            return;
+        }
+
         try {
             $this->sap->pushStockTransfer($transfer);
         } catch (Throwable $exception) {

@@ -48,16 +48,16 @@ use Logistics\Notifications\Domain\Contract\ProductImageResolver;
 use Logistics\Notifications\Domain\Contract\SmsBudgetRepository;
 use Logistics\Notifications\Domain\ValueObject\Channel;
 use Logistics\Notifications\Infrastructure\Channel\EmailChannelSender;
+use Logistics\Notifications\Infrastructure\Channel\FcmChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\NotificationContentRenderer;
-use Logistics\Notifications\Infrastructure\Channel\NtfyChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\RoutingChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\SmsChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\TelegramChannelSender;
-use Logistics\Notifications\Infrastructure\Channel\WebPushChannelSender;
 use Logistics\Notifications\Infrastructure\Dispatch\DomainEventNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\FleetDocumentExpiryNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\NotificationChannelDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationDispatcher;
+use Logistics\Notifications\Infrastructure\Fcm\FcmAccessToken;
 use Logistics\Notifications\Infrastructure\Image\FilesystemCollageImageStore;
 use Logistics\Notifications\Infrastructure\Image\GdCollageImageBuilder;
 use Logistics\Notifications\Infrastructure\Image\NullCollageImageBuilder;
@@ -213,9 +213,8 @@ final class NotificationsServiceProvider extends ServiceProvider
     }
 
     /**
-     * Arma los canales reales (todos open-source) detrás del contrato ChannelSender y el dispatcher del
-     * outbox: push por ntfy/UnifiedPush, web push por VAPID (vía ntfy), Telegram, email y SMS por gateway
-     * open-source. Sin Firebase/FCM ni WhatsApp de pago.
+     * Arma los canales reales detrás del contrato ChannelSender y el dispatcher del outbox: push por
+     * Firebase Cloud Messaging (FCM, por topic), Telegram, email y SMS por gateway open-source.
      */
     private function registerChannels(): void
     {
@@ -225,19 +224,11 @@ final class NotificationsServiceProvider extends ServiceProvider
             $config = $app['config']->get('logistics-notifications');
             $pushImages = $app->make(PushImageResolver::class);
 
-            /** @var array{url: ?string, token: ?string, priority: string, timeout: int} $ntfyConfig */
-            $ntfyConfig = [
-                'url' => $config['ntfy']['url'] ?? null,
-                'token' => $config['ntfy']['token'] ?? null,
-                'priority' => (string) ($config['ntfy']['priority'] ?? 'default'),
-                'timeout' => (int) ($config['ntfy']['timeout'] ?? 5),
-            ];
-            /** @var array{url: ?string, token: ?string, vapid_public_key: ?string, timeout: int} $webPushConfig */
-            $webPushConfig = [
-                'url' => $config['web_push']['url'] ?? null,
-                'token' => $config['web_push']['token'] ?? null,
-                'vapid_public_key' => $config['web_push']['vapid_public_key'] ?? null,
-                'timeout' => (int) ($config['web_push']['timeout'] ?? 5),
+            /** @var array{project_id: ?string, credentials: ?string, timeout: int} $fcmConfig */
+            $fcmConfig = [
+                'project_id' => $config['fcm']['project_id'] ?? null,
+                'credentials' => $config['fcm']['credentials'] ?? null,
+                'timeout' => (int) ($config['fcm']['timeout'] ?? 10),
             ];
             /** @var array{endpoint: string, bot_token: ?string, timeout: int} $telegramConfig */
             $telegramConfig = [
@@ -247,8 +238,11 @@ final class NotificationsServiceProvider extends ServiceProvider
             ];
 
             return new RoutingChannelSender([
-                Channel::PushNtfy->value => new NtfyChannelSender($ntfyConfig, $pushImages),
-                Channel::WebPush->value => new WebPushChannelSender($webPushConfig, $pushImages),
+                Channel::Fcm->value => new FcmChannelSender(
+                    ['project_id' => $fcmConfig['project_id'], 'timeout' => $fcmConfig['timeout']],
+                    new FcmAccessToken($fcmConfig),
+                    $pushImages,
+                ),
                 Channel::Telegram->value => new TelegramChannelSender($telegramConfig, $pushImages),
                 Channel::Email->value => new EmailChannelSender(
                     is_string($config['email']['mailer'] ?? null) ? $config['email']['mailer'] : null,

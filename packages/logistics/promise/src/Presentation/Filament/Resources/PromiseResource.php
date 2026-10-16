@@ -38,6 +38,7 @@ use Logistics\Promise\Presentation\Filament\Resources\PromiseResource\Pages;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de las promesas de entrega y de su reserva temporal de cupo.
@@ -65,6 +66,8 @@ use Logistics\Shared\Application\Query\QueryBus;
  */
 final class PromiseResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = PromiseRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-clock';

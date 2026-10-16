@@ -47,6 +47,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource;
 use Logistics\FleetOps\Presentation\Filament\Support\VehiclePlates;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Throwable;
 
 /**
@@ -72,6 +73,8 @@ use Throwable;
  */
 final class FleetCostDashboard extends Page
 {
+    use OfficeOnly;
+
     /** Días sin lectura de odómetro a partir de los cuales un vehículo se considera "atrasado". */
     private const ODOMETER_STALE_DAYS = 14;
 

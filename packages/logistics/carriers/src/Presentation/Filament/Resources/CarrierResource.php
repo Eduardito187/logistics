@@ -25,6 +25,7 @@ use Logistics\Carriers\Presentation\Filament\Resources\CarrierResource\Pages\Cre
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierResource\Pages\ListCarriers;
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierResource\Pages\ViewCarrier;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de transportistas terceros.
@@ -38,6 +39,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class CarrierResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = CarrierRecord::class;
 
     protected static ?string $recordTitleAttribute = 'name';

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers\Filament;
 
+use App\Filament\Avatars\LocalAvatarProvider;
 use App\Http\Middleware\SecurityHeaders;
 use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
@@ -24,6 +25,8 @@ use Logistics\Capacity\Presentation\Filament\Pages\DispatchCalendar;
 use Logistics\Execution\Presentation\Filament\Pages\LastMileBoard;
 use Logistics\Fleet\Presentation\Filament\Pages\DriverHistory;
 use Logistics\FleetOps\Presentation\Filament\Pages\FleetCostDashboard;
+use Logistics\Inbound\Presentation\Filament\Pages\InboundBoard;
+use Logistics\Inbound\Presentation\Filament\Pages\ReceivingCalendar;
 use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
 
 /**
@@ -46,6 +49,10 @@ final class AdminPanelProvider extends PanelProvider
             // entre navegaciones SPA), así que siguen funcionando.
             ->spa()
             ->brandName('Dismac Logistics')
+            // Avatar por defecto generado localmente (iniciales en SVG data URI). El proveedor de
+            // Filament por defecto sale a ui-avatars.com, que offline o con la CSP del admin cerrada
+            // deja la imagen rota en la barra superior. Con este proveedor nunca depende de internet.
+            ->defaultAvatarProvider(LocalAvatarProvider::class)
             // Tipografía del e-commerce Dismatec (Open Sans). Auto-hospedada (ADR 013: sin Google ni
             // servicios de pago): se sirve el CSS/woff2 propios de public/fonts/open-sans con el
             // LocalFontProvider, en vez del link a fonts.bunny.net/Google que emite el provider por
@@ -156,6 +163,26 @@ final class AdminPanelProvider extends PanelProvider
                 in: base_path('packages/logistics/fleetops/src/Presentation/Filament'),
                 for: 'Logistics\FleetOps\Presentation\Filament',
             )
+            ->discoverResources(
+                in: base_path('packages/logistics/sellers/src/Presentation/Filament'),
+                for: 'Logistics\Sellers\Presentation\Filament',
+            )
+            ->discoverResources(
+                in: base_path('packages/logistics/inbound/src/Presentation/Filament'),
+                for: 'Logistics\Inbound\Presentation\Filament',
+            )
+            ->discoverResources(
+                in: base_path('packages/logistics/inventory/src/Presentation/Filament'),
+                for: 'Logistics\Inventory\Presentation\Filament',
+            )
+            ->discoverResources(
+                in: base_path('packages/logistics/settlement/src/Presentation/Filament'),
+                for: 'Logistics\Settlement\Presentation\Filament',
+            )
+            ->discoverResources(
+                in: base_path('packages/logistics/returns/src/Presentation/Filament'),
+                for: 'Logistics\Returns\Presentation\Filament',
+            )
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 // Landing del panel: la Torre de control (App\Filament\Pages\ControlTower, ruta '/') se
@@ -164,6 +191,9 @@ final class AdminPanelProvider extends PanelProvider
                 //
                 // Cola de última milla / despacho del contexto Execution: entregas del día accionables.
                 LastMileBoard::class,
+                // Recepción de proveedores (marketplace, ADR 017): tablero de ASNs del día y calendario de andenes.
+                InboundBoard::class,
+                ReceivingCalendar::class,
                 // Calendario de despacho del contexto Capacity (cupos por día/franja, por nodo/zona).
                 DispatchCalendar::class,
                 // Mapa de flota en vivo (telemetría GPS): todos los camiones en tiempo real.

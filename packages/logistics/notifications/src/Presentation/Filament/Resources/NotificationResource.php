@@ -122,8 +122,7 @@ final class NotificationResource extends Resource
     public static function channels(): array
     {
         return [
-            'PUSH_NTFY' => __('Push'),
-            'WEB_PUSH' => __('Web push'),
+            'FCM' => __('Push'),
             'TELEGRAM' => __('Telegram'),
             'EMAIL' => __('Email'),
             'SMS' => __('SMS'),
@@ -412,7 +411,7 @@ final class NotificationResource extends Resource
             return $record->phone;
         }
 
-        return __('App push (ntfy topic)');
+        return __('App push (FCM topic)');
     }
 
     /**

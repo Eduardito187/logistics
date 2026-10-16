@@ -11,6 +11,7 @@ use Logistics\SapConnector\Domain\ValueObject\SapCenter;
 use Logistics\SapConnector\Domain\ValueObject\SapMaterial;
 use Logistics\SapConnector\Domain\ValueObject\SapWarehouse;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
+use Logistics\SapConnector\Domain\ValueObject\TransferKind;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
@@ -34,6 +35,10 @@ final class StockTransfer extends AggregateRoot
         private readonly int $quantity,
         private TransferStatus $status,
         private ?string $lastError,
+        // Dimensión de propiedad (ADR 017): por defecto Owned, para que el flujo retail histórico quede
+        // intacto. Consignment ⇒ ownerPartyId (seller) no nulo; Owned ⇒ sin dueño.
+        private readonly TransferKind $kind = TransferKind::Owned,
+        private readonly ?string $ownerPartyId = null,
     ) {}
 
     /**
@@ -48,6 +53,9 @@ final class StockTransfer extends AggregateRoot
         SapCenter $center,
         SapWarehouse $warehouse,
         int $quantity,
+        // Opcionales y aditivos: por defecto es un traspaso propio (retail) sin dueño, el flujo de hoy.
+        TransferKind $kind = TransferKind::Owned,
+        ?string $ownerPartyId = null,
     ): self {
         $trimmedEventId = trim($eventId);
         if ($trimmedEventId === '') {
@@ -61,6 +69,8 @@ final class StockTransfer extends AggregateRoot
             throw SapConnectorException::because('la cantidad del traspaso debe ser al menos 1');
         }
 
+        $normalizedOwner = self::normalizeOwner($kind, $ownerPartyId);
+
         $transfer = new self(
             $id,
             $trimmedEventId,
@@ -71,6 +81,8 @@ final class StockTransfer extends AggregateRoot
             $quantity,
             TransferStatus::Pending,
             null,
+            $kind,
+            $normalizedOwner,
         );
 
         $transfer->recordEvent(new StockTransferEnqueued(
@@ -99,6 +111,9 @@ final class StockTransfer extends AggregateRoot
         int $quantity,
         TransferStatus $status,
         ?string $lastError,
+        // Aditivos: los datos de la fila ya son válidos, así que no se revalida la invariante aquí.
+        TransferKind $kind = TransferKind::Owned,
+        ?string $ownerPartyId = null,
     ): self {
         return new self(
             $id,
@@ -110,7 +125,30 @@ final class StockTransfer extends AggregateRoot
             $quantity,
             $status,
             $lastError,
+            $kind,
+            $ownerPartyId,
         );
+    }
+
+    /**
+     * Normaliza y valida la invariante de propiedad (ADR 017): la consignación exige un dueño (seller);
+     * el stock propio (Owned) no puede tenerlo. Devuelve el id del dueño ya recortado (o null).
+     */
+    private static function normalizeOwner(TransferKind $kind, ?string $ownerPartyId): ?string
+    {
+        $trimmedOwner = $ownerPartyId !== null ? trim($ownerPartyId) : null;
+        if ($trimmedOwner === '') {
+            $trimmedOwner = null;
+        }
+
+        if ($kind->requiresOwner() && $trimmedOwner === null) {
+            throw SapConnectorException::because('un traspaso de consignación exige el id del seller dueño del stock');
+        }
+        if (!$kind->requiresOwner() && $trimmedOwner !== null) {
+            throw SapConnectorException::because('un traspaso de stock propio (Owned) no puede tener un seller dueño');
+        }
+
+        return $trimmedOwner;
     }
 
     /**
@@ -203,5 +241,29 @@ final class StockTransfer extends AggregateRoot
     public function lastError(): ?string
     {
         return $this->lastError;
+    }
+
+    /**
+     * Dimensión de propiedad del traspaso (Owned/Consignment). Decide si se postea la titularidad a SAP.
+     */
+    public function kind(): TransferKind
+    {
+        return $this->kind;
+    }
+
+    /**
+     * Id del seller dueño del stock en una consignación; null si es stock propio de Dismac (Owned).
+     */
+    public function ownerPartyId(): ?string
+    {
+        return $this->ownerPartyId;
+    }
+
+    /**
+     * ¿Es stock de un seller (consignación)? Si lo es, NUNCA se postea a SAP como material propio.
+     */
+    public function isConsignment(): bool
+    {
+        return $this->kind === TransferKind::Consignment;
     }
 }

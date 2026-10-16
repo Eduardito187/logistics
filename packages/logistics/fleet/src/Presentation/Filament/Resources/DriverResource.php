@@ -35,6 +35,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\DriverResource\Pages\EditDri
 use Logistics\Fleet\Presentation\Filament\Resources\DriverResource\Pages\ListDrivers;
 use Logistics\Fleet\Presentation\Filament\Resources\DriverResource\Pages\ViewDriver;
 use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 
 /**
@@ -50,6 +51,8 @@ use Logistics\Shared\Presentation\Filament\ImageFallback;
  */
 final class DriverResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = DriverModel::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-identification';

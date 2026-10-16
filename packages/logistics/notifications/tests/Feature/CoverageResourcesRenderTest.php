@@ -46,7 +46,7 @@ it('renderiza el log de notificaciones con registros con y sin contacto', functi
 it('renderiza el detalle de una notificación encolada', function (): void {
     $record = NotificationRecord::factory()->create([
         'email' => 'cliente@dismac.test',
-        'attempts' => [Channel::PushNtfy->value => 2],
+        'attempts' => [Channel::Fcm->value => 2],
     ]);
 
     Livewire::test(ViewNotification::class, ['record' => $record->getKey()])->assertOk();

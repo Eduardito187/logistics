@@ -13,6 +13,7 @@ use Logistics\SapConnector\Domain\ValueObject\SapCenter;
 use Logistics\SapConnector\Domain\ValueObject\SapMaterial;
 use Logistics\SapConnector\Domain\ValueObject\SapWarehouse;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
+use Logistics\SapConnector\Domain\ValueObject\TransferKind;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\SapConnector\Infrastructure\Outbox\SapMessageDispatcher;
 use Logistics\Shared\Domain\Event\BaseDomainEvent;
@@ -221,6 +222,31 @@ it('es un no-op cuando no existe el traspaso del event_id (defensivo)', function
     $dispatcher->dispatch(enqueuedOutboxMessage($transfer));
 
     expect($sap->pushed)->toBe(0);
+});
+
+it('no postea a SAP una consignación (stock de seller) y la deja Sent como movimiento logístico', function (): void {
+    // Regla dura (ADR 017): el stock de un seller NUNCA se postea a SAP como material propio de Dismac.
+    $transfer = StockTransfer::fromReception(
+        StockTransferId::generate(),
+        'REC-CONS-9',
+        'SHIP-CONS-9',
+        SapMaterial::of('MAT-900'),
+        SapCenter::of('C001'),
+        SapWarehouse::of('A01'),
+        2,
+        TransferKind::Consignment,
+        '0199bdaa-0000-7000-8000-000000000abc',
+    );
+    $transfer->releaseEvents();
+    $repository = inMemoryTransferRepository($transfer);
+    $sap = recordingSapClient();
+
+    $dispatcher = new SapMessageDispatcher($repository, $sap);
+    $dispatcher->dispatch(enqueuedOutboxMessage($transfer));
+
+    // No se tocó SAP, pero el traspaso quedó Sent (resuelto como movimiento logístico de consignación).
+    expect($sap->pushed)->toBe(0)
+        ->and($repository->findByEventId('REC-CONS-9')?->status())->toBe(TransferStatus::Sent);
 });
 
 it('ignora un evento sin reception_event_id en el payload', function (): void {

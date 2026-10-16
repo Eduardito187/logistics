@@ -8,12 +8,16 @@ use Logistics\Promise\Application\ReadModel\PromiseOptionView;
 use Logistics\Promise\Domain\Contract\CapacityCalendar;
 use Logistics\Promise\Domain\Contract\CorridorAvailabilityProvider;
 use Logistics\Promise\Domain\Contract\CoverageProfileProvider;
+use Logistics\Promise\Domain\Contract\FulfillmentLeadTimeProvider;
 use Logistics\Promise\Domain\Exception\PromiseException;
 use Logistics\Promise\Domain\Service\DeliveryPromiseCalculator;
+use Logistics\Promise\Domain\ValueObject\LeadTime;
 use Logistics\Promise\Domain\ValueObject\ServiceWindow;
 use Logistics\Promise\Domain\ValueObject\SlotCapacity;
 use Logistics\Promise\Domain\ValueObject\ZoneServiceProfile;
 use Logistics\Shared\Domain\Clock\Clock;
+use Logistics\Shared\Domain\ValueObject\Ownership;
+use Logistics\Shared\Domain\ValueObject\Uuid;
 
 /**
  * Reloj fijo para el cálculo: todo "ahora" cae el martes 2026-10-13 a las 08:00.
@@ -82,6 +86,27 @@ function capacityReturning(array $slots): CapacityCalendar
             $this->askedDates[] = $date->format('Y-m-d');
 
             return $this->slots;
+        }
+    };
+}
+
+/**
+ * Puerto de lead time que devuelve siempre el lead dado (y registra si se le consultó, para probar que el
+ * camino retail no lo toca).
+ */
+function leadReturning(LeadTime $lead): FulfillmentLeadTimeProvider
+{
+    return new class($lead) implements FulfillmentLeadTimeProvider
+    {
+        public bool $wasAsked = false;
+
+        public function __construct(private readonly LeadTime $lead) {}
+
+        public function leadTimeFor(Ownership $ownership): LeadTime
+        {
+            $this->wasAsked = true;
+
+            return $this->lead;
         }
     };
 }
@@ -191,4 +216,55 @@ it('rejects an invalid from date', function (): void {
 
     expect(fn (): array => $handler->handle(new CalculateDeliveryPromise('zone-1', '13-10-2026')))
         ->toThrow(PromiseException::class);
+});
+
+// --- lead time del marketplace (aditivo) -------------------------------------------------------
+
+it('leaves the retail promise intact and never consults the lead provider', function (): void {
+    $capacity = capacityReturning([SlotCapacity::of('AM', 5.0)]);
+    $leads = leadReturning(LeadTime::ofDays(5)); // un lead grande que NO debe aplicarse al retail
+
+    $handler = new CalculateDeliveryPromiseHandler(
+        coverageReturning(ZoneServiceProfile::of([1, 2, 3, 4, 5, 6, 7], 0, [])),
+        corridorReturning(true),
+        $capacity,
+        new DeliveryPromiseCalculator,
+        promiseClock(),
+        $leads,
+    );
+
+    // Consulta retail (sin modo de fulfillment): las fechas son las de siempre desde el martes 13.
+    $options = $handler->handle(new CalculateDeliveryPromise('zone-1', '2026-10-13', 3));
+
+    expect($capacity->askedDates)->toBe(['2026-10-13', '2026-10-14', '2026-10-15'])
+        ->and($options)->toHaveCount(3)
+        ->and($leads->wasAsked)->toBeFalse();
+});
+
+it('adds the seller lead time to a dropship promise', function (): void {
+    $capacity = capacityReturning([SlotCapacity::of('AM', 5.0)]);
+    $leads = leadReturning(LeadTime::ofDays(1)); // el seller tarda 1 día más en despachar
+
+    $handler = new CalculateDeliveryPromiseHandler(
+        coverageReturning(ZoneServiceProfile::of([1, 2, 3, 4, 5, 6, 7], 0, [])),
+        corridorReturning(true),
+        $capacity,
+        new DeliveryPromiseCalculator,
+        promiseClock(),
+        $leads,
+    );
+
+    $options = $handler->handle(new CalculateDeliveryPromise(
+        'zone-1',
+        '2026-10-13',
+        3,
+        'dropship',
+        Uuid::generate()->value,
+    ));
+
+    // El lead de 1 día empuja la fecha más temprana del 13 al 14: ya no se consulta capacidad del 13.
+    expect($capacity->askedDates)->toBe(['2026-10-14', '2026-10-15'])
+        ->and($options)->toHaveCount(2)
+        ->and($options[0]->slotDate)->toBe('2026-10-14')
+        ->and($leads->wasAsked)->toBeTrue();
 });

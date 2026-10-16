@@ -22,6 +22,7 @@ use Logistics\FleetOps\Presentation\Filament\Concerns\ResolvesVehiclePlate;
 use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource\Pages\CreateOdometerReading;
 use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource\Pages\ListOdometerReadings;
 use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource\Pages\ViewOdometerReading;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de lecturas de odómetro por vehículo y fuente.
@@ -34,6 +35,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource\P
  */
 final class OdometerReadingResource extends Resource
 {
+    use OfficeOnly;
     use ResolvesVehiclePlate;
 
     protected static ?string $model = OdometerReadingRecord::class;

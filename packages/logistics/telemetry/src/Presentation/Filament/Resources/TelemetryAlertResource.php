@@ -20,6 +20,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Telemetry\Application\Command\AcknowledgeAlert\AcknowledgeAlert;
 use Logistics\Telemetry\Domain\ValueObject\AlertSeverity;
 use Logistics\Telemetry\Domain\ValueObject\AlertType;
@@ -39,6 +40,8 @@ use Logistics\Telemetry\Presentation\Filament\Support\VehiclePlates;
  */
 final class TelemetryAlertResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = AlertRecord::class;
 
     public static function getNavigationGroup(): string
