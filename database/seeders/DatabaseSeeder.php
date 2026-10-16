@@ -15,14 +15,19 @@ use Logistics\Coverage\Infrastructure\Seeder\CoverageSeeder;
 use Logistics\Execution\Database\Seeders\ExecutionDemoSeeder;
 use Logistics\Fleet\Database\Seeders\FleetSeeder;
 use Logistics\FleetOps\Infrastructure\Seeder\FleetOpsDemoSeeder;
+use Logistics\Inbound\Database\Seeders\InboundDemoSeeder;
+use Logistics\Inventory\Database\Seeders\InventoryDemoSeeder;
 use Logistics\Labels\Database\Seeders\LabelsSeeder;
 use Logistics\Network\Database\Seeders\NetworkSeeder;
 use Logistics\Notifications\Database\Seeders\NotificationsSeeder;
 use Logistics\Outbox\Infrastructure\Persistence\Eloquent\Seeders\OutboxSeeder;
 use Logistics\Planning\Database\Seeders\PlanningDemoSeeder;
 use Logistics\Promise\Database\Seeders\PromiseSeeder;
+use Logistics\Returns\Database\Seeders\ReturnsDemoSeeder;
 use Logistics\SapConnector\Infrastructure\Persistence\Seeders\SapConnectorSeeder;
+use Logistics\Sellers\Database\Seeders\SellersDemoSeeder;
 use Logistics\Settings\Database\Seeders\SettingsSeeder;
+use Logistics\Settlement\Database\Seeders\SettlementDemoSeeder;
 use Logistics\Shipments\Infrastructure\Persistence\Seeders\ShipmentsDemoSeeder;
 use Logistics\Telemetry\Infrastructure\Seeder\TelemetryDemoSeeder;
 use Logistics\Tracking\Database\Seeders\TrackingSeeder;
@@ -75,6 +80,17 @@ class DatabaseSeeder extends Seeder
             FleetSeeder::class,
             CarriersDemoSeeder::class,
 
+            // 3c) Marketplace: sellers/proveedores (ADR 017). Party independiente; sin dependencias.
+            SellersDemoSeeder::class,
+
+            // 3d) Recepción de proveedores (inbound) e inventario con dueño: dependen de sellers y de un
+            // almacén central de la red. Inbound siembra un ASN recibido; inventory, lotes propios y de consignación.
+            InboundDemoSeeder::class,
+            InventoryDemoSeeder::class,
+
+            // 3e) Devoluciones (logística inversa, Fase 4): usa los mismos seller/almacén demo.
+            ReturnsDemoSeeder::class,
+
             // 3b) Operación y costos de la flota propia (combustible, mantenimiento, salidas, gastos).
             // Depende de los vehículos de FleetSeeder (lee vehicle_ids reales).
             FleetOpsDemoSeeder::class,
@@ -87,6 +103,10 @@ class DatabaseSeeder extends Seeder
 
             // 6) Envíos: pedidos recibidos que referencian red y cobertura.
             ShipmentsDemoSeeder::class,
+
+            // 6b) Liquidación de sellers (marketplace, Fase 4): agrega despachos de seller del periodo.
+            // No-op si aún no hay despachos de producto de seller.
+            SettlementDemoSeeder::class,
 
             // 7) Planificación: arma rutas/planes sobre envíos, flota y capacidad.
             PlanningDemoSeeder::class,

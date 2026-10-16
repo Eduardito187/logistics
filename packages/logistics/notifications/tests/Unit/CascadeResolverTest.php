@@ -18,20 +18,20 @@ function resolverNotification(): Notification
         NotificationId::generate(),
         'shp-1',
         MessageType::ConfirmLocation,
-        CascadePolicy::of([Channel::PushNtfy, Channel::WebPush, Channel::Email, Channel::Sms]),
+        CascadePolicy::of([Channel::Fcm, Channel::Telegram, Channel::Email, Channel::Sms]),
     );
 }
 
-it('resolves the next channel in order PushNtfy -> WebPush -> Email -> Sms', function (): void {
+it('resolves the next channel in order Fcm -> Telegram -> Email -> Sms', function (): void {
     $resolver = new CascadeResolver;
     $notification = resolverNotification();
 
-    // PushNtfy -> WebPush
-    expect($resolver->nextChannel($notification))->toBe(Channel::WebPush)
+    // Fcm -> Telegram
+    expect($resolver->nextChannel($notification))->toBe(Channel::Telegram)
         ->and($resolver->canEscalate($notification))->toBeTrue();
 
     $notification->escalate();
-    // WebPush -> Email
+    // Telegram -> Email
     expect($resolver->nextChannel($notification))->toBe(Channel::Email);
 
     $notification->escalate();

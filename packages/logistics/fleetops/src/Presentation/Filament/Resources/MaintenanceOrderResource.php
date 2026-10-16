@@ -26,6 +26,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\MaintenanceOrderResource\
 use Logistics\FleetOps\Presentation\Filament\Resources\MaintenanceOrderResource\Pages\ListMaintenanceOrders;
 use Logistics\FleetOps\Presentation\Filament\Support\VehiclePlates;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de órdenes de mantenimiento de la flota propia.
@@ -38,6 +39,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class MaintenanceOrderResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = MaintenanceOrderRecord::class;
 
     public static function getNavigationGroup(): string

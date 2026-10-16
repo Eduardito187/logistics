@@ -17,7 +17,7 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * cuerpo y el asunto llevan variables con la sintaxis `{{clave}}`, que se reemplazan al renderizar con
  * los datos del envío (p. ej. `{{tracking_url}}`, `{{eta}}`).
  *
- * El asunto solo lo usa el canal email; push, web push y SMS usan el cuerpo. Una plantilla es única
+ * El asunto solo lo usa el canal email; push (FCM) y SMS usan el cuerpo. Una plantilla es única
  * por la combinación (messageType, channel, locale).
  */
 final class MessageTemplate extends AggregateRoot

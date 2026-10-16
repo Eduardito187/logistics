@@ -51,7 +51,8 @@ final readonly class OperationalCorridorResolver
             }
 
             $terminal = match ($node->type()) {
-                NodeType::DistributionCenter => CorridorType::CdToCustomer,
+                // El almacén central distribuye como un CD: ofrece última milla (CdToCustomer).
+                NodeType::DistributionCenter, NodeType::CentralWarehouse => CorridorType::CdToCustomer,
                 NodeType::Store => CorridorType::StorePickup,
                 NodeType::PickupPoint => null,
             };

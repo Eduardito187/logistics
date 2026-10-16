@@ -55,3 +55,38 @@ it('compara materiales por valor', function (): void {
     expect(SapMaterial::of('MAT-1')->equals(SapMaterial::of('MAT-1')))->toBeTrue()
         ->and(SapMaterial::of('MAT-1')->equals(SapMaterial::of('MAT-2')))->toBeFalse();
 });
+
+it('es un mapeo propio de Dismac (sin seller) por defecto', function (): void {
+    $mapping = defineMapping();
+
+    expect($mapping->sellerId())->toBeNull()
+        ->and($mapping->isOwnMapping())->toBeTrue();
+});
+
+it('gana una dimensión de seller opcional (coordenada de consignación)', function (): void {
+    $mapping = MaterialMapping::define(
+        MaterialMappingId::generate(),
+        'SELLER-SKU-1',
+        SapMaterial::of('MAT-900'),
+        SapCenter::of('C001'),
+        SapWarehouse::of('A01'),
+        '0199bdaa-0000-7000-8000-000000000abc',
+    );
+
+    expect($mapping->sellerId())->toBe('0199bdaa-0000-7000-8000-000000000abc')
+        ->and($mapping->isOwnMapping())->toBeFalse();
+});
+
+it('normaliza un seller vacío a mapeo propio (null)', function (): void {
+    $mapping = MaterialMapping::define(
+        MaterialMappingId::generate(),
+        'SKU-NORM',
+        SapMaterial::of('MAT-900'),
+        SapCenter::of('C001'),
+        SapWarehouse::of('A01'),
+        '   ',
+    );
+
+    expect($mapping->sellerId())->toBeNull()
+        ->and($mapping->isOwnMapping())->toBeTrue();
+});

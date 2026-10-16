@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Infrastructure\Persistence\Eloquent;
 
+use Logistics\Shared\Domain\ValueObject\Ownership;
 use Logistics\Shipments\Domain\Model\PhysicalUnit;
 use Logistics\Shipments\Domain\Model\Shipment;
 use Logistics\Shipments\Domain\Model\ShipmentLine;
@@ -37,9 +38,13 @@ final class ShipmentMapper
     {
         $geoPoint = $shipment->address()->geoPoint;
         $deliverySlot = $shipment->deliverySlot();
+        $ownership = $shipment->ownership()->toArray();
 
         return [
             'id' => $shipment->id()->toString(),
+            'owner_party_id' => $ownership['owner_party_id'],
+            'fulfillment_mode' => $ownership['mode'],
+            'seller_sku_ref' => $ownership['seller_sku_ref'],
             'source' => $shipment->source()->value,
             'external_id' => $shipment->sourceReference()->externalId,
             'customer_name' => $shipment->customer()->name,
@@ -53,6 +58,7 @@ final class ShipmentMapper
             'address_confidence' => $shipment->addressConfidence()->score,
             'address_confidence_level' => $shipment->addressConfidence()->level->value,
             'status' => $shipment->status()->value,
+            'destination_node_id' => $shipment->destinationNodeId(),
             'delivery_date' => $deliverySlot?->date,
             'delivery_window_start' => $deliverySlot?->windowStart,
             'delivery_window_end' => $deliverySlot?->windowEnd,
@@ -84,10 +90,15 @@ final class ShipmentMapper
      */
     public function toUnitRow(Shipment $shipment, PhysicalUnit $unit): array
     {
+        $ownership = $unit->ownership()->toArray();
+
         return [
             'id' => $unit->id()->toString(),
             'shipment_id' => $shipment->id()->toString(),
             'line_id' => $unit->lineId()->toString(),
+            'owner_party_id' => $ownership['owner_party_id'],
+            'fulfillment_mode' => $ownership['mode'],
+            'seller_sku_ref' => $ownership['seller_sku_ref'],
             'unit_index' => $unit->unit()->index,
             'unit_total' => $unit->unit()->total,
             'piece_index' => $unit->piece()->index,
@@ -134,6 +145,12 @@ final class ShipmentMapper
                 ShipmentLineId::fromString($unitRecord->line_id),
                 Fraction::of($unitRecord->unit_index, $unitRecord->unit_total),
                 Fraction::of($unitRecord->piece_index, $unitRecord->piece_total),
+                // Filas viejas (mode 'owned', dueño null) reconstituyen a dismacOwned() por el default.
+                Ownership::fromPrimitives(
+                    $unitRecord->fulfillment_mode,
+                    $unitRecord->owner_party_id,
+                    $unitRecord->seller_sku_ref,
+                ),
             );
         }
 
@@ -161,6 +178,13 @@ final class ShipmentMapper
             $lines,
             $units,
             $deliverySlot,
+            $record->destination_node_id,
+            // Filas viejas (mode 'owned', dueño null) reconstituyen a dismacOwned() por el default.
+            Ownership::fromPrimitives(
+                $record->fulfillment_mode,
+                $record->owner_party_id,
+                $record->seller_sku_ref,
+            ),
         );
     }
 }

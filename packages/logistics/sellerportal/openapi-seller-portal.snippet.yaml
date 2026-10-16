@@ -1,0 +1,150 @@
+# Snippet OpenAPI del portal del seller (Fase 5, ADR 017). El dueño de openapi/v1.yaml lo integra en el
+# mismo cambio en que se registra el package (esta sesión no toca openapi/). Las rutas cuelgan de la
+# puerta integrations: /v1/integrations/seller-portal/*. Seguridad: bearer (token de integración) con el
+# permiso `sellerportal.read` y un scope `sellerportal.seller.<uuid>`; el sellerId sale del token.
+
+paths:
+  /v1/integrations/seller-portal/asns:
+    get:
+      operationId: sellerPortalListAsns
+      summary: ASNs (inbound) del seller autenticado
+      tags: [Seller Portal]
+      security:
+        - integrationToken: []
+      responses:
+        '200':
+          description: Lista de ASNs del seller
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, seller_id]
+                properties:
+                  seller_id:
+                    type: string
+                    format: uuid
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SellerPortalAsn'
+        '401':
+          description: Token ausente, inválido o expirado
+        '403':
+          description: El token no concede sellerportal.read o no identifica a un seller
+
+  /v1/integrations/seller-portal/stock:
+    get:
+      operationId: sellerPortalGetStock
+      summary: Stock on-hand (inventory) del seller autenticado
+      tags: [Seller Portal]
+      security:
+        - integrationToken: []
+      responses:
+        '200':
+          description: Lotes de stock on-hand del seller
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, seller_id]
+                properties:
+                  seller_id:
+                    type: string
+                    format: uuid
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SellerPortalStockLot'
+        '401':
+          description: Token ausente, inválido o expirado
+        '403':
+          description: El token no concede sellerportal.read o no identifica a un seller
+
+  /v1/integrations/seller-portal/settlements:
+    get:
+      operationId: sellerPortalListSettlements
+      summary: Liquidaciones (settlement) del seller autenticado
+      tags: [Seller Portal]
+      security:
+        - integrationToken: []
+      responses:
+        '200':
+          description: Liquidaciones del seller
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, seller_id]
+                properties:
+                  seller_id:
+                    type: string
+                    format: uuid
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SellerPortalSettlement'
+        '401':
+          description: Token ausente, inválido o expirado
+        '403':
+          description: El token no concede sellerportal.read o no identifica a un seller
+
+components:
+  schemas:
+    SellerPortalAsn:
+      type: object
+      required: [id, seller_id, warehouse_id, status]
+      properties:
+        id: { type: string, format: uuid }
+        seller_id: { type: string, format: uuid }
+        warehouse_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [announced, scheduled, arrived, receiving, received, closed, cancelled]
+        appointment_date: { type: string, format: date, nullable: true }
+        appointment_start: { type: string, nullable: true, example: "08:00" }
+        appointment_end: { type: string, nullable: true, example: "10:00" }
+
+    SellerPortalStockLot:
+      type: object
+      required: [id, owner_party_id, warehouse_id, sku, fulfillment_mode, available_quantity, reserved_quantity, unit_cost_cents, currency]
+      properties:
+        id: { type: string, format: uuid }
+        owner_party_id: { type: string, format: uuid }
+        warehouse_id: { type: string, format: uuid }
+        sku: { type: string }
+        fulfillment_mode: { type: string, enum: [owned, fbd, dropship] }
+        seller_sku_ref: { type: string, nullable: true }
+        available_quantity: { type: integer }
+        reserved_quantity: { type: integer }
+        unit_cost_cents: { type: integer }
+        currency: { type: string, example: BOB }
+        received_at: { type: string, format: date-time, nullable: true }
+        goods_receipt_ref: { type: string, nullable: true }
+
+    SellerPortalSettlement:
+      type: object
+      required: [id, seller_id, period_from, period_to, gross_cents, currency, net_cents, status]
+      properties:
+        id: { type: string, format: uuid }
+        seller_id: { type: string, format: uuid }
+        period_from: { type: string, format: date }
+        period_to: { type: string, format: date }
+        gross_cents: { type: integer }
+        currency: { type: string, example: BOB }
+        commission_basis_points: { type: integer }
+        commission_cents: { type: integer }
+        fixed_fee_cents: { type: integer }
+        storage_fee_cents: { type: integer }
+        fulfillment_fee_cents: { type: integer }
+        last_mile_fee_cents: { type: integer }
+        net_cents: { type: integer }
+        status: { type: string, enum: [draft, confirmed, paid] }
+        payment_reference: { type: string, nullable: true }
+
+  securitySchemes:
+    integrationToken:
+      type: http
+      scheme: bearer
+      description: >-
+        Token de integración del contexto access (Authorization: Bearer <token>), con el permiso
+        `sellerportal.read` y un scope `sellerportal.seller.<uuidhex>` que fija el seller.

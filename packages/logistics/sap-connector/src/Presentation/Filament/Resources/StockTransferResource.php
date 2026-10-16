@@ -20,9 +20,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\SapConnector\Application\Command\AcknowledgeStockTransfer\AcknowledgeStockTransfer;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
+use Logistics\SapConnector\Domain\ValueObject\TransferKind;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\StockTransferRecord;
 use Logistics\SapConnector\Presentation\Filament\Resources\StockTransferResource\Pages;
+use Logistics\Sellers\Infrastructure\Persistence\Eloquent\Model\SellerRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use UnitEnum;
 
@@ -39,6 +41,14 @@ use UnitEnum;
 final class StockTransferResource extends Resource
 {
     use AdminOnly;
+
+    /**
+     * Nombres de sellers memoizados por request (id => razón social), para resolver el dueño legible de
+     * las consignaciones en lote y evitar N+1 en el panel (patrón de enriquecimiento cross-context).
+     *
+     * @var array<string, string>|null
+     */
+    private static ?array $sellerNames = null;
 
     protected static ?string $model = StockTransferRecord::class;
 
@@ -111,6 +121,15 @@ final class StockTransferResource extends Resource
             TextEntry::make('quantity')
                 ->label(__('Quantity'))
                 ->numeric(),
+            TextEntry::make('transfer_kind')
+                ->label(__('Ownership'))
+                ->badge()
+                ->formatStateUsing(static fn (string $state): string => self::ownershipLabel($state))
+                ->color(static fn (string $state): string => $state === TransferKind::Consignment->value ? 'warning' : 'gray'),
+            // Para consignación, el dueño es el seller; para stock propio, Dismac. Nunca se muestra el UUID.
+            TextEntry::make('owner_party_id')
+                ->label(__('Owner'))
+                ->state(static fn (StockTransferRecord $record): string => self::ownerName($record->owner_party_id)),
             TextEntry::make('status')
                 ->label(__('Status'))
                 ->badge()
@@ -153,6 +172,16 @@ final class StockTransferResource extends Resource
                     ->label(__('Quantity'))
                     ->numeric()
                     ->alignEnd(),
+                TextColumn::make('transfer_kind')
+                    ->label(__('Ownership'))
+                    ->badge()
+                    ->formatStateUsing(static fn (string $state): string => self::ownershipLabel($state))
+                    ->color(static fn (string $state): string => $state === TransferKind::Consignment->value ? 'warning' : 'gray'),
+                // Dueño legible (seller o Dismac), resuelto en lote; el UUID del seller nunca se muestra.
+                TextColumn::make('owner_party_id')
+                    ->label(__('Owner'))
+                    ->state(static fn (StockTransferRecord $record): string => self::ownerName($record->owner_party_id))
+                    ->toggleable(),
                 TextColumn::make('status')
                     ->label(__('Status'))
                     ->badge()
@@ -179,6 +208,13 @@ final class StockTransferResource extends Resource
                         TransferStatus::Sent->value => __('Sent'),
                         TransferStatus::Acknowledged->value => __('Acknowledged'),
                         TransferStatus::Failed->value => __('Failed'),
+                    ]),
+                SelectFilter::make('transfer_kind')
+                    ->label(__('Ownership'))
+                    ->native(false)
+                    ->options([
+                        TransferKind::Owned->value => __('Owned (retail)'),
+                        TransferKind::Consignment->value => __('Consignment'),
                     ]),
             ])
             ->recordActions([
@@ -224,6 +260,43 @@ final class StockTransferResource extends Resource
                     ->success()
                     ->send();
             });
+    }
+
+    /**
+     * Etiqueta legible de la propiedad del traspaso (stock propio vs. consignación de seller).
+     */
+    private static function ownershipLabel(string $kind): string
+    {
+        return $kind === TransferKind::Consignment->value ? __('Consignment') : __('Owned (retail)');
+    }
+
+    /**
+     * Dueño legible del stock: el seller en una consignación, o Dismac para el stock propio. Resuelve el
+     * nombre del seller por lectura cross-context en lote (read-only), sin acoplar contextos ni mostrar UUID.
+     */
+    private static function ownerName(?string $sellerId): string
+    {
+        if ($sellerId === null) {
+            return __('Dismac');
+        }
+
+        return self::sellerNames()[$sellerId] ?? __('Seller');
+    }
+
+    /**
+     * Mapa id => razón social de los sellers, cargado una sola vez por request (memoizado).
+     *
+     * @return array<string, string>
+     */
+    private static function sellerNames(): array
+    {
+        if (self::$sellerNames === null) {
+            /** @var array<string, string> $names */
+            $names = SellerRecord::query()->pluck('legal_name', 'id')->all();
+            self::$sellerNames = $names;
+        }
+
+        return self::$sellerNames;
     }
 
     /**

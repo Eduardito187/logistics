@@ -8,7 +8,9 @@ use Logistics\Outbox\Infrastructure\Dispatch\RoutingMessageDispatcher;
 use Logistics\Outbox\Infrastructure\Persistence\Eloquent\OutboxMessageRecord;
 use Logistics\SapConnector\Application\Command\DispatchPendingTransfers\DispatchPendingTransfers;
 use Logistics\SapConnector\Application\Command\EnqueueStockTransfer\EnqueueStockTransfer;
+use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Event\StockTransferEnqueued;
+use Logistics\SapConnector\Domain\Model\StockTransfer;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\SapConnector\Infrastructure\Outbox\SapMessageDispatcher;
@@ -116,6 +118,36 @@ it('el relay empuja a SAP un traspaso encolado y lo deja Sent (stub Null por def
 
     expect(StockTransferRecord::query()->where('event_id', '01a13700-0000-7000-8000-000000007003')->value('status'))
         ->toBe(TransferStatus::Sent->value);
+});
+
+it('el worker NO postea a SAP una consignación de seller y la deja Sent', function (): void {
+    // Regla dura (ADR 017): el stock de un seller (consignación) NUNCA se postea a SAP como material
+    // propio de Dismac. Puerto SAP espía para verificar que no se lo invoca.
+    $sap = new class implements SapClient
+    {
+        public int $pushed = 0;
+
+        public function pushStockTransfer(StockTransfer $transfer): void
+        {
+            $this->pushed++;
+        }
+
+        public function fetchOrders(): array
+        {
+            return [];
+        }
+    };
+    app()->instance(SapClient::class, $sap);
+
+    StockTransferRecord::factory()->pending()->consignment()->create([
+        'id' => StockTransferId::generate()->toString(),
+        'event_id' => StockTransferId::generate()->toString(),
+    ]);
+
+    app(CommandBus::class)->dispatch(new DispatchPendingTransfers);
+
+    expect($sap->pushed)->toBe(0)
+        ->and(StockTransferRecord::query()->where('status', TransferStatus::Sent->value)->count())->toBe(1);
 });
 
 it('el worker de reconciliación empuja los pendientes a SAP y los deja Sent', function (): void {

@@ -10,6 +10,7 @@ use Logistics\SapConnector\Domain\ValueObject\SapCenter;
 use Logistics\SapConnector\Domain\ValueObject\SapMaterial;
 use Logistics\SapConnector\Domain\ValueObject\SapWarehouse;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
+use Logistics\SapConnector\Domain\ValueObject\TransferKind;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 
 /**
@@ -154,4 +155,60 @@ it('reconstituye sin grabar eventos', function (): void {
     expect($transfer->releaseEvents())->toBe([])
         ->and($transfer->status())->toBe(TransferStatus::Sent)
         ->and($transfer->quantity())->toBe(5);
+});
+
+it('nace como traspaso de stock propio (Owned) por defecto, sin dueño', function (): void {
+    $transfer = enqueueTransfer();
+
+    expect($transfer->kind())->toBe(TransferKind::Owned)
+        ->and($transfer->ownerPartyId())->toBeNull()
+        ->and($transfer->isConsignment())->toBeFalse()
+        ->and($transfer->kind()->postsOwnershipToSap())->toBeTrue();
+});
+
+it('encola un traspaso de consignación con el seller dueño del stock', function (): void {
+    $transfer = StockTransfer::fromReception(
+        StockTransferId::generate(),
+        'REC-CONS-1',
+        'SHIP-CONS-1',
+        SapMaterial::of('MAT-900'),
+        SapCenter::of('C001'),
+        SapWarehouse::of('A01'),
+        2,
+        TransferKind::Consignment,
+        '0199bdaa-0000-7000-8000-000000000abc',
+    );
+
+    expect($transfer->kind())->toBe(TransferKind::Consignment)
+        ->and($transfer->isConsignment())->toBeTrue()
+        ->and($transfer->ownerPartyId())->toBe('0199bdaa-0000-7000-8000-000000000abc')
+        ->and($transfer->kind()->postsOwnershipToSap())->toBeFalse();
+});
+
+it('exige el seller dueño en una consignación', function (): void {
+    expect(fn () => StockTransfer::fromReception(
+        StockTransferId::generate(),
+        'REC-CONS-2',
+        'SHIP-CONS-2',
+        SapMaterial::of('MAT-900'),
+        SapCenter::of('C001'),
+        SapWarehouse::of('A01'),
+        1,
+        TransferKind::Consignment,
+        null,
+    ))->toThrow(SapConnectorException::class, 'consignación exige el id del seller');
+});
+
+it('rechaza un dueño en un traspaso de stock propio (Owned)', function (): void {
+    expect(fn () => StockTransfer::fromReception(
+        StockTransferId::generate(),
+        'REC-CONS-3',
+        'SHIP-CONS-3',
+        SapMaterial::of('MAT-900'),
+        SapCenter::of('C001'),
+        SapWarehouse::of('A01'),
+        1,
+        TransferKind::Owned,
+        '0199bdaa-0000-7000-8000-000000000abc',
+    ))->toThrow(SapConnectorException::class, 'stock propio (Owned) no puede tener un seller');
 });

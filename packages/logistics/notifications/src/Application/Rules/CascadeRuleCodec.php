@@ -15,7 +15,7 @@ use Throwable;
  * La clave guarda SOLO los overrides del operador (un mapa disperso tipo→política); los tipos que no
  * aparecen usan la cascada por defecto del ADR 006 (DefaultNotificationRulesProvider). Forma primitiva:
  *
- *   { "rules": { "<MESSAGE_TYPE>": { "channels": ["PUSH_NTFY", ...], "escalate_when": "NO_OPEN" } } }
+ *   { "rules": { "<MESSAGE_TYPE>": { "channels": ["FCM", ...], "escalate_when": "NO_OPEN" } } }
  *
  * La decodificación es TOLERANTE: ignora entradas malformadas o tipos desconocidos en vez de reventar,
  * porque el valor puede editarse a mano desde el panel de configuración genérico.

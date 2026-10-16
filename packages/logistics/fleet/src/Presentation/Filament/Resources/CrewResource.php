@@ -23,6 +23,7 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource\Pages\CreateCrew;
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource\Pages\ListCrews;
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource\Pages\ViewCrew;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Resource de administración de tripulaciones (chofer + ayudantes + vehículo para una fecha).
@@ -37,6 +38,8 @@ use Logistics\Fleet\Presentation\Filament\Resources\CrewResource\Pages\ViewCrew;
  */
 final class CrewResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = CrewModel::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-user-group';

@@ -12,14 +12,20 @@ use Logistics\Coverage\Infrastructure\Providers\CoverageServiceProvider;
 use Logistics\Execution\Infrastructure\Providers\ExecutionServiceProvider;
 use Logistics\Fleet\Infrastructure\Providers\FleetServiceProvider;
 use Logistics\FleetOps\Infrastructure\Providers\FleetOpsServiceProvider;
+use Logistics\Inbound\Infrastructure\Providers\InboundServiceProvider;
+use Logistics\Inventory\Infrastructure\Providers\InventoryServiceProvider;
 use Logistics\Labels\Infrastructure\Providers\LabelsServiceProvider;
 use Logistics\Network\Infrastructure\Providers\NetworkServiceProvider;
 use Logistics\Notifications\Infrastructure\Providers\NotificationsServiceProvider;
 use Logistics\Outbox\Infrastructure\Providers\OutboxServiceProvider;
 use Logistics\Planning\Infrastructure\Providers\PlanningServiceProvider;
 use Logistics\Promise\Infrastructure\Providers\PromiseServiceProvider;
+use Logistics\Returns\Infrastructure\Providers\ReturnsServiceProvider;
 use Logistics\SapConnector\Infrastructure\Providers\SapConnectorServiceProvider;
+use Logistics\SellerPortal\Infrastructure\Providers\SellerPortalServiceProvider;
+use Logistics\Sellers\Infrastructure\Providers\SellersServiceProvider;
 use Logistics\Settings\Infrastructure\Providers\SettingsServiceProvider;
+use Logistics\Settlement\Infrastructure\Providers\SettlementServiceProvider;
 use Logistics\Shared\Infrastructure\Providers\SharedServiceProvider;
 use Logistics\Shipments\Infrastructure\Providers\ShipmentsServiceProvider;
 use Logistics\Telemetry\Infrastructure\Providers\TelemetryServiceProvider;
@@ -72,6 +78,19 @@ return [
     PromiseServiceProvider::class,
     SapConnectorServiceProvider::class,
     CarriersServiceProvider::class,
+
+    // Marketplace / sellers (ADR 017, Fase 1): el seller como party. Depende solo del núcleo
+    // compartido y el outbox (ya registrados arriba); el stock e inbound de terceros llegan en fases siguientes.
+    SellersServiceProvider::class,
+
+    // Marketplace fases 2-5 (ADR 017): recepción de proveedores (inbound usa capacity, ya registrado),
+    // inventario con atribución de dueño, liquidación de sellers, devoluciones (logística inversa) y el
+    // portal de autoservicio del seller (usa el token/permiso de Access, ya registrado arriba).
+    InboundServiceProvider::class,
+    InventoryServiceProvider::class,
+    SettlementServiceProvider::class,
+    ReturnsServiceProvider::class,
+    SellerPortalServiceProvider::class,
 
     // Admin web (al final: los resources de cada contexto ya están registrados)
     AdminPanelProvider::class,

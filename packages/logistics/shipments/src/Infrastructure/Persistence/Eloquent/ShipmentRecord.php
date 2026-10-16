@@ -16,6 +16,9 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRe
  * lo hace ShipmentMapper.
  *
  * @property string      $id
+ * @property string|null $owner_party_id
+ * @property string      $fulfillment_mode
+ * @property string|null $seller_sku_ref
  * @property string      $source
  * @property string      $external_id
  * @property string      $customer_name
@@ -29,6 +32,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRe
  * @property int         $address_confidence
  * @property string      $address_confidence_level
  * @property string      $status
+ * @property string|null $destination_node_id
  * @property string|null $delivery_date
  * @property string|null $delivery_window_start
  * @property string|null $delivery_window_end

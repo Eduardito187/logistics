@@ -43,6 +43,8 @@ Route::prefix('v1/app')->name('api.v1.app.')->group(function (): void {
         Route::get('auth/me', [AuthController::class, 'me'])->name('auth.me');
 
         Route::get('devices', [DeviceController::class, 'index'])->name('devices.index');
+        Route::put('devices/current/push-token', [DeviceController::class, 'updatePushToken'])
+            ->name('devices.push-token.update');
         Route::delete('devices/{uuid}', [DeviceController::class, 'revoke'])->name('devices.revoke');
     });
 });

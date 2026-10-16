@@ -11,6 +11,8 @@ use Logistics\Network\Application\Command\DefineLeg\DefineLegCommand;
 use Logistics\Network\Application\Command\DefineLeg\DefineLegHandler;
 use Logistics\Network\Application\Command\RegisterNode\RegisterNodeCommand;
 use Logistics\Network\Application\Command\RegisterNode\RegisterNodeHandler;
+use Logistics\Network\Application\Command\RegisterReceivingDock\RegisterReceivingDockCommand;
+use Logistics\Network\Application\Command\RegisterReceivingDock\RegisterReceivingDockHandler;
 use Logistics\Network\Application\Command\RemoveLeg\RemoveLegCommand;
 use Logistics\Network\Application\Command\RemoveLeg\RemoveLegHandler;
 use Logistics\Network\Application\Query\FindLeg\FindLegHandler;
@@ -21,12 +23,16 @@ use Logistics\Network\Application\Query\ListLegs\ListLegsHandler;
 use Logistics\Network\Application\Query\ListLegs\ListLegsQuery;
 use Logistics\Network\Application\Query\ListNodes\ListNodesHandler;
 use Logistics\Network\Application\Query\ListNodes\ListNodesQuery;
+use Logistics\Network\Application\Query\ListReceivingDocks\ListReceivingDocksHandler;
+use Logistics\Network\Application\Query\ListReceivingDocks\ListReceivingDocksQuery;
 use Logistics\Network\Application\Query\OperationalCorridorsByDepartment\OperationalCorridorsByDepartmentHandler;
 use Logistics\Network\Application\Query\OperationalCorridorsByDepartment\OperationalCorridorsByDepartmentQuery;
 use Logistics\Network\Domain\Contract\LegRepository;
 use Logistics\Network\Domain\Contract\NodeRepository;
+use Logistics\Network\Domain\Contract\ReceivingDockRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentLegRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentNodeRepository;
+use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentReceivingDockRepository;
 use Logistics\Shared\Application\HandlerRegistry;
 
 /**
@@ -41,6 +47,7 @@ final class NetworkServiceProvider extends ServiceProvider
     {
         $this->app->bind(NodeRepository::class, EloquentNodeRepository::class);
         $this->app->bind(LegRepository::class, EloquentLegRepository::class);
+        $this->app->bind(ReceivingDockRepository::class, EloquentReceivingDockRepository::class);
     }
 
     public function boot(): void
@@ -66,5 +73,9 @@ final class NetworkServiceProvider extends ServiceProvider
             OperationalCorridorsByDepartmentQuery::class,
             OperationalCorridorsByDepartmentHandler::class,
         );
+
+        // Andenes de recepción de almacenes centrales (marketplace/inbound).
+        $registry->register(RegisterReceivingDockCommand::class, RegisterReceivingDockHandler::class);
+        $registry->register(ListReceivingDocksQuery::class, ListReceivingDocksHandler::class);
     }
 }

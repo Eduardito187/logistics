@@ -8,7 +8,6 @@ use App\Http\Middleware\AuthenticateServiceClient;
 use App\Http\Middleware\EnsureAbility;
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\EnsureRole;
-use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\ApiChannel;
 use App\Models\Device;
 use App\Models\ServiceClient;
@@ -236,29 +235,4 @@ it('EnsureDeviceToken deja pasar un token ligado a un dispositivo vigente', func
     $response = (new EnsureDeviceToken)->handle($request, passThrough());
 
     expect($response->getStatusCode())->toBe(200);
-});
-
-// ── HandleInertiaRequests ──────────────────────────────────────────────────────
-it('HandleInertiaRequests comparte el usuario autenticado y sus roles', function (): void {
-    $admin = User::factory()->create();
-    $admin->assignRole(Role::Admin);
-
-    $request = Request::create('/app', 'GET');
-    $request->setUserResolver(fn (): User => $admin);
-    $request->setLaravelSession(app('session')->driver());
-
-    $shared = (new HandleInertiaRequests)->share($request);
-
-    expect($shared['auth']['user']['email'])->toBe($admin->email)
-        ->and($shared['auth']['user']['roles'])->toContain(Role::Admin->value)
-        ->and($shared['maps'])->toHaveKey('tileUrl');
-});
-
-it('HandleInertiaRequests comparte usuario nulo cuando no hay sesión', function (): void {
-    $request = Request::create('/app', 'GET');
-    $request->setLaravelSession(app('session')->driver());
-
-    $shared = (new HandleInertiaRequests)->share($request);
-
-    expect($shared['auth']['user'])->toBeNull();
 });

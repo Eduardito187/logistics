@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 use Logistics\Tracking\Application\Command\OpenTracking\OpenTracking;
 use Logistics\Tracking\Application\Command\PlaceShipmentOnRoute\PlaceShipmentOnRoute;
@@ -60,6 +61,19 @@ use Logistics\Tracking\Presentation\Filament\Resources\ShipmentTrackingResource\
  */
 final class ShipmentTrackingResource extends Resource
 {
+    use ResolvesUserRoles;
+
+    /**
+     * Seguimiento de envíos: visibilidad amplia (tracking:read). Además de la oficina lo ven los roles
+     * con seguimiento en campo: chofer, tienda y transportista. El preparador no hace seguimiento.
+     *
+     * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
+     */
+    public static function canAccess(): bool
+    {
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer', 'tienda', 'transportista');
+    }
+
     protected static ?string $model = TrackingRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map-pin';

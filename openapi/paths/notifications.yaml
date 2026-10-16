@@ -305,8 +305,8 @@ components:
 
     Channel:
       type: string
-      enum: [PUSH_NTFY, WEB_PUSH, TELEGRAM, EMAIL, SMS]
-      description: Delivery channel; the cascade walks them in cost order (all open-source transports).
+      enum: [FCM, TELEGRAM, EMAIL, SMS]
+      description: Delivery channel; the cascade walks them in cost order (FCM push, then Telegram, Email, SMS).
 
     NotificationStatus:
       type: string
@@ -351,7 +351,7 @@ components:
           $ref: '#/components/schemas/Channel'
         fcm_topic:
           type: string
-          description: FCM topic of the shipment (primary and web-push channel).
+          description: Firebase Cloud Messaging topic of the shipment (shipment_<id>); the app subscribes to it.
         channels:
           type: array
           description: Policy channels, in cascade order.

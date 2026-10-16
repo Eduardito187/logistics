@@ -5,26 +5,23 @@ declare(strict_types=1);
 namespace Logistics\Notifications\Domain\ValueObject;
 
 /**
- * Canal de entrega de una notificación. La cascada los recorre en orden de costo: primero los canales
- * gratuitos y self-host (push vía ntfy/UnifiedPush y web push vía VAPID, ambos por el topic del envío),
- * después la mensajería gratuita del cliente (Telegram), luego email y, solo como respaldo crítico con
- * tope, SMS.
+ * Canal de entrega de una notificación. La cascada los recorre en orden de costo: primero el push
+ * (Firebase Cloud Messaging, por el topic del envío), después la mensajería gratuita del cliente
+ * (Telegram), luego email y, solo como respaldo crítico con tope, SMS.
  *
- * NOTA (decisión del dueño, 2026-10): TODO el stack de notificaciones es open-source y gratis. Se quitó
- * el push de Firebase/FCM (requería cuenta y proyecto de Google) y se reemplazó por **ntfy/UnifiedPush**
- * self-host; se quitó WhatsApp (Meta/Twilio, de pago). El detalle del cambio queda registrado en el
- * README del package (no se tocan los ADR desde acá).
+ * NOTA (decisión del dueño, 2026-10-16): el push de la plataforma vuelve a **Firebase Cloud Messaging
+ * (FCM)** por topic (`shipment_<id>`), vía la API HTTP v1. Reemplaza el transporte de push anterior.
+ * Se conserva el modelo de topic: la plataforma publica al topic sin tokens de
+ * dispositivo. El detalle del cambio queda registrado en el README del package (no se tocan los ADR
+ * desde acá).
  */
 enum Channel: string
 {
     /**
-     * Push de la app de clientes, publicado al topic del envío en el servidor ntfy self-host
-     * (compatible con UnifiedPush). Gratis y sin Google.
+     * Push de la app de clientes, publicado al topic del envío (`shipment_<id>`) por Firebase Cloud
+     * Messaging (API HTTP v1). La plataforma publica al topic sin conocer tokens de dispositivo.
      */
-    case PushNtfy = 'PUSH_NTFY';
-
-    /** Web push en la página de tracking vía el protocolo Web Push (VAPID), mismo topic del envío (gratis). */
-    case WebPush = 'WEB_PUSH';
+    case Fcm = 'FCM';
 
     /** Telegram del cliente vía Bot API (sendMessage/sendPhoto); gratis y open. */
     case Telegram = 'TELEGRAM';
@@ -36,13 +33,13 @@ enum Channel: string
     case Sms = 'SMS';
 
     /**
-     * ¿El canal admite una imagen (collage de productos / thumbnail)? Push (ntfy/web push) y Telegram sí;
-     * SMS no; email arma su propio HTML con el listado de productos (no una sola imagen).
+     * ¿El canal admite una imagen (collage de productos / thumbnail)? Push (FCM) y Telegram sí; SMS no;
+     * email arma su propio HTML con el listado de productos (no una sola imagen).
      */
     public function supportsImage(): bool
     {
         return match ($this) {
-            self::PushNtfy, self::WebPush, self::Telegram => true,
+            self::Fcm, self::Telegram => true,
             self::Email, self::Sms => false,
         };
     }

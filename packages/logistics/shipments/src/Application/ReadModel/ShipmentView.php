@@ -34,6 +34,7 @@ final readonly class ShipmentView
         public ?string $deliveryDate,
         public ?string $deliveryWindowStart,
         public ?string $deliveryWindowEnd,
+        public ?string $destinationNodeId,
         public array $lines,
     ) {}
 
@@ -77,6 +78,7 @@ final readonly class ShipmentView
             $deliverySlot?->date,
             $deliverySlot?->windowStart,
             $deliverySlot?->windowEnd,
+            $shipment->destinationNodeId(),
             $lines,
         );
     }
@@ -104,6 +106,7 @@ final readonly class ShipmentView
             'delivery_date' => $this->deliveryDate,
             'delivery_window_start' => $this->deliveryWindowStart,
             'delivery_window_end' => $this->deliveryWindowEnd,
+            'destination_node_id' => $this->destinationNodeId,
             'lines' => array_map(static fn (ShipmentLineView $line): array => $line->toArray(), $this->lines),
         ];
     }

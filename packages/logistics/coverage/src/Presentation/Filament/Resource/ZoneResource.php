@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\ZoneRecord;
 use Logistics\Coverage\Presentation\Filament\Resource\ZoneResource\Pages;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de zonas de cobertura y sus reglas de operación (CoverageRule por zona).
@@ -39,6 +40,8 @@ use Logistics\Coverage\Presentation\Filament\Resource\ZoneResource\Pages;
  */
 final class ZoneResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = ZoneRecord::class;
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-globe-americas';

@@ -21,6 +21,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource\Pa
 use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource\Pages\EditVehicleProfile;
 use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource\Pages\ListVehicleProfiles;
 use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource\Pages\ViewVehicleProfile;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin del perfil técnico de cada vehículo (relación 1:1 con el vehículo de fleet, PK `vehicle_id`).
@@ -34,6 +35,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource\Pa
  */
 final class VehicleProfileResource extends Resource
 {
+    use OfficeOnly;
     use ResolvesVehiclePlate;
 
     protected static ?string $model = VehicleProfileRecord::class;

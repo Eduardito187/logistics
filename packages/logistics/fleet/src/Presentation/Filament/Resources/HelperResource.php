@@ -31,6 +31,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\HelperResource\Pages\EditHel
 use Logistics\Fleet\Presentation\Filament\Resources\HelperResource\Pages\ListHelpers;
 use Logistics\Fleet\Presentation\Filament\Resources\HelperResource\Pages\ViewHelper;
 use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 
 /**
@@ -45,6 +46,8 @@ use Logistics\Shared\Presentation\Filament\ImageFallback;
  */
 final class HelperResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = HelperModel::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-user-plus';

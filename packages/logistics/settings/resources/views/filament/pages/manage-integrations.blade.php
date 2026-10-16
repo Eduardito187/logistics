@@ -106,6 +106,37 @@
             </dl>
         </x-filament::section>
 
+        <x-filament::section>
+            <x-slot name="heading">{{ __('Push (FCM)') }}</x-slot>
+            <x-slot name="description">{{ __('Firebase Cloud Messaging push for the customer app.') }}</x-slot>
+
+            <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                <div class="flex items-center gap-2">
+                    <dt class="text-gray-500 dark:text-gray-400">{{ __('Status') }}:</dt>
+                    <dd>
+                        <x-filament::badge :color="$fcm['enabled'] ? 'success' : 'gray'">
+                            {{ $fcm['enabled'] ? __('Enabled') : __('Disabled') }}
+                        </x-filament::badge>
+                        @unless ($fcm['configured'])
+                            <span class="text-gray-400">{{ __('(using environment defaults)') }}</span>
+                        @endunless
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500 dark:text-gray-400">{{ __('Project ID') }}</dt>
+                    <dd class="font-medium break-all">{{ $fcm['project_id'] ?: '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500 dark:text-gray-400">{{ __('Service account path') }}</dt>
+                    <dd class="font-medium break-all">{{ $fcm['credentials_path'] ?: '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500 dark:text-gray-400">{{ __('Service account JSON') }}</dt>
+                    <dd class="font-medium">{{ $fcm['has_credentials'] ? __('•••• set') : __('Not set') }}</dd>
+                </div>
+            </dl>
+        </x-filament::section>
+
         {{-- Estado solo lectura: geocoder y notificaciones los administra otra parte del panel. --}}
         <x-filament::section>
             <x-slot name="heading">{{ __('Geocoder & maps (read-only)') }}</x-slot>
@@ -140,22 +171,6 @@
             <x-slot name="description">{{ __('Managed elsewhere. Shown here for reference only.') }}</x-slot>
 
             <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-                <div class="flex items-center gap-2">
-                    <dt class="text-gray-500 dark:text-gray-400">{{ __('Push (ntfy)') }}:</dt>
-                    <dd>
-                        <x-filament::badge :color="$notifications['ntfy'] ? 'success' : 'gray'">
-                            {{ $notifications['ntfy'] ? __('Configured') : __('Not configured') }}
-                        </x-filament::badge>
-                    </dd>
-                </div>
-                <div class="flex items-center gap-2">
-                    <dt class="text-gray-500 dark:text-gray-400">{{ __('Web push (VAPID)') }}:</dt>
-                    <dd>
-                        <x-filament::badge :color="$notifications['web_push'] ? 'success' : 'gray'">
-                            {{ $notifications['web_push'] ? __('Configured') : __('Not configured') }}
-                        </x-filament::badge>
-                    </dd>
-                </div>
                 <div class="flex items-center gap-2">
                     <dt class="text-gray-500 dark:text-gray-400">{{ __('Telegram') }}:</dt>
                     <dd>

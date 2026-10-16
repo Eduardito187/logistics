@@ -58,7 +58,7 @@ it('cae a la cascada por defecto del ADR 006 para los tipos sin override', funct
 
     $policy = $provider->policyFor(MessageType::Arriving);
 
-    // El default arranca por PushNtfy (canal más barato) y escala cuando no hay apertura.
-    expect($policy->first())->toBe(Channel::PushNtfy)
+    // El default arranca por Fcm (canal más barato) y escala cuando no hay apertura.
+    expect($policy->first())->toBe(Channel::Fcm)
         ->and($policy->escalateWhen)->toBe(EscalateCondition::NoOpen);
 });

@@ -24,14 +24,14 @@ final class NotificationRecordFactory extends Factory
 
     public function definition(): array
     {
-        $cascade = [Channel::PushNtfy->value, Channel::WebPush->value, Channel::Email->value, Channel::Sms->value];
+        $cascade = [Channel::Fcm->value, Channel::Telegram->value, Channel::Email->value, Channel::Sms->value];
 
         return [
             'id' => Uuid::generate()->value,
             'shipment_id' => Uuid::generate()->value,
             'message_type' => $this->faker->randomElement(array_map(fn (MessageType $t): string => $t->value, MessageType::cases())),
             'status' => NotificationStatus::Queued->value,
-            'current_channel' => Channel::PushNtfy->value,
+            'current_channel' => Channel::Fcm->value,
             'policy' => [
                 'channels' => $cascade,
                 'escalate_when' => EscalateCondition::NoOpen->value,
@@ -49,8 +49,8 @@ final class NotificationRecordFactory extends Factory
     {
         return $this->state(fn (): array => [
             'status' => NotificationStatus::Sent->value,
-            'current_channel' => Channel::PushNtfy->value,
-            'attempts' => [Channel::PushNtfy->value => 1],
+            'current_channel' => Channel::Fcm->value,
+            'attempts' => [Channel::Fcm->value => 1],
         ]);
     }
 }

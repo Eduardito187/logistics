@@ -49,6 +49,9 @@ it('defines a bucket with zero used and records CapacityDefined', function (): v
             'time_slot' => '09:00-13:00',
             'unit' => 'deliveries',
             'total' => 10.0,
+            'scope_kind' => 'dispatch',
+            'warehouse_id' => null,
+            'dock_id' => null,
         ]);
 });
 

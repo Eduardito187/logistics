@@ -11,7 +11,7 @@ use Logistics\Notifications\Domain\ValueObject\MessageType;
 /**
  * Validación de la solicitud para encolar una notificación de un envío.
  *
- * El canal primario (push / web push) va por el topic FCM del envío y no necesita contacto; el email
+ * El canal primario (push FCM) va por el topic del envío y no necesita contacto; el email
  * y el teléfono son respaldos opcionales de la cascada (ADR 006). El tipo de mensaje se valida contra
  * el lenguaje ubicuo (enum MessageType), que es también lo que el handler reconstruye.
  */

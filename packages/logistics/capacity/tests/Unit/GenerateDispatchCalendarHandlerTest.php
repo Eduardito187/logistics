@@ -113,6 +113,11 @@ function repositoryWithExisting(array $existingKeys): CapacityRepository
         {
             return [];
         }
+
+        public function inboundByWarehouseAndDate(string $warehouseId, SlotDate $date): array
+        {
+            return [];
+        }
     };
 }
 

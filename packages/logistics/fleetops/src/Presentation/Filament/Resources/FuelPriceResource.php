@@ -25,6 +25,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\FuelPriceResource\Pages\C
 use Logistics\FleetOps\Presentation\Filament\Resources\FuelPriceResource\Pages\EditFuelPrice;
 use Logistics\FleetOps\Presentation\Filament\Resources\FuelPriceResource\Pages\ListFuelPrices;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Admin de precios de combustible por tipo y fecha de vigencia.
@@ -37,6 +38,8 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class FuelPriceResource extends Resource
 {
+    use OfficeOnly;
+
     protected static ?string $model = FuelPriceRecord::class;
 
     protected static ?string $recordTitleAttribute = 'fuel_type';

@@ -35,6 +35,7 @@ final class NodeFactory extends Factory
             NodeType::DistributionCenter => 'CD',
             NodeType::Store => 'T',
             NodeType::PickupPoint => 'PK',
+            NodeType::CentralWarehouse => 'AC',
         };
 
         return [
@@ -72,6 +73,14 @@ final class NodeFactory extends Factory
     public function asStore(): self
     {
         return $this->state(fn (): array => ['type' => NodeType::Store->value]);
+    }
+
+    /**
+     * Estado: almacén central (recibe de proveedores; habilita andenes de recepción).
+     */
+    public function centralWarehouse(): self
+    {
+        return $this->state(fn (): array => ['type' => NodeType::CentralWarehouse->value]);
     }
 
     /**

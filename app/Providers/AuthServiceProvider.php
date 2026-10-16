@@ -10,6 +10,7 @@ use App\Http\Middleware\AuthenticateServiceClient;
 use App\Http\Middleware\EnsureAbility;
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\EnsureRole;
+use App\Http\Middleware\EnsureStoreNodeScope;
 use App\Http\Middleware\IdempotentRequests;
 use App\Models\ApiChannel;
 use App\Models\PersonalAccessToken;
@@ -52,6 +53,7 @@ class AuthServiceProvider extends ServiceProvider
 
         $router->aliasMiddleware('device', EnsureDeviceToken::class);
         $router->aliasMiddleware('role', EnsureRole::class);
+        $router->aliasMiddleware('enforce.store.node', EnsureStoreNodeScope::class);
         $router->aliasMiddleware('require.ability', EnsureAbility::class);
         $router->aliasMiddleware('channel.auth', AuthenticateChannel::class);
         $router->aliasMiddleware('service.auth', AuthenticateServiceClient::class);

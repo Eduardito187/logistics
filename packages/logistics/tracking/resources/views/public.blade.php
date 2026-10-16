@@ -6,13 +6,11 @@
     /** @var string $publicToken */
     /** @var bool $canSurvey */
     /** @var bool $surveyRecorded */
-    /** @var ?string $vapidPublicKey */
 
     // Valores por defecto defensivos: la página sigue renderizando aunque falte alguna variable.
     $publicToken = $publicToken ?? '';
     $canSurvey = $canSurvey ?? false;
     $surveyRecorded = $surveyRecorded ?? false;
-    $vapidPublicKey = $vapidPublicKey ?? null;
 
     // Etiqueta legible del estado (español, copy de cliente).
     $statusLabels = [
@@ -161,19 +159,6 @@
         </div>
     @endif
 
-    @if ($vapidPublicKey && $status !== 'DELIVERED' && $status !== 'FAILED')
-        {{-- Web Push (K-04): botón "Notificarme". Oculto por defecto; el JS lo muestra solo si el --}}
-        {{-- navegador soporta Service Worker + Push. Degrada en silencio si no hay soporte. --}}
-        <div class="card hidden" id="push-card">
-            <h2>Avísame de novedades</h2>
-            <p style="margin:0 0 12px;color:var(--muted);font-size:14px;">
-                Activa las notificaciones para enterarte cuando tu pedido avance.
-            </p>
-            <button type="button" class="btn secondary" id="push-button">Notificarme</button>
-            <div class="form-note hidden" id="push-note"></div>
-        </div>
-    @endif
-
     @if ($surveyRecorded)
         <div class="card" id="survey-done">
             <h2>Gracias por tu opinión</h2>
@@ -248,14 +233,11 @@
     })();
 </script>
 <script>
-    // Encuesta de satisfacción (K-06) y Web Push (K-04) de la página pública. El token es la credencial;
-    // viaja en la URL de cada POST. Sin PII. Degrada en silencio si el navegador no soporta push.
+    // Encuesta de satisfacción (K-06) de la página pública. El token es la credencial; viaja en la URL
+    // de cada POST. Sin PII.
     (function () {
         var token = @json($publicToken);
-        var vapidKey = @json($vapidPublicKey);
         var surveyUrl = '/t/' + encodeURIComponent(token) + '/survey';
-        var pushUrl = '/t/' + encodeURIComponent(token) + '/push-subscriptions';
-        var swUrl = '/t/sw.js';
 
         function showNote(el, message, isError) {
             if (!el) { return; }
@@ -302,61 +284,6 @@
                 }).catch(function () {
                     submit.disabled = false;
                     showNote(note, 'No pudimos registrar tu calificación. Intenta más tarde.', true);
-                });
-            });
-        }
-
-        // ── Web Push ───────────────────────────────────────────────────────────
-        // Pasa una clave VAPID base64url a Uint8Array (lo que espera applicationServerKey).
-        function urlBase64ToUint8Array(base64String) {
-            var padding = '='.repeat((4 - base64String.length % 4) % 4);
-            var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-            var raw = atob(base64);
-            var output = new Uint8Array(raw.length);
-            for (var i = 0; i < raw.length; i++) { output[i] = raw.charCodeAt(i); }
-            return output;
-        }
-
-        var pushCard = document.getElementById('push-card');
-        var pushButton = document.getElementById('push-button');
-        var supportsPush = ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
-
-        if (pushCard && pushButton && vapidKey && supportsPush) {
-            // El soporte existe: recién ahí se muestra la tarjeta (degradación elegante).
-            pushCard.classList.remove('hidden');
-            var pushNote = document.getElementById('push-note');
-
-            pushButton.addEventListener('click', function () {
-                pushButton.disabled = true;
-                Notification.requestPermission().then(function (permission) {
-                    if (permission !== 'granted') {
-                        pushButton.disabled = false;
-                        showNote(pushNote, 'Activa los permisos de notificación para recibir avisos.', true);
-                        return;
-                    }
-                    return navigator.serviceWorker.register(swUrl).then(function (reg) {
-                        return reg.pushManager.subscribe({
-                            userVisibleOnly: true,
-                            applicationServerKey: urlBase64ToUint8Array(vapidKey),
-                        });
-                    }).then(function (subscription) {
-                        return fetch(pushUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                            body: JSON.stringify(subscription),
-                        });
-                    }).then(function (res) {
-                        if (res && res.ok) {
-                            showNote(pushNote, 'Listo: te avisaremos de las novedades de tu pedido.', false);
-                            pushButton.textContent = 'Notificaciones activadas';
-                        } else {
-                            pushButton.disabled = false;
-                            showNote(pushNote, 'No pudimos activar las notificaciones. Intenta más tarde.', true);
-                        }
-                    });
-                }).catch(function () {
-                    pushButton.disabled = false;
-                    showNote(pushNote, 'No pudimos activar las notificaciones. Intenta más tarde.', true);
                 });
             });
         }

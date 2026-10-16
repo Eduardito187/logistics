@@ -18,6 +18,7 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\ScanEventRecord;
 use Logistics\Execution\Presentation\Filament\Resources\ScanEventResource\Pages\ListScanEvents;
 use Logistics\Execution\Presentation\Filament\Resources\ScanEventResource\Pages\ViewScanEvent;
 use Logistics\Execution\Presentation\Filament\Support\UserNames;
+use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 
 /**
  * Admin de solo lectura de los escaneos de terreno (preparación, carga, descarga, prueba de entrega
@@ -33,6 +34,19 @@ use Logistics\Execution\Presentation\Filament\Support\UserNames;
  */
 final class ScanEventResource extends Resource
 {
+    use ResolvesUserRoles;
+
+    /**
+     * Eventos de escaneo (preparación y carga): además de la oficina, los ven preparador y chofer,
+     * que son quienes escanean en el flujo. Tienda y transportista no.
+     *
+     * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
+     */
+    public static function canAccess(): bool
+    {
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer', 'preparador');
+    }
+
     protected static ?string $model = ScanEventRecord::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-qr-code';
