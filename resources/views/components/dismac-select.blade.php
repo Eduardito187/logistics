@@ -7,6 +7,9 @@
     'options' => [],
     // Nombre de la propiedad Livewire a sincronizar. Si no se pasa, se intenta leer de wire:model.
     'property' => null,
+    // Si es true, al seleccionar se escribe la propiedad con round-trip (dispara re-render del
+    // componente Livewire). Por defecto es false (deferido, igual que un wire:model sin .live).
+    'live' => false,
 ])
 
 @php
@@ -45,6 +48,8 @@
         property: @js($resolvedProperty),
         // Opciones normalizadas disponibles para el teclado y el render.
         options: @js($normalizedOptions),
+        // Si es true, la escritura en Livewire es con round-trip (dispara re-render).
+        live: @js((bool) $live),
         // Valor seleccionado actual (string); se lee del estado Livewire al iniciar.
         value: '',
         // Índice resaltado durante la navegación con teclado.
@@ -93,8 +98,8 @@
             this.$nextTick(() => this.$refs.button?.focus());
         },
 
-        // Selecciona una opción: fija el valor local y lo escribe en Livewire SIN roundtrip (deferido,
-        // igual que un wire:model sin .live). El valor viaja con la próxima acción (Load/Save).
+        // Selecciona una opción: fija el valor local y lo escribe en Livewire. Por defecto deferido
+        // (igual que un wire:model sin .live); con el prop `live` hace round-trip y dispara re-render.
         select(index) {
             const option = this.options[index];
             if (!option) {
@@ -102,7 +107,8 @@
             }
             this.value = option.value;
             if (this.property) {
-                this.$wire.set(this.property, option.value, false);
+                // Con live=true se hace round-trip (re-render); sin él, deferido (viaja con la próxima acción).
+                this.$wire.set(this.property, option.value, this.live);
             }
             this.close();
         },
@@ -149,7 +155,7 @@
             class="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-950 shadow-sm transition focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
         >
             <span class="truncate" :class="hasSelection ? '' : 'text-gray-400 dark:text-gray-500'" x-text="selectedLabel"></span>
-            <svg class="h-5 w-5 shrink-0 text-gray-400 transition-transform" :class="open ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <svg class="h-5 w-5 shrink-0 text-gray-400 transition-transform" width="20" height="20" :class="open ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
             </svg>
         </button>
@@ -179,7 +185,7 @@
                     }"
                 >
                     <span class="truncate" x-text="option.label"></span>
-                    <svg x-show="option.value === value" class="h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <svg x-show="option.value === value" class="h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400" width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                         <path fill-rule="evenodd" d="M16.704 5.29a.75.75 0 0 1 .006 1.06l-7.5 7.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.97 2.97 6.97-6.97a.75.75 0 0 1 1.054.006Z" clip-rule="evenodd" />
                     </svg>
                 </div>

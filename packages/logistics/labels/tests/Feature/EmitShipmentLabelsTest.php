@@ -54,6 +54,19 @@ it('persists QR content that verifies against the active key, plus its ZPL', fun
         ->and($record->key_id)->toBe(1);
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
+it('renders the stored ZPL with both the signed QR and the Code128 barcode', function (): void {
+    emitOrder('DM-260012350', [new OrderLineInput('LG-GT32WPP', 'Fridge', 1, 1)]);
+
+    $record = EmittedLabelRecord::query()->where('order_id', 'DM-260012350')->firstOrFail();
+
+    // Simbología por defecto `both`: el ZPL guardado (lo que devuelve el endpoint /labels/zpl) lleva el
+    // QR firmado (^BQ con el JSON exacto) y el Code128 (^BC) con el id del bulto.
+    expect($record->zpl)->toContain('^BQN,2,6')
+        ->and($record->zpl)->toContain('^FDMA,'.$record->signed_json.'^FS')
+        ->and($record->zpl)->toContain('^BCN,90,Y,N,N')
+        ->and($record->zpl)->toContain('^FD'.$record->label_id.'^FS');
+})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
+
 it('records a labels_emitted fact in the outbox with the batch count', function (): void {
     emitOrder('DM-260012347', [new OrderLineInput('LG-GT32WPP', 'Fridge', 1, 4)]);
 

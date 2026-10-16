@@ -35,6 +35,8 @@ final class SettingsSeeder extends Seeder
         'carriers.base_tariff' => ['currency' => 'BOB', 'per_km' => 2.5, 'minimum' => 20.0],
         'notifications.retry_policy' => ['max_attempts' => 5, 'backoff_seconds' => 60],
         'tracking.public_link_ttl_hours' => ['hours' => 72],
+        // Simbología de la etiqueta impresa: 'qr', 'barcode' o 'both' (QR firmado + Code128 con el id del bulto).
+        'labels.symbology' => ['symbology' => 'both'],
     ];
 
     public function run(): void

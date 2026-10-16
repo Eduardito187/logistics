@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers\Filament;
 
+use App\Filament\Avatars\LocalAvatarProvider;
 use App\Http\Middleware\SecurityHeaders;
 use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
@@ -46,6 +47,10 @@ final class AdminPanelProvider extends PanelProvider
             // entre navegaciones SPA), así que siguen funcionando.
             ->spa()
             ->brandName('Dismac Logistics')
+            // Avatar por defecto generado localmente (iniciales en SVG data URI). El proveedor de
+            // Filament por defecto sale a ui-avatars.com, que offline o con la CSP del admin cerrada
+            // deja la imagen rota en la barra superior. Con este proveedor nunca depende de internet.
+            ->defaultAvatarProvider(LocalAvatarProvider::class)
             // Tipografía del e-commerce Dismatec (Open Sans). Auto-hospedada (ADR 013: sin Google ni
             // servicios de pago): se sirve el CSS/woff2 propios de public/fonts/open-sans con el
             // LocalFontProvider, en vez del link a fonts.bunny.net/Google que emite el provider por

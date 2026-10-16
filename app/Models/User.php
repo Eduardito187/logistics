@@ -18,7 +18,10 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password'])]
+/**
+ * @property string|null $driver_id UUID del chofer de Fleet vinculado a esta cuenta (null si no es chofer).
+ */
+#[Fillable(['name', 'email', 'password', 'driver_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {

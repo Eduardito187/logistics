@@ -8,6 +8,7 @@ use Logistics\Fleet\Presentation\Http\Controller\DocumentController;
 use Logistics\Fleet\Presentation\Http\Controller\DriverController;
 use Logistics\Fleet\Presentation\Http\Controller\ExpiringDocumentController;
 use Logistics\Fleet\Presentation\Http\Controller\HelperController;
+use Logistics\Fleet\Presentation\Http\Controller\MyCrewController;
 use Logistics\Fleet\Presentation\Http\Controller\PreTripChecklistController;
 use Logistics\Fleet\Presentation\Http\Controller\VehicleController;
 
@@ -33,6 +34,9 @@ return [
                 ->name('pre-trip-checklists.index');
             Route::get('expiring-documents', [ExpiringDocumentController::class, 'index'])
                 ->name('expiring-documents.index');
+
+            // Asignación del día del chofer AUTENTICADO: su vehículo y tripulación (no elige, se los asignan).
+            Route::get('my-crew', [MyCrewController::class, 'show'])->name('my-crew.show');
 
             // Habilitar / inhabilitar / mandar a mantenimiento un vehículo.
             Route::patch('vehicles/{vehicleId}/status', [VehicleController::class, 'changeStatus'])
