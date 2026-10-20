@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 (2.40.0)
         with:
           php-version: ${{ env.PHP_VERSION }}
           extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
@@ -91,7 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 (2.40.0)
         with:
           php-version: ${{ env.PHP_VERSION }}
           extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
@@ -133,7 +133,7 @@ jobs:
 
       # Sólo se necesita PHP/Composer para traer vendor/filament: el tema de Filament hace
       # `@import` de vendor/filament/filament/resources/css/theme.css y Tailwind escanea sus vistas.
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 (2.40.0)
         with:
           php-version: ${{ env.PHP_VERSION }}
           extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
@@ -180,7 +180,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 (2.40.0)
         with:
           php-version: ${{ env.PHP_VERSION }}
           extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium

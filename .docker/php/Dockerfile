@@ -99,11 +99,19 @@ RUN apk add --no-cache \
         redis
 
 COPY .docker/php/php.dev.ini /usr/local/etc/php/conf.d/zzz-logistics.ini
-# www.conf se chownea a `logistics` para que el entrypoint (que corre como ese
-# usuario) pueda re-renderizar el pool desde el template con las variables FPM_*.
-COPY --chown=logistics:logistics .docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
+# www.conf queda propiedad de root: el usuario de la app NO puede modificarlo
+# (recurso copiado inmutable). El tuning por entorno (FPM_*) NO reescribe este
+# archivo; el entrypoint genera un include SEPARADO y escribible
+# (zzz-fpm-tuning.conf) que php-fpm FUSIONA sobre el pool [www] en el arranque.
+COPY .docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
 COPY .docker/php/www.conf.template /usr/local/etc/php-fpm.d/www.conf.template
 COPY --chmod=0755 .docker/php/entrypoint.sh /usr/local/bin/entrypoint.sh
+
+# Drop-in del pool, escribible SOLO por el usuario de la app (NO es un recurso
+# copiado: es un archivo vacío generado en build). El entrypoint lo rellena con
+# los valores FPM_*; vacío por defecto, rige www.conf. php-fpm carga *.conf en
+# orden alfabético, así que `zzz-` se aplica al final y sus directivas ganan.
+RUN install -o logistics -g logistics -m 0644 /dev/null /usr/local/etc/php-fpm.d/zzz-fpm-tuning.conf
 
 USER logistics
 
@@ -177,12 +185,20 @@ RUN apk add --no-cache supervisor \
     && chown -R ${UID}:${GID} /var/log/supervisor
 
 COPY .docker/php/php.prod.ini /usr/local/etc/php/conf.d/zzz-logistics.ini
-# www.conf se chownea a `logistics` para que el entrypoint (que corre como ese
-# usuario) pueda re-renderizar el pool desde el template con las variables FPM_*.
-COPY --chown=logistics:logistics .docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
+# www.conf queda propiedad de root: el usuario de la app NO puede modificarlo
+# (recurso copiado inmutable). El tuning por entorno (FPM_*) NO reescribe este
+# archivo; el entrypoint genera un include SEPARADO y escribible
+# (zzz-fpm-tuning.conf) que php-fpm FUSIONA sobre el pool [www] en el arranque.
+COPY .docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
 COPY .docker/php/www.conf.template /usr/local/etc/php-fpm.d/www.conf.template
 COPY --chmod=0755 .docker/php/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY .docker/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
+
+# Drop-in del pool, escribible SOLO por el usuario de la app (NO es un recurso
+# copiado: es un archivo vacío generado en build). El entrypoint lo rellena con
+# los valores FPM_*; vacío por defecto, rige www.conf. php-fpm carga *.conf en
+# orden alfabético, así que `zzz-` se aplica al final y sus directivas ganan.
+RUN install -o logistics -g logistics -m 0644 /dev/null /usr/local/etc/php-fpm.d/zzz-fpm-tuning.conf
 
 COPY --chown=${UID}:${GID} . /var/www/html
 

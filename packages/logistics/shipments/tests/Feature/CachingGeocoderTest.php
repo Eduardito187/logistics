@@ -14,6 +14,14 @@ use Logistics\Shipments\Infrastructure\Geocoding\CachingGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\GeocodeScoring;
 use Logistics\Shipments\Infrastructure\Geocoding\NominatimGeocoder;
 
+// Motivo del skip cuando la suite no corre contra PostgreSQL (base logistics_test).
+const CACHING_GEOCODER_PG_REASON = 'Requiere PostgreSQL (base logistics_test).';
+
+/**
+ * Fallo simulado del geocoder interno: debe NO invocarse en un acierto de caché.
+ */
+final class SimulatedGeocoderFailure extends RuntimeException {}
+
 /**
  * Dedup persistente del geocoding contra PostgreSQL (logistics_test): el decorador CachingGeocoder
  * guarda la primera resolución en `geocoding_cache` y sirve las siguientes desde la fila, sin repegar a
@@ -72,7 +80,7 @@ it('persists on a miss and serves the second lookup from the table without a sec
 
     // La fila se escribió una sola vez y Nominatim se tocó una sola vez: el segundo lookup fue un acierto.
     $http->assertSentCount(1);
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', CACHING_GEOCODER_PG_REASON);
 
 it('does not call the inner geocoder on a cache hit', function (): void {
     $http = exactNominatimHttp();
@@ -87,12 +95,12 @@ it('does not call the inner geocoder on a cache hit', function (): void {
     {
         public function geocode(Address $address): GeocodeResult
         {
-            throw new RuntimeException('el geocoder interno no debe invocarse en un acierto');
+            throw new SimulatedGeocoderFailure('el geocoder interno no debe invocarse en un acierto');
         }
 
         public function score(Address $address): AddressConfidence
         {
-            throw new RuntimeException('el geocoder interno no debe invocarse en un acierto');
+            throw new SimulatedGeocoderFailure('el geocoder interno no debe invocarse en un acierto');
         }
     };
 
@@ -101,7 +109,7 @@ it('does not call the inner geocoder on a cache hit', function (): void {
     $result = $cached->geocode($address);
 
     expect($result->matchType->value)->toBe('EXACT');
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', CACHING_GEOCODER_PG_REASON);
 
 it('groups spacing and case variants of the same address into one row', function (): void {
     $http = exactNominatimHttp();
@@ -120,7 +128,7 @@ it('groups spacing and case variants of the same address into one row', function
         ->count();
 
     expect($rows)->toBe(1);
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', CACHING_GEOCODER_PG_REASON);
 
 it('increments the hit counter and refreshes last_hit_at on each cache hit', function (): void {
     $http = exactNominatimHttp();
@@ -139,4 +147,4 @@ it('increments the hit counter and refreshes last_hit_at on each cache hit', fun
     expect($row)->not->toBeNull()
         ->and((int) $row->hits)->toBe(3)
         ->and($row->provider)->toBe('nominatim');
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', CACHING_GEOCODER_PG_REASON);

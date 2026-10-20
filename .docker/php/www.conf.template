@@ -2,9 +2,11 @@
 ; PHP-FPM pool TEMPLATE — logistics (lo renderiza entrypoint.sh)
 ; ============================================================
 ; Los tokens __FPM_*__ los sustituye el entrypoint con las variables de entorno
-; FPM_* (o sus defaults). El resultado se escribe en el www.conf efectivo
-; (/usr/local/etc/php-fpm.d/www.conf) antes de arrancar php-fpm. Ver la cabecera
-; de www.conf para el cálculo de pm.max_children.
+; FPM_* (o sus defaults). El resultado se escribe en un include SEPARADO y
+; escribible (/usr/local/etc/php-fpm.d/zzz-fpm-tuning.conf) que php-fpm fusiona
+; sobre el pool [www] del www.conf horneado (carga *.conf en orden alfabético, y
+; `zzz-` se aplica al final). Así www.conf queda inmutable (propiedad de root).
+; Ver la cabecera de www.conf para el cálculo de pm.max_children.
 
 [www]
 user = logistics

@@ -62,13 +62,11 @@ final class IntegrationConfig
             if (is_array($cached) && isset($cached['value']) && is_array($cached['value'])) {
                 /** @var array<string, mixed> $value */
                 $value = $cached['value'];
-
-                return $this->memo[$key] = $value;
+            } else {
+                $version = $this->repository->currentFor(SettingKey::fromString($key), $this->clock->now());
+                $value = $version === null ? [] : $version->value;
+                $this->cache?->put($cacheKey, ['value' => $value], self::CACHE_TTL_SECONDS);
             }
-
-            $version = $this->repository->currentFor(SettingKey::fromString($key), $this->clock->now());
-            $value = $version === null ? [] : $version->value;
-            $this->cache?->put($cacheKey, ['value' => $value], self::CACHE_TTL_SECONDS);
 
             return $this->memo[$key] = $value;
         } catch (Throwable) {

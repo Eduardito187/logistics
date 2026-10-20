@@ -40,7 +40,7 @@ final readonly class CachingMunicipalityCatalog implements MunicipalityCatalog
         /** @var list<array<string, mixed>>|null $cached */
         $cached = $this->cache->get(CoverageCacheKey::municipalitiesAll());
         if (is_array($cached)) {
-            return array_map(self::fromPrimitive(...), $cached);
+            return array_map(static fn (array $data): MunicipalityView => self::fromPrimitive($data), $cached);
         }
 
         $views = $this->inner->all();

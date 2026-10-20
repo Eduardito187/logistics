@@ -14,6 +14,9 @@ use Logistics\Coverage\Domain\ValueObject\ZoneRules;
 use Logistics\Coverage\Infrastructure\Cache\CachingZoneRepository;
 use Logistics\Coverage\Infrastructure\Cache\CoverageCacheKey;
 
+// Nombre de zona de ejemplo reutilizado en el sembrado y las aserciones.
+const ZONA_SUR = 'Zona Sur';
+
 function fakeZoneRepository(Zone ...$zones): ZoneRepository
 {
     return new class(array_values($zones)) implements ZoneRepository
@@ -60,7 +63,7 @@ function fakeZoneRepository(Zone ...$zones): ZoneRepository
     };
 }
 
-function sampleZone(string $name = 'Zona Sur'): Zone
+function sampleZone(string $name = ZONA_SUR): Zone
 {
     return Zone::reconstitute(
         ZoneId::generate(),
@@ -73,7 +76,7 @@ function sampleZone(string $name = 'Zona Sur'): Zone
 }
 
 it('serves the second all() from cache and rehydrates the zone with its polygon and rules', function (): void {
-    $inner = fakeZoneRepository(sampleZone('Zona Sur'));
+    $inner = fakeZoneRepository(sampleZone(ZONA_SUR));
     $repo = new CachingZoneRepository($inner, new CacheRepository(new ArrayStore));
 
     $first = $repo->all();
@@ -82,7 +85,7 @@ it('serves the second all() from cache and rehydrates the zone with its polygon 
     expect($inner->allCalls)->toBe(1)
         ->and($first)->toHaveCount(1)
         ->and($second[0])->toBeInstanceOf(Zone::class)
-        ->and($second[0]->name())->toBe('Zona Sur')
+        ->and($second[0]->name())->toBe(ZONA_SUR)
         ->and($second[0]->rules()->baseMinutes)->toBe(30)
         ->and($second[0]->polygon()->ring)->toBe([[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.0, 0.0]])
         ->and($second[0]->isActive())->toBeTrue();
@@ -97,7 +100,7 @@ it('stores the primitive array of each zone, never the object (regla #7)', funct
     $stored = $cache->get(CoverageCacheKey::zonesAll());
     expect($stored)->toBeArray()
         ->and($stored[0])->toBeArray()
-        ->and($stored[0]['name'])->toBe('Zona Sur')
+        ->and($stored[0]['name'])->toBe(ZONA_SUR)
         ->and($stored[0]['ring'])->toBeArray()
         ->and($stored[0]['rules'])->toBeArray()
         ->and($stored[0]['active'])->toBeTrue();

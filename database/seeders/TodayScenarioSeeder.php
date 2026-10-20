@@ -241,7 +241,7 @@ final class TodayScenarioSeeder extends Seeder
         }
 
         // Chofer ↔ conductor de flota: se respeta el vínculo existente si el conductor sigue activo.
-        $chofer = $users['chofer'] ?? throw new RuntimeException('Falta la cuenta chofer.');
+        $chofer = $users['chofer'] ?? throw new TodayScenarioSeederException('Falta la cuenta chofer.');
         $linked = $chofer->driver_id !== null
             ? DriverModel::query()->where('id', $chofer->driver_id)->where('active', true)->value('id')
             : null;
@@ -249,14 +249,14 @@ final class TodayScenarioSeeder extends Seeder
             $driver = DriverModel::query()->where('active', true)->whereJsonContains('enabled_vehicle_ids', $vehicleId)->orderBy('id')->value('id')
                 ?? DriverModel::query()->where('active', true)->orderBy('id')->value('id');
             if ($driver === null) {
-                throw new RuntimeException('No hay conductores activos en fleet_drivers (correr FleetSeeder).');
+                throw new TodayScenarioSeederException('No hay conductores activos en fleet_drivers (correr FleetSeeder).');
             }
             $chofer->driver_id = (string) $driver;
             $chofer->save();
         }
 
         // Tienda ↔ nodo de tienda.
-        $tienda = $users['tienda'] ?? throw new RuntimeException('Falta la cuenta tienda.');
+        $tienda = $users['tienda'] ?? throw new TodayScenarioSeederException('Falta la cuenta tienda.');
         if ($tienda->node_id !== $storeNodeId) {
             $tienda->node_id = $storeNodeId;
             $tienda->save();
@@ -296,7 +296,7 @@ final class TodayScenarioSeeder extends Seeder
         }
 
         if ($existing === null) {
-            throw new RuntimeException('No se pudo armar la tripulación del día.');
+            throw new TodayScenarioSeederException('No se pudo armar la tripulación del día.');
         }
 
         return $existing;
@@ -435,7 +435,7 @@ final class TodayScenarioSeeder extends Seeder
             $byId[$id] = $shipment;
             $point = $shipment->address()->geoPoint;
             if ($point === null) {
-                throw new RuntimeException("El envío {$id} no tiene coordenadas.");
+                throw new TodayScenarioSeederException("El envío {$id} no tiene coordenadas.");
             }
             $routeStops[] = PlanningRouteStop::of($id, $point->lat, $point->lng);
         }
@@ -605,70 +605,104 @@ final class TodayScenarioSeeder extends Seeder
      */
     private function ensureRouteDeliveries(string $vehicleId, VehicleRoute $route, array $shipments, User $chofer): void
     {
-        $byId = [];
-        foreach ($shipments as $shipment) {
-            $byId[$shipment->id()->toString()] = $shipment;
-        }
-
-        $routeStops = $route->stops();
+        $byId = $this->shipmentsById($shipments);
         $loadedAt = $route->stops()[0]->etaAt() !== null
             ? $this->dayStart()->setTime(7, 0)
             : $this->now->modify('-3 hours');
         $device = DeviceContext::of(self::DEVICE_ID, (string) $chofer->getKey());
 
-        foreach ($routeStops as $index => $stop) {
+        foreach ($route->stops() as $stop) {
             $shipmentId = $stop->shipmentId();
             if ($this->deliveries->findByShipmentId($shipmentId) !== null) {
                 continue;
             }
-
-            $units = $this->unitIds($shipmentId);
-            $key = "scenario-{$this->date}-{$shipmentId}";
-            $cdGeo = ExecutionGeoPoint::of(-17.7490, -63.1540);
-
-            $delivery = Delivery::start($this->deliveries->nextIdentity(), $shipmentId, $vehicleId);
-            foreach ($units as $u => $unitId) {
-                $delivery->recordPreparationScan($unitId, $cdGeo, $device, $loadedAt->modify("+{$u} minutes"), "{$key}-prep-{$u}");
-            }
-            foreach ($units as $u => $unitId) {
-                $delivery->recordLoadScan($unitId, $cdGeo, $device, $loadedAt->modify('+'.(30 + $u).' minutes'), "{$key}-load-{$u}");
-            }
-
-            $settled = $stop->settledAt();
-            if ($settled !== null) {
-                $shipment = $byId[$shipmentId] ?? null;
-                $geo = ExecutionGeoPoint::of($stop->lat() ?? -17.78, $stop->lng() ?? -63.18);
-                $delivery->recordProofOfDelivery(
-                    $units[0] ?? $shipmentId,
-                    ProofOfDelivery::of(
-                        'FIRMA-'.strtoupper(substr(md5($shipmentId), 0, 8)).($shipment !== null ? ' '.$shipment->customerName() : ''),
-                        null,
-                        $settled,
-                    ),
-                    $geo,
-                    $device,
-                    $settled,
-                    "{$key}-pod",
-                );
-            }
-
-            $this->deliveries->save($delivery);
-
-            // Seguimiento: abre el envío, lo ubica en la ruta y proyecta los hechos de ejecución.
-            $this->bus->dispatch(new OpenTracking($shipmentId, max(0, $stop->sequence() - 1)));
-            $this->bus->dispatch(new PlaceShipmentOnRoute($shipmentId, $route->id()->toString(), $stop->sequence()));
-            $this->bus->dispatch(new ProjectExecutionEvent('execution.shipment_loaded', $shipmentId));
-            foreach ($units as $unitId) {
-                $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_prepared', $shipmentId, $unitId, $loadedAt->format(DateTimeInterface::ATOM), self::CD_CODE));
-                $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_loaded', $shipmentId, $unitId, $loadedAt->modify('+30 minutes')->format(DateTimeInterface::ATOM), self::CD_CODE));
-            }
-            if ($settled !== null) {
-                $this->bus->dispatch(new ProjectExecutionEvent('execution.shipment_delivered', $shipmentId));
-                $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_delivered', $shipmentId, '', $settled->format(DateTimeInterface::ATOM)));
-            }
-
-            unset($index);
+            $this->seedRouteStopDelivery($vehicleId, $route, $stop, $byId[$shipmentId] ?? null, $loadedAt, $device);
         }
+    }
+
+    /**
+     * Entrega de una parada de la ruta: preparación y carga en el CD, y POD si la parada ya está cerrada.
+     * Luego proyecta el seguimiento (envío + bultos + posición en la ruta).
+     */
+    private function seedRouteStopDelivery(
+        string $vehicleId,
+        VehicleRoute $route,
+        RouteStop $stop,
+        ?Shipment $shipment,
+        DateTimeImmutable $loadedAt,
+        DeviceContext $device,
+    ): void {
+        $shipmentId = $stop->shipmentId();
+        $units = $this->unitIds($shipmentId);
+        $key = "scenario-{$this->date}-{$shipmentId}";
+        $cdGeo = ExecutionGeoPoint::of(-17.7490, -63.1540);
+
+        $delivery = Delivery::start($this->deliveries->nextIdentity(), $shipmentId, $vehicleId);
+        foreach ($units as $u => $unitId) {
+            $delivery->recordPreparationScan($unitId, $cdGeo, $device, $loadedAt->modify("+{$u} minutes"), "{$key}-prep-{$u}");
+        }
+        foreach ($units as $u => $unitId) {
+            $delivery->recordLoadScan($unitId, $cdGeo, $device, $loadedAt->modify('+'.(30 + $u).' minutes'), "{$key}-load-{$u}");
+        }
+
+        $settled = $stop->settledAt();
+        if ($settled !== null) {
+            $geo = ExecutionGeoPoint::of($stop->lat() ?? -17.78, $stop->lng() ?? -63.18);
+            $delivery->recordProofOfDelivery(
+                $units[0] ?? $shipmentId,
+                ProofOfDelivery::of(
+                    'FIRMA-'.strtoupper(substr(md5($shipmentId), 0, 8)).($shipment !== null ? ' '.$shipment->customerName() : ''),
+                    null,
+                    $settled,
+                ),
+                $geo,
+                $device,
+                $settled,
+                "{$key}-pod",
+            );
+        }
+
+        $this->deliveries->save($delivery);
+
+        $this->projectRouteStopTracking($route, $stop, $units, $loadedAt, $settled);
+    }
+
+    /**
+     * Seguimiento de una parada: abre el envío, lo ubica en la ruta y proyecta los hechos de ejecución
+     * (preparado, cargado y, si corresponde, entregado) a nivel de envío y de cada bulto.
+     *
+     * @param list<string> $units
+     */
+    private function projectRouteStopTracking(VehicleRoute $route, RouteStop $stop, array $units, DateTimeImmutable $loadedAt, ?DateTimeImmutable $settled): void
+    {
+        $shipmentId = $stop->shipmentId();
+        $this->bus->dispatch(new OpenTracking($shipmentId, max(0, $stop->sequence() - 1)));
+        $this->bus->dispatch(new PlaceShipmentOnRoute($shipmentId, $route->id()->toString(), $stop->sequence()));
+        $this->bus->dispatch(new ProjectExecutionEvent('execution.shipment_loaded', $shipmentId));
+        foreach ($units as $unitId) {
+            $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_prepared', $shipmentId, $unitId, $loadedAt->format(DateTimeInterface::ATOM), self::CD_CODE));
+            $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_loaded', $shipmentId, $unitId, $loadedAt->modify('+30 minutes')->format(DateTimeInterface::ATOM), self::CD_CODE));
+        }
+        if ($settled !== null) {
+            $this->bus->dispatch(new ProjectExecutionEvent('execution.shipment_delivered', $shipmentId));
+            $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_delivered', $shipmentId, '', $settled->format(DateTimeInterface::ATOM)));
+        }
+    }
+
+    /**
+     * Índice de envíos por su id (string) para resolverlos rápido dentro de los bucles.
+     *
+     * @param  list<Shipment>          $shipments
+     * @return array<string, Shipment>
+     */
+    private function shipmentsById(array $shipments): array
+    {
+        $byId = [];
+        foreach ($shipments as $shipment) {
+            $byId[$shipment->id()->toString()] = $shipment;
+        }
+
+        return $byId;
     }
 
     /**
@@ -678,17 +712,16 @@ final class TodayScenarioSeeder extends Seeder
      */
     private function unitIds(string $shipmentId): array
     {
-        /** @var list<string> $ids */
-        $ids = PhysicalUnitRecord::query()
-            ->where('shipment_id', $shipmentId)
-            ->orderBy('line_id')
-            ->orderBy('unit_index')
-            ->orderBy('piece_index')
-            ->pluck('id')
-            ->map(static fn (mixed $id): string => (string) $id)
-            ->all();
-
-        return $ids;
+        return array_values(
+            PhysicalUnitRecord::query()
+                ->where('shipment_id', $shipmentId)
+                ->orderBy('line_id')
+                ->orderBy('unit_index')
+                ->orderBy('piece_index')
+                ->pluck('id')
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->all(),
+        );
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -711,6 +744,21 @@ final class TodayScenarioSeeder extends Seeder
             return;
         }
 
+        $waypoints = $this->telemetryWaypoints($route, $cdLat, $cdLng);
+        $trail = $this->densifyTrail($waypoints);
+        $pings = $this->buildPings($trail, $route);
+
+        $this->bus->dispatch(new RecordVehiclePings($vehicleId, $driverId, $route->id()->toString(), 'app', $pings));
+    }
+
+    /**
+     * Puntos clave del recorrido: el CD, cada parada ya cerrada y un punto al 75% del tramo hacia la
+     * parada actual ("llegando").
+     *
+     * @return list<array{0: float, 1: float}>
+     */
+    private function telemetryWaypoints(VehicleRoute $route, float $cdLat, float $cdLng): array
+    {
         $waypoints = [[$cdLat, $cdLng]];
         $stops = $route->stops();
         foreach (array_slice($stops, 0, self::COMPLETED_STOPS) as $stop) {
@@ -728,6 +776,17 @@ final class TodayScenarioSeeder extends Seeder
             ];
         }
 
+        return $waypoints;
+    }
+
+    /**
+     * Interpola los tramos entre waypoints en pasos cortos para un recorrido GPS suave.
+     *
+     * @param  list<array{0: float, 1: float}> $waypoints
+     * @return list<array{0: float, 1: float}>
+     */
+    private function densifyTrail(array $waypoints): array
+    {
         $trail = [];
         $count = count($waypoints);
         for ($i = 1; $i < $count; $i++) {
@@ -739,7 +798,19 @@ final class TodayScenarioSeeder extends Seeder
             }
         }
 
-        $start = $stops[0]->etaAt()?->setTimezone($this->tz)->modify('-30 minutes') ?? $this->now->modify('-2 hours');
+        return $trail;
+    }
+
+    /**
+     * Pings del día a partir del recorrido, repartidos en el tiempo (de la salida del CD hasta ~1 minuto
+     * antes de "ahora") y con velocidad estimada entre puntos consecutivos.
+     *
+     * @param  list<array{0: float, 1: float}>                                                                                                                $trail
+     * @return list<array{recorded_at: string, lat: float, lng: float, speed_kph: float, heading: int, accuracy_m: float, ignition: bool, device_id: string}>
+     */
+    private function buildPings(array $trail, VehicleRoute $route): array
+    {
+        $start = $route->stops()[0]->etaAt()?->setTimezone($this->tz)->modify('-30 minutes') ?? $this->now->modify('-2 hours');
         $end = $this->now->modify('-1 minute');
         if ($start >= $end) {
             $start = $end->modify('-90 minutes');
@@ -770,7 +841,7 @@ final class TodayScenarioSeeder extends Seeder
             $previous = [$lat, $lng, $at];
         }
 
-        $this->bus->dispatch(new RecordVehiclePings($vehicleId, $driverId, $route->id()->toString(), 'app', $pings));
+        return $pings;
     }
 
     /**
@@ -785,75 +856,107 @@ final class TodayScenarioSeeder extends Seeder
         Shipment $readyPickup,
         User $tienda,
     ): void {
-        $storeId = (string) $store->id;
-        $storeGeo = ExecutionGeoPoint::of((float) $store->lat, (float) $store->lng);
-        $cdGeo = ExecutionGeoPoint::of((float) $cd->lat, (float) $cd->lng);
-        $driverDevice = DeviceContext::of(self::DEVICE_ID, 'transfer-driver');
         $morning = $this->dayStart()->setTime(7, 15);
 
         foreach ([$openReception, $readyPickup] as $n => $shipment) {
             $shipmentId = $shipment->id()->toString();
-            $units = $this->unitIds($shipmentId);
-            $key = "scenario-{$this->date}-{$shipmentId}";
-
-            if ($this->deliveries->findByShipmentId($shipmentId) === null) {
-                $delivery = Delivery::start($this->deliveries->nextIdentity(), $shipmentId, $transferVehicleId);
-                foreach ($units as $u => $unitId) {
-                    $delivery->recordPreparationScan($unitId, $cdGeo, $driverDevice, $morning->modify("+{$u} minutes"), "{$key}-prep-{$u}");
-                }
-                foreach ($units as $u => $unitId) {
-                    $delivery->recordLoadScan($unitId, $cdGeo, $driverDevice, $morning->modify('+'.(20 + $u).' minutes'), "{$key}-load-{$u}");
-                }
-                $arrival = $morning->modify('+'.(75 + 20 * $n).' minutes');
-                foreach ($units as $u => $unitId) {
-                    $delivery->recordUnloadScan($storeId, $unitId, $storeGeo, $driverDevice, $arrival->modify("+{$u} minutes"), "{$key}-unload-{$u}");
-                }
-                $this->deliveries->save($delivery);
-
-                $this->bus->dispatch(new OpenTracking($shipmentId, 0));
-                $this->bus->dispatch(new ProjectExecutionEvent('execution.shipment_loaded', $shipmentId));
-                foreach ($units as $unitId) {
-                    $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_loaded', $shipmentId, $unitId, $morning->modify('+20 minutes')->format(DateTimeInterface::ATOM), self::CD_CODE));
-                    $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_unloaded', $shipmentId, $unitId, $arrival->format(DateTimeInterface::ATOM), self::STORE_CODE));
-                }
-
-                // Recepción en la tienda (idempotente por envío + nodo en el handler).
-                $this->bus->dispatch(new OpenNodeReception(
-                    $shipmentId,
-                    (string) $cd->id,
-                    $storeId,
-                    'CD',
-                    'STORE',
-                    $units,
-                    $arrival->format(DateTimeInterface::ATOM),
-                ));
-
-                // El segundo ya se recibió y concilió: queda listo para el recojo del cliente.
-                if ($n === 1) {
-                    foreach ($units as $u => $unitId) {
-                        $this->bus->dispatch(new ReceiveUnitAtNode(
-                            $shipmentId,
-                            $storeId,
-                            $unitId,
-                            (float) $store->lat,
-                            (float) $store->lng,
-                            self::DEVICE_ID,
-                            (string) $tienda->getKey(),
-                            $arrival->modify('+'.(10 + $u).' minutes')->format(DateTimeInterface::ATOM),
-                            "{$key}-receive-{$u}",
-                        ));
-                        $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.node_reception_recorded', $shipmentId, $unitId, $arrival->modify('+10 minutes')->format(DateTimeInterface::ATOM), self::STORE_CODE));
-                    }
-                    $this->bus->dispatch(new ReconcileNodeReception(
-                        $shipmentId,
-                        $storeId,
-                        self::DEVICE_ID,
-                        (string) $tienda->getKey(),
-                        $arrival->modify('+20 minutes')->format(DateTimeInterface::ATOM),
-                    ));
-                }
+            if ($this->deliveries->findByShipmentId($shipmentId) !== null) {
+                continue;
             }
+            $this->seedStoreTransfer($transferVehicleId, $cd, $store, $shipment, $tienda, $morning, $n);
         }
+    }
+
+    /**
+     * Traspaso CD → tienda de un envío: preparación y carga en el CD, descarga en la tienda, apertura del
+     * seguimiento, proyección de sus hechos y apertura de la recepción en el nodo. El segundo envío además
+     * se recibe y concilia (listo para el recojo del cliente).
+     */
+    private function seedStoreTransfer(
+        string $transferVehicleId,
+        NodeRecord $cd,
+        NodeRecord $store,
+        Shipment $shipment,
+        User $tienda,
+        DateTimeImmutable $morning,
+        int $n,
+    ): void {
+        $storeId = (string) $store->id;
+        $storeGeo = ExecutionGeoPoint::of((float) $store->lat, (float) $store->lng);
+        $cdGeo = ExecutionGeoPoint::of((float) $cd->lat, (float) $cd->lng);
+        $driverDevice = DeviceContext::of(self::DEVICE_ID, 'transfer-driver');
+
+        $shipmentId = $shipment->id()->toString();
+        $units = $this->unitIds($shipmentId);
+        $key = "scenario-{$this->date}-{$shipmentId}";
+
+        $delivery = Delivery::start($this->deliveries->nextIdentity(), $shipmentId, $transferVehicleId);
+        foreach ($units as $u => $unitId) {
+            $delivery->recordPreparationScan($unitId, $cdGeo, $driverDevice, $morning->modify("+{$u} minutes"), "{$key}-prep-{$u}");
+        }
+        foreach ($units as $u => $unitId) {
+            $delivery->recordLoadScan($unitId, $cdGeo, $driverDevice, $morning->modify('+'.(20 + $u).' minutes'), "{$key}-load-{$u}");
+        }
+        $arrival = $morning->modify('+'.(75 + 20 * $n).' minutes');
+        foreach ($units as $u => $unitId) {
+            $delivery->recordUnloadScan($storeId, $unitId, $storeGeo, $driverDevice, $arrival->modify("+{$u} minutes"), "{$key}-unload-{$u}");
+        }
+        $this->deliveries->save($delivery);
+
+        $this->bus->dispatch(new OpenTracking($shipmentId, 0));
+        $this->bus->dispatch(new ProjectExecutionEvent('execution.shipment_loaded', $shipmentId));
+        foreach ($units as $unitId) {
+            $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_loaded', $shipmentId, $unitId, $morning->modify('+20 minutes')->format(DateTimeInterface::ATOM), self::CD_CODE));
+            $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.shipment_unloaded', $shipmentId, $unitId, $arrival->format(DateTimeInterface::ATOM), self::STORE_CODE));
+        }
+
+        // Recepción en la tienda (idempotente por envío + nodo en el handler).
+        $this->bus->dispatch(new OpenNodeReception(
+            $shipmentId,
+            (string) $cd->id,
+            $storeId,
+            'CD',
+            'STORE',
+            $units,
+            $arrival->format(DateTimeInterface::ATOM),
+        ));
+
+        // El segundo ya se recibió y concilió: queda listo para el recojo del cliente.
+        if ($n === 1) {
+            $this->receiveAndReconcileAtStore($shipmentId, $store, $tienda, $units, $arrival, $key);
+        }
+    }
+
+    /**
+     * Recepción y conciliación de un envío en la tienda: escanea cada bulto (ReceiveUnitAtNode), proyecta
+     * la recepción y, al final, concilia el envío en el nodo.
+     *
+     * @param list<string> $units
+     */
+    private function receiveAndReconcileAtStore(string $shipmentId, NodeRecord $store, User $tienda, array $units, DateTimeImmutable $arrival, string $key): void
+    {
+        $storeId = (string) $store->id;
+        foreach ($units as $u => $unitId) {
+            $this->bus->dispatch(new ReceiveUnitAtNode(
+                $shipmentId,
+                $storeId,
+                $unitId,
+                (float) $store->lat,
+                (float) $store->lng,
+                self::DEVICE_ID,
+                (string) $tienda->getKey(),
+                $arrival->modify('+'.(10 + $u).' minutes')->format(DateTimeInterface::ATOM),
+                "{$key}-receive-{$u}",
+            ));
+            $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.node_reception_recorded', $shipmentId, $unitId, $arrival->modify('+10 minutes')->format(DateTimeInterface::ATOM), self::STORE_CODE));
+        }
+        $this->bus->dispatch(new ReconcileNodeReception(
+            $shipmentId,
+            $storeId,
+            self::DEVICE_ID,
+            (string) $tienda->getKey(),
+            $arrival->modify('+20 minutes')->format(DateTimeInterface::ATOM),
+        ));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -980,7 +1083,7 @@ final class TodayScenarioSeeder extends Seeder
     {
         $node = NodeRecord::query()->where('code', $code)->first();
         if ($node === null) {
-            throw new RuntimeException("Falta el nodo {$code} (correr NetworkSeeder).");
+            throw new TodayScenarioSeederException("Falta el nodo {$code} (correr NetworkSeeder).");
         }
 
         return $node;
@@ -990,7 +1093,7 @@ final class TodayScenarioSeeder extends Seeder
     {
         $vehicle = VehicleModel::query()->where('plate', $plate)->first();
         if ($vehicle === null) {
-            throw new RuntimeException("Falta el vehículo {$plate} (correr FleetSeeder).");
+            throw new TodayScenarioSeederException("Falta el vehículo {$plate} (correr FleetSeeder).");
         }
 
         return $vehicle;

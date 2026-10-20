@@ -93,7 +93,9 @@ final readonly class PlanGeometryRefresher
                     return true;
                 }
 
-                return false;
+                // Solo el primer plan del camión en ese día decide el resultado: si no hacía falta
+                // geometría, se corta el recorrido y se cae al `return false` final.
+                break;
             }
         } catch (Throwable) {
             return false;

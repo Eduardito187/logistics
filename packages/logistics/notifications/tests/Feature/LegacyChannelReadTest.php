@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\File;
 use Logistics\Notifications\Domain\Contract\MessageTemplateRepository;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\ValueObject\Channel;
@@ -106,7 +107,9 @@ it('la migración de datos normaliza las filas viejas y es idempotente', functio
         'body' => 'entregado',
     ]);
 
-    $migration = require __DIR__.'/../../database/migrations/2026_10_19_000100_normalize_legacy_notification_channels.php';
+    // getRequire() evalúa el archivo y devuelve la instancia (migración anónima) sin usar el
+    // constructo require/require_once: funciona aunque el migrador ya haya cargado el archivo.
+    $migration = File::getRequire(__DIR__.'/../../database/migrations/2026_10_19_000100_normalize_legacy_notification_channels.php');
     $migration->up();
     $migration->up();
 

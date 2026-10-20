@@ -79,23 +79,41 @@ final class GetShipmentUnitsHandler implements QueryHandler
             $pieceIndex = is_numeric($record->piece_index) ? (int) $record->piece_index : null;
             $pieceTotal = is_numeric($record->piece_total) ? (int) $record->piece_total : null;
 
-            $label = $record->unit_index.'/'.$record->unit_total;
-            if ($pieceTotal !== null && $pieceTotal > 1) {
-                $label .= ' ('.$pieceIndex.'/'.$pieceTotal.')';
-            }
-
             $resolved[(string) $record->id] = [
-                'label' => $label,
-                'product' => [
-                    'sku' => is_string($record->sku) && $record->sku !== '' ? $record->sku : null,
-                    'product_name' => is_string($record->product_name) && $record->product_name !== '' ? $record->product_name : null,
-                    'product_image_url' => is_string($record->product_image_url) && $record->product_image_url !== '' ? $record->product_image_url : null,
-                    'piece_index' => $pieceIndex,
-                    'piece_total' => $pieceTotal,
-                ],
+                'label' => $this->unitLabel($record, $pieceIndex, $pieceTotal),
+                'product' => $this->unitProduct($record, $pieceIndex, $pieceTotal),
             ];
         }
 
         return $resolved;
+    }
+
+    /**
+     * Etiqueta humana "N/M" del bulto, con la pieza fraccionada entre paréntesis si el bulto está partido.
+     */
+    private function unitLabel(\stdClass $record, ?int $pieceIndex, ?int $pieceTotal): string
+    {
+        $label = $record->unit_index.'/'.$record->unit_total;
+        if ($pieceTotal !== null && $pieceTotal > 1) {
+            $label .= ' ('.$pieceIndex.'/'.$pieceTotal.')';
+        }
+
+        return $label;
+    }
+
+    /**
+     * Producto que contiene el bulto, con las cadenas vacías normalizadas a null.
+     *
+     * @return array{sku: string|null, product_name: string|null, product_image_url: string|null, piece_index: int|null, piece_total: int|null}
+     */
+    private function unitProduct(\stdClass $record, ?int $pieceIndex, ?int $pieceTotal): array
+    {
+        return [
+            'sku' => is_string($record->sku) && $record->sku !== '' ? $record->sku : null,
+            'product_name' => is_string($record->product_name) && $record->product_name !== '' ? $record->product_name : null,
+            'product_image_url' => is_string($record->product_image_url) && $record->product_image_url !== '' ? $record->product_image_url : null,
+            'piece_index' => $pieceIndex,
+            'piece_total' => $pieceTotal,
+        ];
     }
 }

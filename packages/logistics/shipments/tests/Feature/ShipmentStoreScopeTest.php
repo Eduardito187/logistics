@@ -50,7 +50,7 @@ it('filtra el listado por nodo destino en el Query ListShipments', function (): 
 
 it('pagina /app/shipments en SQL: devuelve la página pedida y el total real (no materializa todo)', function (): void {
     $node = Uuid::generate()->value;
-    foreach (range(1, 5) as $ignored) {
+    for ($i = 0; $i < 5; $i++) {
         ShipmentRecord::factory()->forNode($node)->create();
     }
 

@@ -23,7 +23,7 @@ final readonly class PruneSpec
      * @param string            $label             Etiqueta legible para el log del resultado (p. ej. "outbox dispatched").
      * @param string            $table             Nombre de la tabla a podar.
      * @param string            $timeColumn        Columna temporal que define la antigüedad (debe estar indexada).
-     * @param DateTimeImmutable $cutoff            Se borra todo lo estrictamente anterior a este instante.
+     * @param DateTimeImmutable $cutoff            Se borran las filas estrictamente anteriores a este instante.
      * @param int               $chunkSize         Filas por lote de borrado (acota el bloqueo; >= 1).
      * @param bool              $dryRun            Si es verdadero, solo cuenta y NO borra.
      * @param int               $pauseMicroseconds Pausa entre lotes (micros) para aliviar la carga; 0 = sin pausa.

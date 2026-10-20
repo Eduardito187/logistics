@@ -13,6 +13,9 @@ use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRecordFactory;
 
+// Fecha fija de la ruta diaria usada en todo el archivo.
+const ROUTE_DATE = '2026-10-16';
+
 // La línea planificada SIEMPRE existe si la ruta tiene al menos dos puntos: geometría persistida del plan
 // → (plan sin geometría) Planificación la calcula y persiste al vuelo → recta entre paradas de la ruta.
 
@@ -48,7 +51,7 @@ function assembleTwoStopRoute(string $date): array
 }
 
 it('sin plan devuelve una línea recta entre las paradas de la ruta', function (): void {
-    [$vehicle] = assembleTwoStopRoute('2026-10-16');
+    [$vehicle] = assembleTwoStopRoute(ROUTE_DATE);
 
     $response = $this->getJson("/api/v1/app/vehicles/{$vehicle}/route?date=2026-10-16")->assertOk();
 
@@ -62,25 +65,27 @@ it('sin plan devuelve una línea recta entre las paradas de la ruta', function (
 it('con plan sin geometría la calcula vía planificación, la persiste y la sirve', function (): void {
     app()->instance(RouteGeometryProvider::class, new class implements RouteGeometryProvider
     {
+        /**
+         * @param list<GeoPoint> $orderedPoints
+         */
         public function geometryFor(array $orderedPoints): ?RouteGeometry
         {
             // Simula una geometría por calles: más puntos que paradas.
             $coords = [];
-            foreach ($orderedPoints as $p) {
-                /** @var GeoPoint $p */
-                $coords[] = [$p->longitude, $p->latitude];
-                $coords[] = [$p->longitude + 0.001, $p->latitude];
+            foreach ($orderedPoints as $point) {
+                $coords[] = [$point->longitude, $point->latitude];
+                $coords[] = [$point->longitude + 0.001, $point->latitude];
             }
 
             return RouteGeometry::of($coords, 5000.0, 600.0);
         }
     });
 
-    [$vehicle, $shipments] = assembleTwoStopRoute('2026-10-16');
+    [$vehicle, $shipments] = assembleTwoStopRoute(ROUTE_DATE);
     $planId = Uuid::generate()->value;
     DB::table('planning_plans')->insert([
         'id' => $planId,
-        'plan_date' => '2026-10-16',
+        'plan_date' => ROUTE_DATE,
         'vehicle_id' => $vehicle,
         'status' => 'PUBLISHED',
         'created_at' => now(),
@@ -97,7 +102,7 @@ it('con plan sin geometría la calcula vía planificación, la persiste y la sir
         ]);
     }
 
-    $geometry = app(RouteGeometryReader::class)->forVehicleAndDate($vehicle, '2026-10-16');
+    $geometry = app(RouteGeometryReader::class)->forVehicleAndDate($vehicle, ROUTE_DATE);
 
     expect($geometry)->not->toBeNull()
         ->and($geometry['coordinates'])->toHaveCount(4)
@@ -109,9 +114,9 @@ it('con una sola parada y sin plan no inventa geometría', function (): void {
     $vehicle = Uuid::generate()->value;
     app(CommandBus::class)->dispatch(new AssembleDailyRoute(
         vehicleId: $vehicle,
-        routeDate: '2026-10-16',
+        routeDate: ROUTE_DATE,
         stops: [new RouteStopInput(shipmentId: Uuid::generate()->value, sequence: 1, lat: -16.5, lng: -68.1)],
     ));
 
-    expect(app(RouteGeometryReader::class)->forVehicleAndDate($vehicle, '2026-10-16'))->toBeNull();
+    expect(app(RouteGeometryReader::class)->forVehicleAndDate($vehicle, ROUTE_DATE))->toBeNull();
 });

@@ -67,13 +67,13 @@ final readonly class CachingLegRepository implements LegRepository
         /** @var list<array<string, mixed>>|null $cached */
         $cached = $this->cache->get(NetworkCacheKey::legsAll());
         if (is_array($cached)) {
-            return array_map(self::fromPrimitive(...), $cached);
+            return array_map(static fn (array $data): Leg => self::fromPrimitive($data), $cached);
         }
 
         $legs = $this->inner->all();
         $this->cache->put(
             NetworkCacheKey::legsAll(),
-            array_map(self::toPrimitive(...), $legs),
+            array_map(static fn (Leg $leg): array => self::toPrimitive($leg), $legs),
             self::TTL_SECONDS,
         );
 

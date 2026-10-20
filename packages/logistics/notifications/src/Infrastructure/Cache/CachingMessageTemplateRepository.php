@@ -63,13 +63,13 @@ final readonly class CachingMessageTemplateRepository implements MessageTemplate
         /** @var list<array<string, mixed>>|null $cached */
         $cached = $this->cache->get(NotificationsCacheKey::templatesAll());
         if (is_array($cached)) {
-            return array_map(self::fromPrimitive(...), $cached);
+            return array_map(static fn (array $data): MessageTemplate => self::fromPrimitive($data), $cached);
         }
 
         $templates = $this->inner->all();
         $this->cache->put(
             NotificationsCacheKey::templatesAll(),
-            array_map(self::toPrimitive(...), $templates),
+            array_map(static fn (MessageTemplate $template): array => self::toPrimitive($template), $templates),
             self::TTL_SECONDS,
         );
 

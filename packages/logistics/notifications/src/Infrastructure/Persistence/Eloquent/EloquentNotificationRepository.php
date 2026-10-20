@@ -82,7 +82,7 @@ final class EloquentNotificationRepository implements NotificationRepository
 
     /**
      * Mapea un listado tolerando filas no reconstruibles (p. ej. un canal histórico que ya no existe):
-     * la fila se omite con un warning en vez de tumbar todo el listado con un 500.
+     * la fila se omite con un warning en vez de tumbar el listado entero con un 500.
      *
      * @param  iterable<NotificationRecord> $records
      * @return list<Notification>

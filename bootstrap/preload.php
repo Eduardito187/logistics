@@ -44,7 +44,7 @@ if (!is_file($classmap)) {
 }
 
 /** @var array<string, string> $classes */
-$classes = require $classmap;
+$classes = require_once $classmap;
 
 // Patrones de rutas que NO se precargan: no sirven en el request de producción.
 $skipPatterns = [

@@ -5,6 +5,9 @@ declare(strict_types=1);
 use Logistics\Telemetry\Application\Maintenance\PruneTelemetryPings;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\PingRecord;
 
+// Motivo del skip cuando la suite no corre contra PostgreSQL (logistics_test).
+const PRUNE_PINGS_PG_REASON = 'Requiere PostgreSQL (logistics_test).';
+
 /**
  * Poda del RAW de pings GPS (telemetry_pings). Verifica dry-run, borrado por ventana (recorded_at),
  * chunking e idempotencia.
@@ -28,7 +31,7 @@ it('dry-run cuenta los pings viejos pero no borra', function (): void {
     expect($report->matched)->toBe(4)
         ->and($report->deleted)->toBe(0)
         ->and(PingRecord::query()->count())->toBe(7);
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', PRUNE_PINGS_PG_REASON);
 
 it('con --force borra solo el RAW anterior a la ventana', function (): void {
     /** @var PruneTelemetryPings $prune */
@@ -47,7 +50,7 @@ it('con --force borra solo el RAW anterior a la ventana', function (): void {
     // Idempotente: segunda corrida no borra nada.
     $second = $prune->handle(retentionDays: 60, chunkSize: 2, dryRun: false);
     expect($second->deleted)->toBe(0);
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', PRUNE_PINGS_PG_REASON);
 
 it('el comando hace dry-run por defecto', function (): void {
     PingRecord::factory()->count(3)->create(['recorded_at' => now()->subDays(200)]);
@@ -57,4 +60,4 @@ it('el comando hace dry-run por defecto', function (): void {
 
     $this->artisan('logistics:telemetry:prune-pings', ['--force' => true])->assertSuccessful();
     expect(PingRecord::query()->count())->toBe(0);
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', PRUNE_PINGS_PG_REASON);

@@ -28,6 +28,10 @@ for arg in "$@"; do
     case "$arg" in
         --create) CREATE=1 ;;
         --force)  FORCE=1 ;;
+        *)
+            echo "[restore] ERROR: argumento desconocido '${arg}'. Flags válidos: --create, --force." >&2
+            exit 2
+            ;;
     esac
 done
 

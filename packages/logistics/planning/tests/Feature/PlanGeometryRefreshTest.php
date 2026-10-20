@@ -14,6 +14,9 @@ use Logistics\Planning\Infrastructure\Persistence\Eloquent\PlanRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRecordFactory;
 
+// Fecha fija de los planes sembrados en las pruebas de backfill de geometría.
+const PLAN_DATE = '2026-10-13';
+
 // La geometría de la ruta planificada se calcula también en los planes armados a mano/por propuesta,
 // reordenados o publicados sin ella (antes solo la tenía el auto-plan). El proveedor de geometría se
 // falsea: devuelve la polilínea de los propios puntos y cuenta las llamadas.
@@ -133,10 +136,10 @@ it('omite las paradas sin geocodificar al armar los puntos', function (): void {
 });
 
 it('el backfill completa planes publicados sin geometría y es idempotente', function (): void {
-    [$published] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->published()->onDate('2026-10-13'), 2);
-    [$draft] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->onDate('2026-10-13'), 2);
+    [$published] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->published()->onDate(PLAN_DATE), 2);
+    [$draft] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->onDate(PLAN_DATE), 2);
 
-    $this->artisan('logistics:planning:backfill-geometry', ['--date' => '2026-10-13'])
+    $this->artisan('logistics:planning:backfill-geometry', ['--date' => PLAN_DATE])
         ->expectsOutputToContain('con geometría nueva: 2')
         ->assertSuccessful();
 
@@ -153,8 +156,8 @@ it('el backfill completa planes publicados sin geometría y es idempotente', fun
 });
 
 it('el backfill con --force recalcula los no publicados y respeta los publicados', function (): void {
-    [$published] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->published(), 2);
-    [$draft] = seedPlanWithGeocodedStops(PlanRecordFactory::new(), 2);
+    seedPlanWithGeocodedStops(PlanRecordFactory::new()->published(), 2);
+    seedPlanWithGeocodedStops(PlanRecordFactory::new(), 2);
     app(PlanGeometryRefresher::class)->backfill(null, false);
 
     $this->artisan('logistics:planning:backfill-geometry', ['--force' => true])
@@ -167,12 +170,12 @@ it('rechaza una fecha inválida', function (): void {
 });
 
 it('ensureForVehicleAndDate persiste la geometría del plan del camión y día', function (): void {
-    [$plan] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->published()->onDate('2026-10-13'), 2);
+    [$plan] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->published()->onDate(PLAN_DATE), 2);
 
     $refresher = app(PlanGeometryRefresher::class);
 
-    expect($refresher->ensureForVehicleAndDate((string) $plan->vehicle_id, '2026-10-13'))->toBeTrue()
+    expect($refresher->ensureForVehicleAndDate((string) $plan->vehicle_id, PLAN_DATE))->toBeTrue()
         ->and(storedCoordinates($plan))->toHaveCount(2)
-        ->and($refresher->ensureForVehicleAndDate((string) $plan->vehicle_id, '2026-10-13'))->toBeFalse()
-        ->and($refresher->ensureForVehicleAndDate('no-existe', '2026-10-13'))->toBeFalse();
+        ->and($refresher->ensureForVehicleAndDate((string) $plan->vehicle_id, PLAN_DATE))->toBeFalse()
+        ->and($refresher->ensureForVehicleAndDate('no-existe', PLAN_DATE))->toBeFalse();
 });

@@ -64,13 +64,13 @@ final readonly class CachingZoneRepository implements ZoneRepository
         /** @var list<array<string, mixed>>|null $cached */
         $cached = $this->cache->get(CoverageCacheKey::zonesAll());
         if (is_array($cached)) {
-            return array_map(self::fromPrimitive(...), $cached);
+            return array_map(static fn (array $data): Zone => self::fromPrimitive($data), $cached);
         }
 
         $zones = $this->inner->all();
         $this->cache->put(
             CoverageCacheKey::zonesAll(),
-            array_map(self::toPrimitive(...), array_values($zones)),
+            array_map(static fn (Zone $zone): array => self::toPrimitive($zone), array_values($zones)),
             self::TTL_SECONDS,
         );
 

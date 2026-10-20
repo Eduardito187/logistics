@@ -9,6 +9,11 @@ use Logistics\Outbox\Infrastructure\Resilience\CircuitOpenException;
 use Logistics\Shared\Domain\Clock\Clock;
 
 /**
+ * Fallo simulado del destino: dispara la apertura del circuito en las pruebas.
+ */
+final class SimulatedDestinationFailure extends RuntimeException {}
+
+/**
  * Circuit breaker por destino (A-5): abre tras N fallos seguidos, corta rápido (fast-fail) durante el
  * enfriamiento y pasa a half-open cuando este vence. Estado en una cache en memoria (ArrayStore), reloj
  * mutable para controlar el tiempo sin tocar el reloj real.
@@ -42,11 +47,11 @@ it('abre el circuito tras alcanzar el umbral de fallos seguidos y corta rápido'
     // Umbral 3, enfriamiento 30s, ventana 60s.
     $breaker = new CircuitBreaker(breakerCache(), $clock, 3, 30, 60, 'test');
 
-    $boom = fn (): bool => throw new RuntimeException('destino caído');
+    $boom = fn (): bool => throw new SimulatedDestinationFailure('destino caído');
 
     // Primeros 3 intentos: llegan al destino (y fallan), re-lanzando la excepción real.
     for ($i = 0; $i < 3; $i++) {
-        expect(fn () => $breaker->call('sap', $boom))->toThrow(RuntimeException::class, 'destino caído');
+        expect(fn () => $breaker->call('sap', $boom))->toThrow(SimulatedDestinationFailure::class, 'destino caído');
     }
 
     // Circuito ABIERTO: el 4º intento corta rápido SIN ejecutar la operación.
@@ -68,8 +73,8 @@ it('reintenta en half-open y cierra con un éxito; el aislamiento es por destino
     // Abrimos el circuito de 'fcm' con 2 fallos.
     for ($i = 0; $i < 2; $i++) {
         try {
-            $breaker->call('fcm', fn (): bool => throw new RuntimeException('down'));
-        } catch (RuntimeException) {
+            $breaker->call('fcm', fn (): bool => throw new SimulatedDestinationFailure('down'));
+        } catch (SimulatedDestinationFailure) {
             // esperado
         }
     }

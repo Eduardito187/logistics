@@ -29,9 +29,21 @@ return new class extends Migration
 
     public function up(): void
     {
+        // El trabajo se reparte en tres pasos independientes (mismo comportamiento que antes), cada uno
+        // en su propio método para mantener la complejidad cognitiva bajo control.
+        $this->normalizeNotifications();
+        $this->normalizeTypeRules();
+        $this->normalizeTemplates();
+    }
+
+    /**
+     * Notificaciones: se recorren por lotes solo las que mencionan un alias (current o jsonb) y se
+     * reescribe cada fila con los canales normalizados.
+     */
+    private function normalizeNotifications(): void
+    {
         $legacy = array_keys(self::ALIASES);
 
-        // Notificaciones: se recorren por lotes solo las que mencionan un alias (current o jsonb).
         DB::table('notifications')
             ->where(function ($q) use ($legacy): void {
                 $q->whereIn('current_channel', $legacy);
@@ -42,28 +54,42 @@ return new class extends Migration
             })
             ->chunkById(500, function ($rows): void {
                 foreach ($rows as $row) {
-                    $policy = json_decode((string) $row->policy, true);
-                    $attempts = json_decode((string) $row->attempts, true);
-
-                    if (is_array($policy) && isset($policy['channels']) && is_array($policy['channels'])) {
-                        $policy['channels'] = $this->normalizeList($policy['channels'], keepUnknown: true);
-                    }
-
-                    $normalizedAttempts = [];
-                    foreach (is_array($attempts) ? $attempts : [] as $channel => $count) {
-                        $key = self::ALIASES[(string) $channel] ?? (string) $channel;
-                        $normalizedAttempts[$key] = ($normalizedAttempts[$key] ?? 0) + (int) $count;
-                    }
-
-                    DB::table('notifications')->where('id', $row->id)->update([
-                        'current_channel' => self::ALIASES[$row->current_channel] ?? $row->current_channel,
-                        'policy' => json_encode($policy),
-                        'attempts' => json_encode($normalizedAttempts),
-                    ]);
+                    $this->normalizeNotificationRow($row);
                 }
             });
+    }
 
-        // Reglas por tipo: alias → vigente, descarta canales retirados; si no queda ninguno, no se toca.
+    /**
+     * Reescribe una notificación: alias → vigente en `current_channel`, `policy.channels` y `attempts`
+     * (acumulando los intentos de los alias que colapsan al mismo canal vigente).
+     */
+    private function normalizeNotificationRow(stdClass $row): void
+    {
+        $policy = json_decode((string) $row->policy, true);
+        $attempts = json_decode((string) $row->attempts, true);
+
+        if (is_array($policy) && isset($policy['channels']) && is_array($policy['channels'])) {
+            $policy['channels'] = $this->normalizeList($policy['channels'], keepUnknown: true);
+        }
+
+        $normalizedAttempts = [];
+        foreach (is_array($attempts) ? $attempts : [] as $channel => $count) {
+            $key = self::ALIASES[(string) $channel] ?? (string) $channel;
+            $normalizedAttempts[$key] = ($normalizedAttempts[$key] ?? 0) + (int) $count;
+        }
+
+        DB::table('notifications')->where('id', $row->id)->update([
+            'current_channel' => self::ALIASES[$row->current_channel] ?? $row->current_channel,
+            'policy' => json_encode($policy),
+            'attempts' => json_encode($normalizedAttempts),
+        ]);
+    }
+
+    /**
+     * Reglas por tipo: alias → vigente, descarta canales retirados; si no queda ninguno, no se toca.
+     */
+    private function normalizeTypeRules(): void
+    {
         foreach (DB::table('notification_message_type_rules')->get() as $rule) {
             $channels = json_decode((string) $rule->channels, true);
             if (!is_array($channels)) {
@@ -76,8 +102,15 @@ return new class extends Migration
                     ->update(['channels' => json_encode($normalized)]);
             }
         }
+    }
 
-        // Plantillas: renombra el canal solo si no choca con una plantilla FCM ya existente.
+    /**
+     * Plantillas: renombra el canal solo si no choca con una plantilla FCM ya existente.
+     */
+    private function normalizeTemplates(): void
+    {
+        $legacy = array_keys(self::ALIASES);
+
         foreach (DB::table('notification_message_templates')->whereIn('channel', $legacy)->get() as $template) {
             $target = self::ALIASES[$template->channel];
             $exists = DB::table('notification_message_templates')

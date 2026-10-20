@@ -16,7 +16,7 @@ return [
     */
 
     // A-3: el default es `redis`, NO `database`. Las colas son el corazón del sistema asíncrono
-    // (todo I/O externo sale por el outbox, ADR 002); si en producción falta la env QUEUE_CONNECTION
+    // (cualquier I/O externo sale por el outbox, ADR 002); si en producción falta la env QUEUE_CONNECTION
     // NO deben caer silenciosamente a PostgreSQL. La conexión `redis` usa la conexión Redis `default`
     // (DB 0, durable, sin evicción). Los tests fuerzan `sync` vía phpunit.xml: este default no los afecta.
     'default' => env('QUEUE_CONNECTION', 'redis'),

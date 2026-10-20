@@ -61,13 +61,13 @@ final readonly class CachingGeoAreaRepository implements GeoAreaRepository
         /** @var list<array<string, mixed>>|null $cached */
         $cached = $this->cache->get(CoverageCacheKey::geoAreasAll());
         if (is_array($cached)) {
-            return array_map(self::fromPrimitive(...), $cached);
+            return array_map(static fn (array $data): GeoArea => self::fromPrimitive($data), $cached);
         }
 
         $areas = $this->inner->all();
         $this->cache->put(
             CoverageCacheKey::geoAreasAll(),
-            array_map(self::toPrimitive(...), array_values($areas)),
+            array_map(static fn (GeoArea $area): array => self::toPrimitive($area), array_values($areas)),
             self::TTL_SECONDS,
         );
 

@@ -23,7 +23,9 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * sin reconstruir el agregado. Se verifica el filtrado/paginación del lector y, sobre todo, que su salida
  * sea IDÉNTICA a la del camino histórico (ShipmentView::fromShipment). Contra PostgreSQL (logistics_test).
  */
-beforeEach(function (): void {})->skip(
+beforeEach(function (): void {
+    // Sin preparación propia: la guarda real es el ->skip() encadenado (requiere PostgreSQL).
+})->skip(
     env('DB_CONNECTION') !== 'pgsql',
     'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',
 );
@@ -96,7 +98,7 @@ it('empuja los filtros por estado, fuente y nodo destino a SQL', function (): vo
 
 it('acota el resultado con limit y offset en SQL', function (): void {
     $node = Uuid::generate()->value;
-    foreach (range(1, 5) as $n) {
+    for ($i = 0; $i < 5; $i++) {
         ShipmentRecord::factory()->forNode($node)->create();
     }
 

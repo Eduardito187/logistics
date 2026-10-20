@@ -93,15 +93,26 @@ final class EnsureDeviceToken
         $key = self::deviceCacheKey($deviceId);
         $cached = Cache::get($key);
 
-        if (is_array($cached)) {
-            // Un equipo inexistente se cachea igual (negative caching) para no re-consultar en cada hit.
-            if (($cached['exists'] ?? false) !== true) {
-                return null;
-            }
-
-            return ['revoked' => (bool) $cached['revoked'], 'user_id' => $cached['user_id']];
+        if (!is_array($cached)) {
+            return $this->deviceSnapshotFromDatabase($deviceId, $key);
         }
 
+        // Un equipo inexistente se cachea igual (negative caching) para no re-consultar en cada hit.
+        if (($cached['exists'] ?? false) !== true) {
+            return null;
+        }
+
+        return ['revoked' => (bool) $cached['revoked'], 'user_id' => $cached['user_id']];
+    }
+
+    /**
+     * Lee el dispositivo de la base y cachea su snapshot (positivo o negativo, con el mismo TTL corto);
+     * `null` si el equipo no existe. Separa el camino frío del hit en cache para no pasar de 3 returns.
+     *
+     * @return array{revoked: bool, user_id: int|null}|null
+     */
+    private function deviceSnapshotFromDatabase(int $deviceId, string $key): ?array
+    {
         $device = Device::find($deviceId);
 
         if ($device === null) {

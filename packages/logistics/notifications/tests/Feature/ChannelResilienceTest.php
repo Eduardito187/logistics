@@ -23,6 +23,11 @@ use Logistics\Outbox\Infrastructure\Resilience\CircuitOpenException;
 use Logistics\Shared\Domain\Clock\Clock;
 
 /**
+ * Fallo simulado de un canal caído (sender doble): el breaker debe aislarlo.
+ */
+final class SimulatedChannelFailure extends RuntimeException {}
+
+/**
  * Resiliencia de los canales de notificación: connectTimeout (B-2) en Telegram y SMS, y circuit breaker
  * POR CANAL (A-5) en el RoutingChannelSender: un canal caído se aísla y corta rápido sin arrastrar a los
  * sanos. Http::fake captura las opciones de Guzzle (connect_timeout).
@@ -124,7 +129,7 @@ it('aísla un canal caído con un breaker por canal y corta rápido (A-5)', func
         {
             $this->calls++;
 
-            throw new RuntimeException('canal caído');
+            throw new SimulatedChannelFailure('canal caído');
         }
     };
 

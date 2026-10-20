@@ -64,13 +64,13 @@ final readonly class CachingNodeRepository implements NodeRepository
         /** @var list<array<string, mixed>>|null $cached */
         $cached = $this->cache->get(NetworkCacheKey::nodesAll());
         if (is_array($cached)) {
-            return array_map(self::fromPrimitive(...), $cached);
+            return array_map(static fn (array $data): Node => self::fromPrimitive($data), $cached);
         }
 
         $nodes = $this->inner->all();
         $this->cache->put(
             NetworkCacheKey::nodesAll(),
-            array_map(self::toPrimitive(...), $nodes),
+            array_map(static fn (Node $node): array => self::toPrimitive($node), $nodes),
             self::TTL_SECONDS,
         );
 

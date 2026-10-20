@@ -47,7 +47,9 @@ final class PublicTrackingController
         // Cache HTTP del rastreo público (M-5): es la página que los clientes pollean. Al no llevar PII
         // (ver PublicTrackingView) el CDN/navegador puede cachearla y absorber el polling sin pegar a la
         // base en cada hit. ETag + max-age corto; con `If-None-Match` coincidente se responde 304 vacío.
-        $response->setEtag(md5((string) $response->getContent()));
+        // ETag por SHA-256 del cuerpo (no MD5): es un validador de caché, no un contexto de seguridad,
+        // pero se usa un algoritmo fuerte para no disparar alertas de hash débil.
+        $response->setEtag(hash('sha256', (string) $response->getContent()));
         $response->setPublic();
         $response->setMaxAge(self::PUBLIC_CACHE_MAX_AGE_SECONDS);
         $response->isNotModified($request);

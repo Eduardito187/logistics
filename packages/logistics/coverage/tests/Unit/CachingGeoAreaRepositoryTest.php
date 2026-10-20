@@ -11,6 +11,9 @@ use Logistics\Coverage\Domain\ValueObject\GeoAreaId;
 use Logistics\Coverage\Infrastructure\Cache\CachingGeoAreaRepository;
 use Logistics\Coverage\Infrastructure\Cache\CoverageCacheKey;
 
+// Nombre de área de ejemplo reutilizado en el sembrado y las aserciones.
+const SANTA_CRUZ = 'Santa Cruz';
+
 function fakeGeoAreaRepository(GeoArea ...$areas): GeoAreaRepository
 {
     return new class(array_values($areas)) implements GeoAreaRepository
@@ -52,13 +55,13 @@ function fakeGeoAreaRepository(GeoArea ...$areas): GeoAreaRepository
     };
 }
 
-function sampleGeoArea(string $name = 'Santa Cruz', AdminLevel $level = AdminLevel::Department): GeoArea
+function sampleGeoArea(string $name = SANTA_CRUZ, AdminLevel $level = AdminLevel::Department): GeoArea
 {
     return GeoArea::create(GeoAreaId::generate(), $name, $level, null);
 }
 
 it('serves the second all() from cache and rehydrates each area', function (): void {
-    $inner = fakeGeoAreaRepository(sampleGeoArea('Santa Cruz'), sampleGeoArea('Warnes', AdminLevel::Municipality));
+    $inner = fakeGeoAreaRepository(sampleGeoArea(SANTA_CRUZ), sampleGeoArea('Warnes', AdminLevel::Municipality));
     $repo = new CachingGeoAreaRepository($inner, new CacheRepository(new ArrayStore));
 
     $first = $repo->all();
@@ -67,7 +70,7 @@ it('serves the second all() from cache and rehydrates each area', function (): v
     expect($inner->allCalls)->toBe(1)
         ->and($first)->toHaveCount(2)
         ->and($second[0])->toBeInstanceOf(GeoArea::class)
-        ->and($second[0]->name())->toBe('Santa Cruz')
+        ->and($second[0]->name())->toBe(SANTA_CRUZ)
         ->and($second[0]->level())->toBe(AdminLevel::Department)
         ->and($second[1]->level())->toBe(AdminLevel::Municipality);
 });
@@ -80,7 +83,7 @@ it('stores the primitive array of each area, never the object (regla #7)', funct
 
     $stored = $cache->get(CoverageCacheKey::geoAreasAll());
     expect($stored)->toBeArray()
-        ->and($stored[0]['name'])->toBe('Santa Cruz')
+        ->and($stored[0]['name'])->toBe(SANTA_CRUZ)
         ->and($stored[0]['level'])->toBe('department')
         ->and($stored[0]['parentId'])->toBeNull();
 });

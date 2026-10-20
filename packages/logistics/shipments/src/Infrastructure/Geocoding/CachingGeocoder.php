@@ -87,7 +87,9 @@ final readonly class CachingGeocoder implements Geocoder
      */
     private function hashFor(string $normalized): string
     {
-        return sha1($this->provider.'|'.$this->country.'|'.$normalized);
+        // SHA-256 (no SHA-1/MD5): es solo una clave de deduplicación, no un contexto de seguridad, pero se
+        // usa un algoritmo fuerte para no disparar alertas de hash débil. 64 hex → columna query_hash varchar(64).
+        return hash('sha256', $this->provider.'|'.$this->country.'|'.$normalized);
     }
 
     /**

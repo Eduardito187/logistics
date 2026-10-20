@@ -9,6 +9,10 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
+// Instantes fijos reutilizados por las aserciones de la ventana de un minuto.
+const HOT_PATH_AT = '2026-10-20 10:00:00';
+const HOT_PATH_AFTER_WINDOW = '2026-10-20 10:01:30';
+
 // Camino caliente de la puerta app (`/api/v1/app/*`): la guarda de dispositivo y Sanctum no deben
 // escribir en cada request (last_seen_at / last_used_at con resolución de un minuto) y /auth/me no debe
 // repetir consultas que la guarda ya hizo (dispositivo, roles).
@@ -67,24 +71,24 @@ afterEach(function (): void {
 
 it('no reescribe last_seen_at ni last_used_at en requests dentro del mismo minuto', function (): void {
     [$token, $device, $accessToken] = hotPathBearer();
-    Carbon::setTestNow('2026-10-20 10:00:00');
+    Carbon::setTestNow(HOT_PATH_AT);
 
     hotPathMe($this, $token);
-    expect($device->fresh()?->last_seen_at?->toDateTimeString())->toBe('2026-10-20 10:00:00')
-        ->and($accessToken->fresh()?->last_used_at?->toDateTimeString())->toBe('2026-10-20 10:00:00');
+    expect($device->fresh()?->last_seen_at?->toDateTimeString())->toBe(HOT_PATH_AT)
+        ->and($accessToken->fresh()?->last_used_at?->toDateTimeString())->toBe(HOT_PATH_AT);
 
     Carbon::setTestNow('2026-10-20 10:00:40');
     $sql = hotPathQueries(fn () => hotPathMe($this, $token));
 
     $updates = array_values(array_filter($sql, static fn (string $s): bool => str_starts_with($s, 'update')));
     expect($updates)->toBe([])
-        ->and($device->fresh()?->last_seen_at?->toDateTimeString())->toBe('2026-10-20 10:00:00');
+        ->and($device->fresh()?->last_seen_at?->toDateTimeString())->toBe(HOT_PATH_AT);
 
     // Pasada la ventana, vuelve a registrar la actividad.
-    Carbon::setTestNow('2026-10-20 10:01:30');
+    Carbon::setTestNow(HOT_PATH_AFTER_WINDOW);
     hotPathMe($this, $token);
-    expect($device->fresh()?->last_seen_at?->toDateTimeString())->toBe('2026-10-20 10:01:30')
-        ->and($accessToken->fresh()?->last_used_at?->toDateTimeString())->toBe('2026-10-20 10:01:30');
+    expect($device->fresh()?->last_seen_at?->toDateTimeString())->toBe(HOT_PATH_AFTER_WINDOW)
+        ->and($accessToken->fresh()?->last_used_at?->toDateTimeString())->toBe(HOT_PATH_AFTER_WINDOW);
 });
 
 it('/auth/me consulta el dispositivo y los roles una sola vez', function (): void {

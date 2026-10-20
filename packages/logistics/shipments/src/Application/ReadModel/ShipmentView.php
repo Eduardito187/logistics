@@ -90,7 +90,7 @@ final readonly class ShipmentView
      *
      *  - lat/lng van juntos: si falta cualquiera de los dos, ambos quedan null (no hay punto a medias),
      *    igual que cuando el agregado no tiene GeoPoint.
-     *  - la franja de entrega es todo-o-nada: sin alguna de las tres columnas no hay slot (las tres null);
+     *  - la franja de entrega es excluyente: o están las tres columnas o ninguna (las tres null);
      *    la fecha se normaliza a 'Y-m-d' (10 chars) como DeliverySlot.
      *
      * Los demás campos se persisten ya normalizados por el agregado al guardar, así que leerlos crudos

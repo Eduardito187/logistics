@@ -78,11 +78,8 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
             return null;
         }
 
-        if ($raw === null) {
-            return null;
-        }
-
         // El driver de Postgres puede devolver el jsonb ya decodificado (array) o como string JSON crudo.
+        // Un `route_geometry` NULL cae como string→else = null y lo descarta la validación de abajo.
         $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
 
         if (!is_array($decoded) || !isset($decoded['coordinates']) || !is_array($decoded['coordinates'])
