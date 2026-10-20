@@ -32,7 +32,15 @@ interface TripRepository
     /**
      * Lista filtrando opcionalmente por vehículo y por día (según `started_at`).
      *
+     * `$limit`/`$offset` son opcionales (null = sin recorte): bajan LIMIT/OFFSET a SQL cuando el
+     * consumidor pagina, sin cambiar la forma del resultado.
+     *
      * @return list<Trip>
      */
-    public function listBy(?string $vehicleId, ?DateTimeImmutable $day): array;
+    public function listBy(?string $vehicleId, ?DateTimeImmutable $day, ?int $limit = null, ?int $offset = null): array;
+
+    /**
+     * Cuenta los trips que cumplen los MISMOS filtros que `listBy`, para el total de la paginación.
+     */
+    public function countBy(?string $vehicleId, ?DateTimeImmutable $day): int;
 }

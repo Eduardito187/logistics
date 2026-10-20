@@ -1,0 +1,37 @@
+; ============================================================
+; PHP-FPM pool TEMPLATE — logistics (lo renderiza entrypoint.sh)
+; ============================================================
+; Los tokens __FPM_*__ los sustituye el entrypoint con las variables de entorno
+; FPM_* (o sus defaults). El resultado se escribe en el www.conf efectivo
+; (/usr/local/etc/php-fpm.d/www.conf) antes de arrancar php-fpm. Ver la cabecera
+; de www.conf para el cálculo de pm.max_children.
+
+[www]
+user = logistics
+group = logistics
+
+listen = 0.0.0.0:9000
+
+pm = __FPM_PM__
+pm.max_children = __FPM_MAX_CHILDREN__
+pm.start_servers = __FPM_START_SERVERS__
+pm.min_spare_servers = __FPM_MIN_SPARE__
+pm.max_spare_servers = __FPM_MAX_SPARE__
+pm.max_requests = __FPM_MAX_REQUESTS__
+
+pm.status_path = /status
+ping.path = /ping
+ping.response = pong
+
+access.log = /proc/self/fd/2
+access.format = "%R - %u %t \"%m %r%Q%q\" %s %f %{mili}d %{kilo}M %C%%"
+
+slowlog = /proc/self/fd/2
+request_slowlog_timeout = 10s
+
+request_terminate_timeout = 60s
+
+catch_workers_output = yes
+decorate_workers_output = no
+
+clear_env = no

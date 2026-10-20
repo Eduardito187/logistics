@@ -111,9 +111,12 @@ final class AuthController
         $user = $request->user();
         $token = $user->currentAccessToken();
 
-        $device = $token instanceof PersonalAccessToken && $token->device_id !== null
-            ? Device::find($token->device_id)
-            : null;
+        // EnsureDeviceToken ya dejó el dispositivo cargado en la relación del token (sin re-consultar).
+        $device = null;
+        if ($token instanceof PersonalAccessToken && $token->device_id !== null) {
+            $loaded = $token->relationLoaded('device') ? $token->getRelation('device') : null;
+            $device = $loaded instanceof Device ? $loaded : Device::find($token->device_id);
+        }
 
         return new JsonResponse([
             'user' => $this->profile($user),

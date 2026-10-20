@@ -6,17 +6,22 @@ namespace Logistics\Shipments\Application\Query\ListLowConfidenceAddresses;
 
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
-use Logistics\Shipments\Domain\Contract\ShipmentRepository;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
 
 /**
+ * Lista los envíos con dirección de confianza baja (lado de lectura CQRS).
+ *
+ * Delega en ShipmentListReader con el filtro `lowConfidenceOnly`, que lo empuja a SQL (columna
+ * `address_confidence_level`) en vez de recorrer todos los agregados en memoria.
+ *
  * @implements QueryHandler<ListLowConfidenceAddresses, list<ShipmentView>>
  */
 final class ListLowConfidenceAddressesHandler implements QueryHandler
 {
     public function __construct(
-        private readonly ShipmentRepository $shipments,
+        private readonly ShipmentListReader $reader,
     ) {}
 
     /**
@@ -28,13 +33,6 @@ final class ListLowConfidenceAddressesHandler implements QueryHandler
             throw ShipmentsException::because('ListLowConfidenceAddressesHandler solo maneja ListLowConfidenceAddresses');
         }
 
-        $views = [];
-        foreach ($this->shipments->all() as $shipment) {
-            if ($shipment->addressConfidence()->isLow()) {
-                $views[] = ShipmentView::fromShipment($shipment);
-            }
-        }
-
-        return $views;
+        return $this->reader->list(lowConfidenceOnly: true);
     }
 }

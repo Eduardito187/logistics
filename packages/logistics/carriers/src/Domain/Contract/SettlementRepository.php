@@ -21,7 +21,14 @@ interface SettlementRepository
     /**
      * Lista liquidaciones, con filtros opcionales por transportista y por estado.
      *
+     * `$limit`/`$offset` son opcionales (null = sin recorte): bajan LIMIT/OFFSET a SQL al paginar.
+     *
      * @return list<Settlement>
      */
-    public function list(?string $carrierId = null, ?string $status = null): array;
+    public function list(?string $carrierId = null, ?string $status = null, ?int $limit = null, ?int $offset = null): array;
+
+    /**
+     * Cuenta las liquidaciones que cumplen los MISMOS filtros que `list`, para el total de la paginación.
+     */
+    public function countBy(?string $carrierId = null, ?string $status = null): int;
 }

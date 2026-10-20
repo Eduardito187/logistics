@@ -7,6 +7,7 @@ namespace Logistics\Planning\Application\Command\AssignShipmentToVehicle;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Planning\Application\Policy\ClientStopLocation;
 use Logistics\Planning\Application\Policy\RouteDepartmentPolicy;
+use Logistics\Planning\Application\Service\PlanGeometryRefresher;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\ValueObject\PlanId;
@@ -28,6 +29,7 @@ final readonly class AssignShipmentToVehicleHandler implements CommandHandler
         private PlanRepository $plans,
         private RecordDomainEvents $recordEvents,
         private RouteDepartmentPolicy $geography,
+        private ?PlanGeometryRefresher $geometry = null,
     ) {}
 
     public function handle(Command $command): void
@@ -59,6 +61,9 @@ final readonly class AssignShipmentToVehicleHandler implements CommandHandler
             $command->customerName,
             $command->address,
         );
+
+        // La parada nueva cambia el recorrido: se recalcula la geometría (degrada sin romper).
+        $this->geometry?->refresh($plan);
 
         $this->plans->save($plan);
 

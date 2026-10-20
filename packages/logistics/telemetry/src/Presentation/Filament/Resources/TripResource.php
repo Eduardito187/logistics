@@ -17,6 +17,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Telemetry\Domain\ValueObject\TripStatus;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\TripRecord;
@@ -221,9 +222,17 @@ final class TripResource extends Resource
                         /** @var Builder<TripRecord> $query */
                         $date = $data['date'] ?? null;
 
-                        return $date !== null && $date !== ''
-                            ? $query->whereDate('started_at', (string) $date)
-                            : $query;
+                        if ($date === null || $date === '') {
+                            return $query;
+                        }
+
+                        // Rango sobre timestamptz en vez de whereDate() (auditoría M-2): whereDate
+                        // envuelve la columna en DATE() y anula el índice; el rango medio-abierto lo usa.
+                        $day = Carbon::parse((string) $date)->startOfDay();
+
+                        return $query
+                            ->where('started_at', '>=', $day)
+                            ->where('started_at', '<', $day->copy()->addDay());
                     }),
             ])
             ->defaultSort('started_at', 'desc')

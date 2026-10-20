@@ -16,5 +16,7 @@ final readonly class ListExpenses implements Query
         public ?string $category = null,
         public ?string $from = null,
         public ?string $to = null,
+        public ?int $limit = null,
+        public ?int $offset = null,
     ) {}
 }

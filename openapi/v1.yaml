@@ -270,6 +270,9 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/SettlementStatus'
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Settlement list
@@ -284,6 +287,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Settlement'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
   /app/carriers/settlements/{settlementId}:
@@ -1412,6 +1419,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Refuel list
@@ -1426,6 +1436,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Refuel'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
     post:
@@ -2021,6 +2035,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Odometer reading list
@@ -2035,6 +2052,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/OdometerReading'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
     post:
@@ -2231,6 +2252,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Expense list
@@ -2245,6 +2269,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Expense'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
     post:
@@ -2693,21 +2721,27 @@ paths:
         Returns the latest notifications across the whole operation, newest first. App gate.
       operationId: appListNotifications
       parameters:
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          maximum: 500
-          default: 100
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Global notification log.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotificationListEnvelope'
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationView'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
   /app/notifications/{notification}:
@@ -6299,6 +6333,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Trip list
@@ -6313,6 +6350,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Trip'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
   /app/telemetry/alerts:
@@ -6337,6 +6378,9 @@ paths:
         required: false
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Alert list
@@ -6351,6 +6395,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Alert'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
   /app/telemetry/alerts/{alertId}/acknowledge:
@@ -7168,6 +7216,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: The list of ASNs
@@ -7443,20 +7494,9 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/FulfillmentMode'
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          default: 100
-      - name: offset
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 0
-          default: 0
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: The list of lots
@@ -7496,6 +7536,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: The list of seller settlements
@@ -7654,6 +7697,9 @@ paths:
         description: Optional filter by return status.
         schema:
           $ref: '#/components/schemas/ReturnOrderStatus'
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: The list of returns
@@ -8080,6 +8126,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Asn'
+        meta:
+          oneOf:
+          - $ref: '#/components/schemas/PaginationMeta'
+          - $ref: '#/components/schemas/CursorMeta'
     ReceivingDockSlot:
       type: object
       required:
@@ -8357,6 +8407,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Lot'
+        meta:
+          oneOf:
+          - $ref: '#/components/schemas/PaginationMeta'
+          - $ref: '#/components/schemas/CursorMeta'
     SellerSettlementStatus:
       type: string
       description: Estado del ciclo de vida de una liquidación de seller.
@@ -8476,6 +8530,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SellerSettlement'
+        meta:
+          oneOf:
+          - $ref: '#/components/schemas/PaginationMeta'
+          - $ref: '#/components/schemas/CursorMeta'
     DraftSellerSettlementRequest:
       type: object
       required:
@@ -9682,8 +9740,9 @@ components:
           - $ref: '#/components/schemas/RouteGeometry'
           - type: 'null'
           description: >-
-            Street-level route geometry from the published plan (planning), matched by vehicle+date.
-            Null until the routing run computes it or if no plan matches.
+            Planned route geometry, matched by vehicle+date: the street-level geometry persisted with the
+            plan (computed on the fly if the plan still lacks it); if there is no plan, a straight line
+            through the route stops in sequence. Null only when fewer than two stops have coordinates.
     ReserveDeliverySlotRequest:
       type: object
       required:
@@ -11571,6 +11630,54 @@ components:
           type: string
           format: date-time
           nullable: true
+        units:
+          type: array
+          description: Producto de cada bulto de la recepción (esperados ∪ recibidos ∪ sobrantes); campos null si el id no es un bulto conocido
+          items:
+            $ref: '#/components/schemas/NodeReceptionUnit'
+    NodeReceptionUnit:
+      type: object
+      description: Bulto de una recepción en nodo con el producto que contiene (foto, nombre, SKU) y su posición "N de M"
+      required:
+      - unit_id
+      - sku
+      - product_name
+      - product_image_url
+      - unit_index
+      - unit_total
+      - piece_index
+      - piece_total
+      properties:
+        unit_id:
+          type: string
+        sku:
+          type:
+          - string
+          - 'null'
+        product_name:
+          type:
+          - string
+          - 'null'
+        product_image_url:
+          type:
+          - string
+          - 'null'
+        unit_index:
+          type:
+          - integer
+          - 'null'
+        unit_total:
+          type:
+          - integer
+          - 'null'
+        piece_index:
+          type:
+          - integer
+          - 'null'
+        piece_total:
+          type:
+          - integer
+          - 'null'
     NodeStatus:
       type: string
       enum:
@@ -13599,6 +13706,28 @@ components:
           - string
           - 'null'
           description: Etiqueta humana del bulto ("N/M")
+        sku:
+          type:
+          - string
+          - 'null'
+          description: SKU del producto que contiene el bulto (null si no se resuelve)
+        product_name:
+          type:
+          - string
+          - 'null'
+        product_image_url:
+          type:
+          - string
+          - 'null'
+        piece_index:
+          type:
+          - integer
+          - 'null'
+          description: Pieza N de un producto fraccionado en varias cajas
+        piece_total:
+          type:
+          - integer
+          - 'null'
     GeoPoint:
       type: object
       required:
@@ -14027,6 +14156,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ReturnOrder'
+        meta:
+          oneOf:
+          - $ref: '#/components/schemas/PaginationMeta'
+          - $ref: '#/components/schemas/CursorMeta'
     InitiateReturnRequest:
       type: object
       required:

@@ -23,6 +23,8 @@ interface ExpenseRepository
     /**
      * Lista gastos filtrando opcionalmente por vehículo, categoría y rango de fechas de incurrencia.
      *
+     * `$limit`/`$offset` son opcionales (null = sin recorte): bajan LIMIT/OFFSET a SQL al paginar.
+     *
      * @return list<Expense>
      */
     public function listBy(
@@ -30,7 +32,19 @@ interface ExpenseRepository
         ?ExpenseCategory $category = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
+        ?int $limit = null,
+        ?int $offset = null,
     ): array;
+
+    /**
+     * Cuenta los gastos que cumplen los MISMOS filtros que `listBy`, para el total de la paginación.
+     */
+    public function countBy(
+        ?string $vehicleId = null,
+        ?ExpenseCategory $category = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
+    ): int;
 
     /**
      * Total gastado por un vehículo en un rango (centavos + moneda), para el TCO.

@@ -33,8 +33,10 @@ trait HasRoles
      */
     public function roles(): array
     {
+        // Se carga una vez por instancia (relación de Eloquent): perfil + abilities en el mismo request
+        // ya no consultan dos veces. assignRole/removeRole descartan la relación cargada.
         /** @var Collection<int, UserRole> $assignments */
-        $assignments = $this->roleAssignments()->get();
+        $assignments = $this->roleAssignments;
 
         $roles = [];
         foreach ($assignments as $assignment) {
@@ -65,11 +67,13 @@ trait HasRoles
     public function assignRole(Role $role): void
     {
         $this->roleAssignments()->firstOrCreate(['role' => $role->value]);
+        $this->unsetRelation('roleAssignments');
     }
 
     public function removeRole(Role $role): void
     {
         $this->roleAssignments()->where('role', $role->value)->delete();
+        $this->unsetRelation('roleAssignments');
     }
 
     /**

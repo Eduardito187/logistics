@@ -169,6 +169,45 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # B-6 — Gate de seguridad de dependencias. Falla SOLO ante vulnerabilidades conocidas (no por
+  # estilo/estática). Es un job aparte para no romper el pipeline existente: lint/test/assets/image
+  # siguen igual. El umbral de npm es configurable por la variable de repo NPM_AUDIT_LEVEL
+  # (default: high); composer audit reporta cualquier aviso sobre las deps bloqueadas en composer.lock.
+  security:
+    name: Security audit (composer + npm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
+          tools: composer:v2
+          coverage: none
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      # Audita composer.lock sin instalar vendor: rápido y suficiente para el gate de seguridad.
+      # Falla si alguna dependencia bloqueada tiene un aviso de seguridad publicado.
+      - name: composer audit
+        run: composer audit --locked --no-interaction --ansi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      # npm audit sobre package-lock.json. Falla a partir del nivel configurado (default high) para no
+      # bloquear por avisos de severidad baja/moderada; súbelo/bájalo con la variable NPM_AUDIT_LEVEL.
+      - name: npm audit
+        run: npm audit --audit-level=${{ vars.NPM_AUDIT_LEVEL || 'high' }}
+
   image:
     name: Build production image
     runs-on: ubuntu-latest

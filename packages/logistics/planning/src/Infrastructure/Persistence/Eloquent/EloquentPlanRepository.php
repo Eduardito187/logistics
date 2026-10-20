@@ -68,4 +68,20 @@ final class EloquentPlanRepository implements PlanRepository
             ->values()
             ->all();
     }
+
+    public function idsForGeometryBackfill(?PlanDate $date, bool $all): array
+    {
+        $query = PlanRecord::query()->orderBy('plan_date')->orderBy('vehicle_id');
+        if ($date !== null) {
+            $query->where('plan_date', $date->toString());
+        }
+        if (!$all) {
+            $query->whereNull('route_geometry');
+        }
+
+        /** @var list<string> $ids */
+        $ids = $query->pluck('id')->map(static fn (mixed $id): string => (string) $id)->values()->all();
+
+        return array_map(static fn (string $id): PlanId => PlanId::fromString($id), $ids);
+    }
 }

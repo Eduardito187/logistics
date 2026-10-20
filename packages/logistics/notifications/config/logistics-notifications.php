@@ -8,7 +8,7 @@ declare(strict_types=1);
 // secretos (JSON del service account de FCM, token del bot de Telegram, credenciales del gateway SMS)
 // van en .env / gestor de secretos, nunca en el repo ni en settings editables. Sin configuración, cada
 // canal cae a su modo "no configurado" (loguea y falla con mensaje claro para que el relay
-// reintente/escale), salvo email, que en dev sale por Mailpit.
+// reintente/escale), salvo email, que sale por el sendmail nativo del host.
 return [
     // Locale por defecto de las plantillas cuando el envío no especifica uno.
     'default_locale' => env('NOTIFICATIONS_DEFAULT_LOCALE', 'es'),
@@ -35,7 +35,7 @@ return [
         'timeout' => (int) env('FCM_TIMEOUT', 10),
     ],
 
-    // Canal email transaccional. En dev sale por Mailpit (mailer por defecto de Laravel).
+    // Canal email transaccional. Sale por el mailer de Laravel (sendmail nativo del host).
     'email' => [
         'mailer' => env('NOTIFICATIONS_EMAIL_MAILER'),
         'from_address' => env('NOTIFICATIONS_EMAIL_FROM', 'no-reply@dismac.test'),

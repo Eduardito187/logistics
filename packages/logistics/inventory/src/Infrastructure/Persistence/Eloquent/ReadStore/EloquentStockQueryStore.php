@@ -68,23 +68,9 @@ final class EloquentStockQueryStore implements StockQueryStore
         int $limit = 100,
         int $offset = 0,
     ): array {
-        $query = DB::table('inventory_lots');
-
-        if ($warehouseId !== null) {
-            $query->where('warehouse_id', $warehouseId);
-        }
-        if ($sku !== null) {
-            $query->where('sku', $sku);
-        }
-        if ($ownerPartyId !== null) {
-            $query->where('owner_party_id', $ownerPartyId);
-        }
-        if ($fulfillmentMode !== null) {
-            $query->where('fulfillment_mode', $fulfillmentMode);
-        }
-
         // UUID v7 = orden temporal de ingreso; paginado por limit/offset.
-        $rows = $query->orderBy('id')->limit(max(1, $limit))->offset(max(0, $offset))->get();
+        $rows = $this->filteredLots($warehouseId, $sku, $ownerPartyId, $fulfillmentMode)
+            ->orderBy('id')->limit(max(1, $limit))->offset(max(0, $offset))->get();
 
         $result = [];
         foreach ($rows as $row) {
@@ -111,6 +97,42 @@ final class EloquentStockQueryStore implements StockQueryStore
         }
 
         return $result;
+    }
+
+    public function countLots(
+        ?string $warehouseId = null,
+        ?string $sku = null,
+        ?string $ownerPartyId = null,
+        ?string $fulfillmentMode = null,
+    ): int {
+        return $this->filteredLots($warehouseId, $sku, $ownerPartyId, $fulfillmentMode)->count();
+    }
+
+    /**
+     * Query builder con los filtros comunes de lots/countLots (sin orden ni recorte).
+     */
+    private function filteredLots(
+        ?string $warehouseId,
+        ?string $sku,
+        ?string $ownerPartyId,
+        ?string $fulfillmentMode,
+    ): Builder {
+        $query = DB::table('inventory_lots');
+
+        if ($warehouseId !== null) {
+            $query->where('warehouse_id', $warehouseId);
+        }
+        if ($sku !== null) {
+            $query->where('sku', $sku);
+        }
+        if ($ownerPartyId !== null) {
+            $query->where('owner_party_id', $ownerPartyId);
+        }
+        if ($fulfillmentMode !== null) {
+            $query->where('fulfillment_mode', $fulfillmentMode);
+        }
+
+        return $query;
     }
 
     public function availableToPromise(

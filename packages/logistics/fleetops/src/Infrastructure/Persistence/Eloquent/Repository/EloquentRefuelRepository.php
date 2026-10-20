@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Repository;
 
 use DateTimeImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Logistics\FleetOps\Domain\Contract\RefuelRepository;
 use Logistics\FleetOps\Domain\Model\Refuel;
 use Logistics\FleetOps\Domain\ValueObject\RefuelId;
@@ -38,7 +39,37 @@ final readonly class EloquentRefuelRepository implements RefuelRepository
         return $record instanceof RefuelRecord ? $this->mapper->toDomain($record) : null;
     }
 
-    public function listBy(?string $vehicleId, ?DateTimeImmutable $from, ?DateTimeImmutable $to): array
+    public function listBy(?string $vehicleId, ?DateTimeImmutable $from, ?DateTimeImmutable $to, ?int $limit = null, ?int $offset = null): array
+    {
+        // Orden determinista para la paginación: refueled_at desc con desempate por id (UUID v7).
+        $query = $this->filtered($vehicleId, $from, $to)
+            ->orderByDesc('refueled_at')
+            ->orderByDesc('id');
+
+        if ($offset !== null) {
+            $query->offset($offset);
+        }
+        if ($limit !== null) {
+            $query->limit($limit);
+        }
+
+        return array_values($query
+            ->get()
+            ->map(fn (RefuelRecord $record): Refuel => $this->mapper->toDomain($record))
+            ->all());
+    }
+
+    public function countBy(?string $vehicleId, ?DateTimeImmutable $from, ?DateTimeImmutable $to): int
+    {
+        return $this->filtered($vehicleId, $from, $to)->count();
+    }
+
+    /**
+     * Query builder con los filtros comunes de listBy/countBy (sin orden ni recorte).
+     *
+     * @return Builder<RefuelRecord>
+     */
+    private function filtered(?string $vehicleId, ?DateTimeImmutable $from, ?DateTimeImmutable $to): Builder
     {
         $query = RefuelRecord::query();
         if ($vehicleId !== null) {
@@ -51,11 +82,7 @@ final readonly class EloquentRefuelRepository implements RefuelRepository
             $query->where('refueled_at', '<=', $to);
         }
 
-        return array_values($query
-            ->orderByDesc('refueled_at')
-            ->get()
-            ->map(fn (RefuelRecord $record): Refuel => $this->mapper->toDomain($record))
-            ->all());
+        return $query;
     }
 
     public function forVehicleOrdered(string $vehicleId): array

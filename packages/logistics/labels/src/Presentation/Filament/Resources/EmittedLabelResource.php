@@ -21,6 +21,7 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\HtmlString;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
 use Logistics\Labels\Application\ReadModel\EmittedLabelView;
@@ -178,15 +179,24 @@ final class EmittedLabelResource extends Resource
                             ->label(__('Emitted until'))
                             ->native(false),
                     ])
-                    ->query(fn (Builder $query, array $data): Builder => $query
-                        ->when(
-                            $data['emitted_from'] ?? null,
-                            fn (Builder $q, string $date): Builder => $q->whereDate('created_at', '>=', $date),
-                        )
-                        ->when(
-                            $data['emitted_until'] ?? null,
-                            fn (Builder $q, string $date): Builder => $q->whereDate('created_at', '<=', $date),
-                        )),
+                    // Rango sobre timestamptz en vez de whereDate() (auditoría M-2): whereDate envuelve
+                    // la columna en DATE() y anula el índice. "Desde" es el inicio del día; "hasta" es el
+                    // inicio del día siguiente (rango medio-abierto) para incluir todo el día elegido.
+                    ->query(function (Builder $query, array $data): Builder {
+                        /** @var \Illuminate\Database\Eloquent\Builder<EmittedLabelRecord> $query */
+                        $from = $data['emitted_from'] ?? null;
+                        $until = $data['emitted_until'] ?? null;
+
+                        if (is_string($from) && $from !== '') {
+                            $query->where('created_at', '>=', Carbon::parse($from)->startOfDay());
+                        }
+
+                        if (is_string($until) && $until !== '') {
+                            $query->where('created_at', '<', Carbon::parse($until)->startOfDay()->addDay());
+                        }
+
+                        return $query;
+                    }),
             ])
             ->recordActions([
                 ViewAction::make(),

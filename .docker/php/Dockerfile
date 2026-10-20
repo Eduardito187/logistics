@@ -52,6 +52,12 @@ RUN apk add --no-cache \
 ENV TZ=America/La_Paz
 RUN cp /usr/share/zoneinfo/${TZ} /etc/localtime && echo "${TZ}" > /etc/timezone
 
+# Drenado graceful de PHP-FPM (M-9 auditoría). Docker manda SIGTERM al parar el
+# contenedor y PHP-FPM lo interpreta como apagado INMEDIATO (corta requests en
+# vuelo). SIGQUIT es el apagado GRACEFUL de FPM: deja terminar los requests activos
+# antes de salir. Se define en el stage base para que lo hereden dev y prod.
+STOPSIGNAL SIGQUIT
+
 # Composer desde imagen oficial
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
@@ -93,7 +99,10 @@ RUN apk add --no-cache \
         redis
 
 COPY .docker/php/php.dev.ini /usr/local/etc/php/conf.d/zzz-logistics.ini
-COPY .docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
+# www.conf se chownea a `logistics` para que el entrypoint (que corre como ese
+# usuario) pueda re-renderizar el pool desde el template con las variables FPM_*.
+COPY --chown=logistics:logistics .docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
+COPY .docker/php/www.conf.template /usr/local/etc/php-fpm.d/www.conf.template
 COPY --chmod=0755 .docker/php/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 USER logistics
@@ -104,7 +113,7 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["php-fpm", "-F"]
 
 # ============================================================
-# Vendor stage — instala las dependencias PHP para alimentar el build del tema
+# Vendor stage — (nota: el HEALTHCHECK va solo en el stage prod, más abajo) — instala las dependencias PHP para alimentar el build del tema
 # ============================================================
 # El tema Filament (resources/css/filament/admin/theme.css) hace `@import` de
 # `vendor/filament/...` y app.css escanea `vendor/laravel/...` con `@source`. Como
@@ -168,7 +177,10 @@ RUN apk add --no-cache supervisor \
     && chown -R ${UID}:${GID} /var/log/supervisor
 
 COPY .docker/php/php.prod.ini /usr/local/etc/php/conf.d/zzz-logistics.ini
-COPY .docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
+# www.conf se chownea a `logistics` para que el entrypoint (que corre como ese
+# usuario) pueda re-renderizar el pool desde el template con las variables FPM_*.
+COPY --chown=logistics:logistics .docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
+COPY .docker/php/www.conf.template /usr/local/etc/php-fpm.d/www.conf.template
 COPY --chmod=0755 .docker/php/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY .docker/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
 
@@ -193,6 +205,19 @@ RUN php artisan filament:assets
 # el env real inyectado (ver entrypoint.sh y docs/deploy.md).
 
 EXPOSE 9000
+
+# HEALTHCHECK del rol WEB (M-9 auditoría): confirma que PHP-FPM está aceptando en
+# :9000 (busybox `nc -z`). Es la señal de liveness del contenedor FPM.
+#
+# OJO: esta imagen también corre los WORKERS (supervisor, SIN FPM en :9000). Esos
+# contenedores DEBEN sobreescribir este healthcheck (el docker-compose.yml ya lo
+# hace con `pgrep -f queue:work`/`schedule:work`), o lo reportarán como unhealthy.
+#
+# READINESS a nivel de orquestador: enrutar tráfico solo cuando `/api/v1/health`
+# (vía nginx → FPM) responda 200; `/up` sirve de liveness ligero. El readiness de
+# aplicación (DB/Redis arriba) NO se puede medir desde dentro del contenedor FPM.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD nc -z 127.0.0.1 9000 || exit 1
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["php-fpm", "-F"]

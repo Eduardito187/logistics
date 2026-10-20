@@ -10,12 +10,16 @@ use Logistics\Settlement\Domain\Contract\SellerSettlementRepository;
 use Logistics\Settlement\Domain\Model\SellerSettlement;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shared\Application\ReadModel\Page;
 
 /**
  * Devuelve las liquidaciones (filtrables por seller, estado y periodo) como proyecciones de lectura,
  * enriquecidas con el nombre legible del seller (resuelto EN LOTE para evitar N+1).
  *
- * @implements QueryHandler<ListSettlements, list<SettlementView>>
+ * Con `limit` (al paginar) baja LIMIT/OFFSET a SQL y devuelve una Page (ítems + total). Sin `limit`,
+ * devuelve la lista completa, por compatibilidad.
+ *
+ * @implements QueryHandler<ListSettlements, list<SettlementView>|Page<SettlementView>>
  */
 final readonly class ListSettlementsHandler implements QueryHandler
 {
@@ -25,9 +29,9 @@ final readonly class ListSettlementsHandler implements QueryHandler
     ) {}
 
     /**
-     * @return list<SettlementView>
+     * @return list<SettlementView>|Page<SettlementView>
      */
-    public function handle(Query $query): array
+    public function handle(Query $query): array | Page
     {
         assert($query instanceof ListSettlements);
 
@@ -36,6 +40,8 @@ final readonly class ListSettlementsHandler implements QueryHandler
             $query->status,
             $query->periodFrom,
             $query->periodTo,
+            $query->limit,
+            $query->offset,
         );
 
         $sellerIds = array_values(array_unique(array_map(
@@ -44,12 +50,23 @@ final readonly class ListSettlementsHandler implements QueryHandler
         )));
         $sellerNames = $sellerIds === [] ? [] : $this->sellers->namesByIds($sellerIds);
 
-        return array_map(
+        $views = array_map(
             static fn (SellerSettlement $settlement): SettlementView => SettlementView::fromDomain(
                 $settlement,
                 $sellerNames[$settlement->sellerId()] ?? null,
             ),
             $settlements,
         );
+
+        if ($query->limit === null) {
+            return $views;
+        }
+
+        return new Page($views, $this->settlements->countBy(
+            $query->sellerId,
+            $query->status,
+            $query->periodFrom,
+            $query->periodTo,
+        ));
     }
 }

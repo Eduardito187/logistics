@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Infrastructure\Providers;
 
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Support\ServiceProvider;
@@ -47,6 +48,8 @@ use Logistics\Notifications\Domain\Contract\NotificationVariableProvider;
 use Logistics\Notifications\Domain\Contract\ProductImageResolver;
 use Logistics\Notifications\Domain\Contract\SmsBudgetRepository;
 use Logistics\Notifications\Domain\ValueObject\Channel;
+use Logistics\Notifications\Infrastructure\Cache\CachingMessageTemplateRepository;
+use Logistics\Notifications\Infrastructure\Cache\CachingMessageTypeRuleRepository;
 use Logistics\Notifications\Infrastructure\Channel\EmailChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\FcmChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\NotificationContentRenderer;
@@ -113,8 +116,22 @@ final class NotificationsServiceProvider extends ServiceProvider
 
         // Persistencia (puertos → Eloquent).
         $this->app->bind(NotificationRepository::class, EloquentNotificationRepository::class);
-        $this->app->bind(MessageTemplateRepository::class, EloquentMessageTemplateRepository::class);
-        $this->app->bind(MessageTypeRuleRepository::class, EloquentMessageTypeRuleRepository::class);
+        // Plantillas y reglas de cascada son datos de referencia editables y muy leídos (listados del
+        // panel): se envuelve el repositorio Eloquent con el decorador de cache (Valkey), que cachea all()
+        // en forma primitiva (regla #7) y lo invalida al guardar/remover. La resolución por tipo del render
+        // (findFor/policyFor) sigue yendo a la base.
+        $this->app->bind(MessageTemplateRepository::class, function ($app): MessageTemplateRepository {
+            return new CachingMessageTemplateRepository(
+                $app->make(EloquentMessageTemplateRepository::class),
+                $app->make(CacheRepository::class),
+            );
+        });
+        $this->app->bind(MessageTypeRuleRepository::class, function ($app): MessageTypeRuleRepository {
+            return new CachingMessageTypeRuleRepository(
+                $app->make(EloquentMessageTypeRuleRepository::class),
+                $app->make(CacheRepository::class),
+            );
+        });
         $this->app->bind(SmsBudgetRepository::class, EloquentSmsBudgetRepository::class);
 
         // Reglas de cascada: la FUENTE DE VERDAD es el contexto Configuración (versionado, con historial).

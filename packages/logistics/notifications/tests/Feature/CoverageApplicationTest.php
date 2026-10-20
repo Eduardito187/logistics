@@ -23,6 +23,7 @@ use Logistics\Notifications\Domain\ValueObject\MessageType;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\SmsBudgetRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Application\ReadModel\Page;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
 /**
@@ -55,11 +56,13 @@ function coverageQueueNotification(string $messageType = 'EN_ROUTE', ?string $em
 it('encola una notificación y la devuelve en el log y por id', function (): void {
     $id = coverageQueueNotification('EN_ROUTE', 'cliente@dismac.test');
 
+    // ListNotifications ahora devuelve una Page (ítems de la página + total) con push-down a SQL.
     $list = app(QueryBus::class)->ask(new ListNotifications(50));
     $one = app(QueryBus::class)->ask(new GetNotification($id));
 
-    expect($list)->toBeArray()
-        ->and($list[0])->toBeInstanceOf(NotificationView::class)
+    expect($list)->toBeInstanceOf(Page::class)
+        ->and($list->items[0])->toBeInstanceOf(NotificationView::class)
+        ->and($list->total)->toBeGreaterThanOrEqual(1)
         ->and($one)->toBeInstanceOf(NotificationView::class)
         ->and($one->id)->toBe($id);
 });

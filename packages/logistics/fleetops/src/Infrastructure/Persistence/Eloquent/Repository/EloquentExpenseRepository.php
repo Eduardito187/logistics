@@ -49,13 +49,35 @@ final readonly class EloquentExpenseRepository implements ExpenseRepository
         ?ExpenseCategory $category = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
+        ?int $limit = null,
+        ?int $offset = null,
     ): array {
-        return $this->filtered($vehicleId, $category, $from, $to)
+        // Orden determinista para la paginación: incurred_at desc con desempate por id (UUID v7).
+        $query = $this->filtered($vehicleId, $category, $from, $to)
             ->orderByDesc('incurred_at')
+            ->orderByDesc('id');
+
+        if ($offset !== null) {
+            $query->offset($offset);
+        }
+        if ($limit !== null) {
+            $query->limit($limit);
+        }
+
+        return $query
             ->get()
             ->map(fn (ExpenseRecord $record): Expense => $this->mapper->toDomain($record))
             ->values()
             ->all();
+    }
+
+    public function countBy(
+        ?string $vehicleId = null,
+        ?ExpenseCategory $category = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
+    ): int {
+        return $this->filtered($vehicleId, $category, $from, $to)->count();
     }
 
     /**

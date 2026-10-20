@@ -120,11 +120,19 @@ return [
     |
     | Supported drivers: "file", "cache", "array"
     |
+    | M-10: con varias réplicas web el driver `file` deja el `artisan down` POR CONTENEDOR (cada réplica
+    | mantiene su propio flag en disco). Para un modo mantenimiento CLUSTER-WIDE, poner
+    | APP_MAINTENANCE_DRIVER=cache en producción; así el flag vive en Redis (store `redis`, ver abajo) y
+    | un solo `artisan down`/`up` afecta a todas las réplicas a la vez. El default queda en `file`
+    | (sensato para local y despliegues de un solo nodo). El store por defecto es `redis` para que, al
+    | activar el driver `cache`, funcione sin más configuración (NO usar `database`: haría dependiente del
+    | propio recurso que el mantenimiento suele proteger).
+    |
     */
 
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
-        'store' => env('APP_MAINTENANCE_STORE', 'database'),
+        'store' => env('APP_MAINTENANCE_STORE', 'redis'),
     ],
 
 ];

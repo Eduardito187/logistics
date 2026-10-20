@@ -36,6 +36,7 @@ use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleI
 use Logistics\Execution\Application\Contract\EvidenceStorage;
 use Logistics\Execution\Application\Contract\RouteGeometryReader;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
+use Logistics\Execution\Application\Contract\ShipmentUnitProductReader;
 use Logistics\Execution\Application\Contract\StopEnrichmentReader;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryState;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryStateHandler;
@@ -62,6 +63,7 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleIncid
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleRouteRepository;
 use Logistics\Execution\Infrastructure\ReadModel\DbRouteGeometryReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentFulfillmentReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitProductReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbStopEnrichmentReader;
 use Logistics\Execution\Infrastructure\Storage\FilesystemEvidenceStorage;
 use Logistics\Outbox\Application\RecordDomainEvents;
@@ -118,13 +120,31 @@ final class ExecutionServiceProvider extends ServiceProvider
             return new DbStopEnrichmentReader($app->make('db')->connection());
         });
         $this->app->bind(RouteGeometryReader::class, static function ($app): RouteGeometryReader {
-            return new DbRouteGeometryReader($app->make('db')->connection());
+            // Si el plan existe sin geometría, se le pide a Planificación (su servicio de aplicación) que la
+            // calcule y persista; Ejecución no escribe sobre Planning por sí misma.
+            $refresher = 'Logistics\\Planning\\Application\\Service\\PlanGeometryRefresher';
+            $ensure = class_exists($refresher)
+                ? static function (string $vehicleId, string $date) use ($app, $refresher): bool {
+                    $service = $app->make($refresher);
+
+                    return is_object($service) && method_exists($service, 'ensureForVehicleAndDate')
+                        && $service->ensureForVehicleAndDate($vehicleId, $date) === true;
+                }
+            : null;
+
+            return new DbRouteGeometryReader($app->make('db')->connection(), $ensure);
         });
 
         // Lectura del fulfillment_mode del envío (desde shipments, read-only) para bifurcar la ejecución
         // dropship vs. OWNED/FBD sin acoplar el dominio al contexto shipments.
         $this->app->bind(ShipmentFulfillmentReader::class, static function ($app): ShipmentFulfillmentReader {
             return new DbShipmentFulfillmentReader($app->make('db')->connection());
+        });
+
+        // Producto de cada bulto (foto, nombre, SKU, N de M) para la recepción en nodo: lectura en lote de
+        // shipment_units → shipment_lines, read-only.
+        $this->app->bind(ShipmentUnitProductReader::class, static function ($app): ShipmentUnitProductReader {
+            return new DbShipmentUnitProductReader($app->make('db')->connection());
         });
 
         // El handler de incidentes necesita los minutos de retraso (incidente MENOR) de la config, que

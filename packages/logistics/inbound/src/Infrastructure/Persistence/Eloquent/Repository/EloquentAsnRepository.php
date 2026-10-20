@@ -55,9 +55,47 @@ final readonly class EloquentAsnRepository implements AsnRepository
         ?string $warehouseId = null,
         ?string $status = null,
         ?string $appointmentDate = null,
+        ?int $limit = null,
+        ?int $offset = null,
     ): array {
-        $records = AsnRecord::query()
+        // Orden determinista para la paginación: cita (nulls last), created_at y desempate por id.
+        $query = $this->filtered($sellerId, $warehouseId, $status, $appointmentDate)
             ->with('lines')
+            ->orderByRaw('appointment_date is null, appointment_date asc, created_at asc')
+            ->orderBy('id');
+
+        if ($offset !== null) {
+            $query->offset($offset);
+        }
+        // Sin recorte explícito se conserva el tope sano histórico (evita volcar toda la tabla).
+        $query->limit($limit ?? 1000);
+
+        $records = $query->get();
+
+        return array_values($records->map(fn (AsnRecord $record): Asn => $this->mapper->toDomain($record))->all());
+    }
+
+    public function countBy(
+        ?string $sellerId = null,
+        ?string $warehouseId = null,
+        ?string $status = null,
+        ?string $appointmentDate = null,
+    ): int {
+        return $this->filtered($sellerId, $warehouseId, $status, $appointmentDate)->count();
+    }
+
+    /**
+     * Query builder con los filtros comunes de listBy/countBy (sin orden, recorte ni eager load).
+     *
+     * @return Builder<AsnRecord>
+     */
+    private function filtered(
+        ?string $sellerId,
+        ?string $warehouseId,
+        ?string $status,
+        ?string $appointmentDate,
+    ): Builder {
+        return AsnRecord::query()
             ->when($sellerId !== null, static function (Builder $query) use ($sellerId): void {
                 $query->where('seller_id', $sellerId);
             })
@@ -69,12 +107,7 @@ final readonly class EloquentAsnRepository implements AsnRepository
             })
             ->when($appointmentDate !== null, static function (Builder $query) use ($appointmentDate): void {
                 $query->where('appointment_date', $appointmentDate);
-            })
-            ->orderByRaw('appointment_date is null, appointment_date asc, created_at asc')
-            ->limit(1000)
-            ->get();
-
-        return array_values($records->map(fn (AsnRecord $record): Asn => $this->mapper->toDomain($record))->all());
+            });
     }
 
     public function listScheduledBetween(?string $warehouseId, string $fromDate, string $toDate): array

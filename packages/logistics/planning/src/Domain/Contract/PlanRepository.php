@@ -29,4 +29,12 @@ interface PlanRepository
      * @return list<DeliveryPlan>
      */
     public function findByDate(PlanDate $date): array;
+
+    /**
+     * Ids de los planes candidatos a (re)calcular su geometría: los que no la tienen o, con `$all`, todos.
+     * Filtra por día si se indica. Ordenados por día y vehículo.
+     *
+     * @return list<PlanId>
+     */
+    public function idsForGeometryBackfill(?PlanDate $date, bool $all): array;
 }

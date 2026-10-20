@@ -38,9 +38,15 @@ interface NotificationRepository
     public function findByShipment(string $shipmentId): array;
 
     /**
-     * Últimas notificaciones de toda la operación, de la más reciente a la más antigua (para el log).
+     * Últimas notificaciones de toda la operación, de la más reciente a la más antigua (para el log),
+     * paginadas por limit/offset (recorte en SQL).
      *
      * @return list<Notification>
      */
-    public function latest(int $limit = 100): array;
+    public function latest(int $limit = 100, int $offset = 0): array;
+
+    /**
+     * Total de notificaciones del log global, para el total de la paginación (COUNT(*) aparte).
+     */
+    public function count(): int;
 }

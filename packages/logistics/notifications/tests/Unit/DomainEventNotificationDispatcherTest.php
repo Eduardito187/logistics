@@ -104,9 +104,14 @@ function notificationsExisting(bool $exists): NotificationRepository
             return [];
         }
 
-        public function latest(int $limit = 100): array
+        public function latest(int $limit = 100, int $offset = 0): array
         {
             return [];
+        }
+
+        public function count(): int
+        {
+            return 0;
         }
     };
 }

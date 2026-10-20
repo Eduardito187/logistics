@@ -8,11 +8,15 @@ use Logistics\Inventory\Application\ReadModel\LotView;
 use Logistics\Inventory\Domain\Contract\StockQueryStore;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shared\Application\ReadModel\Page;
 
 /**
- * Devuelve lotes como proyecciones de lectura, con filtros opcionales.
+ * Devuelve una página de lotes como proyecciones de lectura, con filtros opcionales.
  *
- * @implements QueryHandler<ListLots, list<LotView>>
+ * Tabla de crecimiento ilimitado: siempre pagina. Baja LIMIT/OFFSET a SQL y arma el total con un
+ * COUNT(*) aparte (sin recorrer la tabla). Devuelve una Page (ítems + total).
+ *
+ * @implements QueryHandler<ListLots, Page<LotView>>
  */
 final readonly class ListLotsHandler implements QueryHandler
 {
@@ -21,9 +25,9 @@ final readonly class ListLotsHandler implements QueryHandler
     ) {}
 
     /**
-     * @return list<LotView>
+     * @return Page<LotView>
      */
-    public function handle(Query $query): array
+    public function handle(Query $query): Page
     {
         assert($query instanceof ListLots);
 
@@ -36,6 +40,13 @@ final readonly class ListLotsHandler implements QueryHandler
             $query->offset,
         );
 
-        return array_map(static fn (array $row): LotView => LotView::fromRow($row), $rows);
+        $views = array_map(static fn (array $row): LotView => LotView::fromRow($row), $rows);
+
+        return new Page($views, $this->store->countLots(
+            $query->warehouseId,
+            $query->sku,
+            $query->ownerPartyId,
+            $query->fulfillmentMode,
+        ));
     }
 }

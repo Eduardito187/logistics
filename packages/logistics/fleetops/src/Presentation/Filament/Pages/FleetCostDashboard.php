@@ -13,6 +13,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Logistics\Fleet\Application\Query\ListExpiringDocuments\ListExpiringDocuments;
 use Logistics\Fleet\Application\ReadModel\ExpiringDocumentView;
@@ -77,6 +78,9 @@ final class FleetCostDashboard extends Page
 
     /** Días sin lectura de odómetro a partir de los cuales un vehículo se considera "atrasado". */
     private const ODOMETER_STALE_DAYS = 14;
+
+    /** Vida del caché de las proyecciones de odómetro (segundos); el atraso se mide en días, 5 min sobra. */
+    private const STALE_ODOMETER_TTL_SECONDS = 300;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-heart';
 
@@ -580,31 +584,46 @@ final class FleetCostDashboard extends Page
         try {
             $threshold = now()->subDays(self::ODOMETER_STALE_DAYS);
 
+            // Ambas proyecciones son de SOLO presentación y se cachean en forma primitiva (regla 7):
+            // el GROUP BY sobre `fleetops_odometer_readings` (append-only, crece sin tope) y el catálogo
+            // de vehículos. Con TTL de minutos el cockpit no dispara el agregado ni relee toda la flota en
+            // cada render (auditoría A-1 / FleetCostDashboard).
+
             // Última lectura por vehículo (id → fecha ISO), para medir la antigüedad.
             /** @var array<string, string> $lastReads */
-            $lastReads = DB::table('fleetops_odometer_readings')
-                ->selectRaw('vehicle_id, MAX(read_at) as last_read_at')
-                ->groupBy('vehicle_id')
-                ->pluck('last_read_at', 'vehicle_id')
-                ->map(static fn ($value): string => (string) $value)
-                ->all();
+            $lastReads = Cache::remember(
+                'fleet-cost:odometer-last-reads',
+                self::STALE_ODOMETER_TTL_SECONDS,
+                static fn (): array => DB::table('fleetops_odometer_readings')
+                    ->selectRaw('vehicle_id, MAX(read_at) as last_read_at')
+                    ->groupBy('vehicle_id')
+                    ->pluck('last_read_at', 'vehicle_id')
+                    ->map(static fn ($value): string => (string) $value)
+                    ->all(),
+            );
 
-            /** @var list<\stdClass> $vehicles */
-            $vehicles = DB::table('fleet_vehicles')
-                ->where('status', '!=', 'inactive')
-                ->orderBy('plate')
-                ->get(['id', 'plate'])
-                ->all();
+            // Catálogo de vehículos activos (id → placa), acotado y cacheado para no releer toda la flota.
+            /** @var array<string, string> $vehicles */
+            $vehicles = Cache::remember(
+                'fleet-cost:active-vehicles',
+                self::STALE_ODOMETER_TTL_SECONDS,
+                static fn (): array => DB::table('fleet_vehicles')
+                    ->where('status', '!=', 'inactive')
+                    ->orderBy('plate')
+                    ->pluck('plate', 'id')
+                    ->map(static fn ($plate): string => (string) $plate)
+                    ->all(),
+            );
 
             $rows = [];
-            foreach ($vehicles as $vehicle) {
-                $vehicleId = (string) $vehicle->id;
+            foreach ($vehicles as $vehicleId => $plate) {
+                $vehicleId = (string) $vehicleId;
                 $lastRaw = $lastReads[$vehicleId] ?? null;
 
                 // Vehículo sin ninguna lectura: siempre es una excepción.
                 if ($lastRaw === null) {
                     $rows[] = [
-                        'vehicle' => (string) $vehicle->plate,
+                        'vehicle' => $plate,
                         'vehicle_id' => $vehicleId,
                         'last_read_at' => null,
                         'days_since' => null,
@@ -623,7 +642,7 @@ final class FleetCostDashboard extends Page
                 $daysSince = (int) floor((time() - $lastAt->getTimestamp()) / 86400);
 
                 $rows[] = [
-                    'vehicle' => (string) $vehicle->plate,
+                    'vehicle' => $plate,
                     'vehicle_id' => $vehicleId,
                     'last_read_at' => $lastAt->format('Y-m-d'),
                     'days_since' => $daysSince,

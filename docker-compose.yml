@@ -3,9 +3,26 @@
 # ============================================================
 # Containers prefijados `dismac_lg_*` y puertos propios para correr en paralelo
 # con dis-commerce (8090/3316/6389) y el resto de proyectos Dismac.
+#
+# PRODUCCIÓN: este archivo es el BASE. Para prod se compone con el override
+# `.docker/compose/docker-compose.prod.yml` (límites de CPU/RAM + deja de publicar
+# los puertos de postgres/valkey/pgbouncer al host, B-4/M-12):
+#   docker compose -f docker-compose.yml -f .docker/compose/docker-compose.prod.yml up -d
 # ============================================================
 
 name: dismac-logistics
+
+# ------------------------------------------------------------
+# Rotación de logs de contenedor (M-13 auditoría).
+# Sin esto el driver json-file crece sin tope en disco. 10 MB × 3 archivos por
+# servicio = ~30 MB máximos de logs por contenedor. Para producción con shipping
+# a Loki/ELK se mantiene igual (el canal JSON ya lo soporta) o se cambia el driver.
+# ------------------------------------------------------------
+x-logging: &default-logging
+    driver: json-file
+    options:
+        max-size: "10m"
+        max-file: "3"
 
 x-php: &php
     build:
@@ -22,20 +39,25 @@ x-php: &php
     environment:
         APP_ENV: local
         DB_CONNECTION: pgsql
-        DB_HOST: postgres
-        DB_PORT: 5432
+        # La app apunta a PgBouncer (transaction pooling, C-3) en vez de a postgres
+        # directo: multiplexa miles de conexiones de cliente sobre un pool pequeño de
+        # conexiones reales a PostgreSQL. El host/puerto los fija el conector de la app
+        # (config/database.php, a cargo de otro agente) → pgbouncer:6432.
+        DB_HOST: pgbouncer
+        DB_PORT: 6432
         DB_DATABASE: logistics
         DB_USERNAME: logistics
         DB_PASSWORD: logistics
         REDIS_HOST: valkey
         REDIS_PORT: 6379
     depends_on:
-        postgres:
+        pgbouncer:
             condition: service_healthy
         valkey:
             condition: service_healthy
     networks:
         - dismac_lg
+    logging: *default-logging
 
 services:
     # -------------------- Aplicación PHP-FPM --------------------
@@ -62,13 +84,69 @@ services:
             - app
         networks:
             - dismac_lg
+        logging: *default-logging
 
     # -------------------- PostgreSQL + PostGIS --------------------
     # PostGIS resuelve zonas de cobertura (polígonos), geocercas y distancias (ADR 003).
+    #
+    # TUNING (C-3b auditoría): los defaults de la imagen (shared_buffers≈128MB,
+    # work_mem≈4MB, max_wal_size mínimo) no sirven a escala. Se sobreescriben con `-c`
+    # en el command (preserva el postgresql.conf autogenerado de la imagen —
+    # listen_addresses='*', rutas de datos— y solo ajusta los parámetros de rendimiento).
+    # Todos los valores son parametrizables por entorno; los defaults están dimensionados
+    # para un contenedor MEDIANO de ~4 GB de RAM (ver docs y .docker/postgres/README no
+    # requerido; la guía vive en estos comentarios):
+    #   - PG_SHARED_BUFFERS        25% RAM            (4GB → 1GB)
+    #   - PG_EFFECTIVE_CACHE_SIZE  ~70% RAM           (4GB → 3GB)   solo planner, no reserva
+    #   - PG_WORK_MEM              por operación de sort/hash       (16MB)
+    #   - PG_MAINTENANCE_WORK_MEM  VACUUM/CREATE INDEX              (256MB)
+    #   - PG_MAX_WAL_SIZE / MIN    tamaño del WAL entre checkpoints (2GB / 512MB)
+    #   - PG_MAX_CONNECTIONS       acorde a PgBouncer (el pooling absorbe el fan-out)
+    # shared_preload_libraries='pg_stat_statements' habilita la vista de queries lentas
+    # (M-6); la extensión se crea en el init SQL (.docker/postgres/init/02-*.sql).
+    # Subir shared_buffers/work_mem sin RAM proporcional lleva a OOM: ajustar junto con
+    # el límite de memoria del contenedor (ver override de prod) y medir (Fase 4).
     postgres:
         image: postgis/postgis:17-3.5-alpine
         container_name: dismac_lg_postgres
         restart: unless-stopped
+        command:
+            - "postgres"
+            - "-c"
+            - "shared_preload_libraries=pg_stat_statements"
+            - "-c"
+            - "max_connections=${PG_MAX_CONNECTIONS:-100}"
+            - "-c"
+            - "shared_buffers=${PG_SHARED_BUFFERS:-1GB}"
+            - "-c"
+            - "effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-3GB}"
+            - "-c"
+            - "work_mem=${PG_WORK_MEM:-16MB}"
+            - "-c"
+            - "maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-256MB}"
+            - "-c"
+            - "max_wal_size=${PG_MAX_WAL_SIZE:-2GB}"
+            - "-c"
+            - "min_wal_size=${PG_MIN_WAL_SIZE:-512MB}"
+            - "-c"
+            - "checkpoint_completion_target=0.9"
+            - "-c"
+            - "wal_compression=on"
+            # SSD/NVMe: el acceso aleatorio cuesta casi lo mismo que el secuencial y la
+            # concurrencia de I/O es alta. En discos giratorios subir random_page_cost.
+            - "-c"
+            - "random_page_cost=1.1"
+            - "-c"
+            - "effective_io_concurrency=200"
+            # pg_stat_statements: top 10k sentencias normalizadas, sin trackear planes.
+            - "-c"
+            - "pg_stat_statements.max=10000"
+            - "-c"
+            - "pg_stat_statements.track=top"
+            # Slow query log (M-6): registra toda sentencia > 500ms. 0 = log todas (debug),
+            # -1 = apagado. Parametrizable.
+            - "-c"
+            - "log_min_duration_statement=${PG_LOG_MIN_DURATION_MS:-500}"
         ports:
             - "${DOCKER_DB_PORT:-5442}:5432"
         environment:
@@ -87,8 +165,123 @@ services:
             start_period: 20s
         networks:
             - dismac_lg
+        logging: *default-logging
+
+    # -------------------- PgBouncer (pool de conexiones, C-3a) --------------------
+    # Transaction pooling delante de PostgreSQL. PHP-FPM (max_children×réplicas) +
+    # workers de supervisor agotan fácil las ~100 conexiones de PG, y cada conexión
+    # nueva es cara. PgBouncer multiplexa miles de conexiones de cliente sobre un pool
+    # pequeño de conexiones reales, reusadas por transacción.
+    #
+    # CONVENCIÓN (coordinada con el conector de la app): escucha en 6432, usuario/clave/db
+    # `logistics` (los mismos de postgres). La app apunta a `pgbouncer:6432`.
+    #
+    # OJO transaction pooling: NO soporta estado de sesión entre transacciones (SET,
+    # prepared statements con nombre de sesión, advisory locks de sesión). La conexión
+    # pgsql de Laravel debe desactivar prepared statements persistentes de sesión. Los
+    # TESTS siguen conectando a postgres DIRECTO (logistics_test) — no pasan por aquí.
+    pgbouncer:
+        image: edoburu/pgbouncer:v1.23.1-p3
+        container_name: dismac_lg_pgbouncer
+        restart: unless-stopped
+        environment:
+            DB_HOST: postgres
+            DB_PORT: 5432
+            DB_USER: logistics
+            DB_PASSWORD: logistics
+            # SIN DB_NAME a propósito: el entrypoint de edoburu genera entonces un
+            # `[databases]` COMODÍN `* = host=postgres ... auth_user=logistics`, así
+            # PgBouncer atiende CUALQUIER base (logistics Y logistics_test) reenviándola
+            # a postgres. Imprescindible porque la suite de tests fuerza DB_DATABASE=
+            # logistics_test (phpunit.xml) pero hereda DB_HOST=pgbouncer del contenedor.
+            # La autenticación del cliente usa el auth_query por defecto de PgBouncer
+            # (SELECT usename, passwd FROM pg_shadow WHERE usename=$1), que funciona
+            # porque `logistics` es superusuario en el contenedor de postgres.
+            # scram-sha-256 es el método por defecto de PostgreSQL 17.
+            AUTH_TYPE: scram-sha-256
+            POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
+            # Tope de conexiones de cliente que acepta PgBouncer (el fan-out de la app).
+            MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-1000}
+            # Conexiones REALES a PostgreSQL por par (usuario, base). La suma de pools
+            # debe quedar holgadamente por debajo de PG_MAX_CONNECTIONS.
+            DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+            MIN_POOL_SIZE: ${PGBOUNCER_MIN_POOL_SIZE:-5}
+            RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-5}
+            LISTEN_PORT: 6432
+            # Cierra conexiones de servidor ociosas para no mantener abiertas de más.
+            SERVER_IDLE_TIMEOUT: 60
+            # Prepared statements a nivel de PROTOCOLO en transaction pooling (PgBouncer
+            # 1.21+): deja que Laravel/PDO use prepared statements sin romper el pool.
+            MAX_PREPARED_STATEMENTS: ${PGBOUNCER_MAX_PREPARED_STATEMENTS:-200}
+        ports:
+            # En dev se publica para poder inspeccionar con psql desde el host. El override
+            # de prod deja de publicarlo (B-4).
+            - "${DOCKER_PGBOUNCER_PORT:-6432}:6432"
+        depends_on:
+            postgres:
+                condition: service_healthy
+        healthcheck:
+            # busybox `nc -z` confirma que el puerto 6432 acepta conexiones.
+            test: ["CMD-SHELL", "nc -z 127.0.0.1 6432 || exit 1"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+            start_period: 10s
+        networks:
+            - dismac_lg
+        logging: *default-logging
+
+    # -------------------- Backup de PostgreSQL (C-1) --------------------
+    # Respaldo lógico diario con pg_dump en formato custom comprimido (-Fc), retención
+    # por días y restauración probada. Escribe al volumen `backups` (persistente). El
+    # cron lo gobierna busybox `crond` dentro del contenedor.
+    #
+    # PITR: pg_dump es respaldo LÓGICO, no da point-in-time. Para PITR real (base + WAL
+    # continuo) producción debe migrar a pgBackRest/wal-g con archive_mode=on + WAL
+    # archiving (ver .docker/backups/README.md). Este pase deja el respaldo diario robusto
+    # y VERIFICADO; el upgrade a PITR está documentado como siguiente paso.
+    #
+    # OFF-SITE: en producción el volumen `backups` debe sincronizarse a un destino
+    # off-site (S3/MinIO ya está en el stack). El README documenta el `mc mirror`/`aws s3
+    # sync`. En dev queda solo en el volumen local.
+    pg-backup:
+        image: postgis/postgis:17-3.5-alpine
+        container_name: dismac_lg_pg_backup
+        restart: unless-stopped
+        environment:
+            PGHOST: postgres
+            PGPORT: "5432"
+            PGUSER: logistics
+            PGPASSWORD: logistics
+            PGDATABASE: logistics
+            # Cron de la base diaria (default 03:00). Formato crontab de 5 campos.
+            BACKUP_CRON: ${BACKUP_CRON:-0 3 * * *}
+            # Días de retención de los dumps (se podan los más viejos). 7–30 recomendado.
+            BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+            BACKUP_DIR: /backups
+        entrypoint: ["/usr/local/bin/backup-entrypoint.sh"]
+        volumes:
+            - backups:/backups
+            - ./.docker/backups/backup.sh:/usr/local/bin/backup.sh:ro
+            - ./.docker/backups/restore.sh:/usr/local/bin/restore.sh:ro
+            - ./.docker/backups/backup-entrypoint.sh:/usr/local/bin/backup-entrypoint.sh:ro
+        depends_on:
+            postgres:
+                condition: service_healthy
+        networks:
+            - dismac_lg
+        logging: *default-logging
 
     # -------------------- Valkey (cache + colas + locks) --------------------
+    # Una sola instancia sirve cache + colas + sesiones + locks. Política de evicción
+    # SEGURA (A-4 auditoría): `volatile-lru` solo evicta claves CON TTL (= cache) cuando
+    # se alcanza maxmemory; las colas/sesiones/locks se guardan SIN TTL, así que NUNCA
+    # se evictan (no se pierden jobs ni sesiones). `maxmemory` acota el crecimiento para
+    # no llegar a OOM. Ambos parametrizables.
+    #
+    # Separar cache (evictable, sin AOF) de datos durables (AOF, sin evicción) en dos
+    # instancias es el siguiente paso si el volumen lo pide; con volatile-lru + AOF una
+    # sola instancia es segura y es lo que queda aquí.
     valkey:
         image: valkey/valkey:8-alpine
         container_name: dismac_lg_valkey
@@ -97,7 +290,11 @@ services:
             - "${DOCKER_REDIS_PORT:-6409}:6379"
         volumes:
             - valkey_data:/data
-        command: valkey-server --appendonly yes
+        command: >
+            valkey-server
+            --appendonly yes
+            --maxmemory ${VALKEY_MAXMEMORY:-512mb}
+            --maxmemory-policy volatile-lru
         healthcheck:
             test: ["CMD", "valkey-cli", "ping"]
             interval: 10s
@@ -105,6 +302,7 @@ services:
             retries: 5
         networks:
             - dismac_lg
+        logging: *default-logging
 
     # -------------------- OSRM (motor de rutas OpenStreetMap, ADR 009) --------------------
     # Sirve las matrices `/table` y las geometrías `/route`/`/trip` para el ruteo de flota.
@@ -133,6 +331,7 @@ services:
             - ./.docker/osrm/data:/data
         networks:
             - dismac_lg
+        logging: *default-logging
 
     # -------------------- VROOM (solver VRP/VRPTW opcional, ADR 009) --------------------
     # Backend de ruteo opt-in para escala y ventanas horarias duras (VRPTW). Se usa solo cuando
@@ -158,6 +357,7 @@ services:
             - osrm
         networks:
             - dismac_lg
+        logging: *default-logging
 
     # -------------------- Nominatim (geocoder OpenStreetMap self-host) --------------------
     # Geocoder open-source (OSM) que resuelve direcciones → coordenada. Reemplaza a Google: cero
@@ -194,6 +394,7 @@ services:
         shm_size: 1g
         networks:
             - dismac_lg
+        logging: *default-logging
 
     # -------------------- Tileserver (teselas de mapa OpenStreetMap self-host) --------------------
     # Sirve las teselas raster del estilo osm-bright a los mapas Leaflet (admin + seguimiento público).
@@ -220,6 +421,7 @@ services:
             - ./.docker/tileserver/data:/data
         networks:
             - dismac_lg
+        logging: *default-logging
 
     # -------------------- Queue worker (siempre encendido) --------------------
     # Sin `profiles` a propósito: en dis-commerce un worker opcional que nadie levantó dejó
@@ -228,7 +430,9 @@ services:
         <<: *php
         container_name: dismac_lg_queue_worker
         restart: unless-stopped
-        command: php artisan queue:work redis --sleep=3 --tries=1 --timeout=600 --max-time=3600
+        # Drena TODAS las colas en dev (el pump del outbox encola a outbox/notifications; planning tiene
+        # sus propios jobs). En prod, supervisord corre un worker dedicado por cola (ver .docker/supervisor).
+        command: php artisan queue:work redis --queue=default,outbox,notifications,planning --sleep=3 --tries=1 --timeout=600 --max-time=3600
         healthcheck:
             test: ["CMD-SHELL", "pgrep -f 'queue:work' || exit 1"]
             interval: 30s
@@ -249,23 +453,6 @@ services:
             retries: 3
             start_period: 10s
 
-    # -------------------- Mailpit (email catcher) --------------------
-    # El email es canal de notificación al cliente (ADR 006), así que se prueba local.
-    mailpit:
-        image: axllent/mailpit:latest
-        container_name: dismac_lg_mailpit
-        restart: unless-stopped
-        ports:
-            - "${DOCKER_MAILPIT_SMTP:-1055}:1025"
-            - "${DOCKER_MAILPIT_UI:-8055}:8025"
-        environment:
-            MP_MAX_MESSAGES: 5000
-            MP_DATABASE: /data/mailpit.db
-        volumes:
-            - mailpit_data:/data
-        networks:
-            - dismac_lg
-
     # -------------------- Node (Vite + npm, bajo demanda) --------------------
     node:
         image: node:22-alpine
@@ -279,6 +466,7 @@ services:
         command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
         networks:
             - dismac_lg
+        logging: *default-logging
         profiles:
             - node
 
@@ -324,6 +512,7 @@ services:
             - minio_data:/bitnami/minio/data
         networks:
             - dismac_lg
+        logging: *default-logging
 
     # Servidor WebSocket OPEN-SOURCE (protocolo Pusher) para el fan-out en vivo de telemetría
     # (posiciones de vehículos). Self-host, sin Pusher.com ni Google — solo el protocolo. Las
@@ -344,6 +533,7 @@ services:
             - "6001:6001"
         networks:
             - dismac_lg
+        logging: *default-logging
 
 volumes:
     postgres_data:
@@ -351,9 +541,10 @@ volumes:
     vendor:
     node_modules:
     composer_cache:
-    mailpit_data:
     nominatim_data:
     minio_data:
+    # Respaldos de PostgreSQL (pg_dump -Fc). En prod, sincronizar off-site (S3/MinIO).
+    backups:
 
 networks:
     dismac_lg:
