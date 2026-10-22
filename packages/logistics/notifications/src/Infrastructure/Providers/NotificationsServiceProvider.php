@@ -264,7 +264,7 @@ final class NotificationsServiceProvider extends ServiceProvider
                 Channel::Email->value => new EmailChannelSender(
                     is_string($config['email']['mailer'] ?? null) ? $config['email']['mailer'] : null,
                     (string) ($config['email']['from_address'] ?? 'no-reply@dismac.test'),
-                    (string) ($config['email']['from_name'] ?? 'Dismac Logistics'),
+                    (string) ($config['email']['from_name'] ?? 'DisTrack'),
                     $app->make(ViewFactory::class),
                     $app->make(ProductImageResolver::class),
                 ),
@@ -329,7 +329,7 @@ final class NotificationsServiceProvider extends ServiceProvider
                 $app->make(LoggerInterface::class),
                 is_string($email) && trim($email) !== '' ? $email : null,
                 (string) $config->get('logistics-notifications.email.from_address', 'no-reply@dismac.test'),
-                (string) $config->get('logistics-notifications.email.from_name', 'Dismac Logistics'),
+                (string) $config->get('logistics-notifications.email.from_name', 'DisTrack'),
                 is_string($mailer) && $mailer !== '' ? $mailer : null,
             );
         });

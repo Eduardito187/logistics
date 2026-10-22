@@ -19,6 +19,7 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\NodeReceptionRecord;
 use Logistics\Execution\Presentation\Filament\Resources\NodeReceptionResource\Pages\ListNodeReceptions;
 use Logistics\Execution\Presentation\Filament\Resources\NodeReceptionResource\Pages\ViewNodeReception;
 use Logistics\Execution\Presentation\Filament\Support\NodeNames;
+use Logistics\Execution\Presentation\Filament\Support\UnitNames;
 use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 
 /**
@@ -180,25 +181,31 @@ final class NodeReceptionResource extends Resource
                 TextEntry::make('destination_node_id')
                     ->label(__('Destination node'))
                     ->formatStateUsing(static fn (?string $state): string => NodeNames::label($state) ?? '—'),
+                // Los bultos se listan por su etiqueta legible (pedido + índice de bulto/pieza), nunca
+                // por el UUID crudo: cada id se resuelve con UnitNames por badge.
                 TextEntry::make('expected_unit_ids')
                     ->label(__('Expected units'))
                     ->badge()
+                    ->formatStateUsing(static fn (string $state): string => UnitNames::label($state))
                     ->placeholder('—'),
                 TextEntry::make('received_unit_ids')
                     ->label(__('Received units'))
                     ->state(static fn (NodeReceptionRecord $record): array => self::receivedUnitIds($record))
                     ->badge()
+                    ->formatStateUsing(static fn (string $state): string => UnitNames::label($state))
                     ->placeholder('—'),
                 TextEntry::make('missing_unit_ids')
                     ->label(__('Missing units'))
                     ->state(static fn (NodeReceptionRecord $record): array => self::missingUnitIds($record))
                     ->badge()
+                    ->formatStateUsing(static fn (string $state): string => UnitNames::label($state))
                     ->color('danger')
                     ->placeholder('—'),
                 TextEntry::make('surplus_unit_ids')
                     ->label(__('Surplus units'))
                     ->state(static fn (NodeReceptionRecord $record): array => self::surplusUnitIds($record))
                     ->badge()
+                    ->formatStateUsing(static fn (string $state): string => UnitNames::label($state))
                     ->color('warning')
                     ->placeholder('—'),
                 TextEntry::make('opened_at')->label(__('Opened at'))->dateTime(),

@@ -87,7 +87,8 @@ final class VehicleRouteResource extends Resource
     }
 
     /**
-     * Título humano del registro: día de la ruta y placa del camión, nunca el UUID.
+     * Título humano del registro: día de la ruta y placa del camión, nunca el UUID del vehículo. Si el
+     * vehículo no tiene placa legible, se muestra solo la fecha de la ruta (jamás el id crudo).
      */
     public static function getRecordTitle(?Model $record): ?string
     {
@@ -95,9 +96,11 @@ final class VehicleRouteResource extends Resource
             return null;
         }
 
-        $plate = $record->vehicle->plate ?? $record->vehicle_id;
+        $plate = $record->vehicle->plate ?? null;
 
-        return "{$record->route_date} · {$plate}";
+        return ($plate !== null && $plate !== '')
+            ? "{$record->route_date} · {$plate}"
+            : (string) $record->route_date;
     }
 
     /**

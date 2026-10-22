@@ -150,10 +150,7 @@ final class PhysicalUnitResource extends Resource
                 TextColumn::make('piece_index')
                     ->label(__('Piece'))
                     ->formatStateUsing(static fn (int $state, PhysicalUnitRecord $record): string => "{$state}/{$record->piece_total}"),
-                TextColumn::make('id')
-                    ->label(__('Package ID'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // El UUID del bulto (pk) no se muestra: la fila ya se identifica por pedido + SKU + "N/M".
             ])
             ->filters([
                 SelectFilter::make('shipment_id')

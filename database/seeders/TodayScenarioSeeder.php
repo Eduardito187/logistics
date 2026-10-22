@@ -105,6 +105,12 @@ final class TodayScenarioSeeder extends Seeder
 
     private const string PASSWORD = 'password123';
 
+    /** Etapa HOY: ruta iniciada (primeras paradas entregadas, telemetría en vivo, recojo ya conciliado). */
+    public const string STAGE_IN_PROGRESS = 'in_progress';
+
+    /** Etapa MAÑANA: escenario fresco (plan + ruta sin iniciar, nada entregado, recepciones pendientes). */
+    public const string STAGE_PLANNED = 'planned';
+
     /** Camión del escenario: base en el CD Santa Cruz (FleetSeeder). */
     private const string ROUTE_VEHICLE_PLATE = '904U10';
 
@@ -134,6 +140,9 @@ final class TodayScenarioSeeder extends Seeder
 
     private string $date;
 
+    /** Etapa activa del escenario que se está sembrando (ver STAGE_*). */
+    private string $stage = self::STAGE_IN_PROGRESS;
+
     public function __construct(
         private readonly CommandBus $bus,
         private readonly ShipmentRepository $shipments,
@@ -151,12 +160,43 @@ final class TodayScenarioSeeder extends Seeder
 
     public function run(): void
     {
+        // Comportamiento histórico (correr este seeder solo): escenario de HOY, en curso.
+        $this->buildForDate($this->now, self::STAGE_IN_PROGRESS);
+    }
+
+    /**
+     * Punto de entrada PARAMÉTRICO: arma el escenario COMPLETO para una fecha y una etapa dadas. Lo usa
+     * TestDataSeeder para sembrar HOY (en curso) y MAÑANA (planificado) reutilizando el MISMO chofer,
+     * vehículo y nodo de tienda; solo cambian la fecha (ids externos fechados) y la etapa. Solo corre en
+     * entornos locales/dev.
+     *
+     * Etapas:
+     *   - STAGE_IN_PROGRESS: ruta iniciada, primeras paradas entregadas (con POD), telemetría en vivo,
+     *     recepciones de tienda abiertas y un recojo ya conciliado listo en mostrador.
+     *   - STAGE_PLANNED: envíos recibidos y planificados con entrega para esa fecha, plan + ruta del chofer
+     *     SIN iniciar (todas las paradas pendientes, nada entregado), sin telemetría, y recepciones de
+     *     tienda pendientes (nada conciliado) para que la tienda reciba desde cero.
+     */
+    public function buildForDate(DateTimeImmutable $date, string $stage): void
+    {
         if (!app()->environment(['local', 'development', 'dev'])) {
             $this->say('warn', 'TodayScenarioSeeder solo corre en entornos locales/dev; no se hizo nada.');
 
             return;
         }
 
+        $this->now = $date;
+        $this->date = $date->format('Y-m-d');
+        $this->stage = $stage;
+
+        $this->build();
+    }
+
+    /**
+     * Pipeline del escenario para la fecha/etapa ya fijadas en $this->now/$this->date/$this->stage.
+     */
+    private function build(): void
+    {
         $cd = $this->node(self::CD_CODE);
         $store = $this->node(self::STORE_CODE);
         $vehicle = $this->vehicle(self::ROUTE_VEHICLE_PLATE);
@@ -170,16 +210,17 @@ final class TodayScenarioSeeder extends Seeder
         $crew = $this->ensureCrew($driverId, (string) $vehicle->id);
         $this->ensureVehicleInService((string) $vehicle->id);
 
-        // 3) Envíos (clientes + recojo en tienda) y sus etiquetas.
+        // 3) Envíos (clientes + recepciones/recojo en tienda) y sus etiquetas.
         $routeShipments = [];
         foreach ($this->customerOrders() as $order) {
             $routeShipments[] = $this->ensureShipment($order, null);
         }
-        $pickupOrders = $this->storeOrders((string) $store->id);
-        $openReceptionShipment = $this->ensureShipment($pickupOrders[0], (string) $store->id);
-        $readyPickupShipment = $this->ensureShipment($pickupOrders[1], (string) $store->id);
+        $storeShipments = [];
+        foreach ($this->storeOrders((string) $store->id) as $order) {
+            $storeShipments[] = $this->ensureShipment($order, (string) $store->id);
+        }
 
-        foreach ([...$routeShipments, $openReceptionShipment, $readyPickupShipment] as $shipment) {
+        foreach ([...$routeShipments, ...$storeShipments] as $shipment) {
             $this->ensureLabels($shipment, $shipment->destinationNodeId() !== null ? self::STORE_CODE : 'C');
         }
 
@@ -187,22 +228,25 @@ final class TodayScenarioSeeder extends Seeder
         $plan = $this->ensurePlan((string) $vehicle->id, $routeShipments, (float) $cd->lat, (float) $cd->lng);
         $this->markPlanned($routeShipments);
 
-        // 5) Ruta del chofer en curso + entregas + tracking.
+        // 5) Ruta del chofer. En curso: primeras paradas cerradas + entregas + tracking + telemetría.
+        //    Planificada: ruta armada SIN iniciar (todas pendientes), sin entregas ni telemetría, para
+        //    que el chofer pruebe preparar → cargar → escanear → entregar desde cero.
         $route = $this->ensureRoute((string) $vehicle->id, $plan, $routeShipments, $crew);
-        $this->ensureRouteDeliveries((string) $vehicle->id, $route, $routeShipments, $users['chofer']);
+        if ($this->stage === self::STAGE_IN_PROGRESS) {
+            $this->ensureRouteDeliveries((string) $vehicle->id, $route, $routeShipments, $users['chofer']);
+            $this->ensureTelemetry((string) $vehicle->id, $driverId, $route, (float) $cd->lat, (float) $cd->lng);
+        }
 
-        // 6) Telemetría (supervisor) y tienda (recepción abierta + recojo listo).
-        $this->ensureTelemetry((string) $vehicle->id, $driverId, $route, (float) $cd->lat, (float) $cd->lng);
+        // 6) Tienda: recepciones abiertas (ambas etapas) y, solo en curso, un recojo ya conciliado.
         $this->ensureStoreFlows(
             (string) $transferVehicle->id,
             $cd,
             $store,
-            $openReceptionShipment,
-            $readyPickupShipment,
+            $storeShipments,
             $users['tienda'],
         );
 
-        $this->summary($users, $vehicle, $crew, $plan, $route, $openReceptionShipment, $readyPickupShipment);
+        $this->summary($users, $vehicle, $crew, $plan, $route, $storeShipments[0], $storeShipments[count($storeShipments) - 1]);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -455,7 +499,7 @@ final class TodayScenarioSeeder extends Seeder
             $offsets[$stop->shipmentId] = $cdLegMinutes + $stop->eta->minutesFromDeparture + self::SERVICE_MINUTES * $index;
         }
 
-        $departAt = $this->departureFor($offsets[$optimized[self::COMPLETED_STOPS]->shipmentId ?? $optimized[0]->shipmentId]);
+        $departAt = $this->departureFor($offsets[$optimized[$this->completedStops()]->shipmentId ?? $optimized[0]->shipmentId]);
 
         $plan = DeliveryPlan::startDraft($this->plans->nextIdentity(), $planDate, $vehicleId);
         foreach ($optimized as $stop) {
@@ -499,11 +543,26 @@ final class TodayScenarioSeeder extends Seeder
     }
 
     /**
+     * Paradas ya cerradas al sembrar, según la etapa: COMPLETED_STOPS en curso (ruta iniciada), 0
+     * planificada (ruta fresca, todas pendientes).
+     */
+    private function completedStops(): int
+    {
+        return $this->stage === self::STAGE_IN_PROGRESS ? self::COMPLETED_STOPS : 0;
+    }
+
+    /**
      * Hora de salida del CD para que la parada actual (offset dado) caiga ~10 minutos después de ahora,
      * acotada a la jornada (07:00–16:30) y redondeada a 5 minutos.
      */
     private function departureFor(int $currentStopOffsetMinutes): DateTimeImmutable
     {
+        // Etapa planificada (fresca): salida matinal fija; toda la ruta queda en el futuro de ese día y
+        // ninguna parada se cierra. No se ancla a "ahora" porque la ruta aún no arrancó.
+        if ($this->stage !== self::STAGE_IN_PROGRESS) {
+            return new DateTimeImmutable($this->date.' 08:00:00', $this->tz);
+        }
+
         $target = $this->now->modify('+10 minutes')->modify("-{$currentStopOffsetMinutes} minutes");
         $earliest = new DateTimeImmutable($this->date.' 07:00:00', $this->tz);
         $latest = new DateTimeImmutable($this->date.' 16:30:00', $this->tz);
@@ -554,7 +613,7 @@ final class TodayScenarioSeeder extends Seeder
 
             $route = VehicleRoute::assemble($this->routes->nextIdentity(), $vehicleId, $date, $stops);
 
-            foreach (array_slice($stops, 0, self::COMPLETED_STOPS) as $index => $stop) {
+            foreach (array_slice($stops, 0, $this->completedStops()) as $index => $stop) {
                 $route->completeStop($stop->shipmentId(), $this->settledAt($stop->etaAt(), $index));
             }
 
@@ -591,7 +650,7 @@ final class TodayScenarioSeeder extends Seeder
      */
     private function settledAt(?DateTimeImmutable $eta, int $index): DateTimeImmutable
     {
-        $cap = $this->now->modify('-'.((self::COMPLETED_STOPS - $index) * 12).' minutes');
+        $cap = $this->now->modify('-'.(($this->completedStops() - $index) * 12).' minutes');
         $candidate = ($eta ?? $cap)->setTimezone($this->tz)->modify('+4 minutes');
 
         return $candidate < $cap ? $candidate : $cap;
@@ -761,12 +820,12 @@ final class TodayScenarioSeeder extends Seeder
     {
         $waypoints = [[$cdLat, $cdLng]];
         $stops = $route->stops();
-        foreach (array_slice($stops, 0, self::COMPLETED_STOPS) as $stop) {
+        foreach (array_slice($stops, 0, $this->completedStops()) as $stop) {
             if ($stop->lat() !== null && $stop->lng() !== null) {
                 $waypoints[] = [$stop->lat(), $stop->lng()];
             }
         }
-        $current = $stops[self::COMPLETED_STOPS] ?? null;
+        $current = $stops[$this->completedStops()] ?? null;
         $last = $waypoints[count($waypoints) - 1];
         if ($current !== null && $current->lat() !== null && $current->lng() !== null) {
             // A un 75% del tramo hacia la parada actual: "llegando".
@@ -845,32 +904,39 @@ final class TodayScenarioSeeder extends Seeder
     }
 
     /**
-     * Tienda: (a) un traspaso CD → tienda que llegó hoy con la recepción ABIERTA esperando el escaneo de
-     * bultos; (b) un "Recojo en tienda" ya recibido y conciliado, listo para entregar en mostrador.
+     * Tienda: traspasos CD → tienda que dejan la recepción ABIERTA esperando el escaneo de bultos
+     * (recepción de mercadería). En la etapa en curso, el ÚLTIMO envío además se recibe y concilia:
+     * queda como "Recojo en tienda" listo para entregar en mostrador. En la etapa planificada, todos
+     * quedan pendientes para que la tienda reciba desde cero.
+     *
+     * @param list<Shipment> $shipments
      */
     private function ensureStoreFlows(
         string $transferVehicleId,
         NodeRecord $cd,
         NodeRecord $store,
-        Shipment $openReception,
-        Shipment $readyPickup,
+        array $shipments,
         User $tienda,
     ): void {
         $morning = $this->dayStart()->setTime(7, 15);
+        $lastIndex = count($shipments) - 1;
 
-        foreach ([$openReception, $readyPickup] as $n => $shipment) {
+        foreach ($shipments as $n => $shipment) {
             $shipmentId = $shipment->id()->toString();
             if ($this->deliveries->findByShipmentId($shipmentId) !== null) {
                 continue;
             }
-            $this->seedStoreTransfer($transferVehicleId, $cd, $store, $shipment, $tienda, $morning, $n);
+            // El último envío de la tienda es el "Recojo en tienda": en curso llega recibido y conciliado
+            // (listo en mostrador); planificado llega pendiente como el resto (recibir desde cero).
+            $isReadyPickup = $n === $lastIndex && $this->stage === self::STAGE_IN_PROGRESS;
+            $this->seedStoreTransfer($transferVehicleId, $cd, $store, $shipment, $tienda, $morning, $n, $isReadyPickup);
         }
     }
 
     /**
      * Traspaso CD → tienda de un envío: preparación y carga en el CD, descarga en la tienda, apertura del
-     * seguimiento, proyección de sus hechos y apertura de la recepción en el nodo. El segundo envío además
-     * se recibe y concilia (listo para el recojo del cliente).
+     * seguimiento, proyección de sus hechos y apertura de la recepción en el nodo. Si $isReadyPickup, además
+     * se recibe y concilia (queda listo para el recojo del cliente).
      */
     private function seedStoreTransfer(
         string $transferVehicleId,
@@ -880,6 +946,7 @@ final class TodayScenarioSeeder extends Seeder
         User $tienda,
         DateTimeImmutable $morning,
         int $n,
+        bool $isReadyPickup,
     ): void {
         $storeId = (string) $store->id;
         $storeGeo = ExecutionGeoPoint::of((float) $store->lat, (float) $store->lng);
@@ -921,8 +988,8 @@ final class TodayScenarioSeeder extends Seeder
             $arrival->format(DateTimeInterface::ATOM),
         ));
 
-        // El segundo ya se recibió y concilió: queda listo para el recojo del cliente.
-        if ($n === 1) {
+        // El recojo en mostrador ya se recibió y concilió: queda listo para el recojo del cliente.
+        if ($isReadyPickup) {
             $this->receiveAndReconcileAtStore($shipmentId, $store, $tienda, $units, $arrival, $key);
         }
     }
@@ -1006,7 +1073,9 @@ final class TodayScenarioSeeder extends Seeder
     }
 
     /**
-     * "Recojo en tienda": destino = nodo de la tienda (Tienda Santa Cruz Norte).
+     * Envíos con destino = nodo de la tienda (Tienda Santa Cruz Norte). Los PRIMEROS son recepciones de
+     * mercadería (la tienda escanea los bultos que llegan del CD); el ÚLTIMO es el "Recojo en tienda" que
+     * el cliente retira en mostrador. ensureStoreFlows trata el último como el recojo listo/pendiente.
      *
      * @return list<array{source: string, external_id: string, customer_name: string, customer_document_id: ?string, customer_phone: string, customer_email: ?string, address_text: string, address_reference: ?string, lat: float, lng: float, window: array{0: string, 1: string}, lines: list<array{sku: string, product_name: string, quantity: int, image_url: string, price: float}>}>
      */
@@ -1017,14 +1086,23 @@ final class TodayScenarioSeeder extends Seeder
         $lat = $store !== null ? (float) $store->lat : -17.7310;
         $lng = $store !== null ? (float) $store->lng : -63.1710;
 
+        $receptionAddress = 'Recepción de mercadería — Tienda Santa Cruz Norte, Av. Banzer 3er anillo, Santa Cruz de la Sierra';
+        $pickupAddress = 'Recojo en tienda — Tienda Santa Cruz Norte, Av. Banzer 3er anillo, Santa Cruz de la Sierra';
+
         return [
+            // Recepciones de mercadería (quedan abiertas esperando el escaneo de la tienda).
             $this->order('MAGENTO', "SCZ-{$tag}-T1", 'Daniel Ortiz Cuéllar', '6321458 SC', '+591 73344556', 'daniel.ortiz@gmail.com',
-                'Recojo en tienda — Tienda Santa Cruz Norte, Av. Banzer 3er anillo, Santa Cruz de la Sierra',
-                'Retira el titular con CI', $lat, $lng, ['15:00', '20:00'],
+                $receptionAddress, 'Retira el titular con CI', $lat, $lng, ['15:00', '20:00'],
                 [['CEL-SAMS-A55', 'Celular Samsung Galaxy A55 256 GB', 1, 3490.00], ['AUD-JBL-T520', 'Audífonos JBL Tune 520BT', 1, 450.00]]),
-            $this->order('SAP', "SCZ-{$tag}-T2", 'Lucía Paz Moreno', '7456321 SC', '+591 78965412', 'lucia.paz@hotmail.com',
-                'Recojo en tienda — Tienda Santa Cruz Norte, Av. Banzer 3er anillo, Santa Cruz de la Sierra',
-                'Retira su esposo, Jorge Paz (autorizado)', $lat, $lng, ['10:00', '20:00'],
+            $this->order('SAP', "SCZ-{$tag}-T2", 'Natalia Guzmán Rivero', '5120983 SC', '+591 70123498', 'natalia.guzman@gmail.com',
+                $receptionAddress, 'Retira con autorización firmada', $lat, $lng, ['09:00', '18:00'],
+                [['ASP-ELE-20', 'Aspiradora Electrolux 2000 W', 1, 1190.00]]),
+            $this->order('EXCEL', "SCZ-{$tag}-T3", 'Óscar Peña Gutiérrez', '6843217 SC', '+591 76540981', null,
+                $receptionAddress, 'Retira el titular con CI', $lat, $lng, ['10:00', '19:00'],
+                [['PLA-SAM-32', 'Plancha a vapor Samsung', 1, 320.00], ['OLL-REC-6L', 'Olla arrocera 6 L', 1, 410.00]]),
+            // Recojo en tienda (en curso llega recibido y conciliado; planificado queda pendiente).
+            $this->order('SAP', "SCZ-{$tag}-T4", 'Lucía Paz Moreno', '7456321 SC', '+591 78965412', 'lucia.paz@hotmail.com',
+                $pickupAddress, 'Retira su esposo, Jorge Paz (autorizado)', $lat, $lng, ['10:00', '20:00'],
                 [['FRE-PHI-AIR', 'Freidora de aire Philips 4,1 L', 1, 990.00]]),
         ];
     }

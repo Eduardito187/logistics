@@ -39,7 +39,7 @@ return [
     'email' => [
         'mailer' => env('NOTIFICATIONS_EMAIL_MAILER'),
         'from_address' => env('NOTIFICATIONS_EMAIL_FROM', 'no-reply@dismac.test'),
-        'from_name' => env('NOTIFICATIONS_EMAIL_FROM_NAME', 'Dismac Logistics'),
+        'from_name' => env('NOTIFICATIONS_EMAIL_FROM_NAME', 'DisTrack'),
     ],
 
     // Canal Telegram sobre la Bot API (sendMessage/sendPhoto).

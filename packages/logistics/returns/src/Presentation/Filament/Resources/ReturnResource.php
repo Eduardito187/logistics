@@ -224,7 +224,7 @@ final class ReturnResource extends Resource
 
         $name = DB::table('sellers')->where('id', $sellerId)->value('legal_name');
 
-        return is_string($name) && $name !== '' ? $name : substr($sellerId, 0, 8);
+        return is_string($name) && $name !== '' ? $name : __('Unknown seller');
     }
 
     private static function kindLabel(string $state): string

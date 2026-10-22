@@ -89,7 +89,11 @@ final class UnitsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('id')
+            // Título legible del bulto (SKU + "N/M"), nunca el UUID de la pk: aparece en los modales de
+            // confirmación (p. ej. borrado) y en la cabecera del registro.
+            ->recordTitle(static fn (PhysicalUnitRecord $record): string => trim(
+                ($record->line->sku ?? __('package')).' — '.__('unit')." {$record->unit_index}/{$record->unit_total}",
+            ))
             ->columns([
                 TextColumn::make('line.sku')
                     ->label(__('SKU'))
