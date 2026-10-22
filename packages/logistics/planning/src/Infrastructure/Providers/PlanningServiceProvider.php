@@ -36,6 +36,7 @@ use Logistics\Planning\Application\Query\GetRouteQuality\GetRouteQuality;
 use Logistics\Planning\Application\Query\GetRouteQuality\GetRouteQualityHandler;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDate;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDateHandler;
+use Logistics\Planning\Application\Service\PlanGeometryRefresher;
 use Logistics\Planning\Domain\Contract\AutoPlanRunRepository;
 use Logistics\Planning\Domain\Contract\AutoPlanSettingsProvider;
 use Logistics\Planning\Domain\Contract\DailyPlanDispatcher;
@@ -50,6 +51,7 @@ use Logistics\Planning\Domain\Contract\RouteGeometryProvider;
 use Logistics\Planning\Domain\Contract\RouteLoadProfileProvider;
 use Logistics\Planning\Domain\Contract\RouteOptimizer;
 use Logistics\Planning\Domain\Contract\RoutingBackend;
+use Logistics\Planning\Domain\Contract\ShipmentCoordinatesProvider;
 use Logistics\Planning\Domain\Service\ClarkeWrightSolver;
 use Logistics\Planning\Domain\Service\DailyPlanComposer;
 use Logistics\Planning\Domain\Service\DepartmentRouteGrouping;
@@ -59,6 +61,7 @@ use Logistics\Planning\Infrastructure\Adapter\BlackoutAwarePendingDeliveryProvid
 use Logistics\Planning\Infrastructure\Adapter\EloquentPendingDeliveryProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentRouteComparisonProblemProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentRouteLoadProfileProvider;
+use Logistics\Planning\Infrastructure\Adapter\EloquentShipmentCoordinatesProvider;
 use Logistics\Planning\Infrastructure\Adapter\FleetVehicleAvailabilityProvider;
 use Logistics\Planning\Infrastructure\Adapter\NetworkNodeOriginLocator;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
@@ -74,6 +77,7 @@ use Logistics\Planning\Infrastructure\Routing\OsrmRouteOptimizer;
 use Logistics\Planning\Infrastructure\Routing\OsrmTripRoutingBackend;
 use Logistics\Planning\Infrastructure\Routing\VroomRoutingBackend;
 use Logistics\Planning\Infrastructure\Settings\ConfiguredAutoPlanSettings;
+use Logistics\Planning\Presentation\Console\BackfillPlanGeometryCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 use Logistics\Shared\Application\Query\QueryBus;
 
@@ -167,6 +171,13 @@ final class PlanningServiceProvider extends ServiceProvider
 
         // Resolución del nodo CD de origen (contexto Red) para usarlo de depósito en la matriz/geometría.
         $this->app->bind(PlanningOriginLocator::class, NetworkNodeOriginLocator::class);
+
+        // Coordenadas de los envíos (contexto Envíos) para recalcular la geometría de un plan existente.
+        $this->app->bind(ShipmentCoordinatesProvider::class, EloquentShipmentCoordinatesProvider::class);
+
+        // Se bindea explícito: los handlers lo reciben como parámetro opcional (`?PlanGeometryRefresher =
+        // null`) y el contenedor no autoinyecta un opcional que no esté registrado.
+        $this->app->bind(PlanGeometryRefresher::class);
 
         // Optimizador de ORDEN por camión (contrato RouteOptimizer, usado por la propuesta manual). Se
         // elige por el mismo backend configurado: builtin (matriz + 2-opt), osrm_trip (OSRM /trip) o, para
@@ -281,6 +292,10 @@ final class PlanningServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([BackfillPlanGeometryCommand::class]);
+        }
 
         /** @var HandlerRegistry $registry */
         $registry = $this->app->make(HandlerRegistry::class);

@@ -5,17 +5,23 @@ declare(strict_types=1);
 namespace Logistics\Execution\Presentation\Filament\Support;
 
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Resuelve el NOMBRE legible de un usuario a partir de su id (`users.id`) para la capa Filament de
  * Execution.
  *
  * Los escaneos guardan `user_id` como identificador del operador; aquí se enriquece con el nombre
- * legible leyendo `users` en SOLO lectura (nunca para mutar). El mapa id→nombre se carga una vez por
- * request y se memoiza para evitar el N+1 al pintar tablas e infolists.
+ * legible leyendo `users` en SOLO lectura (nunca para mutar). El mapa id→nombre se memoiza por request
+ * (evita el N+1 al pintar tablas e infolists) y además se cachea en Redis con TTL corto (auditoría
+ * M-1): así no se relee la tabla `users` completa en cada request de panel. Se cachea la forma
+ * primitiva (array id→nombre), nunca objetos de dominio (regla 7).
  */
 final class UserNames
 {
+    /** Vida del caché del mapa de nombres (segundos); los nombres casi no cambian, 60s sobra. */
+    private const MAP_TTL_SECONDS = 60;
+
     /** @var array<string, string>|null Mapa memoizado id→nombre de todos los usuarios. */
     private static ?array $map = null;
 
@@ -48,11 +54,18 @@ final class UserNames
     private static function map(): array
     {
         if (self::$map === null) {
-            $map = [];
-            foreach (User::query()->get(['id', 'name']) as $user) {
-                $map[(string) $user->getKey()] = (string) $user->name;
-            }
-            self::$map = $map;
+            self::$map = Cache::remember(
+                'execution:user-names',
+                self::MAP_TTL_SECONDS,
+                static function (): array {
+                    $map = [];
+                    foreach (User::query()->get(['id', 'name']) as $user) {
+                        $map[(string) $user->getKey()] = (string) $user->name;
+                    }
+
+                    return $map;
+                },
+            );
         }
 
         return self::$map;

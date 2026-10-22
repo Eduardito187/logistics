@@ -7,6 +7,7 @@ namespace Logistics\Notifications\Infrastructure\Persistence\Eloquent;
 use Logistics\Notifications\Domain\Contract\MessageTypeRuleRepository;
 use Logistics\Notifications\Domain\ValueObject\CascadePolicy;
 use Logistics\Notifications\Domain\ValueObject\MessageType;
+use Throwable;
 
 /**
  * Implementación Eloquent de las reglas de cascada por tipo de mensaje. Guarda la política como la
@@ -21,10 +22,16 @@ final class EloquentMessageTypeRuleRepository implements MessageTypeRuleReposito
             return null;
         }
 
-        return CascadePolicy::fromArray([
-            'channels' => $record->channels,
-            'escalate_when' => $record->escalate_when,
-        ]);
+        try {
+            // Lectura tolerante a canales históricos (PUSH_FCM → FCM; WEB_PUSH/WHATSAPP se descartan).
+            return CascadePolicy::fromStored([
+                'channels' => $record->channels,
+                'escalate_when' => $record->escalate_when,
+            ]);
+        } catch (Throwable) {
+            // Sin ningún canal vigente: se comporta como "sin regla" (cae a la cascada por defecto).
+            return null;
+        }
     }
 
     public function save(MessageType $messageType, CascadePolicy $policy): void
@@ -49,10 +56,15 @@ final class EloquentMessageTypeRuleRepository implements MessageTypeRuleReposito
     {
         $policies = [];
         foreach (MessageTypeRuleRecord::query()->get() as $record) {
-            $policies[$record->message_type] = CascadePolicy::fromArray([
-                'channels' => $record->channels,
-                'escalate_when' => $record->escalate_when,
-            ]);
+            try {
+                $policies[$record->message_type] = CascadePolicy::fromStored([
+                    'channels' => $record->channels,
+                    'escalate_when' => $record->escalate_when,
+                ]);
+            } catch (Throwable) {
+                // Regla sin canales vigentes: se omite (equivale a no tener regla para ese tipo).
+                continue;
+            }
         }
 
         return $policies;

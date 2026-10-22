@@ -208,7 +208,7 @@ final class StockOnHandResource extends Resource
             self::$warehouseNames = self::loadNames('network_nodes', 'name');
         }
 
-        return self::$warehouseNames[$id] ?? ('#'.substr($id, 0, 8));
+        return self::$warehouseNames[$id] ?? __('Unknown warehouse');
     }
 
     /**
@@ -224,7 +224,7 @@ final class StockOnHandResource extends Resource
             self::$sellerNames = self::loadNames('sellers', 'legal_name');
         }
 
-        return self::$sellerNames[$ownerPartyId] ?? ('#'.substr($ownerPartyId, 0, 8));
+        return self::$sellerNames[$ownerPartyId] ?? __('Unknown seller');
     }
 
     /**

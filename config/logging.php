@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\RequestId;
 use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
-use Monolog\Processor\UidProcessor;
 
 return [
 
@@ -150,7 +150,11 @@ return [
                 PsrLogMessageProcessor::class,
                 // Clase resuelta por el contenedor: debe ser invocable o
                 // implementar Monolog\Processor\ProcessorInterface.
-                env('LOG_REQUEST_ID_PROCESSOR', UidProcessor::class),
+                // M-7: por defecto el processor de request-id (App\Http\Middleware\RequestId), que
+                // inyecta `extra.request_id` leyendo el id de correlación del Context —el mismo que fija
+                // el middleware al tomar/generar X-Request-Id y que se propaga a los jobs del outbox—.
+                // Apuntar LOG_REQUEST_ID_PROCESSOR a UidProcessor::class para volver al id-por-proceso.
+                env('LOG_REQUEST_ID_PROCESSOR', RequestId::class),
             ],
         ],
 

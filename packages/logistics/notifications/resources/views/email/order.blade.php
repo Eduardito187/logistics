@@ -1,6 +1,9 @@
 {{-- Plantilla HTML del email transaccional al cliente. Muestra el cuerpo del mensaje y, debajo, el
      listado de productos del pedido con su imagen (thumbnail), nombre y cantidad. Estilos en línea para
-     máxima compatibilidad con clientes de correo. La marca usa el rojo Dismac (#E2231A). --}}
+     máxima compatibilidad con clientes de correo. La marca es DisTrack: rojo #E30613 como acento.
+     El logo del encabezado se referencia por URL absoluta (no inline) y usa el PNG de la marca, que
+     renderiza en todos los clientes de correo (muchos no soportan SVG); el wordmark "DisTrack" va como
+     texto para garantizar la marca aunque el cliente bloquee imágenes. --}}
 <!doctype html>
 <html lang="es">
 <head>
@@ -14,8 +17,18 @@
             <td align="center">
                 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
                     <tr>
-                        <td style="background-color:#E2231A;padding:20px 28px;">
-                            <span style="color:#ffffff;font-size:20px;font-weight:bold;letter-spacing:0.5px;">Dismac</span>
+                        <td style="background-color:#ffffff;padding:20px 28px;border-top:4px solid #E30613;">
+                            <table role="presentation" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td style="padding-right:12px;vertical-align:middle;">
+                                        {{-- Logo de la marca por URL absoluta (PNG = máxima compatibilidad de correo). --}}
+                                        <img src="{{ config('app.url') }}/brand/distrack/png/favicon-512.png" alt="DisTrack" width="40" height="40" style="display:block;width:40px;height:40px;">
+                                    </td>
+                                    <td style="vertical-align:middle;">
+                                        <span style="font-size:22px;font-weight:bold;letter-spacing:0.5px;color:#141414;">Dis<span style="color:#E30613;">Track</span></span>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                     <tr>
@@ -24,7 +37,7 @@
                             <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#374151;">{!! nl2br(e($body)) !!}</p>
 
                             @if (!empty($products))
-                                <h2 style="margin:24px 0 12px;font-size:16px;color:#111827;border-bottom:2px solid #E2231A;padding-bottom:6px;">Tu pedido</h2>
+                                <h2 style="margin:24px 0 12px;font-size:16px;color:#111827;border-bottom:2px solid #E30613;padding-bottom:6px;">Tu pedido</h2>
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                                     @foreach ($products as $product)
                                         <tr>
@@ -46,8 +59,9 @@
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:18px 28px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
-                            <p style="margin:0;font-size:12px;color:#9ca3af;">Pedido {{ $shipmentId }} · Este es un mensaje automático de Dismac Logística.</p>
+                        <td style="padding:18px 28px;background-color:#F3F3F1;border-top:1px solid #e5e7eb;">
+                            <p style="margin:0;font-size:12px;color:#6b7280;">Pedido {{ $shipmentId }} · Este es un mensaje automático de DisTrack.</p>
+                            <p style="margin:6px 0 0;font-size:11px;font-weight:bold;letter-spacing:1px;color:#E30613;">DE ANDÉN A PUERTA.</p>
                         </td>
                     </tr>
                 </table>

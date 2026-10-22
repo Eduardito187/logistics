@@ -58,4 +58,17 @@ return [
         'osrm_timeout' => (int) env('TELEMETRY_OSRM_TIMEOUT', 10),
         'min_samples' => (int) env('TELEMETRY_STREET_MIN_SAMPLES', 3),
     ],
+
+    // Poda de retención de los pings GPS crudos (comando logistics:telemetry:prune-pings). El RAW viejo
+    // es desechable: trips, posición en vivo y analítica de calles persisten aparte. Retención corta.
+    'prune' => [
+        // Días de retención del RAW de pings (se miden desde recorded_at).
+        'pings_retention_days' => (int) env('TELEMETRY_PINGS_RETENTION_DAYS', 60),
+
+        // Filas por lote de borrado (acota el bloqueo).
+        'chunk' => (int) env('DB_PRUNE_CHUNK', 5000),
+
+        // Pausa entre lotes en milisegundos (alivia la carga del motor en producción).
+        'pause_ms' => (int) env('DB_PRUNE_PAUSE_MS', 100),
+    ],
 ];

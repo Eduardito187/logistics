@@ -115,8 +115,8 @@ final class CascadeRuleCodec
 
         try {
             return is_string($escalateWhen)
-                ? CascadePolicy::fromArray(['channels' => $channels, 'escalate_when' => $escalateWhen])
-                : CascadePolicy::fromArray(['channels' => $channels]);
+                ? CascadePolicy::fromStored(['channels' => $channels, 'escalate_when' => $escalateWhen])
+                : CascadePolicy::fromStored(['channels' => $channels]);
         } catch (Throwable) {
             // Canales o condición inválidos: se descarta la entrada (tolerancia a config editada a mano).
             return null;

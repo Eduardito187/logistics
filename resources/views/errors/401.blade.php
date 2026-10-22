@@ -2,7 +2,7 @@
      consciente de sesión y sin filtrar detalles internos (sin mensaje de excepción ni stack). --}}
 @extends('errors.layout')
 
-@section('title', 'No autorizado')
+@section('title', 'Inicia sesión')
 @section('code', '401')
 @section('heading', 'Necesitas iniciar sesión')
-@section('message', 'Para continuar debes iniciar sesión con tu cuenta.')
+@section('message', 'Para ver esta página primero tienes que iniciar sesión.')

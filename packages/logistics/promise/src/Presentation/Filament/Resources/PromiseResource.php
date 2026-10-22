@@ -360,11 +360,25 @@ final class PromiseResource extends Resource
                     ->label(__('Shipment reference'))
                     ->required()
                     ->maxLength(255),
-                TextInput::make('zone_id')
-                    ->label(__('Zone reference'))
-                    ->helperText(__('Coverage zone identifier provided by the channel.'))
+                // Select buscable por NOMBRE de zona: el operador elige la zona por su nombre legible y nunca
+                // ve ni pega un UUID. El valor enviado sigue siendo el id de la zona (contexto coverage),
+                // resuelto de solo lectura desde ZoneRecord sin acoplar el dominio.
+                Select::make('zone_id')
+                    ->label(__('Zone'))
+                    ->helperText(__('Pick the coverage zone for this delivery.'))
                     ->required()
-                    ->live(onBlur: true)
+                    ->native(false)
+                    ->searchable()
+                    ->getSearchResultsUsing(static fn (string $search): array => ZoneRecord::query()
+                        ->where('name', 'ilike', '%'.$search.'%')
+                        ->orderBy('name')
+                        ->limit(50)
+                        ->pluck('name', 'id')
+                        ->all())
+                    ->getOptionLabelUsing(static fn (?string $value): ?string => ($value === null || $value === '')
+                        ? null
+                        : ZoneRecord::query()->whereKey($value)->value('name'))
+                    ->live()
                     ->afterStateUpdated(static fn (Set $set): mixed => $set('time_slot', null)),
                 DatePicker::make('slot_date')
                     ->label(__('Slot date'))

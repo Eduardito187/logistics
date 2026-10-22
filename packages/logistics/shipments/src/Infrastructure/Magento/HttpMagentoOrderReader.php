@@ -37,6 +37,8 @@ final class HttpMagentoOrderReader implements MagentoOrderReader
         $response = $this->http
             ->withToken($this->accessToken)
             ->timeout($this->timeout)
+            // B-2: tope del handshake de conexión, separado del timeout total.
+            ->connectTimeout(3)
             ->acceptJson()
             ->get(rtrim($this->baseUrl, '/').'/rest/V1/orders', [
                 'searchCriteria[filter_groups][0][filters][0][field]' => 'status',

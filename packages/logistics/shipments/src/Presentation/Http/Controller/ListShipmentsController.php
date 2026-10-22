@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Application\ReadModel\Page;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipments;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
@@ -68,6 +69,24 @@ final class ListShipmentsController
             $destinationNodeId = $assignedNode;
         }
 
+        // Paginación opcional y aditiva (E-02): si el cliente la pide, se BAJA el recorte a SQL
+        // (LIMIT/OFFSET + COUNT(*) aparte) vía el query object; si no, se devuelve la colección completa
+        // (comportamiento histórico). Ya no se materializa toda la tabla para trocearla en PHP.
+        if (ApiPagination::requested($request)) {
+            /** @var Page<ShipmentView> $page */
+            $page = $this->queryBus->ask(new ListShipments(
+                status: $filters['status'] ?? null,
+                source: $filters['source'] ?? null,
+                destinationNodeId: $destinationNodeId,
+                limit: ApiPagination::limit($request),
+                offset: ApiPagination::offset($request),
+            ));
+
+            $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
+
+            return new JsonResponse(ApiPagination::envelope($items, $page->total, $request));
+        }
+
         /** @var list<ShipmentView> $views */
         $views = $this->queryBus->ask(new ListShipments(
             status: $filters['status'] ?? null,
@@ -75,13 +94,6 @@ final class ListShipmentsController
             destinationNodeId: $destinationNodeId,
         ));
 
-        $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $views);
-
-        // Paginación opcional y aditiva (E-02): solo si el cliente la pide; si no, colección completa.
-        if (ApiPagination::requested($request)) {
-            return new JsonResponse(ApiPagination::paginate($items, $request));
-        }
-
-        return $this->data($items);
+        return $this->data(array_map(static fn (ShipmentView $view): array => $view->toArray(), $views));
     }
 }

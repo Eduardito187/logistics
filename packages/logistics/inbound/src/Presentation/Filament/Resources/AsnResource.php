@@ -386,13 +386,13 @@ final class AsnResource extends Resource
 
     /**
      * Nombre legal del seller a partir de su id (lectura read-only de la tabla sellers, sin dep composer).
-     * Cae al id acortado si el seller no está (entorno sin sellers sembrados).
+     * Cae a una etiqueta legible si el seller no está (entorno sin sellers sembrados); nunca muestra el UUID.
      */
     private static function sellerName(string $sellerId): string
     {
         $name = DB::table('sellers')->where('id', $sellerId)->value('legal_name');
 
-        return is_string($name) && $name !== '' ? $name : substr($sellerId, 0, 8);
+        return is_string($name) && $name !== '' ? $name : __('Unknown seller');
     }
 
     private static function statusLabel(string $state): string

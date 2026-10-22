@@ -1,0 +1,139 @@
+# ============================================================
+# docker-compose.prod.yml — OVERRIDE de PRODUCCIÓN (logistics)
+# ============================================================
+# Se compone SOBRE el base `docker-compose.yml`:
+#   docker compose -f docker-compose.yml -f .docker/compose/docker-compose.prod.yml up -d
+#
+# Qué cambia respecto al base (dev):
+#   - M-12: límites y reservas de CPU/RAM por servicio (aislamiento + predictibilidad).
+#           Todos parametrizables por entorno; los defaults asumen un host mediano.
+#   - B-4:  DEJA DE PUBLICAR al host los puertos de postgres/valkey/pgbouncer (y la
+#           consola de MinIO). Solo quedan accesibles dentro de la red docker interna.
+#           (En dev sí se publican para inspección con psql/redis-cli/navegador.)
+#   - Construye la imagen en el target `prod` (sin Xdebug/pcov; con supervisor).
+#
+# NOTA sobre `deploy.resources`: con `docker compose up` (no swarm), Compose v2 aplica
+# `limits.cpus`/`limits.memory` y `reservations.memory`. En orquestadores (Swarm/K8s/
+# Nomad) estos mismos valores rigen scheduling. Ajustar por host y medir (Fase 4).
+#
+# `!reset []` (Compose v2.24+) limpia la lista de `ports` heredada del base, en vez de
+# fusionarla (la fusión de listas de Compose solo AÑADE; no puede quitar).
+
+services:
+    app:
+        build:
+            target: prod
+        image: dismac/logistics-app:prod
+        environment:
+            APP_ENV: production
+            # Cachea config/route/view en el arranque, ya con el env real inyectado.
+            OPTIMIZE_ON_BOOT: "true"
+        deploy:
+            resources:
+                limits:
+                    cpus: "${APP_CPU_LIMIT:-2}"
+                    memory: ${APP_MEM_LIMIT:-2g}
+                reservations:
+                    memory: ${APP_MEM_RESERVATION:-512m}
+
+    nginx:
+        deploy:
+            resources:
+                limits:
+                    cpus: "${NGINX_CPU_LIMIT:-1}"
+                    memory: ${NGINX_MEM_LIMIT:-256m}
+                reservations:
+                    memory: ${NGINX_MEM_RESERVATION:-64m}
+
+    postgres:
+        # B-4: no exponer PostgreSQL al host en prod.
+        ports: !reset []
+        deploy:
+            resources:
+                limits:
+                    cpus: "${PG_CPU_LIMIT:-4}"
+                    # Debe ser > shared_buffers (default 1GB) con holgura para work_mem
+                    # concurrente, caché del SO y conexiones. 4GB es el piso sugerido.
+                    memory: ${PG_MEM_LIMIT:-4g}
+                reservations:
+                    memory: ${PG_MEM_RESERVATION:-1g}
+
+    pgbouncer:
+        # B-4: no exponer PgBouncer al host en prod.
+        ports: !reset []
+        deploy:
+            resources:
+                limits:
+                    cpus: "${PGBOUNCER_CPU_LIMIT:-1}"
+                    memory: ${PGBOUNCER_MEM_LIMIT:-256m}
+                reservations:
+                    memory: ${PGBOUNCER_MEM_RESERVATION:-64m}
+
+    valkey:
+        # B-4: no exponer Valkey al host en prod.
+        ports: !reset []
+        deploy:
+            resources:
+                limits:
+                    cpus: "${VALKEY_CPU_LIMIT:-2}"
+                    # Debe ser > VALKEY_MAXMEMORY (default 512mb) con margen para AOF y
+                    # overhead del proceso. 1GB de límite para 512MB de maxmemory.
+                    memory: ${VALKEY_MEM_LIMIT:-1g}
+                reservations:
+                    memory: ${VALKEY_MEM_RESERVATION:-256m}
+
+    pg-backup:
+        deploy:
+            resources:
+                limits:
+                    cpus: "${BACKUP_CPU_LIMIT:-1}"
+                    memory: ${BACKUP_MEM_LIMIT:-512m}
+
+    queue-worker:
+        build:
+            target: prod
+        image: dismac/logistics-app:prod
+        environment:
+            APP_ENV: production
+            OPTIMIZE_ON_BOOT: "true"
+        deploy:
+            resources:
+                limits:
+                    cpus: "${WORKER_CPU_LIMIT:-2}"
+                    memory: ${WORKER_MEM_LIMIT:-1536m}
+                reservations:
+                    memory: ${WORKER_MEM_RESERVATION:-512m}
+
+    scheduler:
+        build:
+            target: prod
+        image: dismac/logistics-app:prod
+        environment:
+            APP_ENV: production
+            OPTIMIZE_ON_BOOT: "true"
+        deploy:
+            resources:
+                limits:
+                    cpus: "${SCHEDULER_CPU_LIMIT:-1}"
+                    memory: ${SCHEDULER_MEM_LIMIT:-512m}
+                reservations:
+                    memory: ${SCHEDULER_MEM_RESERVATION:-128m}
+
+    minio:
+        # `!override` REEMPLAZA la lista de ports del base (la fusión normal solo añade).
+        # Mantiene SOLO la API S3 si se usa como destino off-site de backups; NO publica
+        # la consola web (9011) al host en prod.
+        ports: !override
+            - "${DOCKER_MINIO_API_PORT:-9010}:9000"
+        deploy:
+            resources:
+                limits:
+                    cpus: "${MINIO_CPU_LIMIT:-2}"
+                    memory: ${MINIO_MEM_LIMIT:-1g}
+
+    soketi:
+        deploy:
+            resources:
+                limits:
+                    cpus: "${SOKETI_CPU_LIMIT:-1}"
+                    memory: ${SOKETI_MEM_LIMIT:-512m}

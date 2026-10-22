@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\RequestId;
 use App\Http\Problem\ProblemExceptionRenderer;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -27,6 +28,10 @@ return Application::configure(basePath: dirname(__DIR__))
     // y carga la autorización de canales de routes/channels.php (fleet/vehicle/shipment).
     ->withBroadcasting(__DIR__.'/../routes/channels.php')
     ->withMiddleware(function (Middleware $middleware): void {
+        // M-7: request-id de correlación lo más temprano posible (antes que cualquier otro middleware),
+        // para que X-Request-Id ya esté en el Context y en los logs del resto de la cadena del request.
+        $middleware->prepend(RequestId::class);
+
         $middleware->web(append: [
             AddLinkHeadersForPreloadedAssets::class,
         ]);

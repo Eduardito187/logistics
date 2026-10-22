@@ -533,7 +533,8 @@ final class PlanResource extends Resource
                 ->limit(50)
                 ->get()
                 ->mapWithKeys(static fn (ShipmentRecord $record): array => [
-                    $record->id => self::shipmentLabel($record) ?? $record->id,
+                    // Valor = UUID (lo que persiste el comando); etiqueta = referencia humana, nunca el UUID.
+                    $record->id => self::shipmentLabel($record) ?? $record->external_id,
                 ])
                 ->all())
             ->getOptionLabelUsing(static function (string $value): ?string {

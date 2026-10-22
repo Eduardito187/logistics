@@ -96,4 +96,29 @@ final readonly class CascadePolicy
 
         return self::of($channels, $escalateWhen);
     }
+
+    /**
+     * Reconstruye la política desde datos PERSISTIDOS (jsonb de notificaciones/reglas, settings,
+     * caché) tolerando valores históricos: traduce alias viejos (`PUSH_FCM` → `FCM`), descarta canales
+     * que ya no existen y colapsa duplicados que deja la traducción. Si no queda ningún canal vigente,
+     * lanza (la política no es reconstruible) para que el lector la omita.
+     *
+     * @param array{channels: list<string>, escalate_when?: string} $data
+     */
+    public static function fromStored(array $data): self
+    {
+        $channels = [];
+        foreach ($data['channels'] as $value) {
+            $channel = Channel::fromStored($value);
+            if ($channel !== null && !in_array($channel, $channels, true)) {
+                $channels[] = $channel;
+            }
+        }
+
+        $escalateWhen = isset($data['escalate_when'])
+            ? EscalateCondition::from($data['escalate_when'])
+            : EscalateCondition::NoOpen;
+
+        return self::of($channels, $escalateWhen);
+    }
 }

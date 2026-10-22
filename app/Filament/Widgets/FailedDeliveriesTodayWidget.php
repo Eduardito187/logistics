@@ -39,6 +39,8 @@ final class FailedDeliveriesTodayWidget extends TableWidget
             ->heading(__('Failed deliveries today'))
             ->description(__('Deliveries that failed today and need rescheduling.'))
             ->records(fn (): array => $this->rows())
+            // Carga diferida: la torre pinta primero y la tabla llega después, sin bloquear el render.
+            ->deferLoading()
             ->paginated([10, 25])
             ->emptyStateHeading(__('No failed deliveries today'))
             ->emptyStateDescription(__('Every delivery touched today is on track.'))

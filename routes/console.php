@@ -26,7 +26,11 @@ Artisan::command('inspire', function () {
 
 // Relay del outbox: despacha a sus destinos externos el lote de mensajes
 // pendientes. Es el latido del sistema asíncrono; por eso corre cada minuto.
-Schedule::command('logistics:outbox:relay')
+// Pump del outbox: toma el lote pendiente (FOR UPDATE SKIP LOCKED + lease) y encola un job por mensaje
+// a las colas always-on (outbox/notifications), que despachan el I/O externo EN PARALELO. Reemplaza al
+// despacho inline/secuencial (que capaba a ~100 msg/min y sufría head-of-line blocking). El comando
+// sincrónico `logistics:outbox:relay` queda disponible como herramienta manual/fallback.
+Schedule::command('logistics:outbox:pump')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
@@ -60,5 +64,35 @@ Schedule::command('logistics:fleet:document-alerts')
 // ningún cupo quede retenido por una reserva abandonada por el canal.
 Schedule::command('logistics:promise:expire-reservations')
     ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Mantenimiento físico de base de datos (no destructivo)
+|--------------------------------------------------------------------------
+|
+| VACUUM/ANALYZE de las tablas más transaccionales para mantener frescas las
+| estadísticas del planner y recuperar espacio muerto a escala. No borra datos.
+|
+| NOTA: la RETENCIÓN/purga de logs (logistics:access:prune-audit-log,
+| logistics:outbox:prune, logistics:telemetry:prune-pings) NO se programa aquí
+| todavía. Son borrados reales (--force); el dueño debe habilitarlos explícitamente
+| tras revisar las ventanas de retención (ver docs/perf y .env.example). Para
+| auditar qué borrarían sin borrar nada, correrlos sin --force (dry-run por defecto).
+|
+*/
+
+// Salud física: VACUUM (ANALYZE) de las tablas más transaccionales de madrugada, fuera de hora pico.
+Schedule::command('logistics:db:maintain')
+    ->dailyAt('03:30')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Refresco liviano de estadísticas (solo ANALYZE) cada hora, para tablas que ingieren sin parar.
+Schedule::command('logistics:db:maintain --analyze-only')
+    ->hourly()
+    ->onOneServer()
     ->withoutOverlapping()
     ->runInBackground();

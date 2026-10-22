@@ -7,8 +7,10 @@ namespace Logistics\Outbox\Infrastructure\Persistence\Eloquent;
 use DateInterval;
 use DateTimeImmutable;
 use Illuminate\Database\ConnectionResolverInterface;
+use Logistics\Outbox\Domain\Contract\OutboxMessageFinder;
 use Logistics\Outbox\Domain\Contract\OutboxStore;
 use Logistics\Outbox\Domain\OutboxMessage;
+use Logistics\Outbox\Domain\ValueObject\OutboxMessageId;
 use Logistics\Outbox\Domain\ValueObject\OutboxStatus;
 
 /**
@@ -22,7 +24,7 @@ use Logistics\Outbox\Domain\ValueObject\OutboxStatus;
  * futuro (lease) sobre las filas tomadas: si el worker muere a mitad del despacho, el mensaje vuelve a
  * estar disponible recién pasado el lease, evitando que otro lo tome de inmediato y lo duplique.
  */
-final readonly class EloquentOutboxStore implements OutboxStore
+final readonly class EloquentOutboxStore implements OutboxMessageFinder, OutboxStore
 {
     /** Segundos que un mensaje tomado queda "en vuelo" antes de volver a ser elegible, por defecto. */
     private const DEFAULT_LEASE_SECONDS = 60;
@@ -73,6 +75,13 @@ final readonly class EloquentOutboxStore implements OutboxStore
         });
 
         return $messages;
+    }
+
+    public function find(OutboxMessageId $id): ?OutboxMessage
+    {
+        $record = OutboxMessageRecord::query()->find($id->toString());
+
+        return $record instanceof OutboxMessageRecord ? OutboxMessageMapper::toEntity($record) : null;
     }
 
     public function save(OutboxMessage $message): void

@@ -9,11 +9,15 @@ use Logistics\Returns\Domain\Contract\ReturnOrderRepository;
 use Logistics\Returns\Domain\Model\ReturnOrder;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shared\Application\ReadModel\Page;
 
 /**
  * Lista devoluciones con los filtros dados, como ReadModels.
  *
- * @implements QueryHandler<ListReturns, list<ReturnView>>
+ * Con `limit` (al paginar) baja LIMIT/OFFSET a SQL y devuelve una Page (ítems + total). Sin `limit`,
+ * devuelve la lista (tope sano del repositorio), por compatibilidad.
+ *
+ * @implements QueryHandler<ListReturns, list<ReturnView>|Page<ReturnView>>
  */
 final readonly class ListReturnsHandler implements QueryHandler
 {
@@ -22,14 +26,21 @@ final readonly class ListReturnsHandler implements QueryHandler
     ) {}
 
     /**
-     * @return list<ReturnView>
+     * @return list<ReturnView>|Page<ReturnView>
      */
-    public function handle(Query $query): array
+    public function handle(Query $query): array | Page
     {
         assert($query instanceof ListReturns);
 
-        $returns = $this->returns->listBy($query->sellerId, $query->status);
+        $views = array_map(
+            static fn (ReturnOrder $returnOrder): ReturnView => ReturnView::fromDomain($returnOrder),
+            $this->returns->listBy($query->sellerId, $query->status, $query->limit, $query->offset),
+        );
 
-        return array_map(static fn (ReturnOrder $returnOrder): ReturnView => ReturnView::fromDomain($returnOrder), $returns);
+        if ($query->limit === null) {
+            return $views;
+        }
+
+        return new Page($views, $this->returns->countBy($query->sellerId, $query->status));
     }
 }

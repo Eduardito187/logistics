@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Network\Infrastructure\Providers;
 
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Network\Application\Command\DeactivateNode\DeactivateNodeCommand;
 use Logistics\Network\Application\Command\DeactivateNode\DeactivateNodeHandler;
@@ -30,6 +31,8 @@ use Logistics\Network\Application\Query\OperationalCorridorsByDepartment\Operati
 use Logistics\Network\Domain\Contract\LegRepository;
 use Logistics\Network\Domain\Contract\NodeRepository;
 use Logistics\Network\Domain\Contract\ReceivingDockRepository;
+use Logistics\Network\Infrastructure\Cache\CachingLegRepository;
+use Logistics\Network\Infrastructure\Cache\CachingNodeRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentLegRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentNodeRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentReceivingDockRepository;
@@ -45,8 +48,22 @@ final class NetworkServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->bind(NodeRepository::class, EloquentNodeRepository::class);
-        $this->app->bind(LegRepository::class, EloquentLegRepository::class);
+        // Nodos y tramos son datos de referencia muy leídos (listados y cálculo de corredores por
+        // departamento que consultan promise/planning): se envuelve el repositorio Eloquent con el
+        // decorador de cache (Valkey), que cachea all() en forma primitiva (regla #7) y lo invalida al
+        // guardar/remover. Las lecturas puntuales y las escrituras siguen yendo a la base.
+        $this->app->bind(NodeRepository::class, function ($app): NodeRepository {
+            return new CachingNodeRepository(
+                $app->make(EloquentNodeRepository::class),
+                $app->make(CacheRepository::class),
+            );
+        });
+        $this->app->bind(LegRepository::class, function ($app): LegRepository {
+            return new CachingLegRepository(
+                $app->make(EloquentLegRepository::class),
+                $app->make(CacheRepository::class),
+            );
+        });
         $this->app->bind(ReceivingDockRepository::class, EloquentReceivingDockRepository::class);
     }
 

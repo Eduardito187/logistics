@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Coverage\Infrastructure\Providers;
 
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Coverage\Application\Command\DefineZone;
 use Logistics\Coverage\Application\Command\DefineZoneHandler;
@@ -32,6 +33,9 @@ use Logistics\Coverage\Domain\Contract\DepartmentLocator;
 use Logistics\Coverage\Domain\Contract\GeoAreaRepository;
 use Logistics\Coverage\Domain\Contract\MunicipalityLocator;
 use Logistics\Coverage\Domain\Contract\ZoneRepository;
+use Logistics\Coverage\Infrastructure\Cache\CachingGeoAreaRepository;
+use Logistics\Coverage\Infrastructure\Cache\CachingMunicipalityCatalog;
+use Logistics\Coverage\Infrastructure\Cache\CachingZoneRepository;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\EloquentGeoAreaRepository;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\EloquentMunicipalityCatalog;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\EloquentZoneRepository;
@@ -69,11 +73,31 @@ final class CoverageServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        $this->app->bind(ZoneRepository::class, EloquentZoneRepository::class);
-        $this->app->bind(GeoAreaRepository::class, EloquentGeoAreaRepository::class);
+        // Zonas, jerarquía administrativa y municipios son catálogos de referencia muy estables y muy
+        // leídos: se envuelve cada implementación con su decorador de cache (Valkey), que cachea all() en
+        // forma primitiva (regla #7) y lo invalida al guardar. La resolución espacial (PostGIS) y las
+        // lecturas puntuales siguen yendo a la base. El catálogo de municipios se deriva de la jerarquía,
+        // así que su invalidación la dispara el guardado de un área.
+        $this->app->bind(ZoneRepository::class, function ($app): ZoneRepository {
+            return new CachingZoneRepository(
+                $app->make(EloquentZoneRepository::class),
+                $app->make(CacheRepository::class),
+            );
+        });
+        $this->app->bind(GeoAreaRepository::class, function ($app): GeoAreaRepository {
+            return new CachingGeoAreaRepository(
+                $app->make(EloquentGeoAreaRepository::class),
+                $app->make(CacheRepository::class),
+            );
+        });
         $this->app->bind(DepartmentLocator::class, PostgisDepartmentLocator::class);
         $this->app->bind(MunicipalityLocator::class, PostgisMunicipalityLocator::class);
-        $this->app->bind(MunicipalityCatalog::class, EloquentMunicipalityCatalog::class);
+        $this->app->bind(MunicipalityCatalog::class, function ($app): MunicipalityCatalog {
+            return new CachingMunicipalityCatalog(
+                $app->make(EloquentMunicipalityCatalog::class),
+                $app->make(CacheRepository::class),
+            );
+        });
 
         // Regla de cobertura por zona como configuración versionada: el adaptador habla con el contexto
         // Configuración solo por los buses CQRS (sin dependencia composer).

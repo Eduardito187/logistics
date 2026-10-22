@@ -39,6 +39,7 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\DeliveryRecord;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\ScanEventRecord;
 use Logistics\Execution\Presentation\Filament\Resources\DeliveryResource\Pages\ListDeliveries;
 use Logistics\Execution\Presentation\Filament\Resources\DeliveryResource\Pages\ViewDelivery;
+use Logistics\Execution\Presentation\Filament\Support\UnitNames;
 use Logistics\Execution\Presentation\Filament\Support\UserNames;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
@@ -114,7 +115,8 @@ final class DeliveryResource extends Resource
     }
 
     /**
-     * Título humano del registro: la referencia del pedido, nunca el UUID de la entrega.
+     * Título humano del registro: la referencia del pedido, nunca el UUID de la entrega ni del pedido.
+     * Si el pedido no tiene referencia externa legible, no se muestra ningún identificador crudo.
      */
     public static function getRecordTitle(?Model $record): ?string
     {
@@ -122,7 +124,9 @@ final class DeliveryResource extends Resource
             return null;
         }
 
-        return $record->shipment->external_id ?? $record->shipment_id;
+        $order = $record->shipment->external_id ?? null;
+
+        return ($order !== null && $order !== '') ? $order : null;
     }
 
     /**
@@ -692,13 +696,13 @@ final class DeliveryResource extends Resource
     /**
      * Etiqueta humana del bulto de un escaneo para el infolist.
      *
-     * `execution_scan_events.unit_id` guarda el CÓDIGO escaneado de la etiqueta (p. ej. "U-10001"),
-     * no el UUID del agregado PhysicalUnit; ese código es justamente lo legible que ve el operador,
-     * así que se muestra tal cual (no hay relación por id contra shipment_units).
+     * `execution_scan_events.unit_id` puede ser el UUID del bulto (escaneos registrados desde el panel)
+     * o el código legible de la etiqueta escaneada en terreno. Se resuelve con UnitNames a una etiqueta
+     * legible (pedido + índice de bulto/pieza) y NUNCA se expone el UUID crudo.
      */
     private static function scanUnitLabel(ScanEventRecord $scan): string
     {
-        return $scan->unit_id;
+        return UnitNames::label($scan->unit_id);
     }
 
     /**

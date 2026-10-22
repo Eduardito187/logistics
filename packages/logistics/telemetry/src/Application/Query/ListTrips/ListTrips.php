@@ -14,5 +14,7 @@ final readonly class ListTrips implements Query
     public function __construct(
         public ?string $vehicleId = null,
         public ?string $date = null,
+        public ?int $limit = null,
+        public ?int $offset = null,
     ) {}
 }

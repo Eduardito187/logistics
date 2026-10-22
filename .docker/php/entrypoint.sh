@@ -25,6 +25,31 @@ mkdir -p /var/www/html/storage/logs
 mkdir -p /var/www/html/bootstrap/cache
 
 # ------------------------------------------------------------
+# 2b. PHP-FPM — tuning del pool parametrizable por entorno (FPM_*)
+# ------------------------------------------------------------
+# php-fpm NO interpola variables de entorno en directivas numéricas
+# (`pm.max_children = $ENV{...}` falla), así que el tuning FPM_* se genera acá a
+# partir de `www.conf.template` en un include SEPARADO y escribible
+# (zzz-fpm-tuning.conf), que php-fpm FUSIONA sobre el pool [www] al cargar los
+# *.conf en orden alfabético (`zzz-` se aplica al final y manda). El www.conf
+# horneado es inmutable (propiedad de root) y queda como fallback: si el drop-in
+# no es escribible, no se toca nada y rigen sus defaults. El arranque nunca
+# depende de este paso.
+FPM_POOL_TARGET="/usr/local/etc/php-fpm.d/zzz-fpm-tuning.conf"
+FPM_POOL_TEMPLATE="/usr/local/etc/php-fpm.d/www.conf.template"
+if [[ -f "$FPM_POOL_TEMPLATE" && -w "$FPM_POOL_TARGET" ]]; then
+    echo "[entrypoint] Renderizando pool php-fpm (FPM_*)..."
+    sed \
+        -e "s/__FPM_PM__/${FPM_PM:-dynamic}/" \
+        -e "s/__FPM_MAX_CHILDREN__/${FPM_MAX_CHILDREN:-50}/" \
+        -e "s/__FPM_START_SERVERS__/${FPM_START_SERVERS:-8}/" \
+        -e "s/__FPM_MIN_SPARE__/${FPM_MIN_SPARE:-8}/" \
+        -e "s/__FPM_MAX_SPARE__/${FPM_MAX_SPARE:-16}/" \
+        -e "s/__FPM_MAX_REQUESTS__/${FPM_MAX_REQUESTS:-1000}/" \
+        "$FPM_POOL_TEMPLATE" > "$FPM_POOL_TARGET"
+fi
+
+# ------------------------------------------------------------
 # 3. Caches de arranque — OPT-IN explícito (OPTIMIZE_ON_BOOT=true)
 # ------------------------------------------------------------
 # El `config:cache` NO se hornea en la imagen: ahí el env de producción todavía
@@ -38,6 +63,9 @@ if [ "${OPTIMIZE_ON_BOOT:-false}" = "true" ]; then
     php artisan route:cache
     php artisan view:cache
     php artisan event:cache
+    # Filament v4: cachea el descubrimiento de recursos/páginas/componentes y los
+    # iconos Blade (menos reflexión y escaneo de FS por request en el admin).
+    php artisan filament:optimize
 fi
 
 # ------------------------------------------------------------

@@ -10,9 +10,7 @@ use Logistics\Fleet\Domain\Contract\CrewRepository;
 use Logistics\Fleet\Domain\Contract\DriverRepository;
 use Logistics\Fleet\Domain\Contract\HelperRepository;
 use Logistics\Fleet\Domain\Contract\VehicleRepository;
-use Logistics\Fleet\Domain\Model\Helper;
 use Logistics\Fleet\Domain\ValueObject\DriverId;
-use Logistics\Fleet\Domain\ValueObject\HelperId;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 
@@ -50,13 +48,8 @@ final readonly class GetMyCrewHandler implements QueryHandler
         $vehicle = $this->vehicles->findById($crew->vehicleId());
         $driver = $this->drivers->findById($crew->driverId());
 
-        $helpersById = [];
-        foreach ($crew->helperIds() as $helperId) {
-            $helper = $this->helpers->findById(HelperId::fromString($helperId));
-            if ($helper instanceof Helper) {
-                $helpersById[$helperId] = $helper;
-            }
-        }
+        // Todos los ayudantes de la tripulación en una sola consulta (antes una por ayudante).
+        $helpersById = $this->helpers->findByIds(array_values($crew->helperIds()));
 
         return MyCrewView::fromDomain($crew, $vehicle, $driver, $helpersById);
     }

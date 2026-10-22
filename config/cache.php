@@ -17,7 +17,11 @@ return [
     |
     */
 
-    'default' => env('CACHE_STORE', 'database'),
+    // A-3: el default es `redis`, NO `database`. Si en producción falta la env CACHE_STORE, la cache
+    // NO debe caer silenciosamente a PostgreSQL (contención brutal bajo carga). El store `redis` usa la
+    // conexión `cache` (DB 1, evictable, política volatile-lru) con locks en la conexión `default`
+    // (DB 0, durable). Los tests fuerzan `array` vía phpunit.xml, así que este default no los afecta.
+    'default' => env('CACHE_STORE', 'redis'),
 
     /*
     |--------------------------------------------------------------------------

@@ -17,6 +17,7 @@ use Logistics\Execution\Domain\ValueObject\ScanType;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\ScanEventRecord;
 use Logistics\Execution\Presentation\Filament\Resources\ScanEventResource\Pages\ListScanEvents;
 use Logistics\Execution\Presentation\Filament\Resources\ScanEventResource\Pages\ViewScanEvent;
+use Logistics\Execution\Presentation\Filament\Support\UnitNames;
 use Logistics\Execution\Presentation\Filament\Support\UserNames;
 use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 
@@ -111,12 +112,8 @@ final class ScanEventResource extends Resource
                     ->label(__('Unit'))
                     ->state(static fn (ScanEventRecord $record): string => self::unitLabel($record))
                     ->placeholder('—'),
-                TextColumn::make('unit_id')
-                    ->label(__('Unit ID'))
-                    ->searchable()
-                    ->copyable()
-                    ->fontFamily('mono')
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // El UUID crudo del bulto (`unit_id`) no se muestra: la columna "Unit" ya da la etiqueta
+                // legible. No se expone ningún identificador crudo (ni como columna conmutable/copiable).
                 // user_id se muestra como el NOMBRE del operador (users.name), nunca el id crudo.
                 TextColumn::make('user_id')
                     ->label(__('User'))
@@ -156,7 +153,7 @@ final class ScanEventResource extends Resource
                     ->label(__('Unit'))
                     ->state(static fn (ScanEventRecord $record): string => self::unitLabel($record))
                     ->placeholder('—'),
-                TextEntry::make('unit_id')->label(__('Unit ID'))->copyable()->fontFamily('mono'),
+                // El UUID crudo del bulto no se muestra en la ficha: basta la etiqueta legible "Unit".
                 TextEntry::make('occurred_at')->label(__('Occurred at'))->dateTime(),
                 // user_id se muestra como el NOMBRE del operador (users.name), nunca el id crudo.
                 TextEntry::make('user_id')
@@ -205,13 +202,13 @@ final class ScanEventResource extends Resource
     /**
      * Etiqueta humana del bulto escaneado.
      *
-     * `scan_events.unit_id` guarda el CÓDIGO escaneado de la etiqueta (p. ej. "U-10001"), no el UUID
-     * del agregado PhysicalUnit; ese código es justamente lo legible que ve el operador, así que se
-     * muestra tal cual (no hay relación por id contra shipment_units).
+     * `execution_scan_events.unit_id` puede ser el UUID del bulto (escaneos registrados desde el panel)
+     * o el código legible de la etiqueta escaneada en terreno. Se resuelve con UnitNames a una etiqueta
+     * legible (pedido + índice de bulto/pieza) y NUNCA se expone el UUID crudo.
      */
     private static function unitLabel(ScanEventRecord $record): string
     {
-        return $record->unit_id;
+        return UnitNames::label($record->unit_id);
     }
 
     /**

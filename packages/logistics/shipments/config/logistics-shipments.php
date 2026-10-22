@@ -16,6 +16,13 @@ return [
         'cache_store' => env('SHIPMENTS_GEOCODER_CACHE_STORE', 'redis'),
         'cache_ttl' => (int) env('SHIPMENTS_GEOCODER_CACHE_TTL', 2592000),
 
+        // Dedup PERSISTENTE (tabla geocoding_cache): deduplica la MISMA dirección entre reprocesos,
+        // reinicios y purgas de Valkey, y mide la repetición (hits). Es la fuente dedup durable; el
+        // store de Valkey de arriba la acelera por delante (en el geocoder real). Se puede apagar.
+        'persistent_cache' => [
+            'enabled' => (bool) env('SHIPMENTS_GEOCODER_PERSISTENT_CACHE', true),
+        ],
+
         // Confianza PROVISIONAL del ingreso (sin I/O): se asigna al recibir el pedido, antes de la
         // geocodificación real (asíncrona). Más alta si la fuente ya trajo coordenada; baja si no.
         'provisional' => [
