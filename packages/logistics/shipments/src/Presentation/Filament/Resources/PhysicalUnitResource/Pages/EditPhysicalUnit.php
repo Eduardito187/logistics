@@ -11,7 +11,7 @@ use Filament\Resources\Pages\EditRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource;
 
 /**
- * Edición de un bulto en el admin.
+ * Edición de una unidad física en el admin.
  */
 final class EditPhysicalUnit extends EditRecord
 {

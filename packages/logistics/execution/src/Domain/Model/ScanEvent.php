@@ -42,7 +42,7 @@ final readonly class ScanEvent
         string $idempotencyKey,
     ): self {
         if (trim($unitId) === '') {
-            throw ExecutionException::because('el escaneo requiere el id del bulto (unitId)');
+            throw ExecutionException::because('el escaneo requiere el id del producto (unitId)');
         }
         if (trim($idempotencyKey) === '') {
             throw ExecutionException::because('el escaneo requiere una clave de idempotencia del dispositivo');

@@ -66,7 +66,7 @@ final readonly class VehicleRouteProfile
             throw PlanningException::because("la altura máxima del camión debe ser mayor que cero: {$maxHeightM}");
         }
         if ($maxWeightKg !== null && $maxWeightKg <= 0.0) {
-            throw PlanningException::because("el peso máximo por bulto del camión debe ser mayor que cero: {$maxWeightKg}");
+            throw PlanningException::because("el peso máximo por producto del camión debe ser mayor que cero: {$maxWeightKg}");
         }
 
         return new self(

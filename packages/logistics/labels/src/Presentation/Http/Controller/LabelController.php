@@ -51,7 +51,7 @@ final readonly class LabelController
                 lines: $request->orderLines(),
             ));
         } catch (DuplicateLabelException $e) {
-            // El `id` de una etiqueta es único por bulto físico: reemitir es un conflicto duro (ADR 004).
+            // El `id` de una etiqueta es único por unidad física: reemitir es un conflicto duro (ADR 004).
             return new JsonResponse([
                 'error' => [
                     'code' => 'label_already_emitted',

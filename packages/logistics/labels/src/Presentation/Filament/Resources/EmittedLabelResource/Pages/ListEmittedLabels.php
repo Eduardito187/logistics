@@ -56,7 +56,7 @@ final class ListEmittedLabels extends ListRecords
     }
 
     /**
-     * Emitir el lote de etiquetas de un pedido (EmitShipmentLabels). Una etiqueta por bulto físico de
+     * Emitir el lote de etiquetas de un pedido (EmitShipmentLabels). Una etiqueta por unidad física de
      * cada línea. Si el pedido ya tiene etiquetas vigentes, el dominio corta con DuplicateLabelException.
      */
     private function emitLabelsAction(): Action

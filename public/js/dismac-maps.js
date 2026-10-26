@@ -1,52 +1,43 @@
 /**
  * Helper compartido de teselas (tiles) para todos los mapas Leaflet del proyecto.
  *
- * Problema que resuelve: el tileserver OSM self-host (config/maps.php → MAP_TILE_URL, por defecto
- * http://localhost:8082/...) puede no estar levantado en un entorno (demo, laptop, CI). En ese caso
- * Leaflet pedía teselas que fallaban y el mapa quedaba gris. Este helper crea la capa con la URL
- * primaria (self-host) y, si varias teselas fallan, cae UNA sola vez al OSM público de forma
- * automática — así el mapa siempre muestra fondo, con self-host o sin él, sin tocar la vista.
+ * Política de la plataforma: CERO CDN público. Los mapas usan ÚNICAMENTE el tileserver OSM self-host
+ * (config/maps.php → MAP_TILE_URL, por defecto http://localhost:8082/...). Se eliminó el antiguo
+ * fallback al OSM público: si el tileserver self-host no está levantado, el mapa simplemente no
+ * muestra teselas (comportamiento aceptado) y NUNCA se pega a un CDN público de teselas.
  *
  * Uso en un blade (tras cargar Leaflet y este script):
  *   window.DismacMaps.tileLayer(L, {
  *     url:        @js(config('maps.tile_url')),
- *     fallbackUrl:@js(config('maps.tile_fallback_url')),
  *     attribution:@js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
  *     maxZoom:    @js((int) config('maps.tile_max_zoom', 19)),
  *   }).addTo(map);
+ *
+ * La atribución de texto "&copy; OpenStreetMap" se MANTIENE: es la atribución ODbL de los datos de
+ * OpenStreetMap, no un CDN de teselas.
  */
 (function () {
     'use strict';
 
-    // OSM público moderno (sin subdominio). La CSP del admin lo permite explícitamente.
-    var DEFAULT_FALLBACK = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-
     function createTileLayer(L, options) {
         options = options || {};
 
-        var fallbackUrl = options.fallbackUrl || DEFAULT_FALLBACK;
         var attribution = options.attribution || '&copy; OpenStreetMap';
         var maxZoom = typeof options.maxZoom === 'number' ? options.maxZoom : 19;
 
-        // Sin URL primaria configurada → directo al fallback público (modo demo).
-        var usingFallback = !options.url;
-        var url = usingFallback ? fallbackUrl : options.url;
-
-        var layer = L.tileLayer(url, { attribution: attribution, maxZoom: maxZoom });
-
-        // Si la capa primaria (self-host) falla en varias teselas, baja al OSM público una sola vez.
-        if (!usingFallback) {
-            var errorCount = 0;
-            layer.on('tileerror', function () {
-                errorCount += 1;
-                if (!usingFallback && errorCount >= 3) {
-                    usingFallback = true;
-                    layer.setUrl(fallbackUrl);
-                }
-            });
+        // Sin URL primaria (self-host) configurada: no se agrega capa de teselas. No hay fallback
+        // público por política de no-CDN; se registra un aviso y el mapa queda sin fondo.
+        if (!options.url) {
+            if (window.console && typeof window.console.warn === 'function') {
+                window.console.warn(
+                    'DismacMaps: falta MAP_TILE_URL (tileserver self-host); el mapa no mostrará teselas.'
+                );
+            }
+            return null;
         }
 
-        return layer;
+        // Única fuente de teselas: el tileserver self-host (options.url). Sin fallback público.
+        return L.tileLayer(options.url, { attribution: attribution, maxZoom: maxZoom });
     }
 
     window.DismacMaps = { tileLayer: createTileLayer };

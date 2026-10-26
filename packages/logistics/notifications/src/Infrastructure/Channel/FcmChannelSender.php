@@ -125,6 +125,8 @@ final readonly class FcmChannelSender implements ChannelSender
 
         $response = Http::withToken($this->accessToken->value())
             ->timeout($this->config['timeout'])
+            // B-2: tope del handshake de conexión; un connect colgado no debe gastar el timeout total.
+            ->connectTimeout(3)
             ->post($endpoint, ['message' => $message]);
 
         if ($response->failed()) {

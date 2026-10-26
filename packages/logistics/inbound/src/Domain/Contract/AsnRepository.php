@@ -25,6 +25,8 @@ interface AsnRepository
      * Lista ASNs filtrando por seller, almacén, estado y/o fecha de cita (cualquiera nullable = sin filtro).
      * La fecha filtra por el día de la ventana de cita.
      *
+     * `$limit`/`$offset` son opcionales (null = sin recorte): bajan LIMIT/OFFSET a SQL al paginar.
+     *
      * @return list<Asn>
      */
     public function listBy(
@@ -32,7 +34,19 @@ interface AsnRepository
         ?string $warehouseId = null,
         ?string $status = null,
         ?string $appointmentDate = null,
+        ?int $limit = null,
+        ?int $offset = null,
     ): array;
+
+    /**
+     * Cuenta los ASNs que cumplen los MISMOS filtros que `listBy`, para el total de la paginación.
+     */
+    public function countBy(
+        ?string $sellerId = null,
+        ?string $warehouseId = null,
+        ?string $status = null,
+        ?string $appointmentDate = null,
+    ): int;
 
     /**
      * Lista los ASNs agendados con cita entre dos fechas (inclusive), para el calendario de andén.

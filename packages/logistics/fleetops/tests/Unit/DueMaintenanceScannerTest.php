@@ -87,9 +87,14 @@ function fakeOdometerRepository(array $kmByVehicle): OdometerRepository
             );
         }
 
-        public function listBy(?string $vehicleId = null, ?DateTimeImmutable $from = null, ?DateTimeImmutable $to = null): array
+        public function listBy(?string $vehicleId = null, ?DateTimeImmutable $from = null, ?DateTimeImmutable $to = null, ?int $limit = null, ?int $offset = null): array
         {
             return [];
+        }
+
+        public function countBy(?string $vehicleId = null, ?DateTimeImmutable $from = null, ?DateTimeImmutable $to = null): int
+        {
+            return 0;
         }
     };
 }

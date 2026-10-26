@@ -10,7 +10,7 @@ use Filament\Resources\Pages\ListRecords;
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource;
 
 /**
- * Listado de bultos en el admin.
+ * Listado de unidades físicas en el admin.
  */
 final class ListPhysicalUnits extends ListRecords
 {

@@ -16,5 +16,7 @@ final readonly class ListAsns implements Query
         public ?string $warehouseId = null,
         public ?string $status = null,
         public ?string $appointmentDate = null,
+        public ?int $limit = null,
+        public ?int $offset = null,
     ) {}
 }

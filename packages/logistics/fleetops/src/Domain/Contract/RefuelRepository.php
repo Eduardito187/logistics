@@ -22,9 +22,16 @@ interface RefuelRepository
     /**
      * Cargas filtradas por vehículo y/o rango de fechas (cualquiera opcional), ordenadas por fecha desc.
      *
+     * `$limit`/`$offset` son opcionales (null = sin recorte): bajan LIMIT/OFFSET a SQL al paginar.
+     *
      * @return list<Refuel>
      */
-    public function listBy(?string $vehicleId, ?DateTimeImmutable $from, ?DateTimeImmutable $to): array;
+    public function listBy(?string $vehicleId, ?DateTimeImmutable $from, ?DateTimeImmutable $to, ?int $limit = null, ?int $offset = null): array;
+
+    /**
+     * Cuenta las cargas que cumplen los MISMOS filtros que `listBy`, para el total de la paginación.
+     */
+    public function countBy(?string $vehicleId, ?DateTimeImmutable $from, ?DateTimeImmutable $to): int;
 
     /**
      * Todas las cargas de un vehículo ordenadas por fecha ascendente: base del análisis de consumo

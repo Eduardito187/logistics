@@ -8,6 +8,8 @@ namespace App\Models;
 use App\Enums\Role;
 use App\Models\Concerns\HasRoles;
 use Database\Factories\UserFactory;
+use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthentication;
+use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthenticationRecovery;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -16,16 +18,21 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
- * @property string|null $driver_id UUID del chofer de Fleet vinculado a esta cuenta (null si no es chofer).
- * @property string|null $node_id   UUID del nodo de tienda (network_nodes) al que pertenece la cuenta (null si no es tienda).
+ * @property string|null        $driver_id                         UUID del chofer de Fleet vinculado a esta cuenta (null si no es chofer).
+ * @property string|null        $node_id                           UUID del nodo de tienda (network_nodes) al que pertenece la cuenta (null si no es tienda).
+ * @property string|null        $email                             Email de la cuenta (login).
+ * @property string|null        $app_authentication_secret         Secreto TOTP cifrado en reposo (cast `encrypted`).
+ * @property array<string>|null $app_authentication_recovery_codes Códigos de recuperación cifrados (cast `encrypted:array`).
+ * @property Carbon|null        $two_factor_confirmed_at           Momento de confirmación del enrolamiento 2FA.
  */
 #[Fillable(['name', 'email', 'password', 'driver_id', 'node_id'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable implements FilamentUser
+class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable;
@@ -40,7 +47,57 @@ class User extends Authenticatable implements FilamentUser
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            // 2FA (TOTP / App MFA de Filament): secreto y códigos de recuperación cifrados en reposo.
+            'app_authentication_secret' => 'encrypted',
+            'app_authentication_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Devuelve el secreto TOTP (descifrado por el cast), o null si el usuario aún no tiene 2FA.
+     */
+    public function getAppAuthenticationSecret(): ?string
+    {
+        return $this->app_authentication_secret;
+    }
+
+    /**
+     * Guarda el secreto TOTP (el cast lo cifra en reposo). null desactiva el 2FA de app.
+     */
+    public function saveAppAuthenticationSecret(#[\SensitiveParameter] ?string $secret): void
+    {
+        $this->app_authentication_secret = $secret;
+        $this->save();
+    }
+
+    /**
+     * Nombre que identifica la cuenta en la app autenticadora: usamos el email del usuario.
+     */
+    public function getAppAuthenticationHolderName(): string
+    {
+        return (string) $this->email;
+    }
+
+    /**
+     * Devuelve los códigos de recuperación (descifrados por el cast), o null si no hay.
+     *
+     * @return array<string>|null
+     */
+    public function getAppAuthenticationRecoveryCodes(): ?array
+    {
+        return $this->app_authentication_recovery_codes;
+    }
+
+    /**
+     * Guarda los códigos de recuperación (el cast los cifra en reposo). null los elimina.
+     *
+     * @param array<string>|null $codes
+     */
+    public function saveAppAuthenticationRecoveryCodes(#[\SensitiveParameter] ?array $codes): void
+    {
+        $this->app_authentication_recovery_codes = $codes;
+        $this->save();
     }
 
     /**

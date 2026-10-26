@@ -17,7 +17,7 @@ use Psr\Log\LoggerInterface;
  *
  * A diferencia de los avisos al cliente (anclados a un envío, con cascada de canales), esta es una
  * alerta interna de operaciones que no cuelga de ningún envío, así que sale directo por el mailer de
- * Laravel (en dev, Mailpit). Si no hay email de supervisor configurado, deja el aviso en el log y no
+ * Laravel (sendmail nativo del host). Si no hay email de supervisor configurado, deja el aviso en el log y no
  * falla: el relay lo da por despachado.
  *
  * Idempotencia: el outbox reentrega at-least-once; un correo de resumen duplicado es de bajo impacto

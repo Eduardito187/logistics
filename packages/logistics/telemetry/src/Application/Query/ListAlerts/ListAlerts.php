@@ -15,5 +15,7 @@ final readonly class ListAlerts implements Query
         public ?string $vehicleId = null,
         public ?string $type = null,
         public ?bool $acknowledged = null,
+        public ?int $limit = null,
+        public ?int $offset = null,
     ) {}
 }

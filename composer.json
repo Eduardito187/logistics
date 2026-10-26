@@ -2,7 +2,7 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "dismac/logistics",
     "type": "project",
-    "description": "Dismac Logistics Platform — despacho, última milla y red logística. Laravel 13 + DDD, fuera del dominio SAP.",
+    "description": "DisTrack — plataforma logística interna de Dismac: despacho, última milla y red logística. Laravel 13 + DDD, fuera del dominio SAP.",
     "keywords": [
         "dismac",
         "logistics",
@@ -14,6 +14,7 @@
     "require": {
         "php": "^8.3",
         "ext-sodium": "*",
+        "bacon/bacon-qr-code": "^3.1",
         "filament/filament": "^4.0",
         "laravel/framework": "^13.17",
         "laravel/sanctum": "^4.0",
@@ -44,6 +45,7 @@
         "logistics/shipments": "^0.1",
         "logistics/telemetry": "^0.1",
         "logistics/tracking": "^0.1",
+        "pragmarx/google2fa-qrcode": "^4.0",
         "pusher/pusher-php-server": "^7.3"
     },
     "require-dev": {

@@ -25,11 +25,24 @@ interface OdometerRepository
     /**
      * Lista lecturas con filtros opcionales: por vehículo y por rango de la fecha de lectura.
      *
+     * `$limit`/`$offset` son opcionales (null = sin recorte): bajan LIMIT/OFFSET a SQL al paginar.
+     *
      * @return list<OdometerReading>
      */
     public function listBy(
         ?string $vehicleId = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
+        ?int $limit = null,
+        ?int $offset = null,
     ): array;
+
+    /**
+     * Cuenta las lecturas que cumplen los MISMOS filtros que `listBy`, para el total de la paginación.
+     */
+    public function countBy(
+        ?string $vehicleId = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
+    ): int;
 }

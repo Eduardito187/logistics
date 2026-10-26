@@ -20,7 +20,11 @@ return [
     |
     */
 
-    'driver' => env('SESSION_DRIVER', 'database'),
+    // A-3: el default es `redis`, NO `database`. Si en producción falta la env SESSION_DRIVER
+    // (deploy nuevo, secreto no inyectado), las sesiones NO deben caer silenciosamente a PostgreSQL
+    // —eso genera contención brutal bajo carga—. Redis/Valkey ya está siempre disponible. Los tests
+    // fuerzan `array` vía phpunit.xml, así que este default no los afecta.
+    'driver' => env('SESSION_DRIVER', 'redis'),
 
     /*
     |--------------------------------------------------------------------------
@@ -75,7 +79,10 @@ return [
     |
     */
 
-    'connection' => env('SESSION_CONNECTION'),
+    // A-4: con el driver `redis`, las sesiones usan una conexión Redis DEDICADA (`session`, DB 2),
+    // separada de la de colas/locks (`default`, DB 0) y de la de cache evictable (`cache`, DB 1).
+    // Así una política de evicción sobre la DB de cache nunca puede borrar sesiones. Ver config/database.php.
+    'connection' => env('SESSION_CONNECTION', 'session'),
 
     /*
     |--------------------------------------------------------------------------

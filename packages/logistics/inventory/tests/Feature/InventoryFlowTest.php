@@ -18,6 +18,7 @@ use Logistics\Inventory\Application\ReadModel\StockOnHandView;
 use Logistics\Inventory\Infrastructure\Persistence\Eloquent\Model\InventoryLotRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Application\ReadModel\Page;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
 /**
@@ -141,9 +142,11 @@ it('consulta el available-to-promise y lista lotes con filtro por dueño', funct
     ));
     expect($atp->availableToPromise)->toBe(50);
 
-    /** @var list<LotView> $lots */
-    $lots = $this->queries->ask(new ListLots(warehouseId: $this->warehouse, sku: 'ATP-1', ownerPartyId: $this->seller));
-    expect($lots)->toHaveCount(1)
-        ->and($lots[0]->ownerPartyId)->toBe($this->seller)
-        ->and($lots[0]->onHand)->toBe(80);
+    // ListLots ahora devuelve una Page (ítems de la página + total) con push-down a SQL.
+    /** @var Page<LotView> $lotsPage */
+    $lotsPage = $this->queries->ask(new ListLots(warehouseId: $this->warehouse, sku: 'ATP-1', ownerPartyId: $this->seller));
+    expect($lotsPage->items)->toHaveCount(1)
+        ->and($lotsPage->total)->toBe(1)
+        ->and($lotsPage->items[0]->ownerPartyId)->toBe($this->seller)
+        ->and($lotsPage->items[0]->onHand)->toBe(80);
 });

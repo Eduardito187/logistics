@@ -6,6 +6,7 @@ namespace Logistics\Execution\Presentation\Filament\Resources;
 
 use App\Filament\Pages\CustomerProfile;
 use BackedEnum;
+use DateTimeInterface;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
@@ -18,8 +19,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema as DbSchema;
+use Logistics\Execution\Application\Contract\RouteGeometryReader;
 use Logistics\Execution\Domain\ValueObject\RouteStatus;
 use Logistics\Execution\Domain\ValueObject\RouteStopStatus;
 use Logistics\Execution\Domain\ValueObject\ScanType;
@@ -31,6 +31,7 @@ use Logistics\Execution\Presentation\Filament\Resources\VehicleRouteResource\Pag
 use Logistics\Execution\Presentation\Filament\Resources\VehicleRouteResource\Pages\ViewVehicleRoute;
 use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
+use Throwable;
 
 /**
  * Admin de la ruta del chofer: vista LEGIBLE de la hoja de ruta por camión (paradas en orden y estado
@@ -86,7 +87,8 @@ final class VehicleRouteResource extends Resource
     }
 
     /**
-     * Título humano del registro: día de la ruta y placa del camión, nunca el UUID.
+     * Título humano del registro: día de la ruta y placa del camión, nunca el UUID del vehículo. Si el
+     * vehículo no tiene placa legible, se muestra solo la fecha de la ruta (jamás el id crudo).
      */
     public static function getRecordTitle(?Model $record): ?string
     {
@@ -94,9 +96,11 @@ final class VehicleRouteResource extends Resource
             return null;
         }
 
-        $plate = $record->vehicle->plate ?? $record->vehicle_id;
+        $plate = $record->vehicle->plate ?? null;
 
-        return "{$record->route_date} · {$plate}";
+        return ($plate !== null && $plate !== '')
+            ? "{$record->route_date} · {$plate}"
+            : (string) $record->route_date;
     }
 
     /**
@@ -336,30 +340,30 @@ final class VehicleRouteResource extends Resource
 
     /**
      * Línea planificada que sigue las calles, ya calculada y PERSISTIDA por el frente de Planning en
-     * planning_plans.route_geometry (jsonb). Acá solo se LEE (lectura cross-context de solo lectura, igual
-     * que la placa del camión vía Fleet): Ejecución nunca escribe sobre Planning. Así el mapa no depende de
-     * que el navegador consulte OSRM en cada apertura.
+     * planning_plans.route_geometry (jsonb). Ejecución nunca escribe sobre Planning por sí misma: si falta,
+     * se la pide a su servicio de aplicación. Así el mapa no depende de que el navegador consulte OSRM.
      *
      * La ruta de Ejecución y el plan comparten clave natural (vehículo + día): se empareja
      * execution_driver_routes(vehicle_id, route_date) con planning_plans(vehicle_id, plan_date).
      *
-     * Degrada con gracia: si la tabla o la columna todavía no existen (migración de Planning aún no aplicada
-     * o plan viejo), o la geometría no es usable, devuelve [] y el mapa cae al OSRM del navegador y, en
-     * última instancia, a la línea recta entre paradas.
+     * Se resuelve con el mismo lector que usa la API de la app (RouteGeometryReader): geometría persistida
+     * del plan → si el plan existe sin ella, Planificación la calcula y persiste al vuelo → línea recta entre
+     * las paradas de la ruta. Si aun así no hay línea (menos de dos puntos o error), devuelve [] y el mapa
+     * dibuja la recta de `planned` sin esperar a la red.
      *
      * @return list<array{0: float, 1: float}>
      */
     private static function plannedGeometry(VehicleRouteRecord $record): array
     {
-        if (!DbSchema::hasTable('planning_plans') || !DbSchema::hasColumn('planning_plans', 'route_geometry')) {
+        $date = $record->route_date instanceof DateTimeInterface
+            ? $record->route_date->format('Y-m-d')
+            : substr((string) $record->route_date, 0, 10);
+
+        try {
+            $raw = app(RouteGeometryReader::class)->forVehicleAndDate((string) $record->vehicle_id, $date);
+        } catch (Throwable) {
             return [];
         }
-
-        /** @var mixed $raw */
-        $raw = DB::table('planning_plans')
-            ->where('vehicle_id', $record->vehicle_id)
-            ->where('plan_date', $record->route_date)
-            ->value('route_geometry');
 
         return self::normalizeGeometry($raw);
     }

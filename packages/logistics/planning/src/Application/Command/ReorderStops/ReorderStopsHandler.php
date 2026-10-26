@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Planning\Application\Command\ReorderStops;
 
 use Logistics\Outbox\Application\RecordDomainEvents;
+use Logistics\Planning\Application\Service\PlanGeometryRefresher;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\ValueObject\PlanId;
@@ -24,6 +25,7 @@ final readonly class ReorderStopsHandler implements CommandHandler
     public function __construct(
         private PlanRepository $plans,
         private RecordDomainEvents $recordEvents,
+        private ?PlanGeometryRefresher $geometry = null,
     ) {}
 
     public function handle(Command $command): void
@@ -36,6 +38,9 @@ final readonly class ReorderStopsHandler implements CommandHandler
             ?? throw PlanningException::because("no existe el plan {$command->planId}");
 
         $plan->reorderStops($command->orderedShipmentIds);
+
+        // El reorden invalida la geometría: se recalcula con el nuevo orden (degrada sin romper).
+        $this->geometry?->refresh($plan);
 
         $this->plans->save($plan);
 

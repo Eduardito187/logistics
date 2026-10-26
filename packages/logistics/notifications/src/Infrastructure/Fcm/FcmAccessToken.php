@@ -116,6 +116,8 @@ final readonly class FcmAccessToken
 
         $response = Http::asForm()
             ->timeout($this->config['timeout'])
+            // B-2: tope del handshake de conexión con el token endpoint de Google, separado del timeout total.
+            ->connectTimeout(3)
             ->post($serviceAccount['token_uri'], [
                 'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
                 'assertion' => $jwt,

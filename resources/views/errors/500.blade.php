@@ -2,7 +2,11 @@
      consciente de sesión y sin filtrar detalles internos (sin mensaje de excepción ni stack). --}}
 @extends('errors.layout')
 
-@section('title', 'Error del servidor')
+@section('title', 'Error inesperado')
 @section('code', '500')
-@section('heading', 'Algo salió mal de nuestro lado')
-@section('message', 'Tuvimos un problema al procesar tu solicitud. Ya estamos en ello; intenta de nuevo en unos minutos.')
+@section('heading', 'Algo salió mal')
+@section('message', 'Tuvimos un problema de nuestro lado. Ya estamos al tanto; intenta de nuevo en unos minutos.')
+
+@section('extra-actions')
+    <a class="btn" href="{{ request()->url() }}">Reintentar</a>
+@endsection

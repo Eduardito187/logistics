@@ -11,11 +11,15 @@ use Logistics\FleetOps\Domain\Model\Expense;
 use Logistics\FleetOps\Domain\ValueObject\ExpenseCategory;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shared\Application\ReadModel\Page;
 
 /**
  * Devuelve la lista de gastos (filtrada) como proyecciones de lectura.
  *
- * @implements QueryHandler<ListExpenses, list<ExpenseView>>
+ * Con `limit` (al paginar) baja LIMIT/OFFSET a SQL y devuelve una Page (ítems + total). Sin `limit`,
+ * devuelve la lista completa, por compatibilidad.
+ *
+ * @implements QueryHandler<ListExpenses, list<ExpenseView>|Page<ExpenseView>>
  */
 final readonly class ListExpensesHandler implements QueryHandler
 {
@@ -24,9 +28,9 @@ final readonly class ListExpensesHandler implements QueryHandler
     ) {}
 
     /**
-     * @return list<ExpenseView>
+     * @return list<ExpenseView>|Page<ExpenseView>
      */
-    public function handle(Query $query): array
+    public function handle(Query $query): array | Page
     {
         assert($query instanceof ListExpenses);
 
@@ -34,8 +38,15 @@ final readonly class ListExpensesHandler implements QueryHandler
         $from = $query->from !== null ? new DateTimeImmutable($query->from) : null;
         $to = $query->to !== null ? new DateTimeImmutable($query->to) : null;
 
-        $expenses = $this->expenses->listBy($query->vehicleId, $category, $from, $to);
+        $views = array_map(
+            static fn (Expense $expense): ExpenseView => ExpenseView::fromDomain($expense),
+            $this->expenses->listBy($query->vehicleId, $category, $from, $to, $query->limit, $query->offset),
+        );
 
-        return array_map(static fn (Expense $expense): ExpenseView => ExpenseView::fromDomain($expense), $expenses);
+        if ($query->limit === null) {
+            return $views;
+        }
+
+        return new Page($views, $this->expenses->countBy($query->vehicleId, $category, $from, $to));
     }
 }

@@ -47,6 +47,8 @@ final class UnacknowledgedTelemetryAlertsWidget extends TableWidget
             ->heading(__('Unacknowledged telemetry alerts'))
             ->description(__('Fleet misuse alerts waiting to be acknowledged by operations.'))
             ->records(fn (): array => $this->rows())
+            // Carga diferida: la torre pinta primero y la tabla llega después, sin bloquear el render.
+            ->deferLoading()
             ->paginated([10, 25])
             ->emptyStateHeading(__('All alerts acknowledged'))
             ->emptyStateDescription(__('No open telemetry alerts right now.'))

@@ -21,7 +21,20 @@ interface AlertRepository
     /**
      * Lista alertas con filtros opcionales por vehículo, por tipo y por estado de reconocimiento.
      *
+     * `$limit`/`$offset` son opcionales (null = sin recorte): bajan LIMIT/OFFSET a SQL al paginar.
+     *
      * @return list<TelemetryAlert>
      */
-    public function listBy(?string $vehicleId = null, ?string $type = null, ?bool $acknowledged = null): array;
+    public function listBy(
+        ?string $vehicleId = null,
+        ?string $type = null,
+        ?bool $acknowledged = null,
+        ?int $limit = null,
+        ?int $offset = null,
+    ): array;
+
+    /**
+     * Cuenta las alertas que cumplen los MISMOS filtros que `listBy`, para el total de la paginación.
+     */
+    public function countBy(?string $vehicleId = null, ?string $type = null, ?bool $acknowledged = null): int;
 }

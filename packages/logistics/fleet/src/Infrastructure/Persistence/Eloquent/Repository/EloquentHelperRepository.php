@@ -37,6 +37,20 @@ final readonly class EloquentHelperRepository implements HelperRepository
         return $model instanceof HelperModel ? $this->mapper->toDomain($model) : null;
     }
 
+    public function findByIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $helpers = [];
+        foreach (HelperModel::query()->whereIn('id', array_values(array_unique($ids)))->get() as $model) {
+            $helpers[(string) $model->getKey()] = $this->mapper->toDomain($model);
+        }
+
+        return $helpers;
+    }
+
     public function all(): array
     {
         return array_values(HelperModel::query()

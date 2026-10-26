@@ -6,6 +6,7 @@ namespace Logistics\Shipments\Infrastructure\Providers;
 
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Config\Repository as Config;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
@@ -16,6 +17,7 @@ use Logistics\Shipments\Application\Command\ReceiveShipment\ReceiveShipmentHandl
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlot;
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlotHandler;
 use Logistics\Shipments\Application\Contract\MagentoOrderReader;
+use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentSpreadsheetParser;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipment;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipmentHandler;
@@ -28,6 +30,7 @@ use Logistics\Shipments\Application\Query\ListShipments\ListShipmentsHandler;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
 use Logistics\Shipments\Domain\Contract\Geocoder;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
+use Logistics\Shipments\Infrastructure\Geocoding\CachingGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\GeocodeScoring;
 use Logistics\Shipments\Infrastructure\Geocoding\NominatimGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\NullGeocoder;
@@ -37,6 +40,7 @@ use Logistics\Shipments\Infrastructure\Ingestion\DelegatingShipmentSpreadsheetPa
 use Logistics\Shipments\Infrastructure\Magento\HttpMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Magento\NullMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\EloquentShipmentRepository;
+use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentListReader;
 use Logistics\Shipments\Presentation\Console\PullMagentoOrdersCommand;
 use Logistics\Shipments\Presentation\Console\ReceiveManualShipmentCommand;
 
@@ -68,6 +72,10 @@ final class ShipmentsServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-shipments.php', 'logistics-shipments');
 
         $this->app->bind(ShipmentRepository::class, EloquentShipmentRepository::class);
+
+        // Lado de lectura (CQRS) del listado de envíos: implementación SQL que empuja los filtros a la
+        // base y no reconstruye el agregado (ver ShipmentListReader).
+        $this->app->bind(ShipmentListReader::class, DbShipmentListReader::class);
 
         // Parser de planillas de carga (SHP-06): detecta el formato por el contenido. Hoy procesa CSV
         // (librería estándar, sin dependencias) y reconoce binarios de Excel para devolver un error
@@ -106,7 +114,9 @@ final class ShipmentsServiceProvider extends ServiceProvider
             /** @var Config $config */
             $config = $app->make(Config::class);
 
-            return self::makeGeocoder($app->make(HttpClient::class), $app->make(CacheFactory::class), $config);
+            $geocoder = self::makeGeocoder($app->make(HttpClient::class), $app->make(CacheFactory::class), $config);
+
+            return self::withPersistentCache($geocoder, $app->make(ConnectionInterface::class), $config);
         });
 
         // Scorer del INGRESO (y del seeder): provisional, local y sin I/O. El ingreso corre dentro de un
@@ -163,6 +173,26 @@ final class ShipmentsServiceProvider extends ServiceProvider
         }
 
         return new NullGeocoder;
+    }
+
+    /**
+     * Envuelve el geocoder real con el decorador de DEDUP PERSISTENTE (tabla geocoding_cache), salvo que
+     * se deshabilite por config o que el geocoder sea el stub neutro (NullGeocoder): el stub no hace I/O
+     * ni resuelve nada real, así que cachear sus respuestas solo ensuciaría la tabla.
+     */
+    private static function withPersistentCache(Geocoder $geocoder, ConnectionInterface $connection, Config $config): Geocoder
+    {
+        $enabled = (bool) $config->get('logistics-shipments.geocoder.persistent_cache.enabled', true);
+        if (!$enabled || $geocoder instanceof NullGeocoder) {
+            return $geocoder;
+        }
+
+        $provider = $config->get('logistics-shipments.geocoder.driver');
+        $provider = is_string($provider) && $provider !== '' ? strtolower($provider) : 'nominatim';
+
+        $country = (string) $config->get('logistics-shipments.geocoder.nominatim.country_codes', 'bo');
+
+        return new CachingGeocoder($geocoder, $connection, $provider, $country);
     }
 
     public function boot(): void

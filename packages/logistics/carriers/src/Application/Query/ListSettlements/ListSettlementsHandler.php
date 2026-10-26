@@ -10,11 +10,16 @@ use Logistics\Carriers\Domain\Model\Settlement;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\CarrierRecord;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shared\Application\ReadModel\Page;
 
 /**
  * Devuelve las liquidaciones (filtrables por transportista y estado) como proyecciones de lectura.
  *
- * @implements QueryHandler<ListSettlements, list<SettlementView>>
+ * Con `limit` (al paginar) baja LIMIT/OFFSET a SQL y devuelve una Page (ítems + total). Sin `limit`,
+ * devuelve la lista completa, por compatibilidad. El nombre del transportista se resuelve EN LOTE solo
+ * para los ítems de la página (evita N+1).
+ *
+ * @implements QueryHandler<ListSettlements, list<SettlementView>|Page<SettlementView>>
  */
 final readonly class ListSettlementsHandler implements QueryHandler
 {
@@ -23,13 +28,13 @@ final readonly class ListSettlementsHandler implements QueryHandler
     ) {}
 
     /**
-     * @return list<SettlementView>
+     * @return list<SettlementView>|Page<SettlementView>
      */
-    public function handle(Query $query): array
+    public function handle(Query $query): array | Page
     {
         assert($query instanceof ListSettlements);
 
-        $settlements = $this->settlements->list($query->carrierId, $query->status);
+        $settlements = $this->settlements->list($query->carrierId, $query->status, $query->limit, $query->offset);
 
         // Resolución en lote de los nombres legibles de transportista para evitar N+1 en el listado.
         $carrierIds = array_values(array_unique(array_map(
@@ -45,12 +50,18 @@ final readonly class ListSettlementsHandler implements QueryHandler
             }
         }
 
-        return array_map(
+        $views = array_map(
             static fn (Settlement $settlement): SettlementView => SettlementView::fromDomain(
                 $settlement,
                 $carrierNames[$settlement->carrierId()] ?? null,
             ),
             $settlements,
         );
+
+        if ($query->limit === null) {
+            return $views;
+        }
+
+        return new Page($views, $this->settlements->countBy($query->carrierId, $query->status));
     }
 }

@@ -40,7 +40,6 @@ install: ## Setup inicial: build + composer install + key + migrate
 	@echo "  ✓ Instalación completa"
 	@echo "  → App:      http://localhost:8110"
 	@echo "  → Admin:    http://localhost:8110/admin"
-	@echo "  → Mailpit:  http://localhost:8055"
 	@echo ""
 
 up: ## Arranca todos los servicios en background

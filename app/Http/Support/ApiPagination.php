@@ -36,6 +36,79 @@ final class ApiPagination
     }
 
     /**
+     * Tamaño de página efectivo (= LIMIT a bajar a SQL). Default 50, acotado a [1, 200].
+     *
+     * Traductor HTTP → SQL: el controller lo pasa al query object → handler → reader, de modo que el
+     * recorte ocurra en la base y no materializando la colección completa en memoria.
+     */
+    public static function limit(Request $request): int
+    {
+        return self::perPage($request);
+    }
+
+    /**
+     * Desplazamiento efectivo (= OFFSET a bajar a SQL). En modo cursor se decodifica del token opaco;
+     * en modo página se calcula como `(page - 1) * per_page`.
+     */
+    public static function offset(Request $request): int
+    {
+        if ($request->has('cursor')) {
+            return self::decodeCursor(self::stringParam($request, 'cursor'));
+        }
+
+        return (self::page($request) - 1) * self::perPage($request);
+    }
+
+    /**
+     * Arma el envelope `data` + `meta` a partir de una página YA recortada por SQL y el total real
+     * (COUNT(*) aparte). A diferencia de `paginate()`, NO trocea nada: los `$pageItems` son exactamente
+     * las filas de la página pedida y `$total` el conteo completo del filtro.
+     *
+     * Reproduce EXACTAMENTE la forma de `paginate()` (modo cursor y modo página), para no romper el
+     * contrato de respuesta ya publicado.
+     *
+     * @param  list<array<string, mixed>>                                          $pageItems
+     * @return array{data: list<array<string, mixed>>, meta: array<string, mixed>}
+     */
+    public static function envelope(array $pageItems, int $total, Request $request): array
+    {
+        $perPage = self::perPage($request);
+        $count = \count($pageItems);
+
+        if ($request->has('cursor')) {
+            $offset = self::decodeCursor(self::stringParam($request, 'cursor'));
+            $next = $offset + $count;
+            $hasMore = $next < $total;
+
+            return [
+                'data' => array_values($pageItems),
+                'meta' => [
+                    'count' => $count,
+                    'per_page' => $perPage,
+                    'has_more' => $hasMore,
+                    'next_cursor' => $hasMore ? self::encodeCursor($next) : null,
+                ],
+            ];
+        }
+
+        $page = self::page($request);
+        $totalPages = $total > 0 ? (int) ceil($total / $perPage) : 1;
+
+        return [
+            'data' => array_values($pageItems),
+            'meta' => [
+                'count' => $count,
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'total_pages' => $totalPages,
+                'next_page' => $page < $totalPages ? $page + 1 : null,
+                'prev_page' => $page > 1 ? $page - 1 : null,
+            ],
+        ];
+    }
+
+    /**
      * Pagina la colección respetando el modo pedido. Devuelve el cuerpo listo: `data` + `meta`.
      *
      * @param  list<array<string, mixed>>                                          $items

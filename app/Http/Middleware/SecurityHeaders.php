@@ -12,9 +12,10 @@ use Symfony\Component\HttpFoundation\Response;
  * Cabeceras de seguridad del panel de administración (S-12).
  *
  * Endurece el admin contra clickjacking, sniffing y fuga de referrer, y fija una Content-Security-Policy
- * que permite exactamente lo que el panel usa: assets propios de Filament/Livewire, los CDN de Leaflet
- * y Leaflet-Geoman en unpkg, las teselas de mapas (el tileserver OSM self-host configurado en
- * config/maps.php más el tile público de OSM como fallback) y las fuentes del tema. El resto queda denegado.
+ * que permite exactamente lo que el panel usa: assets propios de Filament/Livewire, Leaflet y
+ * Leaflet-Geoman servidos LOCALES desde 'self' (vendorizados en public/vendor), las teselas del
+ * tileserver OSM self-host (config/maps.php; sin fallback público) y las fuentes del tema auto-hospedadas.
+ * Política de CERO CDN externo: cada recurso se sirve desde 'self'. El resto queda denegado.
  *
  * La CSP permite 'unsafe-inline' y 'unsafe-eval' en scripts a propósito: Alpine (base de Filament)
  * evalúa expresiones con `new Function`, y las páginas de mapa incrustan scripts inline. No se usan
@@ -31,16 +32,19 @@ final class SecurityHeaders
      */
     private const CONTENT_SECURITY_POLICY = [
         'default-src' => ["'self'"],
-        // Scripts propios + inline/eval (Alpine/Livewire) + Leaflet y Geoman desde unpkg.
-        'script-src' => ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://unpkg.com'],
-        // Estilos propios + inline (tema de marca, Leaflet) + CSS de Leaflet/Geoman desde unpkg. Las
-        // fuentes (Open Sans) se auto-hospedan desde assets propios ('self'); no se usa Google Fonts.
-        'style-src' => ["'self'", "'unsafe-inline'", 'https://unpkg.com'],
-        // Teselas de mapas (OSM público de fallback), íconos de marcador de Leaflet (unpkg) e imágenes
-        // embebidas (QR/etiquetas, blobs). El origen del tileserver self-host se agrega en runtime desde
-        // config/maps.php (ver contentSecurityPolicy): así el admin funciona con tiles propios sin editar el código.
-        'img-src' => ["'self'", 'data:', 'blob:', 'https://unpkg.com', 'https://tile.openstreetmap.org', 'https://*.tile.openstreetmap.org'],
-        // Fuentes propias (Open Sans auto-hospedado como woff2 bajo 'self') + data: para íconos inline.
+        // Scripts propios + inline/eval (Alpine/Livewire). Leaflet y Geoman se sirven LOCALES desde
+        // 'self' (vendorizados en public/vendor); sin ningún CDN externo (política de cero CDN).
+        'script-src' => ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        // Estilos propios + inline (tema de marca, Leaflet/Geoman locales). Las fuentes de marca
+        // (Barlow, Barlow Condensed, IBM Plex Mono) se auto-hospedan como woff2 desde assets propios
+        // ('self'); no se usa Google Fonts (ADR 013 "sin Google").
+        'style-src' => ["'self'", "'unsafe-inline'"],
+        // Imágenes propias, íconos de marcador de Leaflet (locales en public/vendor) e imágenes embebidas
+        // (QR/etiquetas, blobs) + data:. El origen del tileserver self-host se agrega en runtime desde
+        // config/maps.php (ver contentSecurityPolicy): tiles propios, sin fallback a tiles públicos de OSM.
+        'img-src' => ["'self'", 'data:', 'blob:'],
+        // Fuentes de marca (Barlow, Barlow Condensed, IBM Plex Mono) auto-hospedadas como woff2 bajo
+        // 'self' + data: para íconos inline. Sin Google Fonts ni ningún CDN.
         'font-src' => ["'self'", 'data:'],
         // Peticiones XHR/fetch de Livewire: mismo origen.
         'connect-src' => ["'self'"],

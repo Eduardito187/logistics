@@ -1,11 +1,10 @@
-{{-- Identidad Dismatec (del e-commerce): tipografía Open Sans (vía ->font()), rojo #e2231a como
-     primario (vía ->colors()) y estos acentos finos que replican el sistema de diseño del storefront:
+{{-- Identidad DisTrack (panel interno): rojo de marca #e30613 (vía ->colors()) y estos acentos finos:
      botones con peso fuerte y anillo de foco rojo suave. Sin barras ni líneas rojas. --}}
 <style>
     :root {
-        --dismatec-red: #e2231a;
-        --dismatec-red-hover: #e74b43;
-        --dismatec-ring: rgba(226, 35, 26, 0.14);
+        --dismatec-red: #e30613;
+        --dismatec-red-hover: #f2353f;
+        --dismatec-ring: rgba(227, 6, 19, 0.14);
     }
 
     /* Botones con el peso del storefront (CTAs en 700) */

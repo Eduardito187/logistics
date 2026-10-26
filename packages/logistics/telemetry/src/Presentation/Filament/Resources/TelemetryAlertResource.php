@@ -168,13 +168,6 @@ final class TelemetryAlertResource extends Resource
                     ->label(__('Vehicle'))
                     ->formatStateUsing(static fn (string $state): string => VehiclePlates::label($state) ?? '—')
                     ->sortable(),
-                // UUID crudo del vehículo: oculto por defecto, disponible como columna toggleable para
-                // depurar o cruzar datos. La placa legible vive en la columna "Vehicle" de arriba.
-                TextColumn::make('vehicle_uuid')
-                    ->label(__('Vehicle ID'))
-                    ->getStateUsing(static fn (AlertRecord $record): string => $record->vehicle_id)
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('type')
                     ->label(__('Type'))
                     ->badge()

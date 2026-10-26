@@ -28,7 +28,6 @@ Levanta todo, instala dependencias, genera `APP_KEY` y corre migraciones. Despu√
 | --- | --- |
 | API | http://localhost:8110/api/v1/health |
 | Admin | http://localhost:8110/admin |
-| Mailpit | http://localhost:8055 |
 | PostgreSQL | `localhost:5442` (usuario y clave `logistics`) |
 | Valkey | `localhost:6409` |
 

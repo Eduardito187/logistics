@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Infrastructure\Providers;
 
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Support\ServiceProvider;
@@ -26,6 +27,7 @@ use Logistics\SapConnector\Application\Query\ListPendingTransfers\ListPendingTra
 use Logistics\SapConnector\Domain\Contract\MaterialMappingRepository;
 use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Contract\StockTransferRepository;
+use Logistics\SapConnector\Infrastructure\Cache\CachingMaterialMappingRepository;
 use Logistics\SapConnector\Infrastructure\Outbox\SapMessageDispatcher;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\EloquentMaterialMappingRepository;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\EloquentStockTransferRepository;
@@ -64,7 +66,16 @@ final class SapConnectorServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-sap-connector.php', 'logistics-sap-connector');
 
-        $this->app->bind(MaterialMappingRepository::class, EloquentMaterialMappingRepository::class);
+        // El mapa sku ↔ material SAP es un catálogo de referencia muy estable y leído en cada traducción:
+        // se envuelve el repositorio Eloquent con el decorador de cache (Valkey), que cachea all() en forma
+        // primitiva (regla #7) y lo invalida al guardar. Las traducciones puntuales (findBySku/
+        // findByMaterial) y la escritura siguen yendo a la base.
+        $this->app->bind(MaterialMappingRepository::class, function ($app): MaterialMappingRepository {
+            return new CachingMaterialMappingRepository(
+                $app->make(EloquentMaterialMappingRepository::class),
+                $app->make(CacheRepository::class),
+            );
+        });
         $this->app->bind(StockTransferRepository::class, EloquentStockTransferRepository::class);
 
         // El puerto que habla SAP: cliente HTTP real si hay base_url configurada; si no, el stub Null,

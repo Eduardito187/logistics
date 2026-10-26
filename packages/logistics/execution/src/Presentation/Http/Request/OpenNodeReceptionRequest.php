@@ -8,7 +8,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 /**
  * Validación de la apertura de una recepción en nodo: anuncia el envío que llega a un nodo destino, por
- * qué corredor (tipo de nodo origen/destino) y qué bultos se esperan.
+ * qué corredor (tipo de nodo origen/destino) y qué productos se esperan.
  */
 final class OpenNodeReceptionRequest extends FormRequest
 {

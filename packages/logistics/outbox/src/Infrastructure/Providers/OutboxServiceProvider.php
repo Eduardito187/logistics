@@ -13,19 +13,26 @@ use Logistics\Outbox\Application\Command\DiscardMessage\DiscardMessageHandler;
 use Logistics\Outbox\Application\Command\RetryMessage\RetryMessageCommand;
 use Logistics\Outbox\Application\Command\RetryMessage\RetryMessageHandler;
 use Logistics\Outbox\Application\Contract\MessageDispatcher;
+use Logistics\Outbox\Application\Contract\OutboxMessageQueue;
+use Logistics\Outbox\Application\EnqueueOutbox\EnqueueOutboxBatch;
 use Logistics\Outbox\Application\Query\GetOutboxMessage\GetOutboxMessageHandler;
 use Logistics\Outbox\Application\Query\GetOutboxMessage\GetOutboxMessageQuery;
 use Logistics\Outbox\Application\Query\GetOutboxStats\GetOutboxStatsHandler;
 use Logistics\Outbox\Application\Query\GetOutboxStats\GetOutboxStatsQuery;
 use Logistics\Outbox\Application\Query\ListOutboxMessages\ListOutboxMessagesHandler;
 use Logistics\Outbox\Application\Query\ListOutboxMessages\ListOutboxMessagesQuery;
+use Logistics\Outbox\Application\RelayOutbox\ProcessOutboxMessage;
 use Logistics\Outbox\Application\RelayOutbox\RelayOutboxBatch;
+use Logistics\Outbox\Domain\Contract\OutboxMessageFinder;
 use Logistics\Outbox\Domain\Contract\OutboxReader;
 use Logistics\Outbox\Domain\Contract\OutboxStore;
 use Logistics\Outbox\Infrastructure\Dispatch\FanOutMessageDispatcher;
 use Logistics\Outbox\Infrastructure\Dispatch\RoutingMessageDispatcher;
 use Logistics\Outbox\Infrastructure\Persistence\Eloquent\EloquentOutboxReader;
 use Logistics\Outbox\Infrastructure\Persistence\Eloquent\EloquentOutboxStore;
+use Logistics\Outbox\Infrastructure\Queue\LaravelOutboxMessageQueue;
+use Logistics\Outbox\Presentation\Console\PruneOutboxCommand;
+use Logistics\Outbox\Presentation\Console\PumpOutboxCommand;
 use Logistics\Outbox\Presentation\Console\RelayOutboxCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 use Logistics\Shared\Domain\Clock\Clock;
@@ -55,6 +62,14 @@ final class OutboxServiceProvider extends ServiceProvider
 
         // Puerto de lectura (lado query de CQRS): consultas sin bloqueo para panel y API.
         $this->app->bind(OutboxReader::class, EloquentOutboxReader::class);
+
+        // Lookup puntual por id: lo resuelve el mismo store Eloquent (comparte lease_seconds).
+        $this->app->bind(OutboxMessageFinder::class, static function (Container $app): EloquentOutboxStore {
+            $store = $app->make(OutboxStore::class);
+            assert($store instanceof EloquentOutboxStore);
+
+            return $store;
+        });
 
         // Dispatcher que rutea por nombre de evento hacia el adapter de cada canal (config 'routes').
         // Mientras un canal no tenga adapter, cae al dispatcher por defecto (hoy NullMessageDispatcher).
@@ -99,6 +114,47 @@ final class OutboxServiceProvider extends ServiceProvider
                 $backoff !== [] ? $backoff : null,
             );
         });
+
+        // Procesador de UN mensaje (misma política de backoff/dead-letter): lo usa el job encolado por
+        // mensaje (C-2) y, por debajo, el relay sincrónico.
+        $this->app->bind(ProcessOutboxMessage::class, function (Container $app): ProcessOutboxMessage {
+            /** @var Repository $config */
+            $config = $app->make(Repository::class);
+
+            /** @var array<int, int> $backoff */
+            $backoff = (array) $config->get('logistics-outbox.relay.backoff_minutes', []);
+
+            return new ProcessOutboxMessage(
+                $app->make(OutboxStore::class),
+                $app->make(MessageDispatcher::class),
+                (int) $config->get('logistics-outbox.relay.max_attempts', 6),
+                $backoff !== [] ? $backoff : null,
+            );
+        });
+
+        // Puerto de encolado: encola un job por mensaje a la cola de su destino (C-2). El ruteo por cola
+        // aísla el head-of-line blocking entre destinos.
+        $this->app->bind(OutboxMessageQueue::class, function (Container $app): LaravelOutboxMessageQueue {
+            /** @var Repository $config */
+            $config = $app->make(Repository::class);
+
+            /** @var array<string, string> $routes */
+            $routes = (array) $config->get('logistics-outbox.pump.queue_routes', []);
+
+            return new LaravelOutboxMessageQueue(
+                $routes,
+                (string) $config->get('logistics-outbox.pump.default_queue', 'outbox'),
+            );
+        });
+
+        // Dispatcher (pump): toma el lote y lo encola. Se resuelve por autowiring de sus puertos.
+        $this->app->bind(EnqueueOutboxBatch::class, function (Container $app): EnqueueOutboxBatch {
+            return new EnqueueOutboxBatch(
+                $app->make(OutboxStore::class),
+                $app->make(OutboxMessageQueue::class),
+                $app->make(Clock::class),
+            );
+        });
     }
 
     public function boot(): void
@@ -118,7 +174,7 @@ final class OutboxServiceProvider extends ServiceProvider
         $registry->register(GetOutboxStatsQuery::class, GetOutboxStatsHandler::class);
 
         if ($this->app->runningInConsole()) {
-            $this->commands([RelayOutboxCommand::class]);
+            $this->commands([RelayOutboxCommand::class, PumpOutboxCommand::class, PruneOutboxCommand::class]);
         }
     }
 }

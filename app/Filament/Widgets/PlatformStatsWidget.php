@@ -9,12 +9,15 @@ use App\Models\User;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Resumen operativo de la plataforma: los números que importan de un vistazo.
  *
  * Lee conteos directos de las tablas (solo lectura); tolera tablas ausentes para no romper el panel.
+ * Los agregados (COUNT(*)/GROUP BY) se cachean 30s en Redis (auditoría A-1) para que el polling no
+ * dispare un scan completo por tabla en cada refresco. Se cachea siempre la forma primitiva (regla 7).
  */
 final class PlatformStatsWidget extends StatsOverviewWidget
 {
@@ -94,10 +97,17 @@ final class PlatformStatsWidget extends StatsOverviewWidget
         ];
     }
 
+    /** Vida del caché de KPIs, en segundos; por debajo del polling para absorberlo. */
+    private const KPI_TTL_SECONDS = 30;
+
     private function count(string $table): int
     {
         try {
-            return DB::table($table)->count();
+            return Cache::remember(
+                'control-tower:count:'.$table,
+                self::KPI_TTL_SECONDS,
+                static fn (): int => DB::table($table)->count(),
+            );
         } catch (\Throwable) {
             return 0;
         }
@@ -106,7 +116,11 @@ final class PlatformStatsWidget extends StatsOverviewWidget
     private function whereCount(string $table, string $column, string $value): int
     {
         try {
-            return DB::table($table)->where($column, $value)->count();
+            return Cache::remember(
+                'control-tower:whereCount:'.$table.':'.$column.':'.$value,
+                self::KPI_TTL_SECONDS,
+                static fn (): int => DB::table($table)->where($column, $value)->count(),
+            );
         } catch (\Throwable) {
             return 0;
         }
@@ -118,12 +132,16 @@ final class PlatformStatsWidget extends StatsOverviewWidget
     private function countByStatus(string $table): array
     {
         try {
-            return DB::table($table)
-                ->selectRaw('status, count(*) as c')
-                ->groupBy('status')
-                ->pluck('c', 'status')
-                ->map(fn ($v) => (int) $v)
-                ->all();
+            return Cache::remember(
+                'control-tower:countByStatus:'.$table.':-',
+                self::KPI_TTL_SECONDS,
+                static fn (): array => DB::table($table)
+                    ->selectRaw('status, count(*) as c')
+                    ->groupBy('status')
+                    ->pluck('c', 'status')
+                    ->map(static fn ($v): int => (int) $v)
+                    ->all(),
+            );
         } catch (\Throwable) {
             return [];
         }

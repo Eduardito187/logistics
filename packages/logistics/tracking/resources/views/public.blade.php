@@ -147,7 +147,7 @@
 
     @if (!empty($units))
         <div class="card">
-            <h2>Tus bultos ({{ count($units) }})</h2>
+            <h2>Tus productos ({{ count($units) }})</h2>
             <ul class="units">
                 @foreach ($units as $unit)
                     <li>

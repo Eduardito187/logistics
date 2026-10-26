@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Infrastructure\ReadModel;
 
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Collection;
 use Logistics\Execution\Application\Contract\StopEnrichmentReader;
 
 /**
@@ -13,7 +14,9 @@ use Logistics\Execution\Application\Contract\StopEnrichmentReader;
  * Resuelve EN LOTE (whereIn) para evitar N+1: una consulta a `shipments` (teléfono + referencia de
  * dirección) y otra a `shipment_lines` (líneas con miniatura). No usa los modelos Eloquent de shipments:
  * lee las columnas con el query builder, de modo que Ejecución no se acopla al dominio del otro contexto.
- * Todo es tolerante a datos ausentes (null); nunca inventa valores.
+ * El teléfono y la referencia de dirección son tolerantes a datos ausentes (null). El producto de cada
+ * línea, en cambio, SIEMPRE sale legible (nombre + SKU, con fallback a SKU y a "Producto"): nunca null
+ * ni vacío, porque es lo que el chofer lee en la pantalla de entrega.
  */
 final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
 {
@@ -37,17 +40,7 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
             ->orderBy('created_at')
             ->get(['shipment_id', 'sku', 'product_name', 'quantity', 'product_image_url']);
 
-        /** @var array<string, list<array{sku: string, name: string, quantity: int, image_url: string|null}>> $itemsByShipment */
-        $itemsByShipment = [];
-        foreach ($lines as $line) {
-            $shipmentId = (string) $line->shipment_id;
-            $itemsByShipment[$shipmentId][] = [
-                'sku' => (string) $line->sku,
-                'name' => (string) $line->product_name,
-                'quantity' => (int) $line->quantity,
-                'image_url' => $line->product_image_url !== null ? (string) $line->product_image_url : null,
-            ];
-        }
+        $itemsByShipment = $this->groupItemsByShipment($lines);
 
         $result = [];
         foreach ($headers as $header) {
@@ -60,5 +53,44 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
         }
 
         return $result;
+    }
+
+    /**
+     * Agrupa las líneas por envío, con el producto SIEMPRE legible (ver mapLine), listo para pantalla.
+     *
+     * @param  Collection<int, \stdClass>                                                                   $lines
+     * @return array<string, list<array{sku: string, name: string, quantity: int, image_url: string|null}>>
+     */
+    private function groupItemsByShipment(Collection $lines): array
+    {
+        $itemsByShipment = [];
+        foreach ($lines as $line) {
+            $shipmentId = (string) $line->shipment_id;
+            $itemsByShipment[$shipmentId][] = $this->mapLine($line);
+        }
+
+        return $itemsByShipment;
+    }
+
+    /**
+     * Mapea una línea a su forma de pantalla. Producto siempre legible: nombre + SKU. El SKU nunca es
+     * null (cae a ""); si falta el nombre se usa el SKU y, si faltan ambos, "Producto". Nunca null/vacío.
+     *
+     * @return array{sku: string, name: string, quantity: int, image_url: string|null}
+     */
+    private function mapLine(\stdClass $line): array
+    {
+        $sku = $line->sku !== null ? trim((string) $line->sku) : '';
+        $name = $line->product_name !== null ? trim((string) $line->product_name) : '';
+        if ($name === '') {
+            $name = $sku !== '' ? $sku : 'Producto';
+        }
+
+        return [
+            'sku' => $sku,
+            'name' => $name,
+            'quantity' => (int) $line->quantity,
+            'image_url' => $line->product_image_url !== null ? (string) $line->product_image_url : null,
+        ];
     }
 }

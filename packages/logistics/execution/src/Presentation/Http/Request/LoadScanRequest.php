@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Presentation\Http\Request;
 
 /**
- * Validación del escaneo de carga validada del bulto al vehículo. No añade campos propios.
+ * Validación del escaneo de carga validada del producto al vehículo. No añade campos propios.
  */
 final class LoadScanRequest extends ScanRequest
 {

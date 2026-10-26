@@ -9,7 +9,7 @@ use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparat
 use Logistics\Execution\Presentation\Http\Request\PreparationScanRequest;
 
 /**
- * POST /app — registra un escaneo de preparación de un bulto (puerta app).
+ * POST /app — registra un escaneo de preparación de un producto (puerta app).
  *
  * Idempotente por la clave de idempotencia (header o cuerpo): el reenvío offline no duplica el hecho.
  */

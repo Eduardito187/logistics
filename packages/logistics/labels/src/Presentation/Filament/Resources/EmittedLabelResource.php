@@ -21,6 +21,7 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\HtmlString;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
 use Logistics\Labels\Application\ReadModel\EmittedLabelView;
@@ -108,7 +109,8 @@ final class EmittedLabelResource extends Resource
                     ->sortable(),
                 TextColumn::make('sku')
                     ->label(__('SKU'))
-                    ->placeholder('—'),
+                    // El SKU es la identidad del producto en la etiqueta: sin él cae a "Product", nunca "—".
+                    ->placeholder(__('Product')),
                 TextColumn::make('line_number')
                     ->label(__('Line'))
                     ->placeholder('—'),
@@ -178,15 +180,24 @@ final class EmittedLabelResource extends Resource
                             ->label(__('Emitted until'))
                             ->native(false),
                     ])
-                    ->query(fn (Builder $query, array $data): Builder => $query
-                        ->when(
-                            $data['emitted_from'] ?? null,
-                            fn (Builder $q, string $date): Builder => $q->whereDate('created_at', '>=', $date),
-                        )
-                        ->when(
-                            $data['emitted_until'] ?? null,
-                            fn (Builder $q, string $date): Builder => $q->whereDate('created_at', '<=', $date),
-                        )),
+                    // Rango sobre timestamptz en vez de whereDate() (auditoría M-2): whereDate envuelve
+                    // la columna en DATE() y anula el índice. "Desde" es el inicio del día; "hasta" es el
+                    // inicio del día siguiente (rango medio-abierto) para incluir el día elegido completo.
+                    ->query(function (Builder $query, array $data): Builder {
+                        /** @var \Illuminate\Database\Eloquent\Builder<EmittedLabelRecord> $query */
+                        $from = $data['emitted_from'] ?? null;
+                        $until = $data['emitted_until'] ?? null;
+
+                        if (is_string($from) && $from !== '') {
+                            $query->where('created_at', '>=', Carbon::parse($from)->startOfDay());
+                        }
+
+                        if (is_string($until) && $until !== '') {
+                            $query->where('created_at', '<', Carbon::parse($until)->startOfDay()->addDay());
+                        }
+
+                        return $query;
+                    }),
             ])
             ->recordActions([
                 ViewAction::make(),
@@ -210,7 +221,7 @@ final class EmittedLabelResource extends Resource
             Section::make(__('Label'))
                 ->schema([
                     TextEntry::make('order_id')->label(__('Order')),
-                    TextEntry::make('sku')->label(__('SKU'))->placeholder('—'),
+                    TextEntry::make('sku')->label(__('SKU'))->placeholder(__('Product')),
                     TextEntry::make('line_number')->label(__('Line'))->placeholder('—'),
                     TextEntry::make('unit_label')->label(__('Unit (N of M)'))->badge()->color('info')->placeholder('—'),
                     TextEntry::make('piece_label')->label(__('Piece (N of M)'))->placeholder('—'),
@@ -297,7 +308,7 @@ final class EmittedLabelResource extends Resource
             $status = $view->revoked ? 'Revoked' : 'Active';
             $rows .= '<tr>'
                 .'<td class="py-1 pr-4">'.e((string) $view->lineNumber).'</td>'
-                .'<td class="py-1 pr-4">'.e($view->sku).'</td>'
+                .'<td class="py-1 pr-4">'.e($view->sku !== '' ? $view->sku : __('Product')).'</td>'
                 .'<td class="py-1 pr-4">'.e($unit ?? '—').'</td>'
                 .'<td class="py-1 pr-4">'.e(__($status)).'</td>'
                 .'</tr>';

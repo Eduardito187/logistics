@@ -158,7 +158,7 @@ final class NodeReception extends AggregateRoot
         }
 
         if ($this->status !== NodeReceptionStatus::Open) {
-            throw ExecutionException::because('no se pueden recibir bultos en una recepción ya conciliada');
+            throw ExecutionException::because('no se pueden recibir productos en una recepción ya conciliada');
         }
 
         $this->receivedUnits[] = ReceivedUnit::record($unitId, $geo, $device, $occurredAt, $idempotencyKey);

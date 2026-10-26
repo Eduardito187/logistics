@@ -264,6 +264,23 @@ final class DeliveryPlan extends AggregateRoot
     }
 
     /**
+     * Completa la geometría de un plan que quedó SIN ella (p. ej. publicado antes de que se calculara).
+     * Es un dato derivado para el mapa: no cambia paradas, orden ni ETA, por eso se admite en cualquier
+     * estado, incluso publicado. Si el plan ya tiene geometría no hace nada (no se reescribe una hoja de
+     * ruta congelada). Devuelve true si la adjuntó.
+     */
+    public function fillMissingRouteGeometry(RouteGeometry $geometry): bool
+    {
+        if ($this->geometry !== null) {
+            return false;
+        }
+
+        $this->geometry = $geometry;
+
+        return true;
+    }
+
+    /**
      * Recalcula el plan de carga: asigna a cada parada su carril en ORDEN INVERSO de entrega (el último
      * en entregarse se carga primero, al fondo; el primero en entregarse queda más a mano, cerca de la
      * puerta). Los carriles se llenan en bloques de LANE_SIZE bultos. No se puede sobre un plan publicado.

@@ -2,7 +2,7 @@
      consciente de sesión y sin filtrar detalles internos (sin mensaje de excepción ni stack). --}}
 @extends('errors.layout')
 
-@section('title', 'Método no permitido')
+@section('title', 'Acción no disponible')
 @section('code', '405')
-@section('heading', 'Acción no permitida')
-@section('message', 'Esta acción no está disponible por esta vía. Intenta de nuevo desde el panel.')
+@section('heading', 'No se puede hacer esto aquí')
+@section('message', 'Esta acción no está disponible por este medio. Vuelve e intenta de nuevo.')

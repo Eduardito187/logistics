@@ -30,10 +30,10 @@ final readonly class AutoPlanParameters
         public ?string $originNodeId = null,
     ) {
         if ($defaultWeightKgPerPackage <= 0.0) {
-            throw PlanningException::because('el peso por bulto por defecto debe ser mayor que cero');
+            throw PlanningException::because('el peso por producto por defecto debe ser mayor que cero');
         }
         if ($defaultVolumeM3PerPackage <= 0.0) {
-            throw PlanningException::because('el volumen por bulto por defecto debe ser mayor que cero');
+            throw PlanningException::because('el volumen por producto por defecto debe ser mayor que cero');
         }
         if ($capacitySlackRatio < 0.0 || $capacitySlackRatio >= 1.0) {
             throw PlanningException::because('la holgura de capacidad debe estar en [0, 1)');

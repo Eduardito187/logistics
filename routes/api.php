@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\MetricsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -32,6 +33,12 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->name('api.v1.')->group(function (): void {
     Route::get('health', HealthController::class)->name('health');
 });
+
+// ── Métricas Prometheus (/api/metrics): señales RED/USE para el monitoreo (auditoría M-6). ──
+// NO es una puerta de negocio: se protege dentro del controlador por token (METRICS_TOKEN) y/o lista
+// de IPs permitidas (METRICS_IP_ALLOWLIST), fail-closed. Sin credenciales de Sanctum/canal porque el
+// scraper es un consumidor de infraestructura, no un cliente de la API.
+Route::get('metrics', MetricsController::class)->name('api.metrics');
 
 // ── Autenticación de las tres puertas (login público + logout/refresh/me, devices, pings). ──
 // Fichero autocontenido: define sus propios grupos de puerta porque el login es público (solo
