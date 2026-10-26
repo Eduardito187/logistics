@@ -12,10 +12,12 @@
     <title>{{ $subject }}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
-    <table role="presentation" width="100%" style="border-collapse:collapse;border-spacing:0;background-color:#f4f4f5;padding:24px 0;">
+    <table role="presentation" style="border-collapse:collapse;border-spacing:0;width:100%;background-color:#f4f4f5;padding:24px 0;">
         <tr>
-            <td align="center" style="padding:0;">
-                <table role="presentation" width="600" style="border-collapse:collapse;border-spacing:0;max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+            <td style="padding:0;text-align:center;">
+                {{-- Tabla fantasma solo para Outlook (ignora max-width): fija el ancho a 600px sin usar el atributo width deprecado en la tabla real. --}}
+                <!--[if mso]><table role="presentation" width="600" style="width:600px;"><tr><td><![endif]-->
+                <table role="presentation" style="border-collapse:collapse;border-spacing:0;max-width:600px;width:100%;margin:0 auto;background-color:#ffffff;border-radius:8px;overflow:hidden;">
                     <tr>
                         <td style="background-color:#ffffff;padding:20px 28px;border-top:4px solid #E30613;">
                             <table role="presentation" style="border-collapse:collapse;border-spacing:0;">
@@ -38,10 +40,10 @@
 
                             @if (!empty($products))
                                 <h2 style="margin:24px 0 12px;font-size:16px;color:#111827;border-bottom:2px solid #E30613;padding-bottom:6px;">Tu pedido</h2>
-                                <table role="presentation" width="100%" style="border-collapse:collapse;border-spacing:0;">
+                                <table role="presentation" style="border-collapse:collapse;border-spacing:0;width:100%;">
                                     @foreach ($products as $product)
                                         <tr>
-                                            <td width="72" style="padding:8px 12px 8px 0;vertical-align:top;">
+                                            <td style="width:72px;padding:8px 12px 8px 0;vertical-align:top;">
                                                 @if (!empty($product['imageUrl']))
                                                     <img src="{{ $product['imageUrl'] }}" alt="{{ $product['name'] }}" width="64" height="64" style="display:block;width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;">
                                                 @else
@@ -68,6 +70,7 @@
                         </td>
                     </tr>
                 </table>
+                <!--[if mso]></td></tr></table><![endif]-->
             </td>
         </tr>
     </table>
