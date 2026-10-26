@@ -59,27 +59,25 @@ final class DbSlowQueriesCommand extends Command
 
         if ($rows === []) {
             $this->info('pg_stat_statements no tiene registros todavía.');
+        } else {
+            $this->table(
+                ['calls', 'total_ms', 'mean_ms', 'rows', 'query'],
+                array_map(static function (object $r): array {
+                    /** @var array<string, scalar|null> $row */
+                    $row = (array) $r;
+                    $query = (string) ($row['query'] ?? '');
 
-            return self::SUCCESS;
+                    return [
+                        (string) ($row['calls'] ?? ''),
+                        (string) ($row['total_ms'] ?? ''),
+                        (string) ($row['mean_ms'] ?? ''),
+                        (string) ($row['rows'] ?? ''),
+                        // Recorta la consulta para que la tabla sea legible en la terminal.
+                        mb_strlen($query) > 120 ? mb_substr($query, 0, 117).'...' : $query,
+                    ];
+                }, $rows),
+            );
         }
-
-        $this->table(
-            ['calls', 'total_ms', 'mean_ms', 'rows', 'query'],
-            array_map(static function (object $r): array {
-                /** @var array<string, scalar|null> $row */
-                $row = (array) $r;
-                $query = (string) ($row['query'] ?? '');
-
-                return [
-                    (string) ($row['calls'] ?? ''),
-                    (string) ($row['total_ms'] ?? ''),
-                    (string) ($row['mean_ms'] ?? ''),
-                    (string) ($row['rows'] ?? ''),
-                    // Recorta la consulta para que la tabla sea legible en la terminal.
-                    mb_strlen($query) > 120 ? mb_substr($query, 0, 117).'...' : $query,
-                ];
-            }, $rows),
-        );
 
         return self::SUCCESS;
     }

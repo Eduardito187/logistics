@@ -75,7 +75,7 @@ final class UnitNames
         $name = is_string($row->product_name) ? trim($row->product_name) : '';
         $sku = is_string($row->sku) ? trim($row->sku) : '';
 
-        // Fallback: nombre + SKU; si falta el nombre, el SKU; si falta todo, "Producto".
+        // Fallback: nombre + SKU; si falta el nombre, el SKU; si faltan ambos, "Producto".
         if ($name !== '' && $sku !== '') {
             $base = "{$name} · {$sku}";
         } elseif ($name !== '') {
@@ -94,6 +94,8 @@ final class UnitNames
     /**
      * Sufijo de la pieza física "(N de M)": la pieza fraccionada si la unidad está partida, o la unidad
      * N de M del pedido en caso contrario. Vacío si no hay nada que precisar.
+     *
+     * @param  object{piece_index: int|string|null, piece_total: int|string|null, unit_index: int|string|null, unit_total: int|string|null}  $row
      */
     private static function pieceSuffix(object $row): string
     {

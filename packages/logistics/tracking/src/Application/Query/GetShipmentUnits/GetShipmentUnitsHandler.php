@@ -104,7 +104,7 @@ final class GetShipmentUnitsHandler implements QueryHandler
 
     /**
      * Producto que contiene la unidad física. Nombre y SKU SIEMPRE legibles (rule del dueño): el SKU
-     * nunca es null (cae a ""), y si falta el nombre se usa el SKU y, si falta todo, "Producto". La foto
+     * nunca es null (cae a ""), y si falta el nombre se usa el SKU y, si faltan ambos, "Producto". La foto
      * sí puede faltar (null).
      *
      * @return array{sku: string, product_name: string, product_image_url: string|null, piece_index: int|null, piece_total: int|null}

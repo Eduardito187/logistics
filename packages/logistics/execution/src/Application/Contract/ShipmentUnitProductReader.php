@@ -9,7 +9,7 @@ namespace Logistics\Execution\Application\Contract;
  * posición "unidad N de M" / "pieza N de M"). Esos datos viven en shipments (shipment_units → shipment_lines).
  *
  * Solo lectura y en primitivos, igual que StopEnrichmentReader: no expone modelos de otro contexto. La
- * implementación resuelve todo el lote en UNA consulta. Los ids que no son bultos conocidos (p. ej. el id de
+ * implementación resuelve el lote completo en UNA consulta. Los ids que no son bultos conocidos (p. ej. el id de
  * una etiqueta escaneada) simplemente no aparecen en el mapa.
  */
 interface ShipmentUnitProductReader

@@ -15,6 +15,7 @@ use Logistics\Planning\Domain\ValueObject\GeoPoint;
 use Logistics\Planning\Domain\ValueObject\PlanDate;
 use Logistics\Planning\Domain\ValueObject\PlanStatus;
 use Logistics\Planning\Domain\ValueObject\PlanStrategy;
+use Logistics\Planning\Domain\ValueObject\RouteGeometry;
 use Throwable;
 
 /**
@@ -44,29 +45,56 @@ final readonly class PlanGeometryRefresher
      */
     public function refresh(DeliveryPlan $plan, bool $onlyIfMissing = false): bool
     {
-        $missing = $plan->geometry() === null;
-        if ($onlyIfMissing && !$missing) {
-            return false;
-        }
-        if ($plan->status() === PlanStatus::Published && !$missing) {
+        if ($this->shouldSkip($plan, $onlyIfMissing)) {
             return false;
         }
 
-        try {
-            $points = $this->pointsFor($plan);
-            if ($points === []) {
-                return false;
-            }
-
-            $geometry = $this->geometryProvider->geometryFor($points);
-        } catch (Throwable) {
-            return false;
-        }
-
+        $geometry = $this->computeGeometry($plan);
         if ($geometry === null) {
             return false;
         }
 
+        return $this->attachGeometry($plan, $geometry);
+    }
+
+    /**
+     * ¿Se saltea el plan? Con `$onlyIfMissing` no se toca un plan que ya tiene geometría; un plan
+     * publicado solo se completa cuando le falta (su hoja ya está congelada).
+     */
+    private function shouldSkip(DeliveryPlan $plan, bool $onlyIfMissing): bool
+    {
+        $missing = $plan->geometry() === null;
+        if ($onlyIfMissing && !$missing) {
+            return true;
+        }
+
+        return $plan->status() === PlanStatus::Published && !$missing;
+    }
+
+    /**
+     * Calcula la geometría por calles del plan a partir de sus puntos actuales. Devuelve null si no hay
+     * puntos suficientes o si el proveedor/lectura de coordenadas falla (nunca rompe al llamador).
+     */
+    private function computeGeometry(DeliveryPlan $plan): ?RouteGeometry
+    {
+        try {
+            $points = $this->pointsFor($plan);
+            if ($points === []) {
+                return null;
+            }
+
+            return $this->geometryProvider->geometryFor($points);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Adjunta la geometría al plan (sin persistir): un plan publicado solo rellena lo que le falte; el
+     * resto la reemplaza. Devuelve true si adjuntó algo.
+     */
+    private function attachGeometry(DeliveryPlan $plan, RouteGeometry $geometry): bool
+    {
         if ($plan->status() === PlanStatus::Published) {
             return $plan->fillMissingRouteGeometry($geometry);
         }

@@ -225,8 +225,8 @@ final class TestDataVarietySeeder extends Seeder
         }
 
         $point = $shipment->address()->geoPoint;
-        $lat = $point?->lat ?? -17.78;
-        $lng = $point?->lng ?? -63.18;
+        $lat = $point->lat ?? -17.78;
+        $lng = $point->lng ?? -63.18;
         $cdLat = -17.7490;
         $cdLng = -63.1540;
         $key = "variety-{$date}-{$shipmentId}";

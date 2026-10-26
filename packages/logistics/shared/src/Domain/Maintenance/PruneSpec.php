@@ -10,7 +10,7 @@ use InvalidArgumentException;
 /**
  * Especificación de una poda de retención sobre una tabla de alta rotación.
  *
- * Describe QUÉ borrar sin acoplarse al motor: una ventana temporal (todo lo anterior a `cutoff` en la
+ * Describe QUÉ borrar sin acoplarse al motor: una ventana temporal (cada registro anterior a `cutoff` en la
  * columna `timeColumn`) y, opcionalmente, un filtro por estado (`statusColumn IN statusValues`). El
  * adaptador de infraestructura traduce esto a un borrado CHUNKED, idempotente y respetuoso con los
  * índices temporales.

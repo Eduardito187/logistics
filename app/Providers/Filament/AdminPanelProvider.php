@@ -35,7 +35,7 @@ use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
 /**
  * Admin web de la plataforma: datos maestros, reglas, flota, reconciliación.
  *
- * Todo texto visible va en inglés (misma convención que el admin de dis-commerce).
+ * Cada texto visible va en inglés (misma convención que el admin de dis-commerce).
  * El tablero de planificación y la torre de control serán páginas React aparte (ADR 005).
  */
 final class AdminPanelProvider extends PanelProvider
@@ -61,7 +61,7 @@ final class AdminPanelProvider extends PanelProvider
             // inline sin necesitar bacon/bacon-qr-code ni la extensión imagick.
             //
             // El MFA queda OPCIONAL por usuario (tercer argumento isRequired = false, el valor por
-            // defecto): cada quien decide si lo activa desde su perfil. Para FORZARLO en todo el panel
+            // defecto): cada quien decide si lo activa desde su perfil. Para FORZARLO en el panel completo
             // basta pasar `isRequired: true` aquí (o un Closure configurable); Filament entonces obliga
             // a configurarlo tras el login. No se incluye Email authentication: requeriría que User
             // implemente HasEmailAuthentication, fuera del alcance de este cambio.

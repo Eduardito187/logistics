@@ -55,7 +55,7 @@ final readonly class NodeReceptionView
         foreach (array_values(array_unique([...$reception->expectedUnitIds(), ...$received, ...$surplus])) as $unitId) {
             $product = $products[$unitId] ?? null;
             // Nombre y SKU SIEMPRE legibles (regla del dueño): el SKU nunca es null (cae a ""), y si
-            // falta el nombre se usa el SKU y, si falta todo, "Producto". La foto y los índices sí
+            // falta el nombre se usa el SKU y, si faltan ambos, "Producto". La foto y los índices sí
             // pueden faltar (null) para un id que no resuelve a una unidad conocida.
             $sku = isset($product['sku']) && is_string($product['sku']) ? trim($product['sku']) : '';
             $name = isset($product['product_name']) && is_string($product['product_name']) ? trim($product['product_name']) : '';

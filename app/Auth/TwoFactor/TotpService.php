@@ -84,16 +84,18 @@ final class TotpService
         $counter = intdiv(time(), self::PERIOD);
         $window = max(0, $window);
 
+        $matches = false;
         for ($offset = -$window; $offset <= $window; $offset++) {
             $candidate = $this->hotp($key, $counter + $offset);
 
             // Comparación en tiempo constante para no filtrar información por timing.
             if (hash_equals($candidate, $code)) {
-                return true;
+                $matches = true;
+                break;
             }
         }
 
-        return false;
+        return $matches;
     }
 
     /**
@@ -137,7 +139,7 @@ final class TotpService
         foreach (str_split($bits, 5) as $chunk) {
             // El último grupo se rellena a 5 bits con ceros.
             $chunk = str_pad($chunk, 5, '0', STR_PAD_RIGHT);
-            $output .= self::ALPHABET[bindec($chunk)];
+            $output .= self::ALPHABET[(int) bindec($chunk)];
         }
 
         return $output;
@@ -170,7 +172,7 @@ final class TotpService
         foreach (str_split($bits, 8) as $byte) {
             // Solo tomamos grupos completos de 8 bits; el resto son bits de relleno.
             if (strlen($byte) === 8) {
-                $output .= chr(bindec($byte));
+                $output .= chr((int) bindec($byte));
             }
         }
 

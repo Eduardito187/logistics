@@ -15,7 +15,7 @@ use Symfony\Component\HttpFoundation\Response;
  * que permite exactamente lo que el panel usa: assets propios de Filament/Livewire, Leaflet y
  * Leaflet-Geoman servidos LOCALES desde 'self' (vendorizados en public/vendor), las teselas del
  * tileserver OSM self-host (config/maps.php; sin fallback público) y las fuentes del tema auto-hospedadas.
- * Política de CERO CDN externo: todo se sirve desde 'self'. El resto queda denegado.
+ * Política de CERO CDN externo: cada recurso se sirve desde 'self'. El resto queda denegado.
  *
  * La CSP permite 'unsafe-inline' y 'unsafe-eval' en scripts a propósito: Alpine (base de Filament)
  * evalúa expresiones con `new Function`, y las páginas de mapa incrustan scripts inline. No se usan

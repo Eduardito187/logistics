@@ -134,6 +134,15 @@ final class TodayScenarioSeeder extends Seeder
     /** Minutos de atención por parada (bajar, firmar, cobrar) que se suman al manejo. */
     private const int SERVICE_MINUTES = 25;
 
+    /** Sufijo de unidad para los desplazamientos temporales (DateTimeImmutable::modify). */
+    private const string MINUTES_SUFFIX = ' minutes';
+
+    /** Franja horaria de entrega reutilizada en los pedidos de ejemplo (09:00). */
+    private const string SLOT_0900 = '09:00';
+
+    /** Franja horaria de entrega reutilizada en los pedidos de ejemplo (10:00). */
+    private const string SLOT_1000 = '10:00';
+
     private DateTimeZone $tz;
 
     private DateTimeImmutable $now;
@@ -567,7 +576,9 @@ final class TodayScenarioSeeder extends Seeder
         $earliest = new DateTimeImmutable($this->date.' 07:00:00', $this->tz);
         $latest = new DateTimeImmutable($this->date.' 16:30:00', $this->tz);
 
-        $depart = $target < $earliest ? $earliest : ($target > $latest ? $latest : $target);
+        // Acotación de la salida a la jornada, sin anidar ternarios: primero se topa por arriba y luego por abajo.
+        $cappedToLatest = $target > $latest ? $latest : $target;
+        $depart = $target < $earliest ? $earliest : $cappedToLatest;
         $minute = (int) $depart->format('i');
 
         return $depart->setTime((int) $depart->format('H'), $minute - ($minute % 5), 0);
@@ -650,7 +661,7 @@ final class TodayScenarioSeeder extends Seeder
      */
     private function settledAt(?DateTimeImmutable $eta, int $index): DateTimeImmutable
     {
-        $cap = $this->now->modify('-'.(($this->completedStops() - $index) * 12).' minutes');
+        $cap = $this->now->modify('-'.(($this->completedStops() - $index) * 12).self::MINUTES_SUFFIX);
         $candidate = ($eta ?? $cap)->setTimezone($this->tz)->modify('+4 minutes');
 
         return $candidate < $cap ? $candidate : $cap;
@@ -701,7 +712,7 @@ final class TodayScenarioSeeder extends Seeder
             $delivery->recordPreparationScan($unitId, $cdGeo, $device, $loadedAt->modify("+{$u} minutes"), "{$key}-prep-{$u}");
         }
         foreach ($units as $u => $unitId) {
-            $delivery->recordLoadScan($unitId, $cdGeo, $device, $loadedAt->modify('+'.(30 + $u).' minutes'), "{$key}-load-{$u}");
+            $delivery->recordLoadScan($unitId, $cdGeo, $device, $loadedAt->modify('+'.(30 + $u).self::MINUTES_SUFFIX), "{$key}-load-{$u}");
         }
 
         $settled = $stop->settledAt();
@@ -906,8 +917,8 @@ final class TodayScenarioSeeder extends Seeder
     /**
      * Tienda: traspasos CD → tienda que dejan la recepción ABIERTA esperando el escaneo de bultos
      * (recepción de mercadería). En la etapa en curso, el ÚLTIMO envío además se recibe y concilia:
-     * queda como "Recojo en tienda" listo para entregar en mostrador. En la etapa planificada, todos
-     * quedan pendientes para que la tienda reciba desde cero.
+     * queda como "Recojo en tienda" listo para entregar en mostrador. En la etapa planificada, cada
+     * envío queda pendiente para que la tienda reciba desde cero.
      *
      * @param list<Shipment> $shipments
      */
@@ -962,9 +973,9 @@ final class TodayScenarioSeeder extends Seeder
             $delivery->recordPreparationScan($unitId, $cdGeo, $driverDevice, $morning->modify("+{$u} minutes"), "{$key}-prep-{$u}");
         }
         foreach ($units as $u => $unitId) {
-            $delivery->recordLoadScan($unitId, $cdGeo, $driverDevice, $morning->modify('+'.(20 + $u).' minutes'), "{$key}-load-{$u}");
+            $delivery->recordLoadScan($unitId, $cdGeo, $driverDevice, $morning->modify('+'.(20 + $u).self::MINUTES_SUFFIX), "{$key}-load-{$u}");
         }
-        $arrival = $morning->modify('+'.(75 + 20 * $n).' minutes');
+        $arrival = $morning->modify('+'.(75 + 20 * $n).self::MINUTES_SUFFIX);
         foreach ($units as $u => $unitId) {
             $delivery->recordUnloadScan($storeId, $unitId, $storeGeo, $driverDevice, $arrival->modify("+{$u} minutes"), "{$key}-unload-{$u}");
         }
@@ -1012,7 +1023,7 @@ final class TodayScenarioSeeder extends Seeder
                 (float) $store->lng,
                 self::DEVICE_ID,
                 (string) $tienda->getKey(),
-                $arrival->modify('+'.(10 + $u).' minutes')->format(DateTimeInterface::ATOM),
+                $arrival->modify('+'.(10 + $u).self::MINUTES_SUFFIX)->format(DateTimeInterface::ATOM),
                 "{$key}-receive-{$u}",
             ));
             $this->bus->dispatch(new ProjectUnitExecutionEvent('execution.node_reception_recorded', $shipmentId, $unitId, $arrival->modify('+10 minutes')->format(DateTimeInterface::ATOM), self::STORE_CODE));
@@ -1047,15 +1058,15 @@ final class TodayScenarioSeeder extends Seeder
                 [['COL-QUEEN-ORT', 'Colchón ortopédico Queen', 1, 2890.00], ['BAS-QUEEN', 'Base box Queen', 1, 1450.00]]),
             $this->order('MAGENTO', "SCZ-{$tag}-02", 'Valeria Rojas Suárez', '6543219 SC', '+591 71634512', 'valeria.rojas@hotmail.com',
                 'Av. San Martín 600, Barrio Equipetrol, Santa Cruz de la Sierra',
-                'Edificio Torre Equipetrol, piso 7, oficina 7B (dejar en recepción si no está)', -17.7633, -63.1966, ['09:00', '13:00'],
+                'Edificio Torre Equipetrol, piso 7, oficina 7B (dejar en recepción si no está)', -17.7633, -63.1966, [self::SLOT_0900, '13:00'],
                 [['TV-SAMS-QN55', 'Televisor Samsung 55" QLED 4K', 1, 6990.00]]),
             $this->order('SAP', "SCZ-{$tag}-03", 'Gabriela Méndez Antelo', '8123456 SC', '+591 75566778', 'gabriela.mendez@gmail.com',
                 'Av. Irala 2do anillo N° 452, Santa Cruz de la Sierra',
-                'Edificio Los Tajibos, depto 3A, timbre del medio', -17.7898, -63.1868, ['09:00', '14:00'],
+                'Edificio Los Tajibos, depto 3A, timbre del medio', -17.7898, -63.1868, [self::SLOT_0900, '14:00'],
                 [['LAP-HP-15', 'Laptop HP 15" Core i5', 1, 5490.00], ['MOU-LOG-M170', 'Mouse inalámbrico Logitech', 1, 120.00]]),
             $this->order('STORE', "SCZ-{$tag}-04", 'Rodrigo Añez Paz', '5698741 SC', '+591 76321458', 'rodrigo.anez@yahoo.com',
                 'Calle Las Lilas 245, Barrio Urbarí, Santa Cruz de la Sierra',
-                'Portón café de madera, perro bravo: llamar antes de tocar', -17.7958, -63.2005, ['10:00', '15:00'],
+                'Portón café de madera, perro bravo: llamar antes de tocar', -17.7958, -63.2005, [self::SLOT_1000, '15:00'],
                 [['LAV-LG-12', 'Lavadora LG 12 kg carga frontal', 1, 4790.00]]),
             $this->order('MAGENTO', "SCZ-{$tag}-05", 'Carolina Justiniano Vaca', '4789632 SC', '+591 70851236', 'carolina.justiniano@gmail.com',
                 'Av. Roca y Coronado 3er anillo externo, Barrio Las Palmas, Santa Cruz de la Sierra',
@@ -1095,14 +1106,14 @@ final class TodayScenarioSeeder extends Seeder
                 $receptionAddress, 'Retira el titular con CI', $lat, $lng, ['15:00', '20:00'],
                 [['CEL-SAMS-A55', 'Celular Samsung Galaxy A55 256 GB', 1, 3490.00], ['AUD-JBL-T520', 'Audífonos JBL Tune 520BT', 1, 450.00]]),
             $this->order('SAP', "SCZ-{$tag}-T2", 'Natalia Guzmán Rivero', '5120983 SC', '+591 70123498', 'natalia.guzman@gmail.com',
-                $receptionAddress, 'Retira con autorización firmada', $lat, $lng, ['09:00', '18:00'],
+                $receptionAddress, 'Retira con autorización firmada', $lat, $lng, [self::SLOT_0900, '18:00'],
                 [['ASP-ELE-20', 'Aspiradora Electrolux 2000 W', 1, 1190.00]]),
             $this->order('EXCEL', "SCZ-{$tag}-T3", 'Óscar Peña Gutiérrez', '6843217 SC', '+591 76540981', null,
-                $receptionAddress, 'Retira el titular con CI', $lat, $lng, ['10:00', '19:00'],
+                $receptionAddress, 'Retira el titular con CI', $lat, $lng, [self::SLOT_1000, '19:00'],
                 [['PLA-SAM-32', 'Plancha a vapor Samsung', 1, 320.00], ['OLL-REC-6L', 'Olla arrocera 6 L', 1, 410.00]]),
             // Recojo en tienda (en curso llega recibido y conciliado; planificado queda pendiente).
             $this->order('SAP', "SCZ-{$tag}-T4", 'Lucía Paz Moreno', '7456321 SC', '+591 78965412', 'lucia.paz@hotmail.com',
-                $pickupAddress, 'Retira su esposo, Jorge Paz (autorizado)', $lat, $lng, ['10:00', '20:00'],
+                $pickupAddress, 'Retira su esposo, Jorge Paz (autorizado)', $lat, $lng, [self::SLOT_1000, '20:00'],
                 [['FRE-PHI-AIR', 'Freidora de aire Philips 4,1 L', 1, 990.00]]),
         ];
     }

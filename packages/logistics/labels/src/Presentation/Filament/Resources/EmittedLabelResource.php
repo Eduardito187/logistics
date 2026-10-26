@@ -182,7 +182,7 @@ final class EmittedLabelResource extends Resource
                     ])
                     // Rango sobre timestamptz en vez de whereDate() (auditoría M-2): whereDate envuelve
                     // la columna en DATE() y anula el índice. "Desde" es el inicio del día; "hasta" es el
-                    // inicio del día siguiente (rango medio-abierto) para incluir todo el día elegido.
+                    // inicio del día siguiente (rango medio-abierto) para incluir el día elegido completo.
                     ->query(function (Builder $query, array $data): Builder {
                         /** @var \Illuminate\Database\Eloquent\Builder<EmittedLabelRecord> $query */
                         $from = $data['emitted_from'] ?? null;

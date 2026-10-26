@@ -28,7 +28,7 @@ use Illuminate\Validation\Rules\Password as PasswordRule;
  *
  * El reseteo nativo de Laravel/Filament es por ENLACE firmado; el dueño del proyecto quiere
  * un flujo por CÓDIGO. Para evitar la ruta `password-reset/reset` (que Filament fuerza con
- * middleware `signed`), todo el flujo vive en UNA sola página de dos pasos, enlazada desde el
+ * middleware `signed`), el flujo completo vive en UNA sola página de dos pasos, enlazada desde el
  * login por `->passwordReset(RequestPasswordOtp::class)`:
  *
  *   Paso 1: el usuario ingresa su email  → PasswordOtpService::issue($email) (envía el código).
@@ -71,11 +71,15 @@ class RequestPasswordOtp extends SimplePage
     /**
      * Único manejador de envío del formulario; ramifica según el paso actual.
      */
-    public function submit(): mixed
+    public function submit(): void
     {
-        return $this->codeSent
-            ? $this->resetPassword()
-            : $this->sendCode();
+        if ($this->codeSent) {
+            $this->resetPassword();
+
+            return;
+        }
+
+        $this->sendCode();
     }
 
     /**
@@ -248,11 +252,7 @@ class RequestPasswordOtp extends SimplePage
 
     public function getSubheading(): string | Htmlable | null
     {
-        if (!filament()->hasLogin()) {
-            return null;
-        }
-
-        return $this->loginAction;
+        return __('Enter your email and we will send you a code to reset your password.');
     }
 
     /**

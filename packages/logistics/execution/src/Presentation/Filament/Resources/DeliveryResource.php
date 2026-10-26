@@ -708,7 +708,7 @@ final class DeliveryResource extends Resource
 
     /**
      * Etiqueta humana del producto: pedido + nombre del producto y su SKU (+ pieza física N de M),
-     * nunca el UUID ni vacío. Si falta el nombre se usa el SKU y, si falta todo, "Producto".
+     * nunca el UUID ni vacío. Si falta el nombre se usa el SKU y, si no hay ninguno, "Producto".
      */
     private static function unitLabelFor(PhysicalUnitRecord $unit): string
     {
@@ -730,14 +730,12 @@ final class DeliveryResource extends Resource
         if ($name !== '' && $sku !== '') {
             return "{$name} · {$sku}";
         }
-        if ($name !== '') {
-            return $name;
-        }
-        if ($sku !== '') {
-            return $sku;
-        }
 
-        return 'Producto';
+        return match (true) {
+            $name !== '' => $name,
+            $sku !== '' => $sku,
+            default => 'Producto',
+        };
     }
 
     /**

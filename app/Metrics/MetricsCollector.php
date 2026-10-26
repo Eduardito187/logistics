@@ -34,10 +34,8 @@ final class MetricsCollector
      */
     private function queues(): array
     {
-        /** @var array<string, string> $queues */
-        $queues = config('observability.metrics.queues', []);
-
-        return $queues;
+        /** @var array<string, string> */
+        return config('observability.metrics.queues', []);
     }
 
     /**

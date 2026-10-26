@@ -92,19 +92,18 @@ final class PasswordOtpService
             return false;
         }
 
-        if (Hash::check($code, (string) $otp->code_hash)) {
-            return true;
+        $valid = Hash::check($code, (string) $otp->code_hash);
+        if (!$valid) {
+            // Intento fallido: suma uno y, si alcanza el máximo, invalida el código.
+            $attempts = (int) $otp->attempts + 1;
+            if ($attempts >= self::MAX_ATTEMPTS) {
+                DB::table('password_reset_otps')->where('id', $otp->id)->delete();
+            } else {
+                DB::table('password_reset_otps')->where('id', $otp->id)->update(['attempts' => $attempts]);
+            }
         }
 
-        // Intento fallido: suma uno y, si alcanza el máximo, invalida el código.
-        $attempts = (int) $otp->attempts + 1;
-        if ($attempts >= self::MAX_ATTEMPTS) {
-            DB::table('password_reset_otps')->where('id', $otp->id)->delete();
-        } else {
-            DB::table('password_reset_otps')->where('id', $otp->id)->update(['attempts' => $attempts]);
-        }
-
-        return false;
+        return $valid;
     }
 
     /**
@@ -134,6 +133,9 @@ final class PasswordOtpService
 
     /**
      * Devuelve el OTP vigente (no expirado) más reciente del email, o null si no hay.
+     */
+    /**
+     * @return object{id: int, email: string, code_hash: string, expires_at: string, attempts: int}|null
      */
     private function currentOtp(string $email): ?object
     {

@@ -46,7 +46,7 @@ final class MetricsController
 
     /**
      * El acceso se concede por token válido O por IP en la lista blanca. Si no hay ni token ni lista
-     * configurados, se niega todo (fail-closed) para no exponer métricas sin protección.
+     * configurados, se niega el acceso por completo (fail-closed) para no exponer métricas sin protección.
      */
     private function authorized(Request $request): bool
     {
@@ -76,9 +76,7 @@ final class MetricsController
      */
     private function allowlist(): array
     {
-        /** @var list<string> $allowlist */
-        $allowlist = config('observability.metrics.ip_allowlist', []);
-
-        return $allowlist;
+        /** @var list<string> */
+        return config('observability.metrics.ip_allowlist', []);
     }
 }

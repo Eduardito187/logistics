@@ -67,7 +67,7 @@ final readonly class CachingMaterialMappingRepository implements MaterialMapping
         $mappings = $this->inner->all();
         $this->cache->put(
             SapConnectorCacheKey::materialMappingsAll(),
-            array_map(self::toPrimitive(...), $mappings),
+            array_map(static fn (MaterialMapping $mapping): array => self::toPrimitive($mapping), $mappings),
             self::TTL_SECONDS,
         );
 

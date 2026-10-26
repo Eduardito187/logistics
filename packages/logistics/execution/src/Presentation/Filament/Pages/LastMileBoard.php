@@ -41,7 +41,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
  *
  * Lectura: la cola se arma desde la proyección de lectura (execution_deliveries, con pedido y vehículo
  * en eager-load) solo para presentación, tolerando tablas ausentes (patrón ReadsControlTowerData). Las
- * MUTACIONES siempre pasan por comandos. Todo texto visible en inglés (regla 5); comentarios en español.
+ * MUTACIONES siempre pasan por comandos. Cada texto visible en inglés (regla 5); comentarios en español.
  */
 final class LastMileBoard extends Page
 {
@@ -379,7 +379,7 @@ final class LastMileBoard extends Page
 
     /**
      * Etiqueta humana del producto: pedido + nombre del producto y su SKU (+ pieza física N de M),
-     * nunca el UUID ni vacío. Si falta el nombre se usa el SKU y, si falta todo, "Producto".
+     * nunca el UUID ni vacío. Si falta el nombre se usa el SKU y, si faltan ambos, "Producto".
      */
     private function unitLabel(PhysicalUnitRecord $unit): string
     {
@@ -408,7 +408,7 @@ final class LastMileBoard extends Page
     }
 
     /**
-     * Campos comunes de todo escaneo: GPS, dispositivo, usuario y hora del hecho.
+     * Campos comunes de cada escaneo: GPS, dispositivo, usuario y hora del hecho.
      *
      * @return array<int, Component>
      */

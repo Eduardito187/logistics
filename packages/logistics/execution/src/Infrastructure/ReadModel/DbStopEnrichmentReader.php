@@ -44,7 +44,7 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
         foreach ($lines as $line) {
             $shipmentId = (string) $line->shipment_id;
             // Producto siempre legible: nombre + SKU. El SKU nunca es null (cae a ""); si falta el
-            // nombre se usa el SKU y, si falta todo, "Producto". Nunca null/vacío en pantalla.
+            // nombre se usa el SKU y, si faltan ambos, "Producto". Nunca null/vacío en pantalla.
             $sku = $line->sku !== null ? trim((string) $line->sku) : '';
             $name = $line->product_name !== null ? trim((string) $line->product_name) : '';
             if ($name === '') {
