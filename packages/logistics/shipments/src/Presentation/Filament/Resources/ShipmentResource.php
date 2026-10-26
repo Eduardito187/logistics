@@ -499,7 +499,7 @@ final class ShipmentResource extends Resource
     }
 
     /**
-     * Managers de relaciones: líneas de producto y bultos del pedido, embebidos en la vista/edición.
+     * Managers de relaciones: líneas de producto y unidades físicas del pedido, embebidos en la vista/edición.
      *
      * @return array<int, class-string>
      */

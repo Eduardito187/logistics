@@ -22,7 +22,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 /**
- * Bultos (unidades físicas) del pedido, embebidos en la vista/edición del envío.
+ * Unidades físicas del pedido, embebidas en la vista/edición del envío.
  *
  * Trabaja sobre la relación `units` del ShipmentRecord. El select de línea queda acotado a las
  * líneas del propio pedido. El string fuente queda en inglés dentro de __() para poder traducirse
@@ -89,10 +89,11 @@ final class UnitsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            // Título legible del bulto (SKU + "N/M"), nunca el UUID de la pk: aparece en los modales de
-            // confirmación (p. ej. borrado) y en la cabecera del registro.
+            // Título legible de la unidad física (SKU + "N/M"), nunca el UUID de la pk: aparece en los
+            // modales de confirmación (p. ej. borrado) y en la cabecera del registro. Sin SKU cae a
+            // "Product" (regla de producto), nunca a un valor vacío.
             ->recordTitle(static fn (PhysicalUnitRecord $record): string => trim(
-                ($record->line->sku ?? __('package')).' — '.__('unit')." {$record->unit_index}/{$record->unit_total}",
+                ($record->line->sku ?? __('Product')).' — '.__('unit')." {$record->unit_index}/{$record->unit_total}",
             ))
             ->columns([
                 TextColumn::make('line.sku')

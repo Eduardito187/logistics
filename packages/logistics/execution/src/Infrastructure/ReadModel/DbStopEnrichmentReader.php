@@ -13,7 +13,9 @@ use Logistics\Execution\Application\Contract\StopEnrichmentReader;
  * Resuelve EN LOTE (whereIn) para evitar N+1: una consulta a `shipments` (teléfono + referencia de
  * dirección) y otra a `shipment_lines` (líneas con miniatura). No usa los modelos Eloquent de shipments:
  * lee las columnas con el query builder, de modo que Ejecución no se acopla al dominio del otro contexto.
- * Todo es tolerante a datos ausentes (null); nunca inventa valores.
+ * El teléfono y la referencia de dirección son tolerantes a datos ausentes (null). El producto de cada
+ * línea, en cambio, SIEMPRE sale legible (nombre + SKU, con fallback a SKU y a "Producto"): nunca null
+ * ni vacío, porque es lo que el chofer lee en la pantalla de entrega.
  */
 final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
 {
@@ -41,9 +43,16 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
         $itemsByShipment = [];
         foreach ($lines as $line) {
             $shipmentId = (string) $line->shipment_id;
+            // Producto siempre legible: nombre + SKU. El SKU nunca es null (cae a ""); si falta el
+            // nombre se usa el SKU y, si falta todo, "Producto". Nunca null/vacío en pantalla.
+            $sku = $line->sku !== null ? trim((string) $line->sku) : '';
+            $name = $line->product_name !== null ? trim((string) $line->product_name) : '';
+            if ($name === '') {
+                $name = $sku !== '' ? $sku : 'Producto';
+            }
             $itemsByShipment[$shipmentId][] = [
-                'sku' => (string) $line->sku,
-                'name' => (string) $line->product_name,
+                'sku' => $sku,
+                'name' => $name,
                 'quantity' => (int) $line->quantity,
                 'image_url' => $line->product_image_url !== null ? (string) $line->product_image_url : null,
             ];

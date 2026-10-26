@@ -109,7 +109,8 @@ final class EmittedLabelResource extends Resource
                     ->sortable(),
                 TextColumn::make('sku')
                     ->label(__('SKU'))
-                    ->placeholder('—'),
+                    // El SKU es la identidad del producto en la etiqueta: sin él cae a "Product", nunca "—".
+                    ->placeholder(__('Product')),
                 TextColumn::make('line_number')
                     ->label(__('Line'))
                     ->placeholder('—'),
@@ -220,7 +221,7 @@ final class EmittedLabelResource extends Resource
             Section::make(__('Label'))
                 ->schema([
                     TextEntry::make('order_id')->label(__('Order')),
-                    TextEntry::make('sku')->label(__('SKU'))->placeholder('—'),
+                    TextEntry::make('sku')->label(__('SKU'))->placeholder(__('Product')),
                     TextEntry::make('line_number')->label(__('Line'))->placeholder('—'),
                     TextEntry::make('unit_label')->label(__('Unit (N of M)'))->badge()->color('info')->placeholder('—'),
                     TextEntry::make('piece_label')->label(__('Piece (N of M)'))->placeholder('—'),
@@ -307,7 +308,7 @@ final class EmittedLabelResource extends Resource
             $status = $view->revoked ? 'Revoked' : 'Active';
             $rows .= '<tr>'
                 .'<td class="py-1 pr-4">'.e((string) $view->lineNumber).'</td>'
-                .'<td class="py-1 pr-4">'.e($view->sku).'</td>'
+                .'<td class="py-1 pr-4">'.e($view->sku !== '' ? $view->sku : __('Product')).'</td>'
                 .'<td class="py-1 pr-4">'.e($unit ?? '—').'</td>'
                 .'<td class="py-1 pr-4">'.e(__($status)).'</td>'
                 .'</tr>';

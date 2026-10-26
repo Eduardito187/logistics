@@ -325,7 +325,7 @@ final class DeliveryResource extends Resource
     }
 
     /**
-     * Carga validada del bulto al vehículo. Row action: el pedido viene de la fila. Despacha RecordLoadScan.
+     * Carga validada del producto al vehículo. Row action: el pedido viene de la fila. Despacha RecordLoadScan.
      */
     private static function loadScanAction(): Action
     {
@@ -354,7 +354,7 @@ final class DeliveryResource extends Resource
     }
 
     /**
-     * Descarga guiada del bulto en una parada. Row action. Despacha RecordUnloadScan.
+     * Descarga guiada del producto en una parada. Row action. Despacha RecordUnloadScan.
      */
     private static function unloadScanAction(): Action
     {
@@ -385,7 +385,7 @@ final class DeliveryResource extends Resource
     }
 
     /**
-     * Recepción del bulto en un nodo logístico. Row action. Despacha RecordNodeReception.
+     * Recepción del producto en un nodo logístico. Row action. Despacha RecordNodeReception.
      */
     private static function nodeReceptionAction(): Action
     {
@@ -565,7 +565,7 @@ final class DeliveryResource extends Resource
     }
 
     /**
-     * Select de bulto sin pedido fijo (preparación): busca bultos por referencia del pedido.
+     * Select de producto sin pedido fijo (preparación): busca productos por referencia del pedido.
      */
     private static function unitSelect(): Select
     {
@@ -579,12 +579,13 @@ final class DeliveryResource extends Resource
     }
 
     /**
-     * Select de bulto acotado a los bultos del pedido de la entrega (carga/descarga/entrega/fallo).
+     * Select de producto acotado a los productos del pedido de la entrega (carga/descarga/entrega/fallo).
      */
     private static function unitSelectFor(DeliveryRecord $record): Select
     {
         $units = PhysicalUnitRecord::query()
             ->where('shipment_id', $record->shipment_id)
+            ->with(['shipment', 'line'])
             ->get()
             ->mapWithKeys(static fn (PhysicalUnitRecord $unit): array => [$unit->id => self::unitLabelFor($unit)])
             ->all();
@@ -679,7 +680,7 @@ final class DeliveryResource extends Resource
         return PhysicalUnitRecord::query()
             ->when($shipmentId !== null, static fn (Builder $q): Builder => $q->where('shipment_id', $shipmentId))
             ->whereHas('shipment', static fn (Builder $q): Builder => $q->where('external_id', 'ilike', "%{$search}%"))
-            ->with('shipment')
+            ->with(['shipment', 'line'])
             ->limit(50)
             ->get()
             ->mapWithKeys(static fn (PhysicalUnitRecord $u): array => [$u->id => self::unitLabelFor($u)])
@@ -688,17 +689,17 @@ final class DeliveryResource extends Resource
 
     private static function unitLabel(string $id): ?string
     {
-        $u = PhysicalUnitRecord::query()->with('shipment')->find($id);
+        $u = PhysicalUnitRecord::query()->with(['shipment', 'line'])->find($id);
 
         return $u === null ? null : self::unitLabelFor($u);
     }
 
     /**
-     * Etiqueta humana del bulto de un escaneo para el infolist.
+     * Etiqueta humana del producto de un escaneo para el infolist.
      *
-     * `execution_scan_events.unit_id` puede ser el UUID del bulto (escaneos registrados desde el panel)
+     * `execution_scan_events.unit_id` puede ser el UUID del producto (escaneos registrados desde el panel)
      * o el código legible de la etiqueta escaneada en terreno. Se resuelve con UnitNames a una etiqueta
-     * legible (pedido + índice de bulto/pieza) y NUNCA se expone el UUID crudo.
+     * legible (pedido + índice de producto/pieza) y NUNCA se expone el UUID crudo.
      */
     private static function scanUnitLabel(ScanEventRecord $scan): string
     {
@@ -706,13 +707,52 @@ final class DeliveryResource extends Resource
     }
 
     /**
-     * Etiqueta humana del bulto: pedido + índice de bulto y pieza, nunca el UUID.
+     * Etiqueta humana del producto: pedido + nombre del producto y su SKU (+ pieza física N de M),
+     * nunca el UUID ni vacío. Si falta el nombre se usa el SKU y, si falta todo, "Producto".
      */
     private static function unitLabelFor(PhysicalUnitRecord $unit): string
     {
         $order = $unit->shipment->external_id ?? $unit->shipment_id;
+        $product = self::unitProductLabel($unit);
+        $piece = self::unitPieceSuffix($unit);
 
-        return "{$order} · unit {$unit->unit_index}/{$unit->unit_total} pc {$unit->piece_index}/{$unit->piece_total}";
+        return trim("{$order} — {$product} {$piece}");
+    }
+
+    /**
+     * Producto de una unidad física como "{nombre} · {SKU}", con fallback a SKU y a "Producto".
+     */
+    private static function unitProductLabel(PhysicalUnitRecord $unit): string
+    {
+        $name = is_string($unit->line?->product_name) ? trim($unit->line->product_name) : '';
+        $sku = is_string($unit->line?->sku) ? trim($unit->line->sku) : '';
+
+        if ($name !== '' && $sku !== '') {
+            return "{$name} · {$sku}";
+        }
+        if ($name !== '') {
+            return $name;
+        }
+        if ($sku !== '') {
+            return $sku;
+        }
+
+        return 'Producto';
+    }
+
+    /**
+     * Sufijo "(N de M)" de la pieza física (o de la unidad N de M del pedido); vacío si no aplica.
+     */
+    private static function unitPieceSuffix(PhysicalUnitRecord $unit): string
+    {
+        if ($unit->piece_total > 1) {
+            return "({$unit->piece_index} de {$unit->piece_total})";
+        }
+        if ($unit->unit_total > 1) {
+            return "({$unit->unit_index} de {$unit->unit_total})";
+        }
+
+        return '';
     }
 
     /**

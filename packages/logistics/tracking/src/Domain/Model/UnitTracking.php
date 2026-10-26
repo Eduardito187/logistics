@@ -46,7 +46,7 @@ final class UnitTracking extends AggregateRoot
         }
         $unitId = trim($unitId);
         if ($unitId === '') {
-            throw TrackingException::because('el id del bulto no puede estar vacío');
+            throw TrackingException::because('el id del producto no puede estar vacío');
         }
 
         $unit = new self($id, $shipmentId, $unitId, UnitStatus::Registered, null, null);

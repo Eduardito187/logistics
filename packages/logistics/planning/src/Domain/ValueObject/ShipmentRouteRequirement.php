@@ -50,10 +50,10 @@ final readonly class ShipmentRouteRequirement
         ?float $weightKg = null,
     ): self {
         if ($heightM !== null && $heightM < 0.0) {
-            throw PlanningException::because("la altura del bulto no puede ser negativa: {$heightM}");
+            throw PlanningException::because("la altura del producto no puede ser negativa: {$heightM}");
         }
         if ($weightKg !== null && $weightKg < 0.0) {
-            throw PlanningException::because("el peso del bulto no puede ser negativo: {$weightKg}");
+            throw PlanningException::because("el peso del producto no puede ser negativo: {$weightKg}");
         }
 
         return new self(

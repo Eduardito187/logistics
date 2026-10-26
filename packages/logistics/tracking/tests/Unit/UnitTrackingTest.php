@@ -46,7 +46,7 @@ it('rejects a blank shipment id or unit id', function (): void {
         ->toThrow(TrackingException::class, 'envío');
 
     expect(fn () => UnitTracking::open(UnitTrackingId::generate(), 'ship-1', '  '))
-        ->toThrow(TrackingException::class, 'bulto');
+        ->toThrow(TrackingException::class, 'producto');
 });
 
 it('applies a new status, tracks location and time, and records UnitStatusChanged', function (): void {

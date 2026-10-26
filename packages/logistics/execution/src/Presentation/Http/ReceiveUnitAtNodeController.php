@@ -9,7 +9,7 @@ use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNode;
 use Logistics\Execution\Presentation\Http\Request\ReceiveUnitAtNodeRequest;
 
 /**
- * POST /app — escanea la recepción de un bulto en un nodo destino (puerta app).
+ * POST /app — escanea la recepción de un producto en un nodo destino (puerta app).
  *
  * Idempotente por la clave de idempotencia. La recepción del envío en ese nodo ya debe estar abierta.
  */

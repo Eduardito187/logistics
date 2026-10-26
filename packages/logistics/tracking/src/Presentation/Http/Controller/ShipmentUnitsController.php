@@ -11,11 +11,11 @@ use Logistics\Tracking\Application\ReadModel\UnitTrackingView;
 use Logistics\Tracking\Presentation\Http\ApiResponder;
 
 /**
- * Detalle PER-BULTO del seguimiento, interno por id de envío (puerta /api/v1/app/*).
+ * Detalle PER-PRODUCTO del seguimiento, interno por id de envío (puerta /api/v1/app/*).
  *
- * Lo consume personal autorizado (operaciones, reconciliación de bultos). Devuelve la lista de bultos
+ * Lo consume personal autorizado (operaciones, reconciliación de productos). Devuelve la lista de productos
  * del envío con su estado, última ubicación y último escaneo. Lista vacía si el envío todavía no tiene
- * bultos proyectados.
+ * productos proyectados.
  *
  * Presentation habla con Application vía el QueryBus; nunca toca Infrastructure ni el dominio.
  */

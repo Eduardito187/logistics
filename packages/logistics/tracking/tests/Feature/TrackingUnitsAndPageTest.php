@@ -104,7 +104,7 @@ it('expone el producto (sku, nombre, foto, pieza) de cada bulto del envío', fun
         ->assertJsonPath('data.units.0.piece_total', 2);
 });
 
-it('devuelve nulls de producto si el bulto ya no existe en shipments', function (): void {
+it('cae a producto legible si la unidad ya no existe en shipments', function (): void {
     $shipment = ShipmentRecord::factory()->create();
     UnitTrackingRecord::factory()->create([
         'shipment_id' => $shipment->id,
@@ -112,11 +112,13 @@ it('devuelve nulls de producto si el bulto ya no existe en shipments', function 
         'status' => UnitStatus::Loaded->value,
     ]);
 
+    // Nombre y SKU SIEMPRE legibles (regla del dueño): sin producto resuelto, nombre "Producto" y SKU
+    // "". La etiqueta de posición (label) y la pieza sí pueden faltar (null).
     $this->getJson("/api/v1/app/tracking/shipments/{$shipment->id}/units")
         ->assertOk()
         ->assertJsonPath('data.units.0.label', null)
-        ->assertJsonPath('data.units.0.sku', null)
-        ->assertJsonPath('data.units.0.product_name', null)
+        ->assertJsonPath('data.units.0.sku', '')
+        ->assertJsonPath('data.units.0.product_name', 'Producto')
         ->assertJsonPath('data.units.0.piece_total', null);
 });
 
@@ -170,7 +172,7 @@ it('renderiza la página pública de rastreo con el estado y el mensaje', functi
     $this->get("/t/{$token}")
         ->assertOk()
         ->assertSee('Tu pedido está a 2 paradas.')
-        ->assertSee('Tus bultos', false);
+        ->assertSee('Tus productos', false);
 });
 
 it('renderiza 404 en la página pública para un token inexistente', function (): void {

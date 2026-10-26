@@ -11,9 +11,9 @@ use Logistics\Tracking\Application\ReadModel\PublicUnitView;
 use Logistics\Tracking\Presentation\Http\ApiResponder;
 
 /**
- * Detalle PÚBLICO de bultos por token (puerta /api/v1/channels/*).
+ * Detalle PÚBLICO de productos por token (puerta /api/v1/channels/*).
  *
- * La consume la app de clientes/web: muestra el desglose de bultos del envío ("ropero 1 de 2:
+ * La consume la app de clientes/web: muestra el desglose de productos del envío ("ropero 1 de 2:
  * cargado") sin PII. 404 genérico si el token no corresponde a ningún seguimiento (no revela si el
  * token existe), igual que la página pública del envío.
  *

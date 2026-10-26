@@ -79,9 +79,11 @@ it('expone el producto de cada bulto en el GET de la recepción', function (): v
         'piece_index' => 2,
         'piece_total' => 2,
     ])->and($units['LBL-967df6'])->toBe([
+        // Id que no es una unidad conocida: nombre y SKU SIEMPRE legibles (fallback "Producto"/""),
+        // nunca null; la foto y los índices sí pueden faltar.
         'unit_id' => 'LBL-967df6',
-        'sku' => null,
-        'product_name' => null,
+        'sku' => '',
+        'product_name' => 'Producto',
         'product_image_url' => null,
         'unit_index' => null,
         'unit_total' => null,
@@ -90,7 +92,7 @@ it('expone el producto de cada bulto en el GET de la recepción', function (): v
     ]);
 });
 
-it('devuelve el ítem con nulls cuando el id esperado no es un uuid de bulto', function (): void {
+it('cae a producto legible cuando el id esperado no es un uuid de unidad', function (): void {
     $shipment = 'd3333333-3333-7333-8333-333333333333';
     $destination = 'b4444444-4444-7444-8444-444444444444';
 
@@ -107,6 +109,6 @@ it('devuelve el ítem con nulls cuando el id esperado no es un uuid de bulto', f
     $this->getJson("/api/v1/app/node-receptions/{$shipment}/{$destination}")
         ->assertOk()
         ->assertJsonPath('data.units.0.unit_id', 'U-1')
-        ->assertJsonPath('data.units.0.sku', null)
-        ->assertJsonPath('data.units.0.product_name', null);
+        ->assertJsonPath('data.units.0.sku', '')
+        ->assertJsonPath('data.units.0.product_name', 'Producto');
 });

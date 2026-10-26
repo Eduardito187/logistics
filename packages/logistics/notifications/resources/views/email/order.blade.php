@@ -1,5 +1,5 @@
 {{-- Plantilla HTML del email transaccional al cliente. Muestra el cuerpo del mensaje y, debajo, el
-     listado de productos del pedido con su imagen (thumbnail), nombre y cantidad. Estilos en línea para
+     listado de productos del pedido con su imagen (thumbnail), nombre, SKU y cantidad. Estilos en línea para
      máxima compatibilidad con clientes de correo. La marca es DisTrack: rojo #E30613 como acento.
      El logo del encabezado se referencia por URL absoluta (no inline) y usa el PNG de la marca, que
      renderiza en todos los clientes de correo (muchos no soportan SVG); el wordmark "DisTrack" va como
@@ -50,6 +50,9 @@
                                             </td>
                                             <td style="padding:8px 0;vertical-align:top;">
                                                 <span style="display:block;font-size:14px;color:#111827;font-weight:bold;">{{ $product['name'] }}</span>
+                                                @if (!empty($product['sku']))
+                                                    <span style="display:block;font-size:12px;color:#6b7280;margin-top:2px;">SKU: {{ $product['sku'] }}</span>
+                                                @endif
                                                 <span style="display:block;font-size:13px;color:#6b7280;margin-top:4px;">Cantidad: {{ $product['qty'] }}</span>
                                             </td>
                                         </tr>

@@ -112,7 +112,7 @@ final class ScanEventResource extends Resource
                     ->label(__('Unit'))
                     ->state(static fn (ScanEventRecord $record): string => self::unitLabel($record))
                     ->placeholder('—'),
-                // El UUID crudo del bulto (`unit_id`) no se muestra: la columna "Unit" ya da la etiqueta
+                // El UUID crudo del producto (`unit_id`) no se muestra: la columna "Unit" ya da la etiqueta
                 // legible. No se expone ningún identificador crudo (ni como columna conmutable/copiable).
                 // user_id se muestra como el NOMBRE del operador (users.name), nunca el id crudo.
                 TextColumn::make('user_id')
@@ -153,7 +153,7 @@ final class ScanEventResource extends Resource
                     ->label(__('Unit'))
                     ->state(static fn (ScanEventRecord $record): string => self::unitLabel($record))
                     ->placeholder('—'),
-                // El UUID crudo del bulto no se muestra en la ficha: basta la etiqueta legible "Unit".
+                // El UUID crudo del producto no se muestra en la ficha: basta la etiqueta legible "Unit".
                 TextEntry::make('occurred_at')->label(__('Occurred at'))->dateTime(),
                 // user_id se muestra como el NOMBRE del operador (users.name), nunca el id crudo.
                 TextEntry::make('user_id')
@@ -200,11 +200,11 @@ final class ScanEventResource extends Resource
     }
 
     /**
-     * Etiqueta humana del bulto escaneado.
+     * Etiqueta humana del producto escaneado.
      *
-     * `execution_scan_events.unit_id` puede ser el UUID del bulto (escaneos registrados desde el panel)
+     * `execution_scan_events.unit_id` puede ser el UUID del producto (escaneos registrados desde el panel)
      * o el código legible de la etiqueta escaneada en terreno. Se resuelve con UnitNames a una etiqueta
-     * legible (pedido + índice de bulto/pieza) y NUNCA se expone el UUID crudo.
+     * legible (pedido + índice de producto/pieza) y NUNCA se expone el UUID crudo.
      */
     private static function unitLabel(ScanEventRecord $record): string
     {

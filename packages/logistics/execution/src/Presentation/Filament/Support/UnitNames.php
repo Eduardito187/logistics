@@ -7,16 +7,17 @@ namespace Logistics\Execution\Presentation\Filament\Support;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Resuelve una ETIQUETA LEGIBLE de un bulto a partir de su identificador (`unit_id`) para la capa
- * Filament de Execution.
+ * Resuelve una ETIQUETA LEGIBLE de un producto a partir del identificador de su unidad física
+ * (`unit_id`) para la capa Filament de Execution.
  *
- * Los escaneos y las recepciones guardan `unit_id`, que según el origen puede ser el UUID del bulto
- * (tabla `shipment_units`, p. ej. los escaneos registrados desde el panel) o un código legible de la
- * etiqueta escaneada en terreno (p. ej. "U-10001"). Aquí se enriquece a una etiqueta humana (referencia
- * del pedido + índice de bulto/pieza) leyendo `shipment_units` + `shipments` en SOLO lectura mediante el
- * query builder, sin acoplar el Eloquent del contexto Shipments. El mapa id→etiqueta se memoiza por
- * request (evita el N+1 al pintar tablas e infolists). NUNCA se devuelve un UUID crudo: un UUID que no
- * resuelve a un bulto conocido se oculta como '—'.
+ * Los escaneos y las recepciones guardan `unit_id`, que según el origen puede ser el UUID de la unidad
+ * física (tabla `shipment_units`, p. ej. los escaneos registrados desde el panel) o un código legible de
+ * la etiqueta escaneada en terreno (p. ej. "U-10001"). Aquí se enriquece a una etiqueta humana (nombre
+ * del producto + SKU, más la pieza física N de M si la unidad está partida) uniendo `shipment_units` con
+ * `shipment_lines` en SOLO lectura mediante el query builder, sin acoplar el Eloquent del contexto
+ * Shipments. El mapa id→etiqueta se memoiza por request (evita el N+1 al pintar tablas e infolists).
+ * NUNCA se devuelve un UUID crudo ni vacío: un UUID que no resuelve a un producto conocido cae al texto
+ * "Producto".
  */
 final class UnitNames
 {
@@ -24,16 +25,16 @@ final class UnitNames
     private static array $resolved = [];
 
     /**
-     * Etiqueta legible de un bulto por su `unit_id`:
-     *  - UUID que existe en `shipment_units` → "pedido · unit i/n pc i/n".
-     *  - UUID que no resuelve a un bulto conocido → '—' (nunca se expone el id crudo).
+     * Etiqueta legible de un producto por el `unit_id` de su unidad física:
+     *  - UUID que existe en `shipment_units` → "{nombre} · {SKU}" (+ "(N de M)" si hay pieza física).
+     *  - UUID que no resuelve a un producto conocido → "Producto" (nunca se expone el id crudo).
      *  - código legible de etiqueta (no UUID) → se muestra tal cual (es justo lo que ve el operador).
-     *  - vacío/null → '—'.
+     *  - vacío/null → "Producto".
      */
     public static function label(?string $unitId): string
     {
         if ($unitId === null || $unitId === '') {
-            return '—';
+            return 'Producto';
         }
 
         if (array_key_exists($unitId, self::$resolved)) {
@@ -53,12 +54,13 @@ final class UnitNames
             return $unitId;
         }
 
-        /** @var object{external_id: string|null, unit_index: int|string, unit_total: int|string, piece_index: int|string, piece_total: int|string}|null $row */
+        /** @var object{product_name: string|null, sku: string|null, unit_index: int|string|null, unit_total: int|string|null, piece_index: int|string|null, piece_total: int|string|null}|null $row */
         $row = DB::table('shipment_units')
-            ->leftJoin('shipments', 'shipments.id', '=', 'shipment_units.shipment_id')
+            ->leftJoin('shipment_lines', 'shipment_lines.id', '=', 'shipment_units.line_id')
             ->where('shipment_units.id', $unitId)
             ->first([
-                'shipments.external_id',
+                'shipment_lines.product_name',
+                'shipment_lines.sku',
                 'shipment_units.unit_index',
                 'shipment_units.unit_total',
                 'shipment_units.piece_index',
@@ -66,13 +68,48 @@ final class UnitNames
             ]);
 
         if ($row === null) {
-            // UUID no resuelto: nunca mostrar el identificador crudo.
-            return '—';
+            // UUID no resuelto: nunca mostrar el identificador crudo ni vacío.
+            return 'Producto';
         }
 
-        $order = ($row->external_id !== null && $row->external_id !== '') ? $row->external_id : '—';
+        $name = is_string($row->product_name) ? trim($row->product_name) : '';
+        $sku = is_string($row->sku) ? trim($row->sku) : '';
 
-        return "{$order} · unit {$row->unit_index}/{$row->unit_total} pc {$row->piece_index}/{$row->piece_total}";
+        // Fallback: nombre + SKU; si falta el nombre, el SKU; si falta todo, "Producto".
+        if ($name !== '' && $sku !== '') {
+            $base = "{$name} · {$sku}";
+        } elseif ($name !== '') {
+            $base = $name;
+        } elseif ($sku !== '') {
+            $base = $sku;
+        } else {
+            $base = 'Producto';
+        }
+
+        $piece = self::pieceSuffix($row);
+
+        return $piece === '' ? $base : "{$base} {$piece}";
+    }
+
+    /**
+     * Sufijo de la pieza física "(N de M)": la pieza fraccionada si la unidad está partida, o la unidad
+     * N de M del pedido en caso contrario. Vacío si no hay nada que precisar.
+     */
+    private static function pieceSuffix(object $row): string
+    {
+        $pieceIndex = is_numeric($row->piece_index) ? (int) $row->piece_index : null;
+        $pieceTotal = is_numeric($row->piece_total) ? (int) $row->piece_total : null;
+        if ($pieceIndex !== null && $pieceTotal !== null && $pieceTotal > 1) {
+            return "({$pieceIndex} de {$pieceTotal})";
+        }
+
+        $unitIndex = is_numeric($row->unit_index) ? (int) $row->unit_index : null;
+        $unitTotal = is_numeric($row->unit_total) ? (int) $row->unit_total : null;
+        if ($unitIndex !== null && $unitTotal !== null && $unitTotal > 1) {
+            return "({$unitIndex} de {$unitTotal})";
+        }
+
+        return '';
     }
 
     /**

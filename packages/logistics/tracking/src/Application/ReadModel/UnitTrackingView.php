@@ -7,11 +7,12 @@ namespace Logistics\Tracking\Application\ReadModel;
 use Logistics\Tracking\Domain\Model\UnitTracking;
 
 /**
- * Modelo de lectura INTERNO del seguimiento de un bulto, para back office y la app interna.
+ * Modelo de lectura INTERNO del seguimiento de una unidad física, para back office y la app interna.
  *
- * Incluye las claves internas (id de seguimiento del bulto, unit_id) y la etiqueta humana del bulto
- * ("unidad N de M", "pieza N de M") resuelta en el QueryHandler desde shipments, junto a la última
- * ubicación y el instante del último escaneo. Si se cachea, se cachea su toArray() (regla 7).
+ * Incluye las claves internas (id de seguimiento, unit_id) y la etiqueta humana ("unidad N de M",
+ * "pieza N de M") resuelta en el QueryHandler desde shipments, junto a la última ubicación y el instante
+ * del último escaneo. El producto (nombre + SKU) SIEMPRE sale legible, nunca null (fallback a SKU y a
+ * "Producto"), porque es lo que se muestra en mostrador. Si se cachea, se cachea su toArray() (regla 7).
  */
 final readonly class UnitTrackingView
 {
@@ -22,12 +23,13 @@ final readonly class UnitTrackingView
         public string $status,
         public ?string $lastLocationId,
         public ?string $lastSeenAt,
-        // Etiqueta humana del bulto resuelta desde shipment_units (lado lectura). Null si el bulto ya
-        // no existe en shipments; el uuid crudo se mantiene en unit_id.
+        // Etiqueta humana resuelta desde shipment_units (lado lectura). Null si la unidad ya no existe
+        // en shipments; el uuid crudo se mantiene en unit_id.
         public ?string $label = null,
-        // Producto del bulto (shipment_lines) y su pieza, para el recojo en mostrador. Null si no se resuelve.
-        public ?string $sku = null,
-        public ?string $productName = null,
+        // Producto (shipment_lines) y su pieza, para el recojo en mostrador. Nombre y SKU SIEMPRE
+        // legibles, nunca null: el SKU cae a "" y el nombre a "Producto". La foto sí puede faltar (null).
+        public string $sku = '',
+        public string $productName = 'Producto',
         public ?string $productImageUrl = null,
         public ?int $pieceIndex = null,
         public ?int $pieceTotal = null,
@@ -38,6 +40,14 @@ final readonly class UnitTrackingView
      */
     public static function fromUnit(UnitTracking $unit, ?string $label = null, array $product = []): self
     {
+        // Producto siempre legible, aunque el mapa de productos venga vacío (unidad no resuelta): SKU a
+        // "" y nombre al SKU o, en última instancia, a "Producto". Nunca null/vacío en pantalla.
+        $sku = isset($product['sku']) && is_string($product['sku']) ? trim($product['sku']) : '';
+        $name = isset($product['product_name']) && is_string($product['product_name']) ? trim($product['product_name']) : '';
+        if ($name === '') {
+            $name = $sku !== '' ? $sku : 'Producto';
+        }
+
         return new self(
             $unit->id()->toString(),
             $unit->unitId(),
@@ -46,8 +56,8 @@ final readonly class UnitTrackingView
             $unit->lastLocationId(),
             $unit->lastSeenAt()?->format(DATE_ATOM),
             $label,
-            $product['sku'] ?? null,
-            $product['product_name'] ?? null,
+            $sku,
+            $name,
             $product['product_image_url'] ?? null,
             $product['piece_index'] ?? null,
             $product['piece_total'] ?? null,
@@ -55,7 +65,7 @@ final readonly class UnitTrackingView
     }
 
     /**
-     * @return array{id: string, unit_id: string, shipment_id: string, status: string, last_location_id: string|null, last_seen_at: string|null, label: string|null, sku: string|null, product_name: string|null, product_image_url: string|null, piece_index: int|null, piece_total: int|null}
+     * @return array{id: string, unit_id: string, shipment_id: string, status: string, last_location_id: string|null, last_seen_at: string|null, label: string|null, sku: string, product_name: string, product_image_url: string|null, piece_index: int|null, piece_total: int|null}
      */
     public function toArray(): array
     {

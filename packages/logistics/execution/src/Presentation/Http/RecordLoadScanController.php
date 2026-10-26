@@ -9,7 +9,7 @@ use Logistics\Execution\Application\Command\RecordLoadScan\RecordLoadScan;
 use Logistics\Execution\Presentation\Http\Request\LoadScanRequest;
 
 /**
- * POST /app — registra un escaneo de carga validada del bulto al vehículo (puerta app).
+ * POST /app — registra un escaneo de carga validada del producto al vehículo (puerta app).
  *
  * Idempotente por la clave de idempotencia. La entrega del envío ya debe existir (preparada).
  */

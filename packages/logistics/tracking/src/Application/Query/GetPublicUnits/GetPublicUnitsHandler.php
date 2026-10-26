@@ -14,7 +14,7 @@ use Logistics\Tracking\Domain\Exception\TrackingException;
 use Logistics\Tracking\Domain\ValueObject\TrackingToken;
 
 /**
- * Resuelve el detalle público de bultos a partir del token de la URL: token → envío → sus bultos.
+ * Resuelve el detalle público de productos a partir del token de la URL: token → envío → sus bultos.
  *
  * Un token con forma inválida o inexistente devuelve null (igual que la vista pública del envío): no se
  * revela si el token existe. Las etiquetas van en español (copy de cliente) y se leen en lote desde
@@ -59,15 +59,15 @@ final class GetPublicUnitsHandler implements QueryHandler
         return array_values(array_map(
             static fn ($unit): PublicUnitView => PublicUnitView::fromUnit(
                 $unit,
-                $labels[$unit->unitId()] ?? 'Bulto',
+                $labels[$unit->unitId()] ?? 'Producto',
             ),
             $units,
         ));
     }
 
     /**
-     * Etiqueta humana en español de cada bulto ("Bulto N de M", con pieza si viene fraccionado),
-     * leída en lote desde shipment_units.
+     * Etiqueta humana en español de cada unidad física ("Unidad N de M", con pieza si viene
+     * fraccionada), leída en lote desde shipment_units.
      *
      * @param  list<string>          $unitIds
      * @return array<string, string>
@@ -80,7 +80,7 @@ final class GetPublicUnitsHandler implements QueryHandler
         $records = PhysicalUnitRecord::query()->whereIn('id', $unitIds)->get();
 
         foreach ($records as $record) {
-            $label = 'Bulto '.$record->unit_index.' de '.$record->unit_total;
+            $label = 'Unidad '.$record->unit_index.' de '.$record->unit_total;
             if ($record->piece_total > 1) {
                 $label .= ' (pieza '.$record->piece_index.' de '.$record->piece_total.')';
             }

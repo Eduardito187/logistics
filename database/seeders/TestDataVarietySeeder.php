@@ -86,6 +86,9 @@ final class TestDataVarietySeeder extends Seeder
 {
     private const string TIMEZONE = 'America/La_Paz';
 
+    /** Días de variedad a sembrar desde hoy (dos semanas), alineado con TestDataSeeder. */
+    private const int VARIETY_DAYS = 14;
+
     private const string STORE_CODE = 'T-SCZ-01';
 
     /** Camión del escenario (mismo que usa TodayScenarioSeeder); solo fallback si no hay tripulación. */
@@ -137,11 +140,13 @@ final class TestDataVarietySeeder extends Seeder
         $vehicleId = $this->resolveChoferVehicleId();
         $choferUserId = $this->resolveChoferUserId();
 
-        // HOY: día en curso ⇒ los cuatro estados de entrega para el chofer.
-        $this->seedDay($this->today, $vehicleId, $storeId, $choferUserId, ['delivered', 'loaded', 'failed', 'issue']);
-
-        // MAÑANA: día planificado ⇒ solo estados pre-cierre plausibles al arrancar (cargado / inconveniente).
-        $this->seedDay($this->tomorrow, $vehicleId, $storeId, $choferUserId, ['loaded', 'issue']);
+        // DOS SEMANAS (hoy + 13): HOY (día en curso) lleva los cuatro estados de entrega; los días
+        // siguientes (planificados) solo estados pre-cierre plausibles al arrancar (cargado / inconveniente).
+        for ($offset = 0; $offset < self::VARIETY_DAYS; $offset++) {
+            $date = $this->now->modify('+'.$offset.' day')->format('Y-m-d');
+            $states = $offset === 0 ? ['delivered', 'loaded', 'failed', 'issue'] : ['loaded', 'issue'];
+            $this->seedDay($date, $vehicleId, $storeId, $choferUserId, $states);
+        }
 
         // Transportista tercero + liquidación del período (una vez; el período es mensual).
         $this->ensureCarrierSettlement();
@@ -658,10 +663,12 @@ final class TestDataVarietySeeder extends Seeder
     // Utilidades
     // ---------------------------------------------------------------------------------------------
 
-    /** Reconstruye la fecha Y-m-d a partir del tag ymd (hoy o mañana). */
+    /** Reconstruye la fecha Y-m-d a partir del tag ymd (cualquier día de la ventana de dos semanas). */
     private function dateForTag(string $tag): string
     {
-        return $tag === $this->now->format('ymd') ? $this->today : $this->tomorrow;
+        $date = DateTimeImmutable::createFromFormat('ymd', $tag, $this->tz);
+
+        return $date !== false ? $date->format('Y-m-d') : $this->today;
     }
 
     private function node(string $code): NodeRecord

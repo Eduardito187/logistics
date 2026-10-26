@@ -27,7 +27,7 @@ use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource\Pag
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource\Pages\ViewPhysicalUnit;
 
 /**
- * Admin de bultos (unidades físicas): un bulto por unidad de producto, con su "N de M" de unidad y
+ * Admin de unidades físicas: una unidad física por unidad de producto, con su "N de M" de unidad y
  * de pieza. Es la unidad que se escanea en preparación, carga y entrega.
  *
  * Filament opera sobre el record Eloquent (PhysicalUnitRecord). Los selects de pedido y línea son
@@ -44,7 +44,7 @@ final class PhysicalUnitResource extends Resource
     protected static ?int $navigationSort = 14;
 
     /**
-     * Título humano del bulto: referencia del pedido + posición "unidad/total" (nunca el UUID crudo).
+     * Título humano de la unidad física: referencia del pedido + posición "unidad/total" (nunca el UUID crudo).
      */
     public static function getRecordTitle(?Model $record): ?string
     {
@@ -150,7 +150,7 @@ final class PhysicalUnitResource extends Resource
                 TextColumn::make('piece_index')
                     ->label(__('Piece'))
                     ->formatStateUsing(static fn (int $state, PhysicalUnitRecord $record): string => "{$state}/{$record->piece_total}"),
-                // El UUID del bulto (pk) no se muestra: la fila ya se identifica por pedido + SKU + "N/M".
+                // El UUID de la unidad física (pk) no se muestra: la fila ya se identifica por pedido + SKU + "N/M".
             ])
             ->filters([
                 SelectFilter::make('shipment_id')

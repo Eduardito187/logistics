@@ -12,8 +12,9 @@ use Logistics\Tracking\Domain\Contract\UnitTrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
 
 /**
- * Resuelve el detalle per-bulto de un envío. Enriquece cada bulto con su etiqueta humana ("N/M")
- * leída EN LOTE desde shipment_units (lado lectura, sin N+1 ni dependencia composer entre contextos).
+ * Resuelve el detalle por unidad física de un envío. Enriquece cada unidad con su etiqueta humana
+ * ("N/M") y el producto que contiene (nombre + SKU), leídos EN LOTE desde shipment_units → shipment_lines
+ * (lado lectura, sin N+1 ni dependencia composer entre contextos).
  *
  * @implements QueryHandler<GetShipmentUnits, list<UnitTrackingView>>
  */
@@ -50,11 +51,11 @@ final class GetShipmentUnitsHandler implements QueryHandler
     }
 
     /**
-     * Carga en lote (una consulta, shipment_units LEFT JOIN shipment_lines) la etiqueta humana de cada bulto
-     * ("N/M", con pieza si viene fraccionado) y el producto que contiene (SKU, nombre, foto, pieza).
+     * Carga en lote (una consulta, shipment_units LEFT JOIN shipment_lines) la etiqueta humana de cada
+     * unidad física ("N/M", con pieza si viene fraccionada) y el producto que contiene (SKU, nombre, foto, pieza).
      *
      * @param  list<string>                                                                                                                                                                   $unitIds
-     * @return array<string, array{label: string, product: array{sku: string|null, product_name: string|null, product_image_url: string|null, piece_index: int|null, piece_total: int|null}}>
+     * @return array<string, array{label: string, product: array{sku: string, product_name: string, product_image_url: string|null, piece_index: int|null, piece_total: int|null}}>
      */
     private function resolveUnits(array $unitIds): array
     {
@@ -89,7 +90,7 @@ final class GetShipmentUnitsHandler implements QueryHandler
     }
 
     /**
-     * Etiqueta humana "N/M" del bulto, con la pieza fraccionada entre paréntesis si el bulto está partido.
+     * Etiqueta humana "N/M" de la unidad física, con la pieza fraccionada entre paréntesis si está partida.
      */
     private function unitLabel(\stdClass $record, ?int $pieceIndex, ?int $pieceTotal): string
     {
@@ -102,15 +103,23 @@ final class GetShipmentUnitsHandler implements QueryHandler
     }
 
     /**
-     * Producto que contiene el bulto, con las cadenas vacías normalizadas a null.
+     * Producto que contiene la unidad física. Nombre y SKU SIEMPRE legibles (rule del dueño): el SKU
+     * nunca es null (cae a ""), y si falta el nombre se usa el SKU y, si falta todo, "Producto". La foto
+     * sí puede faltar (null).
      *
-     * @return array{sku: string|null, product_name: string|null, product_image_url: string|null, piece_index: int|null, piece_total: int|null}
+     * @return array{sku: string, product_name: string, product_image_url: string|null, piece_index: int|null, piece_total: int|null}
      */
     private function unitProduct(\stdClass $record, ?int $pieceIndex, ?int $pieceTotal): array
     {
+        $sku = is_string($record->sku) ? trim($record->sku) : '';
+        $name = is_string($record->product_name) ? trim($record->product_name) : '';
+        if ($name === '') {
+            $name = $sku !== '' ? $sku : 'Producto';
+        }
+
         return [
-            'sku' => is_string($record->sku) && $record->sku !== '' ? $record->sku : null,
-            'product_name' => is_string($record->product_name) && $record->product_name !== '' ? $record->product_name : null,
+            'sku' => $sku,
+            'product_name' => $name,
             'product_image_url' => is_string($record->product_image_url) && $record->product_image_url !== '' ? $record->product_image_url : null,
             'piece_index' => $pieceIndex,
             'piece_total' => $pieceTotal,

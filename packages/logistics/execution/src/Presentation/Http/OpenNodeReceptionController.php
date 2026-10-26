@@ -11,7 +11,7 @@ use Logistics\Execution\Presentation\Http\Request\OpenNodeReceptionRequest;
 /**
  * POST /app — abre la recepción de un envío en un nodo destino (puerta app).
  *
- * Anuncia qué bultos se esperan y por qué corredor (tipo de nodo origen/destino). Idempotente por el par
+ * Anuncia qué productos se esperan y por qué corredor (tipo de nodo origen/destino). Idempotente por el par
  * envío+destino: reabrir no duplica.
  */
 final class OpenNodeReceptionController extends ExecutionController

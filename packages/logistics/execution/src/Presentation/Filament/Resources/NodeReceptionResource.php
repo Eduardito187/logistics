@@ -79,7 +79,7 @@ final class NodeReceptionResource extends Resource
     }
 
     /**
-     * Eager-load del envío (para la referencia legible del pedido) y de los bultos recibidos (para
+     * Eager-load del envío (para la referencia legible del pedido) y de los productos recibidos (para
      * calcular recibidos/faltantes/sobrantes sin N+1).
      *
      * @return Builder<NodeReceptionRecord>
@@ -181,7 +181,7 @@ final class NodeReceptionResource extends Resource
                 TextEntry::make('destination_node_id')
                     ->label(__('Destination node'))
                     ->formatStateUsing(static fn (?string $state): string => NodeNames::label($state) ?? '—'),
-                // Los bultos se listan por su etiqueta legible (pedido + índice de bulto/pieza), nunca
+                // Los productos se listan por su etiqueta legible (pedido + índice de producto/pieza), nunca
                 // por el UUID crudo: cada id se resuelve con UnitNames por badge.
                 TextEntry::make('expected_unit_ids')
                     ->label(__('Expected units'))
@@ -233,7 +233,7 @@ final class NodeReceptionResource extends Resource
     }
 
     /**
-     * Ids de los bultos recibidos (únicos), leídos de la relación cargada.
+     * Ids de los productos recibidos (únicos), leídos de la relación cargada.
      *
      * @return list<string>
      */

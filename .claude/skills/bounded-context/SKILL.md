@@ -35,6 +35,29 @@ por capa, y cada contexto **extraíble a microservicio** sin reescribir.
    El despacho real (SAP/FCM/email/SMS) es un `MessageDispatcher` que corre en el relay, idempotente.
 6. **Cache**: si se cachea, se cachea la forma primitiva (array del ReadModel), nunca el objeto de dominio.
 7. Texto visible de admin/consola **en inglés**; comentarios y docs **en español**.
+8. **NUNCA mostrar UUIDs en el frontend/panel** (regla tajante del dueño). Toda columna/entry/título/
+   Select de Filament que exponga un `*_id`/PK debe resolverse al **valor legible** de la relación
+   (nombre/código/placa/referencia) con los helpers memoizados por request del patrón `api-readmodel-
+   enrichment` (`VehiclePlates`/`NodeNames`/`UserNames`/`UnitNames`, o uno nuevo igual). Selects: id como
+   valor, nombre como label/búsqueda. PK propia → ocultar o referencia legible. NO son UUID (se dejan):
+   `tax_id`, `national_id`, `customer_document_id`, `external_id`, `order_id`, `plate`, `vin`, `token`.
+9. **CERO CDN/dependencia externa en RUNTIME**: todo asset (JS/CSS/fuentes/tiles/imágenes) se sirve local
+   desde `'self'` (vendorizado en `public/vendor` o `public/brand`). Prohibido `<script|link src=https://...>`,
+   Google Fonts, unpkg, tiles públicos de OSM. La CSP de `SecurityHeaders` es `'self'`-only. Las deps
+   composer SÍ valen (se descargan a `vendor/`, son locales). `vendor/` es un volumen del contenedor:
+   verificar DENTRO del contenedor cargando el autoloader, no con `ls vendor/` en el host.
+10. **Marca DisTrack** (panel interno): rojo **#E30613**, Noche **#141414**, fuentes Barlow/Barlow
+    Condensed/IBM Plex Mono **auto-hospedadas**; assets en `public/brand/distrack`. NO tocar la app de
+    clientes (blanca/roja) ni `APP_NAME` (de él deriva el prefijo técnico de Redis).
+11. **Seeders y mensajes**: seeders SIEMPRE idempotentes y aditivos (firstOrCreate/updateOrCreate/dispatch
+    por event_id; external_id con sufijo de fecha para datos por día), NUNCA destructivos (ni truncate ni
+    migrate:fresh). Mensajes de error/UI de cara al cliente: lenguaje **general y llano**, sin jerga interna
+    ("bulto/andén/rol/supervisor"), sin filtrar excepciones ni si un email existe.
+12. **Etiquetado de productos** (regla tajante del dueño): en TEXTO visible nunca la palabra **"bulto"** →
+    usar **"producto"**; y donde se muestre un producto/línea/unidad, SIEMPRE mostrar **nombre + SKU**
+    (p.ej. "Heladera · SKU-RD-1", + "(1 de 3)" si hay pieza), **nunca `null`/vacío/"—"** (fallback: SKU, o
+    "Producto"). Los identificadores técnicos (tabla `shipment_units`, `PhysicalUnit`, `unit_id`) NO se
+    renombran, solo el texto visible. Ver `UnitNames`, `RouteStopView.items`, `GetShipmentUnits`, `ShipmentLineView`.
 
 ## Estructura de carpetas
 

@@ -43,6 +43,9 @@ final class TestDataSeeder extends Seeder
 {
     private const string TIMEZONE = 'America/La_Paz';
 
+    /** Días de datos a sembrar desde hoy (dos semanas) para validar roles y la app. */
+    private const int SCENARIO_DAYS = 14;
+
     /** Nodo de referencia del escenario (CD Santa Cruz) para detectar si falta la base. */
     private const string CD_CODE = 'CD-SCZ-01';
 
@@ -68,7 +71,6 @@ final class TestDataSeeder extends Seeder
         //    dependencias por contenedor) y se la invoca por fecha + etapa.
         $tz = new DateTimeZone(self::TIMEZONE);
         $today = new DateTimeImmutable('now', $tz);
-        $tomorrow = $today->modify('+1 day');
 
         /** @var TodayScenarioSeeder $scenario */
         $scenario = Container::getInstance()->make(TodayScenarioSeeder::class);
@@ -76,8 +78,16 @@ final class TestDataSeeder extends Seeder
             $scenario->setCommand($this->command);
         }
 
-        $scenario->buildForDate($today, TodayScenarioSeeder::STAGE_IN_PROGRESS);
-        $scenario->buildForDate($tomorrow, TodayScenarioSeeder::STAGE_PLANNED);
+        // DOS SEMANAS de datos (hoy + 13): HOY queda EN CURSO (ruta iniciada, algunas entregas hechas);
+        // los otros 13 días quedan PLANIFICADOS (ruta fresca, nada entregado) para validar el flujo hacia
+        // adelante con todos los roles. Idempotente por fecha (external_id/plan_date con sufijo del día).
+        for ($offset = 0; $offset < self::SCENARIO_DAYS; $offset++) {
+            $date = $today->modify('+'.$offset.' day');
+            $stage = $offset === 0
+                ? TodayScenarioSeeder::STAGE_IN_PROGRESS
+                : TodayScenarioSeeder::STAGE_PLANNED;
+            $scenario->buildForDate($date, $stage);
+        }
 
         // 3) Variedad adicional de datos (la crea OTRO agente). Si aún no existe, se omite sin fallar.
         if (class_exists(TestDataVarietySeeder::class)) {

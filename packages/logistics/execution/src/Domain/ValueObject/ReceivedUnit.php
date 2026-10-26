@@ -33,12 +33,12 @@ final readonly class ReceivedUnit
     ): self {
         $unit = trim($unitId);
         if ($unit === '') {
-            throw ExecutionException::because('la recepción de un bulto requiere el id del bulto (unitId)');
+            throw ExecutionException::because('la recepción de un producto requiere el id del producto (unitId)');
         }
 
         $key = trim($idempotencyKey);
         if ($key === '') {
-            throw ExecutionException::because('la recepción de un bulto requiere una clave de idempotencia del dispositivo');
+            throw ExecutionException::because('la recepción de un producto requiere una clave de idempotencia del dispositivo');
         }
 
         return new self($unit, $geo, $device, $occurredAt, $key);
