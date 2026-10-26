@@ -612,8 +612,8 @@ final class TestDataVarietySeeder extends Seeder
     /**
      * Arma el array de pedido normalizando las líneas (imagen por SKU).
      *
-     * @param  array{0: string, 1: string}                        $window
-     * @param  list<array{0: string, 1: string, 2: int, 3: float}> $lines
+     * @param  array{0: string, 1: string}                                                                                                                                                                                                                                                                                                                                                           $window
+     * @param  list<array{0: string, 1: string, 2: int, 3: float}>                                                                                                                                                                                                                                                                                                                                   $lines
      * @return array{source: string, external_id: string, customer_name: string, customer_document_id: ?string, customer_phone: string, customer_email: ?string, address_text: string, address_reference: ?string, lat: float, lng: float, date: string, window: array{0: string, 1: string}, lines: list<array{sku: string, product_name: string, quantity: int, image_url: string, price: float}>}
      */
     private function order(

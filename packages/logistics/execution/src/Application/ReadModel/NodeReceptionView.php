@@ -15,12 +15,12 @@ use Logistics\Execution\Domain\Model\NodeReception;
 final readonly class NodeReceptionView
 {
     /**
-     * @param list<string>                                                                                                                                                                                        $expectedUnitIds
-     * @param list<string>                                                                                                                                                                                        $receivedUnitIds
-     * @param list<string>                                                                                                                                                                                        $missingUnitIds
-     * @param list<string>                                                                                                                                                                                        $surplusUnitIds
+     * @param list<string>                                                                                                                                                                              $expectedUnitIds
+     * @param list<string>                                                                                                                                                                              $receivedUnitIds
+     * @param list<string>                                                                                                                                                                              $missingUnitIds
+     * @param list<string>                                                                                                                                                                              $surplusUnitIds
      * @param list<array{unit_id: string, sku: string, product_name: string, product_image_url: string|null, unit_index: int|null, unit_total: int|null, piece_index: int|null, piece_total: int|null}> $units
-     *                                                                                                                                                                                                                             producto de cada unidad física (esperadas ∪ recibidas ∪ sobrantes); nombre y SKU siempre legibles, foto/índices null si no se resolvió
+     *                                                                                                                                                                                                                   producto de cada unidad física (esperadas ∪ recibidas ∪ sobrantes); nombre y SKU siempre legibles, foto/índices null si no se resolvió
      */
     public function __construct(
         public string $id,

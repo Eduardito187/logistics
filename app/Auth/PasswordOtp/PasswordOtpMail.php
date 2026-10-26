@@ -21,8 +21,8 @@ final class PasswordOtpMail extends Mailable
     use Queueable, SerializesModels;
 
     /**
-     * @param  string  $code             Código OTP de 6 dígitos.
-     * @param  int     $expiresInMinutes Minutos de validez del código.
+     * @param string $code             Código OTP de 6 dígitos.
+     * @param int    $expiresInMinutes Minutos de validez del código.
      */
     public function __construct(
         public readonly string $code,

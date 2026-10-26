@@ -18,16 +18,17 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
- * @property string|null $driver_id UUID del chofer de Fleet vinculado a esta cuenta (null si no es chofer).
- * @property string|null $node_id   UUID del nodo de tienda (network_nodes) al que pertenece la cuenta (null si no es tienda).
- * @property string|null $email     Email de la cuenta (login).
- * @property string|null $app_authentication_secret         Secreto TOTP cifrado en reposo (cast `encrypted`).
+ * @property string|null        $driver_id                         UUID del chofer de Fleet vinculado a esta cuenta (null si no es chofer).
+ * @property string|null        $node_id                           UUID del nodo de tienda (network_nodes) al que pertenece la cuenta (null si no es tienda).
+ * @property string|null        $email                             Email de la cuenta (login).
+ * @property string|null        $app_authentication_secret         Secreto TOTP cifrado en reposo (cast `encrypted`).
  * @property array<string>|null $app_authentication_recovery_codes Códigos de recuperación cifrados (cast `encrypted:array`).
- * @property \Illuminate\Support\Carbon|null $two_factor_confirmed_at Momento de confirmación del enrolamiento 2FA.
+ * @property Carbon|null        $two_factor_confirmed_at           Momento de confirmación del enrolamiento 2FA.
  */
 #[Fillable(['name', 'email', 'password', 'driver_id', 'node_id'])]
 #[Hidden(['password', 'remember_token'])]
@@ -91,7 +92,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
     /**
      * Guarda los códigos de recuperación (el cast los cifra en reposo). null los elimina.
      *
-     * @param  array<string>|null  $codes
+     * @param array<string>|null $codes
      */
     public function saveAppAuthenticationRecoveryCodes(#[\SensitiveParameter] ?array $codes): void
     {

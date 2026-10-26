@@ -128,7 +128,7 @@ class RequestPasswordOtp extends SimplePage
             (string) ($data['password'] ?? ''),
         );
 
-        if (! $wasReset) {
+        if (!$wasReset) {
             // Mensaje general: no distinguimos "código inválido" de "email inexistente".
             Notification::make()
                 ->title(__('We could not reset your password.'))
@@ -248,7 +248,7 @@ class RequestPasswordOtp extends SimplePage
 
     public function getSubheading(): string | Htmlable | null
     {
-        if (! filament()->hasLogin()) {
+        if (!filament()->hasLogin()) {
             return null;
         }
 

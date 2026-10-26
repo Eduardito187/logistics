@@ -18,7 +18,7 @@ it('resuelve el 404 real vía el handler normal y muestra la página de error', 
     $this->get('/una-ruta-que-no-existe-jamas')
         ->assertStatus(404)
         ->assertSee('Página no encontrada')
-        ->assertSee('Dismac');
+        ->assertSee('DisTrack');
 });
 
 it('renderiza la vista de cada código de error', function (int $code): void {
@@ -26,7 +26,7 @@ it('renderiza la vista de cada código de error', function (int $code): void {
 
     expect($html)
         ->toContain((string) $code)        // código grande visible
-        ->toContain('Dismac')              // marca
+        ->toContain('DisTrack')            // marca
         ->not->toContain('@vite');          // no depende de assets compilados
 })->with($codes);
 

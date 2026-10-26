@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1\App\Concerns;
 
+use App\Http\Controllers\Api\V1\App\AuthController;
+use App\Http\Controllers\Api\V1\App\TwoFactorController;
 use App\Models\Device;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
@@ -13,8 +15,8 @@ use Illuminate\Support\Carbon;
 /**
  * Lógica compartida de emisión de tokens ligados a dispositivo para la puerta `/app/*`.
  *
- * La usan {@see \App\Http\Controllers\Api\V1\App\AuthController} (login/refresh/me) y
- * {@see \App\Http\Controllers\Api\V1\App\TwoFactorController} (verify del segundo factor),
+ * La usan {@see AuthController} (login/refresh/me) y
+ * {@see TwoFactorController} (verify del segundo factor),
  * para que el binding usuario↔dispositivo y la forma de la respuesta de sesión sean
  * idénticos tanto si el login fue directo como si pasó por el reto de 2FA.
  */

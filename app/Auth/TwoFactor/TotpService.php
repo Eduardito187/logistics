@@ -27,7 +27,7 @@ final class TotpService
     /**
      * Genera un secreto aleatorio y lo devuelve en Base32.
      *
-     * @param  int  $bytes  Cantidad de bytes aleatorios del secreto (20 = 160 bits, recomendado RFC 4226).
+     * @param int $bytes Cantidad de bytes aleatorios del secreto (20 = 160 bits, recomendado RFC 4226).
      */
     public function generateSecret(int $bytes = 20): string
     {
@@ -38,9 +38,9 @@ final class TotpService
      * Construye el URI `otpauth://` para que la app autenticadora (Google Authenticator, etc.) lo
      * cargue por QR o manualmente.
      *
-     * @param  string  $secret  Secreto en Base32.
-     * @param  string  $holder  Identificador de la cuenta (p.ej. el email del usuario).
-     * @param  string  $issuer  Emisor de la app.
+     * @param string $secret Secreto en Base32.
+     * @param string $holder Identificador de la cuenta (p.ej. el email del usuario).
+     * @param string $issuer Emisor de la app.
      */
     public function otpauthUri(string $secret, string $holder, string $issuer = 'DisTrack'): string
     {
@@ -63,9 +63,9 @@ final class TotpService
      *
      * Rechaza códigos mal formados (no numéricos o de largo incorrecto) y compara en tiempo constante.
      *
-     * @param  string  $secret  Secreto en Base32.
-     * @param  string  $code    Código ingresado por el usuario.
-     * @param  int     $window  Períodos de tolerancia hacia atrás y adelante.
+     * @param string $secret Secreto en Base32.
+     * @param string $code   Código ingresado por el usuario.
+     * @param int    $window Períodos de tolerancia hacia atrás y adelante.
      */
     public function verify(string $secret, string $code, int $window = 1): bool
     {

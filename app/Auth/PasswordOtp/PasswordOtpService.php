@@ -114,7 +114,7 @@ final class PasswordOtpService
     {
         $email = $this->normalizeEmail($email);
 
-        if (! $this->verify($email, $code)) {
+        if (!$this->verify($email, $code)) {
             return false;
         }
 

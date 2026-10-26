@@ -28,23 +28,23 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table): void {
-            if (! Schema::hasColumn('users', 'app_authentication_secret')) {
+            if (!Schema::hasColumn('users', 'app_authentication_secret')) {
                 // Secreto TOTP (Base32) cifrado en reposo; TEXT para alojar el ciphertext.
                 $table->text('app_authentication_secret')->nullable()->after('password');
             }
 
-            if (! Schema::hasColumn('users', 'app_authentication_recovery_codes')) {
+            if (!Schema::hasColumn('users', 'app_authentication_recovery_codes')) {
                 // Códigos de recuperación cifrados (array serializado y cifrado).
                 $table->text('app_authentication_recovery_codes')->nullable()->after('app_authentication_secret');
             }
 
-            if (! Schema::hasColumn('users', 'two_factor_confirmed_at')) {
+            if (!Schema::hasColumn('users', 'two_factor_confirmed_at')) {
                 // Momento en que el usuario confirmó el enrolamiento de 2FA.
                 $table->timestamp('two_factor_confirmed_at')->nullable()->after('app_authentication_recovery_codes');
             }
         });
 
-        if (! Schema::hasTable('password_reset_otps')) {
+        if (!Schema::hasTable('password_reset_otps')) {
             Schema::create('password_reset_otps', function (Blueprint $table): void {
                 $table->id();
                 $table->string('email')->index();

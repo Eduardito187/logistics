@@ -54,7 +54,7 @@ final class GetShipmentUnitsHandler implements QueryHandler
      * Carga en lote (una consulta, shipment_units LEFT JOIN shipment_lines) la etiqueta humana de cada
      * unidad física ("N/M", con pieza si viene fraccionada) y el producto que contiene (SKU, nombre, foto, pieza).
      *
-     * @param  list<string>                                                                                                                                                                   $unitIds
+     * @param  list<string>                                                                                                                                                         $unitIds
      * @return array<string, array{label: string, product: array{sku: string, product_name: string, product_image_url: string|null, piece_index: int|null, piece_total: int|null}}>
      */
     private function resolveUnits(array $unitIds): array
