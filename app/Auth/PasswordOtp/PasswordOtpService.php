@@ -139,11 +139,16 @@ final class PasswordOtpService
      */
     private function currentOtp(string $email): ?object
     {
-        return DB::table('password_reset_otps')
+        // `first()` se tipa como stdClass|null; lo estrechamos a la forma concreta de la fila para que
+        // verify() acceda a sus campos con PHPStan nivel 8 sin "propiedad indefinida".
+        /** @var object{id: int, email: string, code_hash: string, expires_at: string, attempts: int}|null $row */
+        $row = DB::table('password_reset_otps')
             ->where('email', $email)
             ->where('expires_at', '>=', Carbon::now())
             ->orderByDesc('id')
             ->first();
+
+        return $row;
     }
 
     /**

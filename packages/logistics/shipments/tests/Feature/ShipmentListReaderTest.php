@@ -25,8 +25,8 @@ final class ShipmentSeedFailure extends RuntimeException {}
 
 /**
  * Lado de LECTURA del listado de envíos (WS1): los filtros se empujan a SQL y el ShipmentView se arma
- * sin reconstruir el agregado. Se verifica el filtrado/paginación del lector y, sobre todo, que su salida
- * sea IDÉNTICA a la del camino histórico (ShipmentView::fromShipment). Contra PostgreSQL (logistics_test).
+ * sin reconstruir el agregado. Se verifica el filtrado/paginación del lector y, en particular, que su
+ * salida sea IDÉNTICA a la del camino histórico (ShipmentView::fromShipment). Contra PostgreSQL (logistics_test).
  */
 beforeEach(function (): void {
     // Sin preparación propia: la guarda real es el ->skip() encadenado (requiere PostgreSQL).
