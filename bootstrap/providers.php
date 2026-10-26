@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Providers\AppServiceProvider;
 use App\Providers\AuthServiceProvider;
 use App\Providers\Filament\AdminPanelProvider;
+use App\Providers\SlowQueryLoggingServiceProvider;
 use Logistics\Access\Infrastructure\Providers\AccessServiceProvider;
 use Logistics\Capacity\Infrastructure\Providers\CapacityServiceProvider;
 use Logistics\Carriers\Infrastructure\Providers\CarriersServiceProvider;
@@ -39,6 +40,10 @@ use Logistics\Tracking\Infrastructure\Providers\TrackingServiceProvider;
 // después de correr cualquier instalador.
 return [
     AppServiceProvider::class,
+
+    // Observabilidad (auditoría M-6): registra el listener de consultas lentas (DB::listen) cuando
+    // SLOW_QUERY_LOG_ENABLED está activo. Coste cero si no se habilita.
+    SlowQueryLoggingServiceProvider::class,
 
     // Autenticación y autorización de las tres puertas de la API (Sanctum, roles,
     // credenciales por canal y de servicio). Temprano: expone alias de middleware,

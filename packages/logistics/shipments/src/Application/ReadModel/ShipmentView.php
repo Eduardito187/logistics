@@ -84,6 +84,80 @@ final readonly class ShipmentView
     }
 
     /**
+     * Construye el ReadModel directamente desde primitivos (lado de lectura CQRS), sin pasar por el
+     * agregado. Aplica las MISMAS invariantes de forma que fromShipment() para que el resultado sea
+     * idéntico byte a byte:
+     *
+     *  - lat/lng van juntos: si falta cualquiera de los dos, ambos quedan null (no hay punto a medias),
+     *    igual que cuando el agregado no tiene GeoPoint.
+     *  - la franja de entrega es excluyente: o están las tres columnas o ninguna (las tres null);
+     *    la fecha se normaliza a 'Y-m-d' (10 chars) como DeliverySlot.
+     *
+     * Los demás campos se persisten ya normalizados por el agregado al guardar, así que leerlos crudos
+     * reproduce la vista sin reconstruir los value objects.
+     *
+     * @param list<ShipmentLineView> $lines
+     */
+    public static function fromPrimitives(
+        string $id,
+        string $source,
+        string $externalId,
+        string $customerName,
+        ?string $customerDocumentId,
+        ?string $customerPhone,
+        ?string $customerEmail,
+        string $addressText,
+        ?string $addressReference,
+        ?float $lat,
+        ?float $lng,
+        int $addressConfidenceScore,
+        string $addressConfidenceLevel,
+        string $status,
+        ?string $deliveryDate,
+        ?string $deliveryWindowStart,
+        ?string $deliveryWindowEnd,
+        ?string $destinationNodeId,
+        array $lines,
+    ): self {
+        // lat/lng van juntos: sin el par completo no hay coordenada.
+        if ($lat === null || $lng === null) {
+            $lat = null;
+            $lng = null;
+        }
+
+        // Franja de entrega: las tres columnas o ninguna; la fecha se recorta a 'Y-m-d'.
+        if ($deliveryDate === null || $deliveryWindowStart === null || $deliveryWindowEnd === null) {
+            $deliveryDate = null;
+            $deliveryWindowStart = null;
+            $deliveryWindowEnd = null;
+        } else {
+            $deliveryDate = substr($deliveryDate, 0, 10);
+        }
+
+        return new self(
+            $id,
+            $source,
+            $externalId,
+            $customerName,
+            $customerDocumentId,
+            $customerPhone,
+            $customerEmail,
+            $addressText,
+            $addressReference,
+            $lat,
+            $lng,
+            $addressConfidenceScore,
+            $addressConfidenceLevel,
+            $status,
+            $deliveryDate,
+            $deliveryWindowStart,
+            $deliveryWindowEnd,
+            $destinationNodeId,
+            $lines,
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array

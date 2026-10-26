@@ -270,6 +270,9 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/SettlementStatus'
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Settlement list
@@ -284,6 +287,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Settlement'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
   /app/carriers/settlements/{settlementId}:
@@ -1412,6 +1419,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Refuel list
@@ -1426,6 +1436,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Refuel'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
     post:
@@ -2021,6 +2035,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Odometer reading list
@@ -2035,6 +2052,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/OdometerReading'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
     post:
@@ -2231,6 +2252,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Expense list
@@ -2245,6 +2269,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Expense'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
     post:
@@ -2693,21 +2721,27 @@ paths:
         Returns the latest notifications across the whole operation, newest first. App gate.
       operationId: appListNotifications
       parameters:
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          maximum: 500
-          default: 100
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Global notification log.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotificationListEnvelope'
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationView'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
   /app/notifications/{notification}:
@@ -6299,6 +6333,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Trip list
@@ -6313,6 +6350,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Trip'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
   /app/telemetry/alerts:
@@ -6337,6 +6378,9 @@ paths:
         required: false
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Alert list
@@ -6351,6 +6395,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Alert'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
       security:
       - appBearer: []
   /app/telemetry/alerts/{alertId}/acknowledge:
@@ -6652,11 +6700,16 @@ paths:
               $ref: '#/components/schemas/AppLoginRequest'
       responses:
         '200':
-          description: Session started; token issued.
+          description: >-
+            Session started; token issued. Si el usuario tiene 2FA activo, en lugar de la sesión se
+            devuelve un desafío de segundo factor (TwoFactorChallenge) que debe resolverse en
+            /app/auth/2fa/verify.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppLoginResponse'
+                oneOf:
+                - $ref: '#/components/schemas/AppLoginResponse'
+                - $ref: '#/components/schemas/TwoFactorChallenge'
         '422':
           $ref: '#/components/responses/AppAuthValidationError'
       security: []
@@ -6707,6 +6760,252 @@ paths:
                 $ref: '#/components/schemas/AppMeResponse'
       security:
       - appBearer: []
+  /app/auth/2fa/enroll:
+    post:
+      tags:
+      - auth
+      operationId: appTwoFactorEnroll
+      summary: Start two-factor enrollment for the current user (gate /app)
+      description: >-
+        Genera un secreto TOTP, su URI otpauth y códigos de recuperación para el usuario autenticado.
+        El segundo factor no queda activo hasta confirmarlo en /app/auth/2fa/confirm.
+      responses:
+        '200':
+          description: Enrollment started; secret and recovery codes issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TwoFactorEnrollment'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/auth/2fa/confirm:
+    post:
+      tags:
+      - auth
+      operationId: appTwoFactorConfirm
+      summary: Confirm and activate two-factor enrollment (gate /app)
+      description: >-
+        Confirma el enrolamiento validando un código TOTP generado por la app autenticadora. Una vez
+        confirmado, el segundo factor queda activo para el usuario.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - code
+              properties:
+                code:
+                  type: string
+                  description: Código TOTP de 6 dígitos generado por la app autenticadora.
+      responses:
+        '200':
+          description: Two-factor confirmed and activated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Invalid or expired code.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/auth/2fa/verify:
+    post:
+      tags:
+      - auth
+      operationId: appTwoFactorVerify
+      summary: Resolve a two-factor challenge and start the session (gate /app)
+      description: >-
+        Endpoint público (rate limited). Resuelve el desafío de segundo factor emitido por /app/auth/login
+        y, si el código es válido, emite la sesión (token) de la misma forma que un login normal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - challenge_id
+              - code
+              properties:
+                challenge_id:
+                  type: string
+                  description: Identificador del desafío devuelto por /app/auth/login.
+                code:
+                  type: string
+                  description: Código TOTP o de recuperación.
+                email:
+                  type: string
+                  format: email
+                  description: Correo del usuario (opcional, refuerza la validación del desafío).
+      responses:
+        '200':
+          description: Second factor verified; session started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppLoginResponse'
+        '422':
+          description: Invalid or expired code/challenge.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Too many attempts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security: []
+  /app/auth/2fa/disable:
+    post:
+      tags:
+      - auth
+      operationId: appTwoFactorDisable
+      summary: Disable two-factor for the current user (gate /app)
+      description: >-
+        Desactiva el segundo factor del usuario autenticado. Debe acreditarse con un código TOTP vigente
+        o con la contraseña de la cuenta.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Acreditar con un código TOTP vigente o con la contraseña de la cuenta.
+              properties:
+                code:
+                  type: string
+                  description: Código TOTP de 6 dígitos.
+                password:
+                  type: string
+                  description: Contraseña actual de la cuenta.
+      responses:
+        '200':
+          description: Two-factor disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Invalid credentials for disabling two-factor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/auth/password/forgot:
+    post:
+      tags:
+      - auth
+      operationId: appPasswordForgot
+      summary: Request a password reset OTP by email (gate /app)
+      description: >-
+        Endpoint público (rate limited). Envía un código OTP de un solo uso al correo del usuario para
+        reiniciar la contraseña. Responde siempre igual para no revelar si el correo existe.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: Correo del usuario que solicita el reinicio.
+      responses:
+        '200':
+          description: Reset requested; if the email exists, an OTP was sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '429':
+          description: Too many requests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security: []
+  /app/auth/password/reset:
+    post:
+      tags:
+      - auth
+      operationId: appPasswordReset
+      summary: Reset the password with the emailed OTP (gate /app)
+      description: >-
+        Endpoint público (rate limited). Reinicia la contraseña del usuario validando el código OTP
+        enviado por correo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              - code
+              - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: Correo del usuario.
+                code:
+                  type: string
+                  description: Código OTP recibido por correo.
+                password:
+                  type: string
+                  minLength: 8
+                  description: Nueva contraseña.
+      responses:
+        '200':
+          description: Password reset.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '422':
+          description: Invalid or expired code.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Too many attempts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security: []
   /app/devices:
     get:
       tags:
@@ -7168,6 +7467,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: The list of ASNs
@@ -7443,20 +7745,9 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/FulfillmentMode'
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          default: 100
-      - name: offset
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 0
-          default: 0
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: The list of lots
@@ -7496,6 +7787,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: The list of seller settlements
@@ -7654,6 +7948,9 @@ paths:
         description: Optional filter by return status.
         schema:
           $ref: '#/components/schemas/ReturnOrderStatus'
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: The list of returns
@@ -8080,6 +8377,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Asn'
+        meta:
+          oneOf:
+          - $ref: '#/components/schemas/PaginationMeta'
+          - $ref: '#/components/schemas/CursorMeta'
     ReceivingDockSlot:
       type: object
       required:
@@ -8357,6 +8658,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Lot'
+        meta:
+          oneOf:
+          - $ref: '#/components/schemas/PaginationMeta'
+          - $ref: '#/components/schemas/CursorMeta'
     SellerSettlementStatus:
       type: string
       description: Estado del ciclo de vida de una liquidación de seller.
@@ -8476,6 +8781,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SellerSettlement'
+        meta:
+          oneOf:
+          - $ref: '#/components/schemas/PaginationMeta'
+          - $ref: '#/components/schemas/CursorMeta'
     DraftSellerSettlementRequest:
       type: object
       required:
@@ -8699,6 +9008,40 @@ components:
           $ref: '#/components/schemas/AppUserProfile'
         device:
           $ref: '#/components/schemas/AppDevicePayload'
+    TwoFactorEnrollment:
+      type: object
+      required:
+      - secret
+      - otpauth_uri
+      - recovery_codes
+      properties:
+        secret:
+          type: string
+          description: Secreto TOTP en base32 para la app autenticadora.
+        otpauth_uri:
+          type: string
+          format: uri
+          description: URI otpauth:// para generar el QR de enrolamiento.
+        recovery_codes:
+          type: array
+          description: Códigos de recuperación de un solo uso.
+          items:
+            type: string
+    TwoFactorChallenge:
+      type: object
+      required:
+      - two_factor_required
+      - challenge_id
+      - expires_in
+      properties:
+        two_factor_required:
+          type: boolean
+        challenge_id:
+          type: string
+          description: Identificador del desafío a resolver en /app/auth/2fa/verify.
+        expires_in:
+          type: integer
+          description: Segundos hasta que el desafío expira.
     AppTokenResponse:
       type: object
       required:
@@ -9682,8 +10025,9 @@ components:
           - $ref: '#/components/schemas/RouteGeometry'
           - type: 'null'
           description: >-
-            Street-level route geometry from the published plan (planning), matched by vehicle+date.
-            Null until the routing run computes it or if no plan matches.
+            Planned route geometry, matched by vehicle+date: the street-level geometry persisted with the
+            plan (computed on the fly if the plan still lacks it); if there is no plan, a straight line
+            through the route stops in sequence. Null only when fewer than two stops have coordinates.
     ReserveDeliverySlotRequest:
       type: object
       required:
@@ -11571,6 +11915,54 @@ components:
           type: string
           format: date-time
           nullable: true
+        units:
+          type: array
+          description: Producto de cada bulto de la recepción (esperados ∪ recibidos ∪ sobrantes); campos null si el id no es un bulto conocido
+          items:
+            $ref: '#/components/schemas/NodeReceptionUnit'
+    NodeReceptionUnit:
+      type: object
+      description: Bulto de una recepción en nodo con el producto que contiene (foto, nombre, SKU) y su posición "N de M"
+      required:
+      - unit_id
+      - sku
+      - product_name
+      - product_image_url
+      - unit_index
+      - unit_total
+      - piece_index
+      - piece_total
+      properties:
+        unit_id:
+          type: string
+        sku:
+          type:
+          - string
+          - 'null'
+        product_name:
+          type:
+          - string
+          - 'null'
+        product_image_url:
+          type:
+          - string
+          - 'null'
+        unit_index:
+          type:
+          - integer
+          - 'null'
+        unit_total:
+          type:
+          - integer
+          - 'null'
+        piece_index:
+          type:
+          - integer
+          - 'null'
+        piece_total:
+          type:
+          - integer
+          - 'null'
     NodeStatus:
       type: string
       enum:
@@ -13599,6 +13991,28 @@ components:
           - string
           - 'null'
           description: Etiqueta humana del bulto ("N/M")
+        sku:
+          type:
+          - string
+          - 'null'
+          description: SKU del producto que contiene el bulto (null si no se resuelve)
+        product_name:
+          type:
+          - string
+          - 'null'
+        product_image_url:
+          type:
+          - string
+          - 'null'
+        piece_index:
+          type:
+          - integer
+          - 'null'
+          description: Pieza N de un producto fraccionado en varias cajas
+        piece_total:
+          type:
+          - integer
+          - 'null'
     GeoPoint:
       type: object
       required:
@@ -14027,6 +14441,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ReturnOrder'
+        meta:
+          oneOf:
+          - $ref: '#/components/schemas/PaginationMeta'
+          - $ref: '#/components/schemas/CursorMeta'
     InitiateReturnRequest:
       type: object
       required:

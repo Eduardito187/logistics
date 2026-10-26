@@ -4,5 +4,5 @@
 
 @section('title', 'Página no encontrada')
 @section('code', '404')
-@section('heading', 'Página no encontrada')
-@section('message', 'La página que buscas no existe o fue movida a otro lugar.')
+@section('heading', 'No encontramos esta página')
+@section('message', 'La página que buscas no existe o cambió de dirección. Revisa el enlace o vuelve al inicio.')

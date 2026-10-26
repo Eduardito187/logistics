@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Settlement\Infrastructure\Persistence\Eloquent\Repository;
 
+use Illuminate\Database\Eloquent\Builder;
 use Logistics\Settlement\Domain\Contract\SellerSettlementRepository;
 use Logistics\Settlement\Domain\Model\SellerSettlement;
 use Logistics\Settlement\Domain\ValueObject\SettlementId;
@@ -53,8 +54,47 @@ final readonly class EloquentSellerSettlementRepository implements SellerSettlem
         ?string $status = null,
         ?string $periodFrom = null,
         ?string $periodTo = null,
+        ?int $limit = null,
+        ?int $offset = null,
     ): array {
-        $query = SellerSettlementRecord::query()->with('lines')->orderByDesc('period_from');
+        // Desempate por id (UUID v7) para que la paginación sea determinista ante periodos repetidos.
+        $query = $this->filtered($sellerId, $status, $periodFrom, $periodTo)
+            ->with('lines')->orderByDesc('period_from')->orderBy('id');
+
+        if ($offset !== null) {
+            $query->offset($offset);
+        }
+        if ($limit !== null) {
+            $query->limit($limit);
+        }
+
+        return array_values($query
+            ->get()
+            ->map(fn (SellerSettlementRecord $record): SellerSettlement => $this->mapper->toDomain($record))
+            ->all());
+    }
+
+    public function countBy(
+        ?string $sellerId = null,
+        ?string $status = null,
+        ?string $periodFrom = null,
+        ?string $periodTo = null,
+    ): int {
+        return $this->filtered($sellerId, $status, $periodFrom, $periodTo)->count();
+    }
+
+    /**
+     * Query builder con los filtros comunes de list/countBy (sin orden, recorte ni eager load).
+     *
+     * @return Builder<SellerSettlementRecord>
+     */
+    private function filtered(
+        ?string $sellerId,
+        ?string $status,
+        ?string $periodFrom,
+        ?string $periodTo,
+    ): Builder {
+        $query = SellerSettlementRecord::query();
 
         if ($sellerId !== null && $sellerId !== '') {
             $query->where('seller_id', $sellerId);
@@ -70,9 +110,6 @@ final readonly class EloquentSellerSettlementRepository implements SellerSettlem
             $query->where('period_to', '>=', $periodFrom);
         }
 
-        return array_values($query
-            ->get()
-            ->map(fn (SellerSettlementRecord $record): SellerSettlement => $this->mapper->toDomain($record))
-            ->all());
+        return $query;
     }
 }

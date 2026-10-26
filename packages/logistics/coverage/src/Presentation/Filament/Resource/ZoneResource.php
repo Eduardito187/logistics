@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\ZoneRecord;
 use Logistics\Coverage\Presentation\Filament\Resource\ZoneResource\Pages;
+use Logistics\Coverage\Presentation\Filament\Support\NodeNames;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
@@ -144,11 +145,7 @@ final class ZoneResource extends Resource
                             ->get()
                             ->mapWithKeys(static fn ($node): array => [$node->id => "{$node->name} ({$node->code})"])
                             ->all())
-                        ->getOptionLabelUsing(function ($value): ?string {
-                            $node = DB::table('network_nodes')->where('id', $value)->first();
-
-                            return $node === null ? null : "{$node->name} ({$node->code})";
-                        })
+                        ->getOptionLabelUsing(fn ($value): ?string => NodeNames::label(is_string($value) ? $value : (string) $value))
                         ->helperText(__('Node that fulfils deliveries in this zone.')),
                     TextInput::make('rules.baseMinutes')
                         ->label(__('Base lead time (minutes)'))
@@ -205,14 +202,15 @@ final class ZoneResource extends Resource
                 TextColumn::make('serving_node')
                     ->label(__('Serving node'))
                     ->placeholder('—')
+                    // Sin N+1 (auditoría M-3): se resuelve contra el mapa memoizado id→"name (code)",
+                    // una sola lectura de `network_nodes` por request en vez de una por fila.
                     ->getStateUsing(function (ZoneRecord $record): ?string {
                         $nodeId = $record->rules['nodeId'] ?? null;
                         if (!is_string($nodeId) || $nodeId === '') {
                             return null;
                         }
-                        $node = DB::table('network_nodes')->where('id', $nodeId)->first();
 
-                        return $node === null ? null : "{$node->name} ({$node->code})";
+                        return NodeNames::label($nodeId);
                     }),
                 TextColumn::make('services')
                     ->label(__('Services'))

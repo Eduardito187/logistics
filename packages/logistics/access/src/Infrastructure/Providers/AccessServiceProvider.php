@@ -78,6 +78,7 @@ use Logistics\Access\Infrastructure\Persistence\Eloquent\Repository\EloquentUser
 use Logistics\Access\Infrastructure\Security\BcryptPasswordHasher;
 use Logistics\Access\Infrastructure\Security\RandomSecretGenerator;
 use Logistics\Access\Infrastructure\Security\Sha256TokenHasher;
+use Logistics\Access\Presentation\Console\PruneAuditLogCommand;
 use Logistics\Access\Presentation\Http\Middleware\AuthenticateIntegrationToken as AuthenticateIntegrationTokenMiddleware;
 use Logistics\Access\Presentation\Http\Middleware\EnsurePermission;
 use Logistics\Shared\Application\HandlerRegistry;
@@ -136,6 +137,8 @@ final class AccessServiceProvider extends ServiceProvider
 
     public function register(): void
     {
+        $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-access.php', 'logistics-access');
+
         // Repositorios: puerto de dominio → implementación Eloquent.
         $this->app->bind(PermissionRepository::class, EloquentPermissionRepository::class);
         $this->app->bind(RoleRepository::class, EloquentRoleRepository::class);
@@ -168,5 +171,10 @@ final class AccessServiceProvider extends ServiceProvider
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware('access.token', AuthenticateIntegrationTokenMiddleware::class);
         $router->aliasMiddleware('access.permission', EnsurePermission::class);
+
+        // Comando de poda de retención de la bitácora de auditoría (seguro por defecto: dry-run).
+        if ($this->app->runningInConsole()) {
+            $this->commands([PruneAuditLogCommand::class]);
+        }
     }
 }

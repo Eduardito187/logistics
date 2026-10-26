@@ -41,7 +41,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
  *
  * Lectura: la cola se arma desde la proyección de lectura (execution_deliveries, con pedido y vehículo
  * en eager-load) solo para presentación, tolerando tablas ausentes (patrón ReadsControlTowerData). Las
- * MUTACIONES siempre pasan por comandos. Todo texto visible en inglés (regla 5); comentarios en español.
+ * MUTACIONES siempre pasan por comandos. Cada texto visible en inglés (regla 5); comentarios en español.
  */
 final class LastMileBoard extends Page
 {
@@ -354,8 +354,8 @@ final class LastMileBoard extends Page
     }
 
     /**
-     * Select de bulto acotado a los bultos del pedido de la entrega (misma lógica que DeliveryResource).
-     * Las etiquetas son legibles (pedido + índice de bulto/pieza), nunca el UUID.
+     * Select de producto acotado a los productos del pedido de la entrega (misma lógica que DeliveryResource).
+     * Las etiquetas son legibles (pedido + índice de producto/pieza), nunca el UUID.
      */
     private function unitSelect(string $shipmentId): Select
     {
@@ -363,7 +363,7 @@ final class LastMileBoard extends Page
         if ($shipmentId !== '') {
             $units = PhysicalUnitRecord::query()
                 ->where('shipment_id', $shipmentId)
-                ->with('shipment')
+                ->with(['shipment', 'line'])
                 ->get()
                 ->mapWithKeys(fn (PhysicalUnitRecord $unit): array => [$unit->id => $this->unitLabel($unit)])
                 ->all();
@@ -378,17 +378,37 @@ final class LastMileBoard extends Page
     }
 
     /**
-     * Etiqueta humana del bulto: pedido + índice de bulto y pieza, nunca el UUID.
+     * Etiqueta humana del producto: pedido + nombre del producto y su SKU (+ pieza física N de M),
+     * nunca el UUID ni vacío. Si falta el nombre se usa el SKU y, si faltan ambos, "Producto".
      */
     private function unitLabel(PhysicalUnitRecord $unit): string
     {
         $order = $unit->shipment->external_id ?? $unit->shipment_id;
 
-        return "{$order} · unit {$unit->unit_index}/{$unit->unit_total} pc {$unit->piece_index}/{$unit->piece_total}";
+        $name = is_string($unit->line?->product_name) ? trim($unit->line->product_name) : '';
+        $sku = is_string($unit->line?->sku) ? trim($unit->line->sku) : '';
+        if ($name !== '' && $sku !== '') {
+            $product = "{$name} · {$sku}";
+        } elseif ($name !== '') {
+            $product = $name;
+        } elseif ($sku !== '') {
+            $product = $sku;
+        } else {
+            $product = 'Producto';
+        }
+
+        $piece = '';
+        if ($unit->piece_total > 1) {
+            $piece = "({$unit->piece_index} de {$unit->piece_total})";
+        } elseif ($unit->unit_total > 1) {
+            $piece = "({$unit->unit_index} de {$unit->unit_total})";
+        }
+
+        return trim("{$order} — {$product} {$piece}");
     }
 
     /**
-     * Campos comunes de todo escaneo: GPS, dispositivo, usuario y hora del hecho.
+     * Campos comunes de cada escaneo: GPS, dispositivo, usuario y hora del hecho.
      *
      * @return array<int, Component>
      */

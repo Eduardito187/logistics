@@ -1,6 +1,9 @@
 {{-- Plantilla HTML del email transaccional al cliente. Muestra el cuerpo del mensaje y, debajo, el
-     listado de productos del pedido con su imagen (thumbnail), nombre y cantidad. Estilos en línea para
-     máxima compatibilidad con clientes de correo. La marca usa el rojo Dismac (#E2231A). --}}
+     listado de productos del pedido con su imagen (thumbnail), nombre, SKU y cantidad. Estilos en línea para
+     máxima compatibilidad con clientes de correo. La marca es DisTrack: rojo #E30613 como acento.
+     El logo del encabezado se referencia por URL absoluta (no inline) y usa el PNG de la marca, que
+     renderiza en todos los clientes de correo (muchos no soportan SVG); el wordmark "DisTrack" va como
+     texto para garantizar la marca aunque el cliente bloquee imágenes. --}}
 <!doctype html>
 <html lang="es">
 <head>
@@ -9,13 +12,25 @@
     <title>{{ $subject }}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:24px 0;">
+    <table role="presentation" style="border-collapse:collapse;border-spacing:0;width:100%;background-color:#f4f4f5;padding:24px 0;">
         <tr>
-            <td align="center">
-                <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+            <td style="padding:0;text-align:center;">
+                {{-- Tabla fantasma solo para Outlook (ignora max-width): fija el ancho a 600px sin usar el atributo width deprecado en la tabla real. --}}
+                <!--[if mso]><table role="presentation" width="600" style="width:600px;"><tr><td><![endif]-->
+                <table role="presentation" style="border-collapse:collapse;border-spacing:0;max-width:600px;width:100%;margin:0 auto;background-color:#ffffff;border-radius:8px;overflow:hidden;">
                     <tr>
-                        <td style="background-color:#E2231A;padding:20px 28px;">
-                            <span style="color:#ffffff;font-size:20px;font-weight:bold;letter-spacing:0.5px;">Dismac</span>
+                        <td style="background-color:#ffffff;padding:20px 28px;border-top:4px solid #E30613;">
+                            <table role="presentation" style="border-collapse:collapse;border-spacing:0;">
+                                <tr>
+                                    <td style="padding:0 12px 0 0;vertical-align:middle;">
+                                        {{-- Logo de la marca por URL absoluta (PNG = máxima compatibilidad de correo). --}}
+                                        <img src="{{ config('app.url') }}/brand/distrack/png/favicon-512.png" alt="DisTrack" width="40" height="40" style="display:block;width:40px;height:40px;">
+                                    </td>
+                                    <td style="padding:0;vertical-align:middle;">
+                                        <span style="font-size:22px;font-weight:bold;letter-spacing:0.5px;color:#141414;">Dis<span style="color:#E30613;">Track</span></span>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                     <tr>
@@ -24,11 +39,11 @@
                             <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#374151;">{!! nl2br(e($body)) !!}</p>
 
                             @if (!empty($products))
-                                <h2 style="margin:24px 0 12px;font-size:16px;color:#111827;border-bottom:2px solid #E2231A;padding-bottom:6px;">Tu pedido</h2>
-                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                <h2 style="margin:24px 0 12px;font-size:16px;color:#111827;border-bottom:2px solid #E30613;padding-bottom:6px;">Tu pedido</h2>
+                                <table role="presentation" style="border-collapse:collapse;border-spacing:0;width:100%;">
                                     @foreach ($products as $product)
                                         <tr>
-                                            <td width="72" style="padding:8px 12px 8px 0;vertical-align:top;">
+                                            <td style="width:72px;padding:8px 12px 8px 0;vertical-align:top;">
                                                 @if (!empty($product['imageUrl']))
                                                     <img src="{{ $product['imageUrl'] }}" alt="{{ $product['name'] }}" width="64" height="64" style="display:block;width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;">
                                                 @else
@@ -37,6 +52,9 @@
                                             </td>
                                             <td style="padding:8px 0;vertical-align:top;">
                                                 <span style="display:block;font-size:14px;color:#111827;font-weight:bold;">{{ $product['name'] }}</span>
+                                                @if (!empty($product['sku']))
+                                                    <span style="display:block;font-size:12px;color:#6b7280;margin-top:2px;">SKU: {{ $product['sku'] }}</span>
+                                                @endif
                                                 <span style="display:block;font-size:13px;color:#6b7280;margin-top:4px;">Cantidad: {{ $product['qty'] }}</span>
                                             </td>
                                         </tr>
@@ -46,11 +64,13 @@
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:18px 28px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
-                            <p style="margin:0;font-size:12px;color:#9ca3af;">Pedido {{ $shipmentId }} · Este es un mensaje automático de Dismac Logística.</p>
+                        <td style="padding:18px 28px;background-color:#F3F3F1;border-top:1px solid #e5e7eb;">
+                            <p style="margin:0;font-size:12px;color:#6b7280;">Pedido {{ $shipmentId }} · Este es un mensaje automático de DisTrack.</p>
+                            <p style="margin:6px 0 0;font-size:11px;font-weight:bold;letter-spacing:1px;color:#E30613;">DE ANDÉN A PUERTA.</p>
                         </td>
                     </tr>
                 </table>
+                <!--[if mso]></td></tr></table><![endif]-->
             </td>
         </tr>
     </table>

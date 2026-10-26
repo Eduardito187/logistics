@@ -9,10 +9,13 @@ use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\HandlerRegistry;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Domain\Clock\Clock;
+use Logistics\Shared\Domain\Maintenance\RowPruner;
 use Logistics\Shared\Infrastructure\Bus\LaravelCommandBus;
 use Logistics\Shared\Infrastructure\Bus\LaravelQueryBus;
 use Logistics\Shared\Infrastructure\Bus\TransactionalCommandBus;
 use Logistics\Shared\Infrastructure\Clock\SystemClock;
+use Logistics\Shared\Infrastructure\Maintenance\DbRowPruner;
+use Logistics\Shared\Presentation\Console\MaintainDatabaseCommand;
 
 /**
  * Registro del núcleo compartido. Va primero en bootstrap/providers.php: todos los contextos
@@ -38,5 +41,19 @@ final class SharedServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(Clock::class, SystemClock::class);
+
+        // Puerto de poda de retención: borrado CHUNKED e idempotente de tablas de alta rotación. Vive en
+        // el núcleo compartido porque lo reutiliza el Application de cada contexto (access, outbox,
+        // telemetry) para podar sus propias tablas; el detalle del motor queda aislado en Infrastructure.
+        $this->app->bind(RowPruner::class, DbRowPruner::class);
+    }
+
+    public function boot(): void
+    {
+        // Comando de mantenimiento físico de BD (ANALYZE / VACUUM ANALYZE de tablas calientes). Vive en
+        // el núcleo compartido porque cruza todos los contextos; lo programa el scheduler.
+        if ($this->app->runningInConsole()) {
+            $this->commands([MaintainDatabaseCommand::class]);
+        }
     }
 }

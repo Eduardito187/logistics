@@ -48,6 +48,33 @@ it('filtra el listado por nodo destino en el Query ListShipments', function (): 
     expect($handler->handle(new ListShipments))->toHaveCount(4);
 });
 
+it('pagina /app/shipments en SQL: devuelve la página pedida y el total real (no materializa todo)', function (): void {
+    $node = Uuid::generate()->value;
+    for ($i = 0; $i < 5; $i++) {
+        ShipmentRecord::factory()->forNode($node)->create();
+    }
+
+    $user = User::factory()->create();
+    $user->assignRole(Role::Supervisor);
+    test()->actingAs($user, 'sanctum');
+
+    // Página 2 de tamaño 2: debe traer exactamente 2 filas y el total = 5 (COUNT(*) aparte).
+    $response = test()->getJson('/api/v1/app/shipments?page=2&per_page=2&destination_node_id='.$node)
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('meta.page', 2)
+        ->assertJsonPath('meta.per_page', 2)
+        ->assertJsonPath('meta.total', 5)
+        ->assertJsonPath('meta.total_pages', 3)
+        ->assertJsonPath('meta.next_page', 3)
+        ->assertJsonPath('meta.prev_page', 1);
+
+    // El orden es estable por id (UUID v7): la página 2 continúa justo después de la página 1.
+    $all = ShipmentRecord::query()->where('destination_node_id', $node)->orderBy('id')->pluck('id')->all();
+    expect($response->json('data.0.id'))->toBe($all[2])
+        ->and($response->json('data.1.id'))->toBe($all[3]);
+});
+
 it('acota /app/shipments al nodo de la tienda y oculta los de otro nodo', function (): void {
     $ownNode = Uuid::generate()->value;
     $otherNode = Uuid::generate()->value;

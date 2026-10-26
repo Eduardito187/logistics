@@ -4,5 +4,9 @@
 
 @section('title', 'En mantenimiento')
 @section('code', '503')
-@section('heading', 'En mantenimiento, volvemos pronto')
-@section('message', 'Estamos realizando tareas de mantenimiento. Vuelve a intentarlo en unos minutos.')
+@section('heading', 'Estamos en mantenimiento')
+@section('message', 'Estamos haciendo mejoras. Vuelve en unos minutos, por favor.')
+
+@section('extra-actions')
+    <a class="btn" href="{{ request()->url() }}">Reintentar</a>
+@endsection

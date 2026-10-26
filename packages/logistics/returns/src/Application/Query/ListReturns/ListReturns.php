@@ -14,5 +14,7 @@ final readonly class ListReturns implements Query
     public function __construct(
         public ?string $sellerId = null,
         public ?string $status = null,
+        public ?int $limit = null,
+        public ?int $offset = null,
     ) {}
 }

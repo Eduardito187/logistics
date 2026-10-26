@@ -19,7 +19,7 @@ decisiones formales están en el ADR 013 (mapas/geocoder/ruteo), el ADR 014 (pus
 | **WhatsApp** | WhatsApp Business API (Meta/Twilio, de pago) | **Deshabilitado** (de pago) | ADR 015 |
 | **Mensajería de cliente** | — | **Telegram** (bot propio, gratis) | `TELEGRAM_BOT_TOKEN` · ADR 015 |
 | **SMS de respaldo** | Proveedor SaaS de pago | **Gateway open-source** (Kannel / Jasmin / gateway Android) con tope | `SMS_DRIVER`, `SMS_GATEWAY_URL` · ADR 015 |
-| **Email** | — | **SMTP propio** (Mailpit en dev) | `MAIL_*` |
+| **Email** | — | **sendmail nativo del host** (sin SMTP propio) | `MAIL_*` |
 | **Base de datos** | — | **PostgreSQL + PostGIS** | ADR 003 |
 | **Cache / colas / sesión** | — | **Valkey** (compatible Redis) | ADR 008 |
 | **Almacenamiento de objetos** | S3 de AWS | **MinIO** (S3-compatible self-host) o R2/Spaces | `AWS_ENDPOINT` · ADR —/deploy.md |

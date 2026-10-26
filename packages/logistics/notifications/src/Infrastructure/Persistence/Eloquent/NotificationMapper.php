@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Infrastructure\Persistence\Eloquent;
 
+use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Notifications\Domain\Model\Notification;
 use Logistics\Notifications\Domain\ValueObject\CascadePolicy;
 use Logistics\Notifications\Domain\ValueObject\Channel;
@@ -41,16 +42,32 @@ final class NotificationMapper
         /** @var array{channels: list<string>, escalate_when?: string} $policyData */
         $policyData = $record->policy;
 
-        /** @var array<string, int> $attempts */
-        $attempts = $record->attempts;
+        /** @var array<string, int> $storedAttempts */
+        $storedAttempts = $record->attempts;
+
+        // Lectura tolerante: las filas viejas pueden traer alias históricos del canal (PUSH_FCM,
+        // PUSH_NTFY). Un canal actual irreconocible no es reconstruible: se lanza y el repositorio
+        // decide omitir la fila con log, sin tumbar el listado.
+        $currentChannel = Channel::fromStored($record->current_channel)
+            ?? throw NotificationsException::because(
+                "la notificación {$record->id} tiene un canal actual desconocido: {$record->current_channel}",
+            );
+
+        $attempts = [];
+        foreach ($storedAttempts as $channel => $count) {
+            $known = Channel::fromStored((string) $channel);
+            if ($known !== null) {
+                $attempts[$known->value] = ($attempts[$known->value] ?? 0) + (int) $count;
+            }
+        }
 
         return Notification::reconstitute(
             NotificationId::fromString($record->id),
             $record->shipment_id,
             MessageType::from($record->message_type),
-            CascadePolicy::fromArray($policyData),
+            CascadePolicy::fromStored($policyData),
             NotificationStatus::from($record->status),
-            Channel::from($record->current_channel),
+            $currentChannel,
             $attempts,
             $record->email,
             $record->phone,

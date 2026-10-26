@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository;
 
+use Illuminate\Database\Eloquent\Builder;
 use Logistics\Telemetry\Domain\Contract\AlertRepository;
 use Logistics\Telemetry\Domain\Model\TelemetryAlert;
 use Logistics\Telemetry\Domain\ValueObject\AlertId;
@@ -37,9 +38,41 @@ final readonly class EloquentAlertRepository implements AlertRepository
         return $record instanceof AlertRecord ? $this->mapper->toDomain($record) : null;
     }
 
-    public function listBy(?string $vehicleId = null, ?string $type = null, ?bool $acknowledged = null): array
+    public function listBy(
+        ?string $vehicleId = null,
+        ?string $type = null,
+        ?bool $acknowledged = null,
+        ?int $limit = null,
+        ?int $offset = null,
+    ): array {
+        $query = $this->filtered($vehicleId, $type, $acknowledged)->orderByDesc('occurred_at');
+
+        if ($offset !== null) {
+            $query->offset($offset);
+        }
+        if ($limit !== null) {
+            $query->limit($limit);
+        }
+
+        return array_values($query
+            ->get()
+            ->map(fn (AlertRecord $record): TelemetryAlert => $this->mapper->toDomain($record))
+            ->all());
+    }
+
+    public function countBy(?string $vehicleId = null, ?string $type = null, ?bool $acknowledged = null): int
     {
-        $query = AlertRecord::query()->orderByDesc('occurred_at');
+        return $this->filtered($vehicleId, $type, $acknowledged)->count();
+    }
+
+    /**
+     * Query builder con los filtros comunes de listBy/countBy (sin orden ni recorte).
+     *
+     * @return Builder<AlertRecord>
+     */
+    private function filtered(?string $vehicleId, ?string $type, ?bool $acknowledged): Builder
+    {
+        $query = AlertRecord::query();
 
         if ($vehicleId !== null && $vehicleId !== '') {
             $query->where('vehicle_id', $vehicleId);
@@ -53,9 +86,6 @@ final readonly class EloquentAlertRepository implements AlertRepository
             $query->whereNull('acknowledged_at');
         }
 
-        return array_values($query
-            ->get()
-            ->map(fn (AlertRecord $record): TelemetryAlert => $this->mapper->toDomain($record))
-            ->all());
+        return $query;
     }
 }

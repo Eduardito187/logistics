@@ -154,7 +154,7 @@ final class SellerSettlementResource extends Resource
             ->columns([
                 TextColumn::make('seller_id')
                     ->label(__('Seller'))
-                    ->formatStateUsing(static fn (string $state): string => self::sellerName($state) ?? $state)
+                    ->formatStateUsing(static fn (string $state): string => self::sellerName($state) ?? __('Unknown seller'))
                     ->searchable(false),
                 TextColumn::make('period_from')
                     ->label(__('Period'))
@@ -178,8 +178,10 @@ final class SellerSettlementResource extends Resource
                         default => 'gray',
                     })
                     ->formatStateUsing(static fn (string $state): string => __(self::STATUSES[$state] ?? $state)),
+                // Referencia legible (seller · periodo) en vez del UUID de la PK; sortable por el id real.
                 TextColumn::make('id')
-                    ->label(__('Identifier'))
+                    ->label(__('Reference'))
+                    ->state(static fn (SellerSettlementRecord $record): string => self::getRecordTitle($record) ?? '—')
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
@@ -298,7 +300,7 @@ final class SellerSettlementResource extends Resource
                 ->schema([
                     TextEntry::make('seller_id')
                         ->label(__('Seller'))
-                        ->formatStateUsing(static fn (string $state): string => self::sellerName($state) ?? $state),
+                        ->formatStateUsing(static fn (string $state): string => self::sellerName($state) ?? __('Unknown seller')),
                     TextEntry::make('period_from')
                         ->label(__('Period'))
                         ->formatStateUsing(static fn (string $state, SellerSettlementRecord $record): string => "{$state} — {$record->period_to}"),

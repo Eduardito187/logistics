@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Http\Middleware\EnsureDeviceToken;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -92,19 +93,38 @@ class Device extends Model
     }
 
     /**
-     * Marca el dispositivo como visto ahora (última actividad).
+     * Ventana mínima entre dos escrituras de `last_seen_at`. La guarda de la puerta app lo toca en cada
+     * request; sin ventana eran un UPDATE por request por equipo (la app sondea seguido), escritura pura
+     * en el camino caliente. Un minuto de resolución alcanza para "última actividad".
+     */
+    public const int LAST_SEEN_RESOLUTION_SECONDS = 60;
+
+    /**
+     * Marca el dispositivo como visto ahora (última actividad), a lo sumo una vez por ventana.
      */
     public function touchLastSeen(): void
     {
-        $this->forceFill(['last_seen_at' => now()])->save();
+        $now = now();
+        if ($this->last_seen_at !== null
+            && $this->last_seen_at->greaterThan($now->copy()->subSeconds(self::LAST_SEEN_RESOLUTION_SECONDS))) {
+            return;
+        }
+
+        $this->forceFill(['last_seen_at' => $now])->save();
     }
 
     /**
      * Revoca el dispositivo y borra todos sus tokens.
+     *
+     * Invalida además el snapshot cacheado del equipo en la puerta app (M-11): aunque borrar los tokens
+     * ya corta el acceso vía `auth:sanctum`, se olvida el snapshot para que ningún estado "vigente"
+     * previo sobreviva en cache durante su TTL.
      */
     public function revoke(): void
     {
         $this->tokens()->delete();
         $this->forceFill(['revoked_at' => now()])->save();
+
+        EnsureDeviceToken::forgetDevice($this->getKey());
     }
 }

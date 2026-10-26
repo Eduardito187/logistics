@@ -17,8 +17,8 @@ use Logistics\Notifications\Domain\ValueObject\RenderedMessage;
 use Throwable;
 
 /**
- * Canal email transaccional (P1-NOT-04): envía por el mailer de Laravel. En desarrollo sale por
- * Mailpit; en producción, por el proveedor real configurado. Corre en el relay del outbox.
+ * Canal email transaccional (P1-NOT-04): envía por el mailer de Laravel, que usa el sendmail nativo
+ * del host (sin SMTP propio ni catcher). Corre en el relay del outbox.
  *
  * Arma el HTML con la vista `notifications::email.order`, que muestra el cuerpo del mensaje y el listado
  * de productos del pedido con su imagen (thumbnail), nombre y cantidad. Si no se pudo resolver el

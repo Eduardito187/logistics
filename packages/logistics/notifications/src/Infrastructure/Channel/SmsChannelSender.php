@@ -75,6 +75,8 @@ final readonly class SmsChannelSender implements ChannelSender
         // respeta.
         $response = $request
             ->timeout($this->config['timeout'])
+            // B-2: tope del handshake de conexión, separado del timeout total.
+            ->connectTimeout(3)
             ->post($url, [
                 'from' => $this->config['sender'],
                 'message' => $message->body,

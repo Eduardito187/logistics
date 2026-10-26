@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Providers\Filament;
 
 use App\Filament\Avatars\LocalAvatarProvider;
+use App\Filament\Pages\Auth\RequestPasswordOtp;
 use App\Http\Middleware\SecurityHeaders;
+use Filament\Auth\MultiFactor\App\AppAuthentication;
+use Filament\Enums\ThemeMode;
 use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -32,7 +35,7 @@ use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
 /**
  * Admin web de la plataforma: datos maestros, reglas, flota, reconciliación.
  *
- * Todo texto visible va en inglés (misma convención que el admin de dis-commerce).
+ * Cada texto visible va en inglés (misma convención que el admin de dis-commerce).
  * El tablero de planificación y la torre de control serán páginas React aparte (ADR 005).
  */
 final class AdminPanelProvider extends PanelProvider
@@ -44,36 +47,77 @@ final class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            // Página de cuenta del usuario: aquí vive la administración del MFA (alta/baja de la
+            // autenticación por app, regeneración de códigos de recuperación). Sin página de perfil
+            // el usuario no tendría dónde activar su 2FA opcional.
+            ->profile()
+            // MFA NATIVO de Filament v4. Usamos "App authentication" (TOTP): el flujo de alta muestra
+            // el QR ESCANEABLE y además la CLAVE/secreto en texto copiable (lo pide el dueño), junto
+            // con los códigos de recuperación (->recoverable()). El modelo User implementa
+            // HasAppAuthentication + HasAppAuthenticationRecovery (lo provee el agente CORE).
+            //
+            // Renderizado del QR: no requiere dependencia extra. filament/filament ya exige
+            // chillerlan/php-qrcode (^5.0) como dependencia dura, así que el QR se genera como SVG
+            // inline sin necesitar bacon/bacon-qr-code ni la extensión imagick.
+            //
+            // El MFA queda OPCIONAL por usuario (tercer argumento isRequired = false, el valor por
+            // defecto): cada quien decide si lo activa desde su perfil. Para FORZARLO en el panel completo
+            // basta pasar `isRequired: true` aquí (o un Closure configurable); Filament entonces obliga
+            // a configurarlo tras el login. No se incluye Email authentication: requeriría que User
+            // implemente HasEmailAuthentication, fuera del alcance de este cambio.
+            ->multiFactorAuthentication([
+                AppAuthentication::make()
+                    ->recoverable(),
+            ], isRequired: false)
+            // Reseteo de contraseña por CÓDIGO OTP (no por enlace). Registramos solo la página de
+            // solicitud, que es un flujo de dos pasos en una sola ruta (ver RequestPasswordOtp):
+            // evita la ruta `password-reset/reset` que Filament fuerza con middleware `signed`.
+            // Con esto el login muestra automáticamente el enlace "Forgot password?".
+            ->passwordReset(RequestPasswordOtp::class)
             // Modo SPA: navegación sin recargar la página (wire:navigate) + barra de progreso superior,
             // para que el admin se sienta una app web. Los mapas Leaflet cargan vía @assets (persistente
             // entre navegaciones SPA), así que siguen funcionando.
             ->spa()
-            ->brandName('Dismac Logistics')
+            // Marca del panel interno: DisTrack ("DE ANDÉN A PUERTA."). Es una identidad propia del
+            // panel operativo, distinta de la app de clientes (blanca/roja), para no confundir audiencias.
+            ->brandName('DisTrack')
+            // Logo de cabecera: versión para fondos claros y, en modo oscuro (tema Noche), la inversa.
+            // Se referencian por URL del kit servido en public/brand/distrack (nunca SVG inline).
+            ->brandLogo(asset('brand/distrack/header-logo.svg'))
+            ->darkModeBrandLogo(asset('brand/distrack/header-logo-inverse.svg'))
+            ->brandLogoHeight('30px')
+            // Favicon SVG del kit (los PNG de respaldo y el resto de <head> van en el partial distrack-head).
+            ->favicon(asset('brand/distrack/favicon.svg'))
+            // Panel interno en tema Noche (#141414) por defecto para diferenciarlo de la app de clientes.
+            // Se mantiene el toggle de modo claro/oscuro de Filament (no se fuerza), solo cambia el default.
+            ->defaultThemeMode(ThemeMode::Dark)
             // Avatar por defecto generado localmente (iniciales en SVG data URI). El proveedor de
             // Filament por defecto sale a ui-avatars.com, que offline o con la CSP del admin cerrada
             // deja la imagen rota en la barra superior. Con este proveedor nunca depende de internet.
             ->defaultAvatarProvider(LocalAvatarProvider::class)
-            // Tipografía del e-commerce Dismatec (Open Sans). Auto-hospedada (ADR 013: sin Google ni
-            // servicios de pago): se sirve el CSS/woff2 propios de public/fonts/open-sans con el
-            // LocalFontProvider, en vez del link a fonts.bunny.net/Google que emite el provider por
-            // defecto. Así la CSP del admin no abre orígenes externos de fuentes.
-            ->font(
-                'Open Sans',
-                url: asset('fonts/open-sans/open-sans.css'),
-                provider: LocalFontProvider::class,
-            )
+            // Tipografía de marca DisTrack: Barlow (texto/botones/wordmark). Se AUTO-HOSPEDA (woff2 OFL
+            // bajo 'self') vía LocalFontProvider desde un CSS propio, para NO salir a Google Fonts/bunny
+            // (respeta la CSP cerrada del admin y ADR 013 "sin Google"). Las familias Barlow Condensed
+            // (títulos) e IBM Plex Mono (códigos) se declaran en el tema (theme.css), también locales.
+            ->font('Barlow', asset('brand/distrack/fonts/barlow.css'), LocalFontProvider::class)
             // Tema compilado propio (Tailwind v4) que escanea nuestras vistas para que sus clases apliquen.
             ->viteTheme('resources/css/filament/admin/theme.css')
-            // Paleta de marca Dismac (del e-commerce): rojo #E2231A como primario, gris neutro del panel.
+            // Paleta de marca DisTrack: Rojo #E30613 como primario (marca/acción), gris neutro del panel.
             ->colors([
-                'primary' => Color::hex('#E2231A'),
+                'primary' => Color::hex('#E30613'),
                 'danger' => Color::hex('#D32F2F'),
                 'gray' => Color::Neutral,
             ])
-            // Tema visual de marca Dismac (barra superior roja, fondo claro, acentos): CSS inyectado en <head>.
+            // Acentos finos del tema (foco, tarjetas): CSS inyectado en <head>.
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): string => view('filament.brand-theme')->render(),
+            )
+            // Íconos (favicon SVG + PNG de respaldo, apple-touch-icon), manifest, theme-color y metadatos
+            // Open Graph del panel DisTrack. Partial propio; referencia los assets por URL del kit.
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): string => view('filament.distrack-head')->render(),
             )
             // Arquitectura de información "operaciones-primero": 5 grupos por modelo mental del operador
             // en vez de un grupo por bounded context (antes 16). El orden sigue el flujo del negocio:

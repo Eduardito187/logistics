@@ -68,7 +68,7 @@ que enruta a un sender real por canal (todos open-source):
   (`FCM_PROJECT_ID` / `FCM_CREDENTIALS`). La app Flutter recibe por `firebase_messaging`.
 - `TelegramChannelSender`: Bot API (`sendMessage`/`sendPhoto`). Config `TELEGRAM_BOT_TOKEN`. Resuelve el
   `chat_id` del destinatario (columna `telegram_chat_id`).
-- `EmailChannelSender` (P1-NOT-04): mailer de Laravel (Mailpit en dev). Arma el HTML con la vista
+- `EmailChannelSender` (P1-NOT-04): mailer de Laravel (sendmail nativo del host). Arma el HTML con la vista
   `notifications::email.order`, que muestra el **listado de productos con imagen, nombre y cantidad**.
 - `SmsChannelSender` (P1-NOT-05): gateway de SMS **open-source** vía `SMS_GATEWAY_URL`, con **tope
   mensual** atómico (`SmsBudgetRepository`). Opciones recomendadas:
@@ -78,8 +78,8 @@ que enruta a un sender real por canal (todos open-source):
   - **Jasmin** o **Kannel** (SMPP/SMS gateways clásicos) expuestos por su endpoint HTTP de envío; usar
     `SMS_GATEWAY_TOKEN` (Bearer) o el shim HTTP correspondiente.
 
-Sin configuración, cada canal queda "no configurado" y lanza (el relay reintenta/escala); el email de
-dev sí sale por Mailpit. La configuración vive en `config/logistics-notifications.php` (env).
+Sin configuración, cada canal queda "no configurado" y lanza (el relay reintenta/escala); el email
+sale por el sendmail nativo del host. La configuración vive en `config/logistics-notifications.php` (env).
 
 ## Contenido rico (email + push)
 

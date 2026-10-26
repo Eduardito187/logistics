@@ -8,6 +8,8 @@ use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Model\Notification;
 use Logistics\Notifications\Domain\ValueObject\MessageType;
 use Logistics\Notifications\Domain\ValueObject\NotificationId;
+use Psr\Log\LoggerInterface;
+use Throwable;
 
 /**
  * Implementación Eloquent del repositorio de notificaciones.
@@ -19,6 +21,7 @@ final class EloquentNotificationRepository implements NotificationRepository
 {
     public function __construct(
         private readonly NotificationMapper $mapper,
+        private readonly ?LoggerInterface $logger = null,
     ) {}
 
     public function nextIdentity(): NotificationId
@@ -51,25 +54,54 @@ final class EloquentNotificationRepository implements NotificationRepository
 
     public function findByShipment(string $shipmentId): array
     {
-        return NotificationRecord::query()
-            ->where('shipment_id', $shipmentId)
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->get()
-            ->map(fn (NotificationRecord $record): Notification => $this->mapper->toDomain($record))
-            ->values()
-            ->all();
+        return $this->toDomainList(
+            NotificationRecord::query()
+                ->where('shipment_id', $shipmentId)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->get(),
+        );
     }
 
-    public function latest(int $limit = 100): array
+    public function latest(int $limit = 100, int $offset = 0): array
     {
-        return NotificationRecord::query()
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit(max(1, $limit))
-            ->get()
-            ->map(fn (NotificationRecord $record): Notification => $this->mapper->toDomain($record))
-            ->values()
-            ->all();
+        return $this->toDomainList(
+            NotificationRecord::query()
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->offset(max(0, $offset))
+                ->limit(max(1, $limit))
+                ->get(),
+        );
+    }
+
+    public function count(): int
+    {
+        return NotificationRecord::query()->count();
+    }
+
+    /**
+     * Mapea un listado tolerando filas no reconstruibles (p. ej. un canal histórico que ya no existe):
+     * la fila se omite con un warning en vez de tumbar el listado entero con un 500.
+     *
+     * @param  iterable<NotificationRecord> $records
+     * @return list<Notification>
+     */
+    private function toDomainList(iterable $records): array
+    {
+        $notifications = [];
+        foreach ($records as $record) {
+            try {
+                $notifications[] = $this->mapper->toDomain($record);
+            } catch (Throwable $e) {
+                $this->logger?->warning('Notificación omitida del listado: fila no reconstruible', [
+                    'notification_id' => $record->id,
+                    'current_channel' => $record->current_channel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $notifications;
     }
 }

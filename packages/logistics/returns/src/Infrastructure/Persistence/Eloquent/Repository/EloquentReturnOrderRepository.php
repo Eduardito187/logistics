@@ -51,20 +51,43 @@ final readonly class EloquentReturnOrderRepository implements ReturnOrderReposit
         return $record instanceof ReturnRecord ? $this->mapper->toDomain($record) : null;
     }
 
-    public function listBy(?string $ownerPartyId = null, ?string $status = null): array
+    public function listBy(?string $ownerPartyId = null, ?string $status = null, ?int $limit = null, ?int $offset = null): array
     {
-        $records = ReturnRecord::query()
+        // Orden determinista para la paginación: created_at con desempate por id (UUID v7).
+        $query = $this->filtered($ownerPartyId, $status)
             ->with('lines')
+            ->orderBy('created_at')
+            ->orderBy('id');
+
+        if ($offset !== null) {
+            $query->offset($offset);
+        }
+        // Sin recorte explícito se conserva el tope sano histórico (evita volcar toda la tabla).
+        $query->limit($limit ?? 1000);
+
+        $records = $query->get();
+
+        return array_values($records->map(fn (ReturnRecord $record): ReturnOrder => $this->mapper->toDomain($record))->all());
+    }
+
+    public function countBy(?string $ownerPartyId = null, ?string $status = null): int
+    {
+        return $this->filtered($ownerPartyId, $status)->count();
+    }
+
+    /**
+     * Query builder con los filtros comunes de listBy/countBy (sin orden, recorte ni eager load).
+     *
+     * @return Builder<ReturnRecord>
+     */
+    private function filtered(?string $ownerPartyId, ?string $status): Builder
+    {
+        return ReturnRecord::query()
             ->when($ownerPartyId !== null, static function (Builder $query) use ($ownerPartyId): void {
                 $query->where('owner_party_id', $ownerPartyId);
             })
             ->when($status !== null, static function (Builder $query) use ($status): void {
                 $query->where('status', $status);
-            })
-            ->orderBy('created_at')
-            ->limit(1000)
-            ->get();
-
-        return array_values($records->map(fn (ReturnRecord $record): ReturnOrder => $this->mapper->toDomain($record))->all());
+            });
     }
 }

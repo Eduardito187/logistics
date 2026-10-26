@@ -64,7 +64,11 @@ final class QueueHealthWidget extends StatsOverviewWidget
     private function oldestJobWait(): string
     {
         try {
-            $availableAt = DB::table('jobs')->min('available_at');
+            // Cacheado junto al resto de KPIs de la torre (A-1): el MIN sobre `jobs` se repite en cada poll.
+            $availableAt = $this->rememberKpi(
+                'min:jobs:available_at',
+                static fn () => DB::table('jobs')->min('available_at'),
+            );
 
             if ($availableAt === null) {
                 return '—';

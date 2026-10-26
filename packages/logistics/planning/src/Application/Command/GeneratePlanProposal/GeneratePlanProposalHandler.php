@@ -9,6 +9,7 @@ use Exception;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Planning\Application\Policy\ClientStopLocation;
 use Logistics\Planning\Application\Policy\RouteDepartmentPolicy;
+use Logistics\Planning\Application\Service\PlanGeometryRefresher;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Contract\RouteOptimizer;
 use Logistics\Planning\Domain\Contract\RouteStop;
@@ -38,6 +39,7 @@ final class GeneratePlanProposalHandler implements CommandHandler
         private readonly RouteOptimizer $optimizer,
         private readonly RecordDomainEvents $recordEvents,
         private readonly RouteDepartmentPolicy $geography,
+        private readonly ?PlanGeometryRefresher $geometry = null,
     ) {}
 
     public function handle(Command $command): void
@@ -99,6 +101,9 @@ final class GeneratePlanProposalHandler implements CommandHandler
 
         $plan->proposeRoute($orderedShipmentIds, $etas);
         $plan->recomputeLoadPlan();
+
+        // La propuesta nace con orden definitivo: se le calcula la geometría (degrada sin romper).
+        $this->geometry?->refresh($plan);
 
         $this->plans->save($plan);
         $this->lastPlanId = $plan->id();

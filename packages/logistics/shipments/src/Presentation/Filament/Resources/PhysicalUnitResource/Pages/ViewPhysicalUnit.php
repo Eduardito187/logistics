@@ -10,7 +10,7 @@ use Filament\Resources\Pages\ViewRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource;
 
 /**
- * Detalle de un bulto en el admin.
+ * Detalle de una unidad física en el admin.
  */
 final class ViewPhysicalUnit extends ViewRecord
 {

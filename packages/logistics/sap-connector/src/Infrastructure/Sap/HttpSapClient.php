@@ -6,6 +6,7 @@ namespace Logistics\SapConnector\Infrastructure\Sap;
 
 use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Http\Client\PendingRequest;
+use Logistics\Outbox\Infrastructure\Resilience\CircuitBreaker;
 use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
@@ -21,6 +22,12 @@ use Throwable;
  */
 final readonly class HttpSapClient implements SapClient
 {
+    /** Tope del handshake de conexión (B-2): un connect colgado no debe consumir el timeout total. */
+    private const CONNECT_TIMEOUT_SECONDS = 3;
+
+    /** Clave del circuit breaker de este destino (A-5). */
+    private const BREAKER_DESTINATION = 'sap';
+
     public function __construct(
         private HttpClient $http,
         private string $baseUrl,
@@ -34,7 +41,8 @@ final readonly class HttpSapClient implements SapClient
     public function pushStockTransfer(StockTransfer $transfer): void
     {
         try {
-            $response = $this->request()
+            // Breaker por destino (A-5): si SAP está caído, corta rápido en vez de gastar el timeout.
+            $response = $this->breaker()->call(self::BREAKER_DESTINATION, fn () => $this->request()
                 // Header de idempotencia: SAP ignora un reintento con el mismo event_id.
                 ->withHeaders(['Idempotency-Key' => $transfer->eventId()])
                 ->post($this->url($this->stockTransfersPath), [
@@ -44,7 +52,7 @@ final readonly class HttpSapClient implements SapClient
                     'center' => $transfer->center()->value,
                     'warehouse' => $transfer->warehouse()->value,
                     'quantity' => $transfer->quantity(),
-                ]);
+                ]));
         } catch (Throwable $exception) {
             throw SapConnectorException::because('fallo de comunicación con SAP al empujar el traspaso: '.$exception->getMessage());
         }
@@ -57,7 +65,8 @@ final readonly class HttpSapClient implements SapClient
     public function fetchOrders(): array
     {
         try {
-            $response = $this->request()->get($this->url($this->ordersPath));
+            // Breaker por destino (A-5): mismo corte rápido para la lectura de pedidos.
+            $response = $this->breaker()->call(self::BREAKER_DESTINATION, fn () => $this->request()->get($this->url($this->ordersPath)));
         } catch (Throwable $exception) {
             throw SapConnectorException::because('fallo de comunicación con SAP al leer pedidos: '.$exception->getMessage());
         }
@@ -88,13 +97,24 @@ final readonly class HttpSapClient implements SapClient
      */
     private function request(): PendingRequest
     {
-        $request = $this->http->timeout($this->timeout)->acceptJson();
+        $request = $this->http
+            ->timeout($this->timeout)
+            ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS)
+            ->acceptJson();
 
         if (is_string($this->username) && $this->username !== '') {
             $request = $request->withBasicAuth($this->username, $this->password ?? '');
         }
 
         return $request;
+    }
+
+    /**
+     * Breaker del destino SAP (A-5). Estado compartido en Valkey; se arma de config por el grupo 'sap'.
+     */
+    private function breaker(): CircuitBreaker
+    {
+        return CircuitBreaker::forGroup(self::BREAKER_DESTINATION);
     }
 
     private function url(string $path): string

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\App\AuthController;
 use App\Http\Controllers\Api\V1\App\DeviceController;
+use App\Http\Controllers\Api\V1\App\PasswordResetController;
+use App\Http\Controllers\Api\V1\App\TwoFactorController;
 use App\Http\Middleware\AuthenticateChannel;
 use App\Http\Middleware\AuthenticateServiceClient;
 use Illuminate\Http\JsonResponse;
@@ -36,11 +38,31 @@ Route::prefix('v1/app')->name('api.v1.app.')->group(function (): void {
         ->middleware('throttle:10,1')
         ->name('auth.login');
 
+    // Público: segundo paso del login con 2FA. Completa el reto emitido por login y, si
+    // el código (TOTP o recovery) es válido, emite el token definitivo. Mismo throttle
+    // que el login para frenar la fuerza bruta sobre el código.
+    Route::post('auth/2fa/verify', [TwoFactorController::class, 'verify'])
+        ->middleware('throttle:10,1')
+        ->name('auth.2fa.verify');
+
+    // Público: reseteo de contraseña por OTP (con límite anti fuerza bruta / enumeración).
+    Route::post('auth/password/forgot', [PasswordResetController::class, 'forgot'])
+        ->middleware('throttle:5,1')
+        ->name('auth.password.forgot');
+    Route::post('auth/password/reset', [PasswordResetController::class, 'reset'])
+        ->middleware('throttle:10,1')
+        ->name('auth.password.reset');
+
     // Protegido: requiere token Sanctum válido ligado a un dispositivo vigente.
     Route::middleware(['auth:sanctum', 'device'])->group(function (): void {
         Route::post('auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::post('auth/refresh', [AuthController::class, 'refresh'])->name('auth.refresh');
         Route::get('auth/me', [AuthController::class, 'me'])->name('auth.me');
+
+        // Gestión del segundo factor del propio usuario (enrolar / confirmar / deshabilitar).
+        Route::post('auth/2fa/enroll', [TwoFactorController::class, 'enroll'])->name('auth.2fa.enroll');
+        Route::post('auth/2fa/confirm', [TwoFactorController::class, 'confirm'])->name('auth.2fa.confirm');
+        Route::post('auth/2fa/disable', [TwoFactorController::class, 'disable'])->name('auth.2fa.disable');
 
         Route::get('devices', [DeviceController::class, 'index'])->name('devices.index');
         Route::put('devices/current/push-token', [DeviceController::class, 'updatePushToken'])

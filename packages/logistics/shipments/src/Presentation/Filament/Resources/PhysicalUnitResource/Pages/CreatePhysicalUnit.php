@@ -8,7 +8,7 @@ use Filament\Resources\Pages\CreateRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource;
 
 /**
- * Alta de un bulto en el admin.
+ * Alta de una unidad física en el admin.
  */
 final class CreatePhysicalUnit extends CreateRecord
 {

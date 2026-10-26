@@ -50,6 +50,7 @@ use Logistics\Telemetry\Domain\Contract\StreetStatsRepository;
 use Logistics\Telemetry\Domain\Contract\TripRepository;
 use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
 use Logistics\Telemetry\Infrastructure\Console\AggregateStreetTrafficCommand;
+use Logistics\Telemetry\Infrastructure\Console\PruneTelemetryPingsCommand;
 use Logistics\Telemetry\Infrastructure\LiveState\BroadcastingLivePositionBroadcaster;
 use Logistics\Telemetry\Infrastructure\LiveState\FleetPlateResolver;
 use Logistics\Telemetry\Infrastructure\LiveState\LiveVehicleState;
@@ -129,7 +130,7 @@ final class TelemetryServiceProvider extends ServiceProvider
         }
 
         if ($this->app->runningInConsole()) {
-            $this->commands([AggregateStreetTrafficCommand::class]);
+            $this->commands([AggregateStreetTrafficCommand::class, PruneTelemetryPingsCommand::class]);
 
             // Agregación diaria de calles en el scheduler (map-matching del día anterior).
             $this->app->booted(function (): void {

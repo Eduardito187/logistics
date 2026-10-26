@@ -7,6 +7,7 @@ namespace Logistics\Planning\Application\Command\ReassignShipmentToVehicle;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Planning\Application\Policy\ClientStopLocation;
 use Logistics\Planning\Application\Policy\RouteDepartmentPolicy;
+use Logistics\Planning\Application\Service\PlanGeometryRefresher;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\ValueObject\PlanId;
@@ -32,6 +33,7 @@ final readonly class ReassignShipmentToVehicleHandler implements CommandHandler
         private PlanRepository $plans,
         private RecordDomainEvents $recordEvents,
         private RouteDepartmentPolicy $geography,
+        private ?PlanGeometryRefresher $geometry = null,
     ) {}
 
     public function handle(Command $command): void
@@ -84,6 +86,10 @@ final readonly class ReassignShipmentToVehicleHandler implements CommandHandler
             $command->customerName,
             $command->address,
         );
+
+        // Ambos recorridos cambiaron: se recalcula la geometría de los dos (degrada sin romper).
+        $this->geometry?->refresh($from);
+        $this->geometry?->refresh($to);
 
         $this->plans->save($from);
         $this->plans->save($to);
