@@ -5,6 +5,9 @@ declare(strict_types=1);
 // Endpoint de métricas Prometheus (/api/metrics, auditoría M-6): protegido por token/IP y en formato
 // de texto Prometheus. Verifica el gate (fail-closed) y el contenido de las señales RED/USE.
 
+// Ruta del endpoint de métricas bajo prueba.
+const METRICS_ENDPOINT = '/api/metrics';
+
 beforeEach(function (): void {
     // Estado por defecto: sin token ni allowlist (fail-closed).
     config()->set('observability.metrics.token', null);
@@ -13,21 +16,21 @@ beforeEach(function (): void {
 
 it('denies access when no token or allowlist is configured (fail-closed)', function (): void {
     // Sin token ni allowlist el endpoint no se expone: responde 404.
-    $this->get('/api/metrics')->assertNotFound();
+    $this->get(METRICS_ENDPOINT)->assertNotFound();
 });
 
 it('rejects requests without the correct token', function (): void {
     config()->set('observability.metrics.token', 'super-secret');
 
-    $this->get('/api/metrics')->assertNotFound();
-    $this->get('/api/metrics', ['X-Metrics-Token' => 'wrong'])->assertNotFound();
-    $this->get('/api/metrics', ['Authorization' => 'Bearer wrong'])->assertNotFound();
+    $this->get(METRICS_ENDPOINT)->assertNotFound();
+    $this->get(METRICS_ENDPOINT, ['X-Metrics-Token' => 'wrong'])->assertNotFound();
+    $this->get(METRICS_ENDPOINT, ['Authorization' => 'Bearer wrong'])->assertNotFound();
 });
 
 it('serves Prometheus metrics with a valid bearer token', function (): void {
     config()->set('observability.metrics.token', 'super-secret');
 
-    $response = $this->get('/api/metrics', ['Authorization' => 'Bearer super-secret']);
+    $response = $this->get(METRICS_ENDPOINT, ['Authorization' => 'Bearer super-secret']);
 
     $response->assertOk();
     expect($response->headers->get('Content-Type'))->toContain('text/plain')
@@ -50,12 +53,12 @@ it('serves Prometheus metrics with a valid bearer token', function (): void {
 it('accepts the X-Metrics-Token header as an alternative to the bearer token', function (): void {
     config()->set('observability.metrics.token', 'super-secret');
 
-    $this->get('/api/metrics', ['X-Metrics-Token' => 'super-secret'])->assertOk();
+    $this->get(METRICS_ENDPOINT, ['X-Metrics-Token' => 'super-secret'])->assertOk();
 });
 
 it('grants access by IP allowlist without a token', function (): void {
     config()->set('observability.metrics.ip_allowlist', ['127.0.0.1']);
 
     // El cliente de pruebas usa 127.0.0.1 como IP remota.
-    $this->get('/api/metrics')->assertOk();
+    $this->get(METRICS_ENDPOINT)->assertOk();
 });

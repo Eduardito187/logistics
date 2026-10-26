@@ -61,7 +61,9 @@ final readonly class CachingMaterialMappingRepository implements MaterialMapping
         /** @var list<array<string, mixed>>|null $cached */
         $cached = $this->cache->get(SapConnectorCacheKey::materialMappingsAll());
         if (is_array($cached)) {
-            return array_map(self::fromPrimitive(...), $cached);
+            // Arrow fn explícita (no first-class-callable `self::fromPrimitive(...)`): el análisis
+            // estático de Sonar no reconoce esa sintaxis como uso y marcaría el método como muerto.
+            return array_map(static fn (array $data): MaterialMapping => self::fromPrimitive($data), $cached);
         }
 
         $mappings = $this->inner->all();

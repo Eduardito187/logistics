@@ -17,6 +17,11 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRe
 // Fecha fija de los planes sembrados en las pruebas de backfill de geometría.
 const PLAN_DATE = '2026-10-13';
 
+/**
+ * Falla simulada del proveedor de geometría (ruteador caído) para probar la degradación elegante.
+ */
+final class SimulatedRouterFailure extends RuntimeException {}
+
 // La geometría de la ruta planificada se calcula también en los planes armados a mano/por propuesta,
 // reordenados o publicados sin ella (antes solo la tenía el auto-plan). El proveedor de geometría se
 // falsea: devuelve la polilínea de los propios puntos y cuenta las llamadas.
@@ -37,7 +42,7 @@ final class FakeRouteGeometryProvider implements RouteGeometryProvider
     {
         $this->calls++;
         if ($this->throws) {
-            throw new RuntimeException('ruteador caído');
+            throw new SimulatedRouterFailure('ruteador caído');
         }
         $this->lastPoints = array_values($orderedPoints);
         if (count($orderedPoints) < 2) {

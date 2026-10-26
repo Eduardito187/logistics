@@ -32,7 +32,7 @@ use Logistics\Settings\Database\Seeders\SettingsSeeder;
  *
  * El chofer, el vehículo y el nodo de tienda son LOS MISMOS ambos días; solo cambian la fecha (ids
  * externos fechados con sufijo Ymd/ymd y plan_date/route_date por día) y la etapa, así re-ejecutar no
- * duplica ni choca. 100% re-ejecutable (todo por firstOrCreate/updateOrCreate/claves de negocio).
+ * duplica ni choca. 100% re-ejecutable (cada paso por firstOrCreate/updateOrCreate/claves de negocio).
  *
  * Uso (dentro del contenedor):
  *   docker compose exec -T app php artisan db:seed --class="Database\Seeders\TestDataSeeder"

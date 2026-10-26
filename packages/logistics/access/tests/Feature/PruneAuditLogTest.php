@@ -5,6 +5,9 @@ declare(strict_types=1);
 use Logistics\Access\Application\Maintenance\PruneAuditLog;
 use Logistics\Access\Infrastructure\Persistence\Eloquent\Model\AuditEntryRecord;
 
+// Motivo del ->skip(): estas pruebas solo corren contra PostgreSQL (base logistics_test).
+const PRUNE_AUDIT_PG_REASON = 'Requiere PostgreSQL (logistics_test).';
+
 /**
  * Poda de retención de la bitácora de auditoría (access_audit_log). Verifica que el dry-run NO borra y
  * reporta el conteo correcto, que --force borra solo lo anterior a la ventana, y que el barrido es
@@ -30,7 +33,7 @@ it('dry-run cuenta las filas viejas pero no borra ninguna', function (): void {
         ->and($report->matched)->toBe(3)
         ->and($report->deleted)->toBe(0)
         ->and(AuditEntryRecord::query()->count())->toBe(5);
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', PRUNE_AUDIT_PG_REASON);
 
 it('con --force borra solo lo anterior a la ventana y respeta la retención', function (): void {
     /** @var PruneAuditLog $prune */
@@ -44,7 +47,7 @@ it('con --force borra solo lo anterior a la ventana y respeta la retención', fu
     expect($report->dryRun)->toBeFalse()
         ->and($report->deleted)->toBe(4)
         ->and(AuditEntryRecord::query()->count())->toBe(3);
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', PRUNE_AUDIT_PG_REASON);
 
 it('borra en lotes (chunk) y es idempotente', function (): void {
     /** @var PruneAuditLog $prune */
@@ -63,7 +66,7 @@ it('borra en lotes (chunk) y es idempotente', function (): void {
     $second = $prune->handle(retentionDays: 180, chunkSize: 2, dryRun: false);
     expect($second->deleted)->toBe(0)
         ->and($second->chunks)->toBe(0);
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', PRUNE_AUDIT_PG_REASON);
 
 it('el comando hace dry-run por defecto (sin --force no borra)', function (): void {
     AuditEntryRecord::factory()->count(2)->create(['occurred_at' => now()->subDays(400)]);
@@ -77,4 +80,4 @@ it('el comando hace dry-run por defecto (sin --force no borra)', function (): vo
         ->assertSuccessful();
 
     expect(AuditEntryRecord::query()->count())->toBe(0);
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (logistics_test).');
+})->skip(env('DB_CONNECTION') !== 'pgsql', PRUNE_AUDIT_PG_REASON);

@@ -51,6 +51,9 @@ if [ "$FORCE" -ne 1 ]; then
             echo "[restore] BLOQUEADO: '${TARGET}' es una base real. Restaurá primero a una base descartable, o pasá --force si estás seguro." >&2
             exit 3
             ;;
+        *)
+            # Cualquier otra base se considera descartable: se permite restaurarla sin --force.
+            : ;;
     esac
 fi
 

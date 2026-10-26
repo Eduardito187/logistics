@@ -12,19 +12,19 @@
     <title>{{ $subject }}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:24px 0;">
+    <table role="presentation" width="100%" style="border-collapse:collapse;border-spacing:0;background-color:#f4f4f5;padding:24px 0;">
         <tr>
-            <td align="center">
-                <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+            <td align="center" style="padding:0;">
+                <table role="presentation" width="600" style="border-collapse:collapse;border-spacing:0;max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
                     <tr>
                         <td style="background-color:#ffffff;padding:20px 28px;border-top:4px solid #E30613;">
-                            <table role="presentation" cellpadding="0" cellspacing="0">
+                            <table role="presentation" style="border-collapse:collapse;border-spacing:0;">
                                 <tr>
-                                    <td style="padding-right:12px;vertical-align:middle;">
+                                    <td style="padding:0 12px 0 0;vertical-align:middle;">
                                         {{-- Logo de la marca por URL absoluta (PNG = máxima compatibilidad de correo). --}}
                                         <img src="{{ config('app.url') }}/brand/distrack/png/favicon-512.png" alt="DisTrack" width="40" height="40" style="display:block;width:40px;height:40px;">
                                     </td>
-                                    <td style="vertical-align:middle;">
+                                    <td style="padding:0;vertical-align:middle;">
                                         <span style="font-size:22px;font-weight:bold;letter-spacing:0.5px;color:#141414;">Dis<span style="color:#E30613;">Track</span></span>
                                     </td>
                                 </tr>
@@ -38,7 +38,7 @@
 
                             @if (!empty($products))
                                 <h2 style="margin:24px 0 12px;font-size:16px;color:#111827;border-bottom:2px solid #E30613;padding-bottom:6px;">Tu pedido</h2>
-                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                <table role="presentation" width="100%" style="border-collapse:collapse;border-spacing:0;">
                                     @foreach ($products as $product)
                                         <tr>
                                             <td width="72" style="padding:8px 12px 8px 0;vertical-align:top;">

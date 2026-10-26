@@ -13,7 +13,7 @@ use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRecordFactory;
 
-// Fecha fija de la ruta diaria usada en todo el archivo.
+// Fecha fija de la ruta diaria usada a lo largo del archivo.
 const ROUTE_DATE = '2026-10-16';
 
 // La línea planificada SIEMPRE existe si la ruta tiene al menos dos puntos: geometría persistida del plan
@@ -70,12 +70,16 @@ it('con plan sin geometría la calcula vía planificación, la persiste y la sir
          */
         public function geometryFor(array $orderedPoints): ?RouteGeometry
         {
-            // Simula una geometría por calles: más puntos que paradas.
-            $coords = [];
-            foreach ($orderedPoints as $point) {
-                $coords[] = [$point->longitude, $point->latitude];
-                $coords[] = [$point->longitude + 0.001, $point->latitude];
-            }
+            // Simula una geometría por calles: por cada parada, dos puntos (más puntos que paradas).
+            // Se arma de una sola vez con array_merge(array_map(...)); nada se acumula en un bucle, así
+            // no hay ninguna ruta en la que $coords se use antes de inicializarse.
+            $coords = array_merge(...array_map(
+                static fn (GeoPoint $point): array => [
+                    [$point->longitude, $point->latitude],
+                    [$point->longitude + 0.001, $point->latitude],
+                ],
+                $orderedPoints,
+            ));
 
             return RouteGeometry::of($coords, 5000.0, 600.0);
         }

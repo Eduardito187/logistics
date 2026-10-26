@@ -19,6 +19,11 @@ use Logistics\Shipments\Domain\ValueObject\SourceReference;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 /**
+ * Falla al sembrar: el envío esperado no apareció en el repositorio tras el ingreso.
+ */
+final class ShipmentSeedFailure extends RuntimeException {}
+
+/**
  * Lado de LECTURA del listado de envíos (WS1): los filtros se empujan a SQL y el ShipmentView se arma
  * sin reconstruir el agregado. Se verifica el filtrado/paginación del lector y, sobre todo, que su salida
  * sea IDÉNTICA a la del camino histórico (ShipmentView::fromShipment). Contra PostgreSQL (logistics_test).
@@ -55,7 +60,7 @@ function seedReaderOrder(string $externalId, ?float $lat = -16.5, ?float $lng = 
         SourceReference::of(OrderSource::Store, $externalId),
     );
 
-    return $shipment?->id()->toString() ?? throw new RuntimeException("envío no encontrado: {$externalId}");
+    return $shipment?->id()->toString() ?? throw new ShipmentSeedFailure("envío no encontrado: {$externalId}");
 }
 
 it('produce exactamente la misma vista que fromShipment (paridad de contrato)', function (): void {

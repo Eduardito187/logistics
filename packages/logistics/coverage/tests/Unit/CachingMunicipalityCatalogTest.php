@@ -9,6 +9,9 @@ use Logistics\Coverage\Application\ReadModel\MunicipalityView;
 use Logistics\Coverage\Infrastructure\Cache\CachingMunicipalityCatalog;
 use Logistics\Coverage\Infrastructure\Cache\CoverageCacheKey;
 
+// Departamento usado en los datos de ejemplo de estas pruebas.
+const CATALOG_SANTA_CRUZ = 'Santa Cruz';
+
 function fakeMunicipalityCatalog(MunicipalityView ...$views): MunicipalityCatalog
 {
     return new class(array_values($views)) implements MunicipalityCatalog
@@ -29,7 +32,7 @@ function fakeMunicipalityCatalog(MunicipalityView ...$views): MunicipalityCatalo
 
 it('serves the second all() from cache and rehydrates the view with its derived label', function (): void {
     $inner = fakeMunicipalityCatalog(
-        new MunicipalityView('m-1', 'Warnes', 'd-1', 'Santa Cruz'),
+        new MunicipalityView('m-1', 'Warnes', 'd-1', CATALOG_SANTA_CRUZ),
         new MunicipalityView('m-2', 'Sucre', null, null),
     );
     $catalog = new CachingMunicipalityCatalog($inner, new CacheRepository(new ArrayStore));
@@ -41,7 +44,7 @@ it('serves the second all() from cache and rehydrates the view with its derived 
         ->and($first)->toHaveCount(2)
         ->and($second[0])->toBeInstanceOf(MunicipalityView::class)
         ->and($second[0]->name)->toBe('Warnes')
-        ->and($second[0]->departmentName)->toBe('Santa Cruz')
+        ->and($second[0]->departmentName)->toBe(CATALOG_SANTA_CRUZ)
         ->and($second[0]->label())->toBe('Warnes — Santa Cruz')
         ->and($second[1]->departmentId)->toBeNull()
         ->and($second[1]->label())->toBe('Sucre');
@@ -50,7 +53,7 @@ it('serves the second all() from cache and rehydrates the view with its derived 
 it('stores the primitive array of each municipality, never the read model (regla #7)', function (): void {
     $cache = new CacheRepository(new ArrayStore);
     $catalog = new CachingMunicipalityCatalog(
-        fakeMunicipalityCatalog(new MunicipalityView('m-1', 'Warnes', 'd-1', 'Santa Cruz')),
+        fakeMunicipalityCatalog(new MunicipalityView('m-1', 'Warnes', 'd-1', CATALOG_SANTA_CRUZ)),
         $cache,
     );
 

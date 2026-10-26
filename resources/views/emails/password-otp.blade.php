@@ -7,10 +7,10 @@
     <title>DisTrack</title>
 </head>
 <body style="margin:0; padding:0; background-color:#f4f4f5; font-family:Arial, Helvetica, sans-serif; color:#18181b;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5; padding:24px 0;">
+    <table role="presentation" style="width:100%; border-collapse:collapse; border-spacing:0; background-color:#f4f4f5; padding:24px 0;">
         <tr>
-            <td align="center">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; background-color:#ffffff; border-radius:12px; overflow:hidden; border:1px solid #e4e4e7;">
+            <td style="padding:0; text-align:center;">
+                <table role="presentation" style="width:100%; max-width:480px; border-collapse:collapse; border-spacing:0; margin:0 auto; background-color:#ffffff; border-radius:12px; overflow:hidden; border:1px solid #e4e4e7;">
                     <tr>
                         <td style="background-color:#E30613; padding:20px 32px;">
                             <span style="color:#ffffff; font-size:20px; font-weight:bold; letter-spacing:0.5px;">DisTrack</span>

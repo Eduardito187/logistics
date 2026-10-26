@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Infrastructure\ReadModel;
 
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Collection;
 use Logistics\Execution\Application\Contract\StopEnrichmentReader;
 
 /**
@@ -39,24 +40,7 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
             ->orderBy('created_at')
             ->get(['shipment_id', 'sku', 'product_name', 'quantity', 'product_image_url']);
 
-        /** @var array<string, list<array{sku: string, name: string, quantity: int, image_url: string|null}>> $itemsByShipment */
-        $itemsByShipment = [];
-        foreach ($lines as $line) {
-            $shipmentId = (string) $line->shipment_id;
-            // Producto siempre legible: nombre + SKU. El SKU nunca es null (cae a ""); si falta el
-            // nombre se usa el SKU y, si faltan ambos, "Producto". Nunca null/vacío en pantalla.
-            $sku = $line->sku !== null ? trim((string) $line->sku) : '';
-            $name = $line->product_name !== null ? trim((string) $line->product_name) : '';
-            if ($name === '') {
-                $name = $sku !== '' ? $sku : 'Producto';
-            }
-            $itemsByShipment[$shipmentId][] = [
-                'sku' => $sku,
-                'name' => $name,
-                'quantity' => (int) $line->quantity,
-                'image_url' => $line->product_image_url !== null ? (string) $line->product_image_url : null,
-            ];
-        }
+        $itemsByShipment = $this->groupItemsByShipment($lines);
 
         $result = [];
         foreach ($headers as $header) {
@@ -69,5 +53,44 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
         }
 
         return $result;
+    }
+
+    /**
+     * Agrupa las líneas por envío, con el producto SIEMPRE legible (ver mapLine), listo para pantalla.
+     *
+     * @param  Collection<int, \stdClass>                                                                   $lines
+     * @return array<string, list<array{sku: string, name: string, quantity: int, image_url: string|null}>>
+     */
+    private function groupItemsByShipment(Collection $lines): array
+    {
+        $itemsByShipment = [];
+        foreach ($lines as $line) {
+            $shipmentId = (string) $line->shipment_id;
+            $itemsByShipment[$shipmentId][] = $this->mapLine($line);
+        }
+
+        return $itemsByShipment;
+    }
+
+    /**
+     * Mapea una línea a su forma de pantalla. Producto siempre legible: nombre + SKU. El SKU nunca es
+     * null (cae a ""); si falta el nombre se usa el SKU y, si faltan ambos, "Producto". Nunca null/vacío.
+     *
+     * @return array{sku: string, name: string, quantity: int, image_url: string|null}
+     */
+    private function mapLine(\stdClass $line): array
+    {
+        $sku = $line->sku !== null ? trim((string) $line->sku) : '';
+        $name = $line->product_name !== null ? trim((string) $line->product_name) : '';
+        if ($name === '') {
+            $name = $sku !== '' ? $sku : 'Producto';
+        }
+
+        return [
+            'sku' => $sku,
+            'name' => $name,
+            'quantity' => (int) $line->quantity,
+            'image_url' => $line->product_image_url !== null ? (string) $line->product_image_url : null,
+        ];
     }
 }
