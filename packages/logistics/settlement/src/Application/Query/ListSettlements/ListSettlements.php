@@ -16,5 +16,7 @@ final readonly class ListSettlements implements Query
         public ?string $status = null,
         public ?string $periodFrom = null,
         public ?string $periodTo = null,
+        public ?int $limit = null,
+        public ?int $offset = null,
     ) {}
 }

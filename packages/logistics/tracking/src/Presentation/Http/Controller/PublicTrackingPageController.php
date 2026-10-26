@@ -18,7 +18,7 @@ use Logistics\Tracking\Application\ReadModel\PublicUnitView;
  * Página web PÚBLICA de rastreo por token: lo que abre el cliente desde el enlace que se le comparte.
  *
  * Renderiza estado, el mensaje "a N paradas", la ETA, el mapa con la posición del camión (Leaflet +
- * OpenStreetMap, sin API key) y el desglose de bultos. Sin PII ni claves internas: toda la data viene
+ * OpenStreetMap, sin API key) y el desglose de productos. Sin PII ni claves internas: toda la data viene
  * de los read models públicos (PublicTrackingView, PublicUnitView). Un token inexistente responde 404
  * genérico, sin revelar si el token existe.
  *

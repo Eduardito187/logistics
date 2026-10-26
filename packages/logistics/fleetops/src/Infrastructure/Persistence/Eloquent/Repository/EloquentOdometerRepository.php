@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Repository;
 
 use DateTimeImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Logistics\FleetOps\Domain\Contract\OdometerRepository;
 use Logistics\FleetOps\Domain\Model\OdometerReading;
 use Logistics\FleetOps\Domain\ValueObject\OdometerReadingId;
@@ -45,7 +46,45 @@ final readonly class EloquentOdometerRepository implements OdometerRepository
         ?string $vehicleId = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
+        ?int $limit = null,
+        ?int $offset = null,
     ): array {
+        // Orden determinista para la paginación: read_at desc con desempate por id (UUID v7).
+        $query = $this->filtered($vehicleId, $from, $to)
+            ->orderByDesc('read_at')
+            ->orderByDesc('id');
+
+        if ($offset !== null) {
+            $query->offset($offset);
+        }
+        if ($limit !== null) {
+            $query->limit($limit);
+        }
+
+        return array_values($query
+            ->get()
+            ->map(fn (OdometerReadingRecord $record): OdometerReading => $this->mapper->toDomain($record))
+            ->all());
+    }
+
+    public function countBy(
+        ?string $vehicleId = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
+    ): int {
+        return $this->filtered($vehicleId, $from, $to)->count();
+    }
+
+    /**
+     * Query builder con los filtros comunes de listBy/countBy (sin orden ni recorte).
+     *
+     * @return Builder<OdometerReadingRecord>
+     */
+    private function filtered(
+        ?string $vehicleId,
+        ?DateTimeImmutable $from,
+        ?DateTimeImmutable $to,
+    ): Builder {
         $query = OdometerReadingRecord::query();
 
         if ($vehicleId !== null) {
@@ -58,10 +97,6 @@ final readonly class EloquentOdometerRepository implements OdometerRepository
             $query->where('read_at', '<=', $to);
         }
 
-        return array_values($query
-            ->orderByDesc('read_at')
-            ->get()
-            ->map(fn (OdometerReadingRecord $record): OdometerReading => $this->mapper->toDomain($record))
-            ->all());
+        return $query;
     }
 }

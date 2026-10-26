@@ -32,8 +32,8 @@
     <script>
         const el = document.getElementById(@js($mapId));
         const stops = @js($stops);
-        // Geometría de la línea planificada ya calculada y persistida por Planning (sigue calles). Si viene
-        // con puntos, se dibuja directo (sin tocar OSRM); si no, se cae al OSRM del navegador y luego recta.
+        // Geometría de la línea planificada resuelta en el servidor (persistida por Planning, o recta entre
+        // paradas). Si viene con puntos, se dibuja directo (sin tocar OSRM del navegador).
         const plannedGeometry = @js($plannedGeometry);
         const planned = @js($planned);
         const actual = @js($actual);
@@ -45,7 +45,18 @@
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
         })[c]);
 
+        // Si Livewire re-ejecuta el script sobre el mismo contenedor (wire:ignore lo conserva), Leaflet lanza
+        // "Map container is already initialized" y el script entero aborta sin dibujar nada: se descarta el
+        // mapa previo antes de crear uno nuevo.
+        if (el._dismacMap) {
+            try { el._dismacMap.remove(); } catch (e) {}
+            el._dismacMap = null;
+        }
+        if (el._leaflet_id) {
+            el._leaflet_id = null;
+        }
         const map = L.map(el).setView([-16.5, -68.15], 11); // Bolivia
+        el._dismacMap = map;
         // Teselas self-host con fallback automático al OSM público (helper compartido): si el
         // tileserver del proyecto no responde, la capa baja sola al tile público y el mapa no queda gris.
         window.DismacMaps.tileLayer(L, {
@@ -86,13 +97,14 @@
             return out;
         };
 
-        // Trazado planificado. Orden de preferencia:
-        //  1) geometría ya PERSISTIDA por Planning (sigue calles): se dibuja directo, sin red.
-        //  2) si no hay persistida, se consulta a OSRM /route desde el navegador (comportamiento previo).
-        //  3) si OSRM falla, línea recta punteada entre paradas, para no quedarse sin trazado.
+        // Trazado planificado. SIEMPRE hay línea azul, sin depender del navegador:
+        //  1) geometría resuelta en el SERVIDOR (persistida por Planning o recta entre paradas): directo.
+        //  2) si no vino (caso raro), se dibuja YA la recta punteada entre paradas y, en segundo plano, se
+        //     intenta OSRM /route del navegador con tope de tiempo; si responde, reemplaza a la recta.
+        let plannedStraightLayer = null;
         const drawPlannedStraight = () => {
-            if (planned.length > 1) {
-                L.polyline(planned, plannedStraightStyle).addTo(group);
+            if (planned.length > 1 && plannedStraightLayer === null) {
+                plannedStraightLayer = L.polyline(planned, plannedStraightStyle).addTo(group);
                 fit();
             }
         };
@@ -104,8 +116,12 @@
             // OSRM espera "lng,lat" separados por ";"; nuestras paradas vienen como [lat, lng].
             const coords = planned.map((p) => p[1] + ',' + p[0]).join(';');
             const url = osrmHost + '/route/v1/driving/' + coords + '?overview=full&geometries=geojson';
+            const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            if (controller) {
+                setTimeout(() => controller.abort(), 8000);
+            }
 
-            fetch(url)
+            fetch(url, controller ? { signal: controller.signal } : {})
                 .then((r) => (r.ok ? r.json() : Promise.reject(new Error('osrm http ' + r.status))))
                 .then((data) => {
                     const geometry = data && data.code === 'Ok' && data.routes && data.routes[0]
@@ -116,6 +132,9 @@
                     }
                     // GeoJSON entrega [lng, lat]; Leaflet dibuja con [lat, lng].
                     const latlngs = line.map((c) => [c[1], c[0]]);
+                    if (plannedStraightLayer !== null) {
+                        group.removeLayer(plannedStraightLayer);
+                    }
                     L.polyline(latlngs, plannedStyle).addTo(group);
                     fit();
                 })
@@ -123,11 +142,12 @@
         };
 
         const drawPlanned = () => {
-            if (plannedGeometry.length > 1) {
+            if (Array.isArray(plannedGeometry) && plannedGeometry.length > 1) {
                 L.polyline(plannedGeometry, plannedStyle).addTo(group);
                 fit();
                 return;
             }
+            drawPlannedStraight();
             drawPlannedFromOsrm();
         };
 
@@ -201,7 +221,8 @@
         fit();
 
         // El contenedor puede estar oculto al crearse; recalcular tamaño cuando ya es visible.
-        setTimeout(() => map.invalidateSize(), 300);
+        // Tras recalcular, se vuelve a encuadrar: un fitBounds sobre un contenedor oculto queda mal hecho.
+        setTimeout(() => { map.invalidateSize(); fit(); }, 300);
 
         // Centra y abre el marcador de una parada. Se expone como función global para que, al hacer clic en
         // toda la tarjeta de una parada (abajo), el mapa haga zoom a su punto y abra su globo. Hay un solo

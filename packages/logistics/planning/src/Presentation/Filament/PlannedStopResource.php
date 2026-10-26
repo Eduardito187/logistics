@@ -135,15 +135,8 @@ final class PlannedStopResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                // UUID crudos: disponibles pero secundarios, ocultos por defecto.
-                TextColumn::make('plan_id')
-                    ->label(__('Plan ID'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('shipment_id')
-                    ->label(__('Shipment ID'))
-                    ->copyable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                // Los UUID (plan_id, shipment_id y la pk de la parada) no se muestran: el plan va por
+                // fecha + placa y el envío por su referencia/cliente vía las relaciones Eloquent.
             ])
             ->filters([
                 Filter::make('scheduled')
@@ -175,14 +168,8 @@ final class PlannedStopResource extends Resource
                     TextEntry::make('lane')->label(__('Load lane'))->placeholder('—'),
                 ])
                 ->columns(2),
-            Section::make(__('Identifiers'))
-                ->schema([
-                    TextEntry::make('id')->label(__('Stop ID'))->copyable(),
-                    TextEntry::make('plan_id')->label(__('Plan ID'))->copyable(),
-                    TextEntry::make('shipment_id')->label(__('Shipment ID'))->copyable(),
-                ])
-                ->columns(2)
-                ->collapsed(),
+            // Sin sección de identificadores: los UUID (pk de la parada, plan_id, shipment_id) no se
+            // muestran. El plan se reconoce por fecha + placa y el envío por su referencia/cliente.
         ]);
     }
 

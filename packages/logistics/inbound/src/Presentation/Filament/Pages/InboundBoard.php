@@ -119,7 +119,7 @@ final class InboundBoard extends Page
         return [
             'id' => $asn->id,
             'seller' => $this->sellerName($asn->sellerId),
-            'warehouse' => substr($asn->warehouseId, 0, 8),
+            'warehouse' => $this->warehouseName($asn->warehouseId),
             'appointment' => $appointment,
             'status' => $asn->status,
             'lines' => count($asn->lines),
@@ -217,13 +217,38 @@ final class InboundBoard extends Page
         return isset($arguments['asn']) && is_string($arguments['asn']) ? $arguments['asn'] : '';
     }
 
+    /** @var array<string, string>|null Caché por request de id de almacén → nombre (network_nodes). */
+    private ?array $warehouseNames = null;
+
     /**
-     * Nombre legal del seller (lectura read-only de la tabla sellers, sin dep composer). Cae al id corto.
+     * Nombre legal del seller (lectura read-only de la tabla sellers, sin dep composer). Cae a una
+     * etiqueta legible si el seller no está; nunca muestra el UUID.
      */
     private function sellerName(string $sellerId): string
     {
         $name = DB::table('sellers')->where('id', $sellerId)->value('legal_name');
 
-        return is_string($name) && $name !== '' ? $name : substr($sellerId, 0, 8);
+        return is_string($name) && $name !== '' ? $name : __('Unknown seller');
+    }
+
+    /**
+     * Nombre legible del almacén (node de network), resuelto en lote y cacheado por request para evitar
+     * N+1. Lectura cross-context read-only (sin dep composer); nunca muestra el UUID. Cae a etiqueta legible.
+     */
+    private function warehouseName(string $warehouseId): string
+    {
+        if ($this->warehouseNames === null) {
+            $map = [];
+            try {
+                foreach (DB::table('network_nodes')->get(['id', 'name']) as $row) {
+                    $map[(string) $row->id] = (string) $row->name;
+                }
+            } catch (\Throwable) {
+                $map = [];
+            }
+            $this->warehouseNames = $map;
+        }
+
+        return $this->warehouseNames[$warehouseId] ?? __('Unknown warehouse');
     }
 }

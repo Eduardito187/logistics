@@ -104,6 +104,11 @@ function makeAlertHandler(array $documents, int $policyDays, OutboxStore $store)
             return null;
         }
 
+        public function findByIds(array $ids): array
+        {
+            return [];
+        }
+
         public function all(): array
         {
             return [];

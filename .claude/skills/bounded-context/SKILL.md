@@ -35,6 +35,29 @@ por capa, y cada contexto **extraíble a microservicio** sin reescribir.
    El despacho real (SAP/FCM/email/SMS) es un `MessageDispatcher` que corre en el relay, idempotente.
 6. **Cache**: si se cachea, se cachea la forma primitiva (array del ReadModel), nunca el objeto de dominio.
 7. Texto visible de admin/consola **en inglés**; comentarios y docs **en español**.
+8. **NUNCA mostrar UUIDs en el frontend/panel** (regla tajante del dueño). Toda columna/entry/título/
+   Select de Filament que exponga un `*_id`/PK debe resolverse al **valor legible** de la relación
+   (nombre/código/placa/referencia) con los helpers memoizados por request del patrón `api-readmodel-
+   enrichment` (`VehiclePlates`/`NodeNames`/`UserNames`/`UnitNames`, o uno nuevo igual). Selects: id como
+   valor, nombre como label/búsqueda. PK propia → ocultar o referencia legible. NO son UUID (se dejan):
+   `tax_id`, `national_id`, `customer_document_id`, `external_id`, `order_id`, `plate`, `vin`, `token`.
+9. **CERO CDN/dependencia externa en RUNTIME**: todo asset (JS/CSS/fuentes/tiles/imágenes) se sirve local
+   desde `'self'` (vendorizado en `public/vendor` o `public/brand`). Prohibido `<script|link src=https://...>`,
+   Google Fonts, unpkg, tiles públicos de OSM. La CSP de `SecurityHeaders` es `'self'`-only. Las deps
+   composer SÍ valen (se descargan a `vendor/`, son locales). `vendor/` es un volumen del contenedor:
+   verificar DENTRO del contenedor cargando el autoloader, no con `ls vendor/` en el host.
+10. **Marca DisTrack** (panel interno): rojo **#E30613**, Noche **#141414**, fuentes Barlow/Barlow
+    Condensed/IBM Plex Mono **auto-hospedadas**; assets en `public/brand/distrack`. NO tocar la app de
+    clientes (blanca/roja) ni `APP_NAME` (de él deriva el prefijo técnico de Redis).
+11. **Seeders y mensajes**: seeders SIEMPRE idempotentes y aditivos (firstOrCreate/updateOrCreate/dispatch
+    por event_id; external_id con sufijo de fecha para datos por día), NUNCA destructivos (ni truncate ni
+    migrate:fresh). Mensajes de error/UI de cara al cliente: lenguaje **general y llano**, sin jerga interna
+    ("bulto/andén/rol/supervisor"), sin filtrar excepciones ni si un email existe.
+12. **Etiquetado de productos** (regla tajante del dueño): en TEXTO visible nunca la palabra **"bulto"** →
+    usar **"producto"**; y donde se muestre un producto/línea/unidad, SIEMPRE mostrar **nombre + SKU**
+    (p.ej. "Heladera · SKU-RD-1", + "(1 de 3)" si hay pieza), **nunca `null`/vacío/"—"** (fallback: SKU, o
+    "Producto"). Los identificadores técnicos (tabla `shipment_units`, `PhysicalUnit`, `unit_id`) NO se
+    renombran, solo el texto visible. Ver `UnitNames`, `RouteStopView.items`, `GetShipmentUnits`, `ShipmentLineView`.
 
 ## Estructura de carpetas
 
@@ -331,8 +354,58 @@ El CI (`.github/workflows/ci.yml`) falla por cosas que LOCALMENTE andan, porque 
   `vite` falla ("Rolldown failed to resolve import"). Commitear la dep (package.json + package-lock.json).
 - **git push** lo bloquea el clasificador de auto-mode; `gh` no está instalado → PR por link de compare.
 
+## Reacción cross-context: un contexto reacciona al evento de otro (verificado 2026-10-16, marketplace)
+
+Cuando el hecho de un contexto debe disparar una acción en OTRO (p.ej. `inbound.goods_received` → crear
+stock en `inventory`; `returns.return_dispositioned` → reingresar stock), se hace por el **outbox**, no por
+dependencia composer (así cada contexto queda extraíble a microservicio). Patrón:
+
+1. El contexto que REACCIONA escribe un `MessageDispatcher` (contrato `Logistics\Outbox\Application\Contract\
+   MessageDispatcher`) en su `Infrastructure/Dispatch/`. En `dispatch(OutboxMessage $m)`: filtra por
+   `$m->eventName()`, lee `$m->payload()` (array primitivo), y despacha su propio `Command` por el `CommandBus`.
+   NUNCA hace `use` de una clase del contexto emisor: consume el evento por su NOMBRE y su PAYLOAD, nada más.
+2. Se registra el ruteo en `packages/logistics/outbox/config/logistics-outbox.php`:
+   - `routes`: `'<ctx>.<evento_exacto>' => MiDispatcher::class` (gana sobre el prefijo); o un prefijo `'<ctx>.'`.
+   - `fanout`: si VARIOS contextos reaccionan al MISMO evento, se rutea el nombre exacto a `FanOutMessageDispatcher`
+     y se listan los adapters en `fanout[<evento>]`.
+   Ese config es la composition root del ruteo (ya referencia dispatchers de notifications/fleet/sap/inventory).
+3. **Transformación de forma**: el evento suele traer `lines[]` (una recepción con N líneas) y el command/subscriber
+   espera la forma PLANA por línea. El dispatcher aplana la cabecera sobre cada línea y delega. Reusar un subscriber
+   `Application\Subscriber\XOnY` que ya mapea payload→Command. Molde: `inventory/.../Dispatch/GoodsReceivedStockDispatcher`.
+4. **Idempotencia**: el outbox reentrega at-least-once → el command destino debe deduplicar por una clave natural
+   (p.ej. `goods_receipt_ref`/`return_id` + sku), o el relay crea stock duplicado en un reintento.
+5. **Verificar el cableado de verdad** (no basta que el config cargue): insertar un `outbox_messages` pendiente con
+   el `event_name` + payload, correr `php artisan logistics:outbox:relay`, y afirmar el efecto (p.ej. se creó el
+   lote), luego limpiar. Los tests de paquete son aislados y NO cubren el relay cruzado.
+
+## Olas de agentes para un build multi-contexto (orquestador ↔ agente) (2026-10-16)
+
+Construir varios contextos en paralelo (marketplace: 6 contextos en varias olas) funciona con esta división:
+
+- **Cada agente es dueño EXCLUSIVO de `packages/logistics/<su-ctx>/**`** y construye las 4 capas + migraciones +
+  seeders + tests + Filament. NO toca archivos raíz ni los calientes compartidos.
+- **El orquestador es dueño único de los archivos compartidos/raíz**: los 6 lugares de registro (§9), `openapi/v1.yaml`
+  y `lang/es.json`. Los agentes NO los editan: REPORTAN su FQCN de provider/resource, su fragmento de rutas, sus
+  claves es.json (en→es) y su snippet OpenAPI; el orquestador los fusiona en serie (sin colisión de escritura).
+  Para es.json: un script PHP throwaway que añade solo las claves faltantes y re-serializa con
+  `JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES` (preserva formato). OpenAPI: delegable a UN
+  agente dueño del archivo que lee rutas/controllers/ReadModels reales y valida con Symfony Yaml.
+- **Los agentes no pueden registrar en los 6 lugares** (el clasificador de permisos bloquea editar composer.json/
+  providers.php raíz): verifican su contexto con un **autoload-shim throwaway** en `/tmp` del container
+  (`php -d auto_prepend_file=/tmp/shim.php` con el PSR-4 de su namespace) para correr Unit + PHPStan + Pint, y
+  dejan los Feature ESCRITOS. El orquestador registra y recién ahí corren los Feature + migrate.
+- **Divergencia de contrato en paralelo**: si el contexto A codifica contra un contrato que el contexto B está
+  creando a la vez (inbound usó el eje `node` de capacity porque el eje `inbound` aún no existía), poné la
+  integración detrás de un **puerto/interface** en A; el orquestador realinea UN adaptador al contrato final de B
+  al ensamblar (molde: `inbound/.../Capacity/CapacityDockQuotaReserver`). El dominio no cambia.
+- **Secuencia del orquestador al cerrar la ola**: `composer update "logistics/*"` (no basta dump-autoload para los
+  path packages) → `migrate` (aditivo) → `db:seed --class=...` idempotente → render sweep (admin 70/70) →
+  `phpstan clear-result-cache` + global → `pint --test` global → `pest` de los contextos → cableado cross-context
+  por relay. Ver [[multisession-shared-tree]], [[marketplace-roadmap]].
+
 ## Referencia
 
 `packages/logistics/network`, `fleet`, `coverage`, `shipments` ya siguen este patrón; `labels` para el
-estilo de VOs y comandos; `outbox` y `settings` para persistencia e idempotencia. `fleetops` (mantenimiento/
-gastos/perfil de vehículo) es un contexto nuevo agregado en esta fase.
+estilo de VOs y comandos; `outbox` y `settings` para persistencia e idempotencia. Contextos nuevos de esta
+fase: `fleetops` (costos de flota), y el marketplace `sellers`/`inbound`/`inventory`/`settlement`/`returns`/
+`sellerportal` (ADR 017, ver [[marketplace-roadmap]]) como molde de contexto nuevo de punta a punta.

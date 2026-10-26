@@ -9,7 +9,7 @@ use Logistics\Execution\Application\Command\RecordUnloadScan\RecordUnloadScan;
 use Logistics\Execution\Presentation\Http\Request\UnloadScanRequest;
 
 /**
- * POST /app — registra la descarga guiada de un bulto en una parada (puerta app).
+ * POST /app — registra la descarga guiada de un producto en una parada (puerta app).
  *
  * Idempotente por la clave de idempotencia. La entrega del envío ya debe existir (cargada o en tránsito).
  */

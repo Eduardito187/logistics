@@ -33,7 +33,7 @@ Se redefine la cascada de canales del ADR 006/010 para que sea **100% sin pago**
   chip/modem propio— detrás del contrato de canal (`SMS_DRIVER`, `SMS_GATEWAY_URL`). Sigue siendo el
   último recurso, con **tope configurable** (el costo del SMS es del operador móvil, no una suscripción
   SaaS).
-- **Email transaccional** sigue como canal casi gratuito (SMTP propio / Mailpit en dev).
+- **Email transaccional** sigue como canal casi gratuito (sendmail nativo del host; sin SMTP propio).
 - **Push** de la app por Firebase Cloud Messaging (FCM), topic por envío (ADR 014). Es el primer canal
   de la cascada: **FCM → Telegram → Email → SMS**.
 

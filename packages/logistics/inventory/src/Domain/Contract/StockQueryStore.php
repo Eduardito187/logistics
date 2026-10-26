@@ -41,6 +41,17 @@ interface StockQueryStore
     ): array;
 
     /**
+     * Cuenta los lotes que cumplen los MISMOS filtros que `lots()`, para el total de la paginación
+     * (COUNT(*) aparte, sin recorrer la tabla).
+     */
+    public function countLots(
+        ?string $warehouseId = null,
+        ?string $sku = null,
+        ?string $ownerPartyId = null,
+        ?string $fulfillmentMode = null,
+    ): int;
+
+    /**
      * Available-to-Promise: stock disponible (no reservado) para un almacén/sku, opcionalmente por dueño.
      */
     public function availableToPromise(

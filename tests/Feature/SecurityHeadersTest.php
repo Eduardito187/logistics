@@ -6,8 +6,9 @@ use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-// Verifica el contrato de cabeceras de seguridad del admin (S-12): la CSP permite lo que el panel
-// usa (Leaflet/Geoman en unpkg, tiles OSM) y endurece el resto; HSTS solo sobre HTTPS.
+// Verifica el contrato de cabeceras de seguridad del admin (S-12): la CSP es 'self'-only (CERO CDN
+// externo; Leaflet/Geoman y fuentes se sirven locales, los tiles desde el tileserver self-host) y
+// endurece el resto; HSTS solo sobre HTTPS.
 
 /**
  * Invoca el middleware con una petición de prueba y devuelve la respuesta ya con cabeceras.
@@ -26,13 +27,16 @@ it('sets the hardening headers on the response', function (): void {
         ->and($response->headers->get('Content-Security-Policy'))->not->toBeNull();
 });
 
-it('allows leaflet, geoman and osm tiles in the CSP', function (): void {
+it('keeps the CSP self-only: no external CDN, local leaflet/geoman, self-host tiles', function (): void {
     $csp = (string) runSecurityHeaders(Request::create('http://localhost/admin'))
         ->headers->get('Content-Security-Policy');
 
-    // Scripts y estilos de Leaflet/Geoman vienen de unpkg; los tiles de OpenStreetMap.
-    expect($csp)->toContain('https://unpkg.com')
-        ->and($csp)->toContain('https://*.tile.openstreetmap.org')
+    // CERO CDN externo: Leaflet/Geoman y fuentes se sirven locales desde 'self'; los tiles, desde el
+    // tileserver self-host (origen agregado en runtime desde config/maps.php). Nada de unpkg ni OSM público.
+    expect($csp)->not->toContain('unpkg.com')
+        ->and($csp)->not->toContain('tile.openstreetmap.org')
+        ->and($csp)->toContain("script-src 'self'")
+        ->and($csp)->toContain("style-src 'self'")
         ->and($csp)->toContain("frame-ancestors 'self'")
         // Alpine (Filament) y los scripts inline de las páginas de mapa necesitan estos dos.
         ->and($csp)->toContain("'unsafe-inline'")
@@ -53,7 +57,8 @@ it('is wired onto the admin panel responses', function (): void {
 
     $response->assertSuccessful();
     expect($response->headers->get('X-Frame-Options'))->toBe('SAMEORIGIN')
-        ->and((string) $response->headers->get('Content-Security-Policy'))->toContain('https://unpkg.com');
+        ->and((string) $response->headers->get('Content-Security-Policy'))->toContain("default-src 'self'")
+        ->and((string) $response->headers->get('Content-Security-Policy'))->not->toContain('unpkg.com');
 });
 
 it('does not overwrite a Content-Security-Policy already set downstream', function (): void {

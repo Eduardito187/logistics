@@ -33,6 +33,29 @@ enum Channel: string
     case Sms = 'SMS';
 
     /**
+     * Valores que se persistieron con versiones anteriores del enum y su equivalente actual. El push
+     * se llamó `PUSH_FCM` (primera versión) y luego `PUSH_NTFY` (transporte ntfy, ya retirado); hoy es
+     * `FCM`. `WEB_PUSH` y `WHATSAPP` no tienen equivalente: se descartan al leer.
+     */
+    private const LEGACY_ALIASES = [
+        'PUSH_FCM' => 'FCM',
+        'PUSH_NTFY' => 'FCM',
+    ];
+
+    /**
+     * Lectura tolerante de un valor PERSISTIDO (filas viejas, jsonb, caché): traduce los alias
+     * históricos y devuelve null si el valor no corresponde a ningún canal vigente, para que el que lee
+     * decida omitirlo (nunca tumbar un listado por una fila vieja). Para entrada de usuario se usa
+     * `from()`/`Rule::enum`, que siguen siendo estrictos.
+     */
+    public static function fromStored(string $value): ?self
+    {
+        $normalized = strtoupper(trim($value));
+
+        return self::tryFrom(self::LEGACY_ALIASES[$normalized] ?? $normalized);
+    }
+
+    /**
      * ¿El canal admite una imagen (collage de productos / thumbnail)? Push (FCM) y Telegram sí; SMS no;
      * email arma su propio HTML con el listado de productos (no una sola imagen).
      */

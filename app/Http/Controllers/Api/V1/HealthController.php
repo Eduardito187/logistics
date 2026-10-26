@@ -25,11 +25,15 @@ final class HealthController
         ];
         $healthy = !in_array(false, $checks, true);
 
+        // Sonda de vida: jamás debe cachearse. Un balanceador/proxy que sirva un
+        // "ok" viejo enmascararía una dependencia caída (PostgreSQL/Valkey).
         return new JsonResponse([
             'status' => $healthy ? 'ok' : 'degraded',
             'api_version' => 'v1',
             'checks' => $checks,
-        ], $healthy ? 200 : 503);
+        ], $healthy ? 200 : 503, [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate',
+        ]);
     }
 
     /**

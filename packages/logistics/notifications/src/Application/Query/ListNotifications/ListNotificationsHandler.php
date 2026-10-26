@@ -10,10 +10,14 @@ use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Notifications\Domain\Model\Notification;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shared\Application\ReadModel\Page;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 /**
- * @implements QueryHandler<ListNotifications, list<NotificationView>>
+ * Lista el log global de notificaciones, paginado. Baja LIMIT/OFFSET a SQL y arma el total con un
+ * COUNT(*) aparte; enriquece solo los ítems de la página con el id externo del envío (evita N+1).
+ *
+ * @implements QueryHandler<ListNotifications, Page<NotificationView>>
  */
 final class ListNotificationsHandler implements QueryHandler
 {
@@ -22,25 +26,27 @@ final class ListNotificationsHandler implements QueryHandler
     ) {}
 
     /**
-     * @return list<NotificationView>
+     * @return Page<NotificationView>
      */
-    public function handle(Query $query): array
+    public function handle(Query $query): Page
     {
         if (!$query instanceof ListNotifications) {
             throw NotificationsException::because('ListNotificationsHandler solo maneja ListNotifications');
         }
 
-        $notifications = $this->notifications->latest($query->limit);
+        $notifications = $this->notifications->latest($query->limit, $query->offset);
 
         $externalIds = self::resolveExternalIds($notifications);
 
-        return array_map(
+        $views = array_map(
             static fn (Notification $notification): NotificationView => NotificationView::fromNotification(
                 $notification,
                 $externalIds[$notification->shipmentId()] ?? null,
             ),
             $notifications,
         );
+
+        return new Page($views, $this->notifications->count());
     }
 
     /**

@@ -9,6 +9,7 @@ use Logistics\Notifications\Domain\Model\MessageTemplate;
 use Logistics\Notifications\Domain\ValueObject\Channel;
 use Logistics\Notifications\Domain\ValueObject\MessageTemplateId;
 use Logistics\Notifications\Domain\ValueObject\MessageType;
+use Throwable;
 
 /**
  * Implementación Eloquent del repositorio de plantillas de mensaje. save() es un upsert por id.
@@ -52,13 +53,22 @@ final class EloquentMessageTemplateRepository implements MessageTemplateReposito
 
     public function all(): array
     {
-        return MessageTemplateRecord::query()
+        $templates = [];
+        $records = MessageTemplateRecord::query()
             ->orderBy('message_type')
             ->orderBy('channel')
             ->orderBy('locale')
-            ->get()
-            ->map(fn (MessageTemplateRecord $record): MessageTemplate => $this->mapper->toDomain($record))
-            ->values()
-            ->all();
+            ->get();
+
+        foreach ($records as $record) {
+            try {
+                $templates[] = $this->mapper->toDomain($record);
+            } catch (Throwable) {
+                // Plantilla de un canal retirado (WEB_PUSH, WHATSAPP): se omite del listado.
+                continue;
+            }
+        }
+
+        return $templates;
     }
 }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
+use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 use Logistics\Tracking\Domain\ValueObject\TrackingToken;
 use Logistics\Tracking\Domain\ValueObject\UnitStatus;
@@ -71,6 +72,56 @@ it('expone el detalle per-bulto interno por id de envío', function () use ($see
     expect($labels)->toContain('1/2')->toContain('2/2');
 });
 
+it('expone el producto (sku, nombre, foto, pieza) de cada bulto del envío', function (): void {
+    $shipment = ShipmentRecord::factory()->create();
+    $line = ShipmentLineRecord::factory()->create([
+        'shipment_id' => $shipment->id,
+        'sku' => 'SKU-HELA',
+        'product_name' => 'Heladera 400L',
+        'product_image_url' => 'https://cdn.test/hela.png',
+    ]);
+    $unit = PhysicalUnitRecord::factory()->create([
+        'shipment_id' => $shipment->id,
+        'line_id' => $line->id,
+        'unit_index' => 1,
+        'unit_total' => 1,
+        'piece_index' => 1,
+        'piece_total' => 2,
+    ]);
+    UnitTrackingRecord::factory()->create([
+        'shipment_id' => $shipment->id,
+        'unit_id' => $unit->id,
+        'status' => UnitStatus::Loaded->value,
+    ]);
+
+    $this->getJson("/api/v1/app/tracking/shipments/{$shipment->id}/units")
+        ->assertOk()
+        ->assertJsonPath('data.units.0.label', '1/1 (1/2)')
+        ->assertJsonPath('data.units.0.sku', 'SKU-HELA')
+        ->assertJsonPath('data.units.0.product_name', 'Heladera 400L')
+        ->assertJsonPath('data.units.0.product_image_url', 'https://cdn.test/hela.png')
+        ->assertJsonPath('data.units.0.piece_index', 1)
+        ->assertJsonPath('data.units.0.piece_total', 2);
+});
+
+it('cae a producto legible si la unidad ya no existe en shipments', function (): void {
+    $shipment = ShipmentRecord::factory()->create();
+    UnitTrackingRecord::factory()->create([
+        'shipment_id' => $shipment->id,
+        'unit_id' => 'e9999999-9999-7999-8999-999999999999',
+        'status' => UnitStatus::Loaded->value,
+    ]);
+
+    // Nombre y SKU SIEMPRE legibles (regla del dueño): sin producto resuelto, nombre "Producto" y SKU
+    // "". La etiqueta de posición (label) y la pieza sí pueden faltar (null).
+    $this->getJson("/api/v1/app/tracking/shipments/{$shipment->id}/units")
+        ->assertOk()
+        ->assertJsonPath('data.units.0.label', null)
+        ->assertJsonPath('data.units.0.sku', '')
+        ->assertJsonPath('data.units.0.product_name', 'Producto')
+        ->assertJsonPath('data.units.0.piece_total', null);
+});
+
 it('expone el detalle público de bultos por token sin PII', function () use ($seedUnits): void {
     $shipment = ShipmentRecord::factory()->create();
     $token = TrackingToken::generate()->toString();
@@ -121,7 +172,7 @@ it('renderiza la página pública de rastreo con el estado y el mensaje', functi
     $this->get("/t/{$token}")
         ->assertOk()
         ->assertSee('Tu pedido está a 2 paradas.')
-        ->assertSee('Tus bultos', false);
+        ->assertSee('Tus productos', false);
 });
 
 it('renderiza 404 en la página pública para un token inexistente', function (): void {

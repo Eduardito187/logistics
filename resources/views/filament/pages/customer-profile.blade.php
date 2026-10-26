@@ -147,8 +147,9 @@
     @endunless
 
     @assets
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        {{-- Leaflet vendorizado localmente: cero dependencias externas en runtime (servido desde self). --}}
+        <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
+        <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
         <script src="{{ asset('js/dismac-maps.js') }}"></script>
     @endassets
 

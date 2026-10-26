@@ -147,7 +147,7 @@ final class CapacitySeeder extends Seeder
     private function dates(): array
     {
         $dates = [];
-        for ($offset = 0; $offset < 3; $offset++) {
+        for ($offset = 0; $offset < 14; $offset++) {
             $dates[] = now()->addDays($offset)->format('Y-m-d');
         }
 

@@ -1,0 +1,32 @@
+# Memoria — dismac/logistics
+
+- [Project overview](project-overview.md) — qué es la plataforma, escala, fases, dos repos
+- [Arquitectura](project-architecture.md) — monolito modular, 4 capas, bounded contexts, puertas de API, stack
+- [Reglas no negociables](project-rules.md) — definición de terminado, gotchas de providers/Filament, QR, test DB
+- [Tooling](project-tooling.md) — comandos Docker para tests/pint/phpstan/artisan, puertos, skills
+- [Roadmap y plan de build](roadmap-build-plan.md) — estado real del backend vs roadmap, qué es delegable a agentes, plan por olas
+- [Paleta de marca](brand-palette.md) — colores Dismac del e-commerce (rojo #E2231A) para admin/UI
+- [Seeders FKs cruzadas](seed-data-cross-refs.md) — por qué las relaciones salen vacías en el admin (datos huérfanos), cómo sembrar
+- [NO operaciones destructivas de DB](no-destructive-db-ops.md) — nunca migrate:fresh/wipe; aditivo e idempotente; backup antes de algo crítico
+- [Contexto access (IAM)](access-iam-context.md) — identidad, RBAC dinámico y tokens de integración; agregados, API, Filament, seeder; DoD verde (phpstan8/pint/pest) + limpieza repo-wide 201→0
+- [Admin Filament hardening](filament-admin-hardening.md) — logout aleatorio (AuthenticateSession), 404 de deep-links (redirect handler), gating por rol, opcache
+- [Contexto telemetry](telemetry-context.md) — GPS en vivo de camiones, trips (minutos/distancia/inactividad), analítica de calles OSRM, geocercas y alertas de mal uso
+- [Contexto fleetops](fleetops-context.md) — operación y costos de la flota propia: combustible, mantenimiento, salidas/cargas, odómetro, perfil técnico, gastos y TCO/costo-por-km
+- [Regla geográfica + ruteo](routing-geo-rule.md) — ruta de un solo departamento, orden por cercanía, VRP/OSRM/VROOM, incidentes de camión, auto-planner, slots
+- [Admin UI y mapas](admin-ui-maps.md) — Filament (tema compilado, i18n, RBAC/login), mapas OSM/OSRM (tiles resilientes), dropdowns propios, build del tema, GD
+- [Admin operaciones-primero](admin-ops-first-redesign.md) — IA 16→5 grupos, Control Tower como landing, cockpits por frente, gating de 2 roles, native(false) ya cumplido
+- [Gotchas componentes Filament v4](filament-v4-component-gotchas.md) — tipos de propiedad invariantes (fatales), ImageColumn cuadrado, tarjeta Repeatable clickeable
+- [Enriquecimiento de ReadModels/API](api-readmodel-enrichment.md) — mostrar valor legible junto a FK UUID (cross-context sin acople), openapi additivo, bug casts Carbon
+- [App web Vue + Inertia (SPA)](frontend-spa-vue-inertia.md) — híbrido con Filament, /app operativo, stack/estructura/contrato, gotchas de build (npm host, ENOTEMPTY)
+- [Expansión flota/personal](fleet-personnel-expansion.md) — datos personales de choferes/ayudantes, documentos, referencias, historial operativo GetDriverHistory (gotcha doble conteo)
+- [Testing, cobertura y gotchas Filament](testing-coverage-filament-gotchas.md) — gate --min=75, cómo se subió 30.6%→81.3%, acciones/forms Filament v4 no driveables en test, Http::fake, uso de global sin namespace; vehículos (marca/modelo/año/VIN/fotos 4 lados/docs SOAT+inspección) + alertas de vencimiento 30d/7d
+- [Calendario de despacho por municipio](dispatch-calendar-municipality.md) — 7 días, feriados/bloqueos, activación de cupos por rango (asíncrona), enforcement en promise/planning
+- [Multi-sesión en árbol compartido](multisession-shared-tree.md) — coordinar varias sesiones de Claude sin pisarse: particionar por archivos, dueño único de es.json/openapi, serializar composer/npm/pest, límite de sesión con olas grandes
+- [Roadmap marketplace/dropship](marketplace-roadmap.md) — productos de sellers (OWNED/FBD/DROPSHIP), VO Ownership, ADR 017 + roadmap por fases; Fase 0+1 hechas (contexto sellers + propiedad en shipments), 2-5 pendientes
+- [Gotchas de CI (Docker/Vite)](ci-docker-vite-gotchas.md) — build de la imagen prod (tema Filament necesita vendor, está en .dockerignore), tests de render fallan sin manifest (withoutVite), deps JS faltantes en package.json; verificar con worktree limpio; git push bloqueado por permisos
+- [Performance a escala + email](perf-scale-and-mail.md) — caché Valkey de referencia, read-side SQL en shipments (gotcha orderBy lines/units), índice parcial del outbox, FPM por env, preload opt-in, Octane no-ahora; Mailpit eliminado → sendmail nativo
+- [Rebrand DisTrack + cero CDN](distrack-rebrand-no-cdn.md) — marca DisTrack (#E30613/Noche, Barlow self-host), regla CERO CDN runtime (Leaflet/Geoman/tiles/fuentes locales, CSP self-only), páginas de error en lenguaje de cliente
+- [NO UUID en el admin](no-uuid-in-admin.md) — regla dura: nunca mostrar UUIDs; resolver FK→valor legible con helpers memoizados (VehiclePlates/NodeNames/UserNames/UnitNames); Selects por nombre; qué NO es UUID
+- [2FA + OTP](auth-2fa-otp.md) — TOTP unificado admin(Filament MFA)+app(API), reseteo por código OTP 6 díg; núcleo app/Auth; composer bacon/google2fa; MAIL_MAILER=log para ver el código en dev
+- [Datos de prueba app](test-data-seeders.md) — TestDataSeeder (14 días) todos los roles (idempotente), cuentas *@dismac.test/password123, chofer↔vehículo, tienda↔T-SCZ-01
+- [Etiquetado de productos](product-labeling-rules.md) — regla dura: nunca "bulto" (decir "producto"), nunca null/vacío; SIEMPRE nombre + SKU del producto donde se muestre

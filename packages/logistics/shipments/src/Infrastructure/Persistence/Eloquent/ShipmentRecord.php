@@ -59,18 +59,25 @@ final class ShipmentRecord extends Model
     }
 
     /**
+     * Orden estable por `id` (UUID v7, creado en orden de dominio): sin ORDER BY la relación devuelve el
+     * orden físico de heap de Postgres, que no es determinista bajo escritura/vacío concurrente. Fijarlo
+     * mantiene idéntica la secuencia de líneas del agregado y la del lector SQL del listado (que ya ordena
+     * por `id`), y evita diferencias de orden espurias al rehidratar.
+     *
      * @return HasMany<ShipmentLineRecord, $this>
      */
     public function lines(): HasMany
     {
-        return $this->hasMany(ShipmentLineRecord::class, 'shipment_id');
+        return $this->hasMany(ShipmentLineRecord::class, 'shipment_id')->orderBy('id');
     }
 
     /**
+     * Mismo criterio que `lines()`: orden estable por `id` para una rehidratación determinista.
+     *
      * @return HasMany<PhysicalUnitRecord, $this>
      */
     public function units(): HasMany
     {
-        return $this->hasMany(PhysicalUnitRecord::class, 'shipment_id');
+        return $this->hasMany(PhysicalUnitRecord::class, 'shipment_id')->orderBy('id');
     }
 }

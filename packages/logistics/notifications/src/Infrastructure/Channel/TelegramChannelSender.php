@@ -49,7 +49,10 @@ final readonly class TelegramChannelSender implements ChannelSender
             ? ['sendPhoto', ['chat_id' => $chatId, 'photo' => $imageUrl, 'caption' => $message->body]]
             : ['sendMessage', ['chat_id' => $chatId, 'text' => $message->body]];
 
-        $response = Http::timeout($this->config['timeout'])->post($base.'/'.$method, $payload);
+        $response = Http::timeout($this->config['timeout'])
+            // B-2: tope del handshake de conexión, separado del timeout total.
+            ->connectTimeout(3)
+            ->post($base.'/'.$method, $payload);
 
         if ($response->failed()) {
             throw NotificationsException::because(

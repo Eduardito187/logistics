@@ -12,6 +12,11 @@ return [
     | Usamos el protocolo Pusher contra un servidor OPEN-SOURCE self-host: Soketi
     | (servicio `soketi` en docker-compose). NO usamos Pusher.com ni Google: solo
     | el protocolo. Driver por defecto configurable por env (pusher | redis | log | null).
+    |
+    | B-5: el default es `null` A PROPÓSITO (fail-safe): sin env, el fan-out en vivo no se emite por
+    | ningún lado en vez de fugar eventos a un `log` ruidoso. CONSECUENCIA en producción: el mapa de flota
+    | en vivo NO emitirá por WebSocket hasta fijar BROADCAST_CONNECTION=pusher (apuntando al servicio
+    | Soketi self-host). No se cambia el comportamiento aquí; solo se documenta la env a definir en prod.
     */
 
     'default' => env('BROADCAST_CONNECTION', env('BROADCAST_DRIVER', 'null')),

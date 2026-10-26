@@ -2,7 +2,7 @@
      consciente de sesión y sin filtrar detalles internos (sin mensaje de excepción ni stack). --}}
 @extends('errors.layout')
 
-@section('title', 'Datos inválidos')
+@section('title', 'Datos incorrectos')
 @section('code', '422')
-@section('heading', 'No pudimos procesar los datos')
-@section('message', 'Revisa la información enviada e inténtalo nuevamente.')
+@section('heading', 'Revisa los datos ingresados')
+@section('message', 'Algunos datos no son correctos o faltan. Revísalos e intenta de nuevo.')

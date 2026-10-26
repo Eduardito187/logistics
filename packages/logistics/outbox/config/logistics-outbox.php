@@ -19,8 +19,11 @@ return [
         'limit' => (int) env('OUTBOX_RELAY_LIMIT', 100),
 
         // Segundos que un mensaje tomado queda "en vuelo" (lease) antes de volver a ser elegible:
-        // protege de reintentos solapados si el worker muere a mitad del despacho.
-        'lease_seconds' => (int) env('OUTBOX_LEASE_SECONDS', 60),
+        // protege de reintentos solapados si el worker muere a mitad del despacho. Con el dispatcher
+        // (pump) el mensaje viaja por la cola antes de despacharse, así que el lease debe cubrir la
+        // latencia de cola + el despacho; 120s da margen sin arriesgar duplicados (el despacho es
+        // idempotente de todos modos).
+        'lease_seconds' => (int) env('OUTBOX_LEASE_SECONDS', 120),
 
         // Intentos totales antes de descartar el mensaje a dead-letter.
         'max_attempts' => (int) env('OUTBOX_MAX_ATTEMPTS', 6),
@@ -28,6 +31,44 @@ return [
         // Backoff exponencial: minutos de espera antes del próximo intento, por intento ya realizado.
         // 1→1min, 2→5min, 3→30min, 4→2h, 5→6h; el 6º fallo descarta.
         'backoff_minutes' => [1 => 1, 2 => 5, 3 => 30, 4 => 120, 5 => 360],
+    ],
+
+    // Dispatcher (pump): el comando `logistics:outbox:pump` toma un lote y encola UN job por mensaje a las
+    // colas always-on para que los workers despachen en paralelo (C-2 de la auditoría de throughput). Como
+    // el pump no hace I/O externo (solo toma y encola), el lote por corrida es grande: el techo ya no es
+    // el del despacho secuencial inline.
+    'pump' => [
+        // Máximo de mensajes que el pump toma y encola por corrida.
+        'batch' => (int) env('OUTBOX_PUMP_BATCH', 1000),
+
+        // Ruteo por cola según el prefijo del event_name (match por prefijo más largo). Aísla el
+        // head-of-line blocking: los avisos al cliente van a la cola `notifications` y el resto a `outbox`,
+        // cada una con sus propios workers. Un destino lento en una cola no frena a la otra.
+        'queue_routes' => [
+            'shipments.' => 'notifications',
+            'execution.' => 'notifications',
+            'tracking.' => 'notifications',
+            'notifications.' => 'notifications',
+            'fleet.documents_expiry_alerted' => 'notifications',
+        ],
+
+        // Cola para los eventos sin prefijo que matchee (SAP, inbound, returns, fanout, ...).
+        'default_queue' => (string) env('OUTBOX_PUMP_DEFAULT_QUEUE', 'outbox'),
+    ],
+
+    // Circuit breaker por destino externo (A-5 de la auditoría). Estado compartido en Valkey (cache):
+    // si un destino (SAP/FCM/Telegram/email/SMS) acumula N fallos seguidos dentro de la ventana, el
+    // circuito se ABRE y los intentos cortan rápido (fast-fail) durante el enfriamiento, para no gastar
+    // el timeout completo ni frenar a los destinos sanos. Pasado el enfriamiento entra en half-open.
+    'breaker' => [
+        // Fallos seguidos que abren el circuito de un destino.
+        'failure_threshold' => (int) env('OUTBOX_BREAKER_FAILURES', 5),
+
+        // Segundos que el circuito permanece abierto (fast-fail) antes de reintentar (half-open).
+        'cooldown_seconds' => (int) env('OUTBOX_BREAKER_COOLDOWN', 30),
+
+        // Ventana (segundos) en la que se cuentan los fallos seguidos.
+        'window_seconds' => (int) env('OUTBOX_BREAKER_WINDOW', 60),
     ],
 
     // Ruteo por nombre de evento hacia el adapter que lo despacha. Clave = prefijo del event_name
@@ -81,4 +122,22 @@ return [
     // Dispatcher por defecto cuando ningún prefijo de 'routes' matchea: hoy NullMessageDispatcher
     // (solo log), reemplazable por un canal catch-all.
     'default_dispatcher' => NullMessageDispatcher::class,
+
+    // Poda de retención del outbox (comando logistics:outbox:prune). SOLO estados terminales:
+    // dispatched (ventana corta: ya cumplieron su función) y dead_lettered (ventana larga: diagnóstico).
+    // NUNCA toca pending/failed.
+    'prune' => [
+        // Días de retención de mensajes DESPACHADOS (se miden desde dispatched_at).
+        'dispatched_days' => (int) env('OUTBOX_PRUNE_DISPATCHED_DAYS', 14),
+
+        // Días de retención de mensajes en DEAD-LETTER (se miden desde created_at). Más largo para
+        // poder diagnosticar fallos de entrega antes de descartarlos.
+        'dead_lettered_days' => (int) env('OUTBOX_PRUNE_DEAD_LETTERED_DAYS', 90),
+
+        // Filas por lote de borrado (acota el bloqueo).
+        'chunk' => (int) env('DB_PRUNE_CHUNK', 5000),
+
+        // Pausa entre lotes en milisegundos (alivia la carga del motor en producción).
+        'pause_ms' => (int) env('DB_PRUNE_PAUSE_MS', 100),
+    ],
 ];

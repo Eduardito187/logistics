@@ -61,12 +61,14 @@
     </div>
 
     @assets
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        {{-- Leaflet + Geoman vendorizados localmente: cero dependencias externas en runtime (servido desde self). --}}
+        {{-- Orden crítico: leaflet.css/js ANTES de geoman y ANTES de dismac-maps.js. --}}
+        <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
+        <link rel="stylesheet" href="{{ asset('vendor/leaflet-geoman/leaflet-geoman.css') }}" />
+        <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
         {{-- Helper de teselas con fallback automático al OSM público si el self-host no responde. --}}
         <script src="{{ asset('js/dismac-maps.js') }}"></script>
-        <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
+        <script src="{{ asset('vendor/leaflet-geoman/leaflet-geoman.min.js') }}"></script>
     @endassets
 
     @script

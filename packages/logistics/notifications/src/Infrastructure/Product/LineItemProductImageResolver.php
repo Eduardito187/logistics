@@ -11,8 +11,9 @@ use Throwable;
 
 /**
  * Implementación stub del resolutor de productos: lee las líneas del pedido de la tabla
- * `shipment_lines` del contexto Envíos (nombre, cantidad y `product_image_url` si existe). Si una línea
- * no trae imagen, usa el placeholder configurado, para que email y push siempre tengan algo que pintar.
+ * `shipment_lines` del contexto Envíos (nombre, SKU, cantidad y `product_image_url` si existe). Si una
+ * línea no trae imagen, usa el placeholder configurado, para que email y push siempre tengan algo que
+ * pintar. El SKU viaja junto al nombre para mostrarse en el listado de productos del email.
  *
  * Consulta por nombre de tabla con el query builder (no acopla contra el modelo Eloquent de otro
  * package) y degrada a lista vacía si la tabla no existe o la consulta falla: el canal entonces manda
@@ -34,14 +35,14 @@ final readonly class LineItemProductImageResolver implements ProductImageResolve
                 ->where('shipment_id', $shipmentId)
                 ->orderBy('product_name')
                 ->limit($this->maxLines)
-                ->get(['product_name', 'quantity', 'product_image_url']);
+                ->get(['product_name', 'sku', 'quantity', 'product_image_url']);
         } catch (Throwable) {
             return [];
         }
 
         $products = [];
         foreach ($rows as $row) {
-            /** @var object{product_name?: string, quantity?: int, product_image_url?: string|null} $row */
+            /** @var object{product_name?: string, sku?: string|null, quantity?: int, product_image_url?: string|null} $row */
             $name = isset($row->product_name) ? (string) $row->product_name : '';
             if (trim($name) === '') {
                 continue;
@@ -50,8 +51,11 @@ final readonly class LineItemProductImageResolver implements ProductImageResolve
             $imageUrl = isset($row->product_image_url) && is_string($row->product_image_url) && trim($row->product_image_url) !== ''
                 ? $row->product_image_url
                 : $this->placeholderUrl;
+            $sku = isset($row->sku) && is_string($row->sku) && trim($row->sku) !== ''
+                ? $row->sku
+                : null;
 
-            $products[] = ProductThumbnail::of($name, $qty, $imageUrl);
+            $products[] = ProductThumbnail::of($name, $qty, $imageUrl, $sku);
         }
 
         return $products;
