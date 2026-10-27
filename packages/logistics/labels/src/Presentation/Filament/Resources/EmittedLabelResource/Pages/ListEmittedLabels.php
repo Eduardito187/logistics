@@ -63,7 +63,7 @@ final class ListEmittedLabels extends ListRecords
     {
         return Action::make('emitLabels')
             ->label(__('Emit labels'))
-            ->icon('heroicon-o-qr-code')
+            ->icon('ds-qr-code')
             ->color('primary')
             ->modalHeading(__('Emit shipment labels'))
             ->modalDescription(__('Signs and renders one label per physical package of each order line.'))
@@ -103,7 +103,7 @@ final class ListEmittedLabels extends ListRecords
     {
         return Action::make('preEmitLabels')
             ->label(__('Pre-emit labels'))
-            ->icon('heroicon-o-clock')
+            ->icon('ds-clock')
             ->color('gray')
             ->modalHeading(__('Pre-emit order labels'))
             ->modalDescription(__('Prepares the signed labels ahead of picking so the app can print them offline. Idempotent.'))
@@ -143,7 +143,7 @@ final class ListEmittedLabels extends ListRecords
     {
         return Action::make('reprintLabels')
             ->label(__('Reprint labels'))
-            ->icon('heroicon-o-arrow-path')
+            ->icon('ds-printer')
             ->color('warning')
             ->modalHeading(__('Reprint order labels'))
             ->modalDescription(__('Revokes the current labels of the order (kept for audit) and emits a fresh batch.'))
@@ -191,7 +191,7 @@ final class ListEmittedLabels extends ListRecords
     {
         return Action::make('publicKeys')
             ->label(__('Signing keys'))
-            ->icon('heroicon-o-key')
+            ->icon('ds-key')
             ->color('gray')
             ->modalHeading(__('Public signing keys'))
             ->modalSubmitAction(false)

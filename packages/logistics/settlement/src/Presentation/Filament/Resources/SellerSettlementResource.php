@@ -78,7 +78,7 @@ final class SellerSettlementResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-banknotes';
+        return 'ds-banknotes';
     }
 
     public static function getModelLabel(): string
@@ -194,7 +194,7 @@ final class SellerSettlementResource extends Resource
                 // Armar borrador: despacha DraftSellerSettlement agregando los despachos del seller del periodo.
                 CreateAction::make('draft')
                     ->label(__('Draft settlement'))
-                    ->icon('heroicon-o-document-plus')
+                    ->icon('ds-document-plus')
                     ->modalHeading(__('Draft seller settlement'))
                     ->createAnother(false)
                     ->schema([
@@ -248,7 +248,7 @@ final class SellerSettlementResource extends Resource
                 // Confirmar: despacha ConfirmSettlement. Visible solo si está en borrador.
                 Action::make('confirm')
                     ->label(__('Confirm'))
-                    ->icon('heroicon-o-check-circle')
+                    ->icon('ds-check-circle')
                     ->color('info')
                     ->requiresConfirmation()
                     ->modalHeading(__('Confirm settlement'))
@@ -266,7 +266,7 @@ final class SellerSettlementResource extends Resource
                 // Marcar pagada: despacha MarkSettlementPaid. Visible solo si está confirmada.
                 Action::make('markPaid')
                     ->label(__('Mark paid'))
-                    ->icon('heroicon-o-banknotes')
+                    ->icon('ds-banknotes')
                     ->color('success')
                     ->visible(static fn (SellerSettlementRecord $record): bool => $record->status === 'confirmed')
                     ->schema([

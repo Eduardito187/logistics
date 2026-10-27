@@ -69,7 +69,7 @@ final class PhysicalUnitResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-cube';
+        return 'ds-cube';
     }
 
     public static function getNavigationGroup(): string

@@ -44,7 +44,7 @@ final class PreTripChecklistResource extends Resource
 
     protected static ?string $model = PreTripInspectionModel::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-clipboard-document-check';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-clipboard-document-check';
 
     protected static ?int $navigationSort = 18;
 

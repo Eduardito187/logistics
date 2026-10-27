@@ -51,8 +51,8 @@ final class OdometerReadingResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        // 'gauge' no existe en heroicons v2; usamos un icono válido (tendencia ascendente = kilometraje).
-        return 'heroicon-o-arrow-trending-up';
+        // Odómetro: ícono propio del set DisTrack (Heroicons no tiene un medidor).
+        return 'ds-gauge';
     }
 
     public static function getModelLabel(): string

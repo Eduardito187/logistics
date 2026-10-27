@@ -21,7 +21,7 @@
 <x-filament-panels::page>
     @unless ($hasCustomer)
         <div class="rounded-xl border border-dashed border-gray-300 p-10 text-center dark:border-white/10">
-            <x-filament::icon icon="heroicon-o-user" class="mx-auto mb-3 h-10 w-10 text-gray-400" />
+            <x-filament::icon icon="ds-user" class="mx-auto mb-3 h-10 w-10 text-gray-400" />
             <p class="text-sm text-gray-500 dark:text-gray-400">
                 {{ __('No customer selected, or no orders found for this customer.') }}
             </p>
@@ -29,7 +29,7 @@
     @else
         <div class="space-y-6">
             {{-- Datos básicos del cliente --}}
-            <x-filament::section icon="heroicon-o-identification">
+            <x-filament::section icon="ds-identification">
                 <x-slot name="heading">{{ __('Customer details') }}</x-slot>
                 <x-slot name="description">{{ __('Basic identity and contact information.') }}</x-slot>
 
@@ -74,7 +74,7 @@
             </x-filament::section>
 
             {{-- Mapa de todas las direcciones de entrega del cliente --}}
-            <x-filament::section icon="heroicon-o-map">
+            <x-filament::section icon="ds-map">
                 <x-slot name="heading">{{ __('Delivery locations') }}</x-slot>
                 <x-slot name="description">{{ __('All delivery addresses of this customer on the map.') }}</x-slot>
 
@@ -89,7 +89,7 @@
 
             {{-- Pedidos y direcciones, lado a lado en pantallas anchas --}}
             <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <x-filament::section icon="heroicon-o-inbox-arrow-down">
+                <x-filament::section icon="ds-inbox-arrow-down">
                     <x-slot name="heading">{{ __('Orders') }}</x-slot>
 
                     <ul class="divide-y divide-gray-100 dark:divide-white/5">
@@ -118,7 +118,7 @@
                     </ul>
                 </x-filament::section>
 
-                <x-filament::section icon="heroicon-o-map-pin">
+                <x-filament::section icon="ds-map-pin">
                     <x-slot name="heading">{{ __('Delivery addresses') }}</x-slot>
 
                     <ul class="space-y-3">

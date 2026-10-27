@@ -67,7 +67,7 @@ final class MaintenanceOrderResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-wrench-screwdriver';
+        return 'ds-wrench-screwdriver';
     }
 
     public static function getModelLabel(): string
@@ -200,7 +200,7 @@ final class MaintenanceOrderResource extends Resource
                 // Iniciar: el vehículo entra al taller. Solo visible si está agendada.
                 Action::make('start')
                     ->label(__('Start'))
-                    ->icon('heroicon-o-play')
+                    ->icon('ds-play')
                     ->color('warning')
                     ->requiresConfirmation()
                     ->modalHeading(__('Start maintenance'))
@@ -218,7 +218,7 @@ final class MaintenanceOrderResource extends Resource
                 // Completar: captura ítems (repuestos + mano de obra, en Bs) y cierra la orden. Solo si está en curso.
                 Action::make('complete')
                     ->label(__('Complete'))
-                    ->icon('heroicon-o-check-circle')
+                    ->icon('ds-check-circle')
                     ->color('success')
                     ->modalHeading(__('Complete maintenance'))
                     ->modalSubmitActionLabel(__('Complete'))
@@ -276,7 +276,7 @@ final class MaintenanceOrderResource extends Resource
                 // Cancelar: la orden no se ejecutará. Visible mientras no esté completada ni cancelada.
                 Action::make('cancel')
                     ->label(__('Cancel'))
-                    ->icon('heroicon-o-x-circle')
+                    ->icon('ds-x-circle')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading(__('Cancel maintenance'))

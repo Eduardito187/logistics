@@ -57,7 +57,7 @@ final class VehicleResource extends Resource
 
     protected static ?string $model = VehicleModel::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-truck';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-truck';
 
     protected static ?int $navigationSort = 10;
 
@@ -400,7 +400,7 @@ final class VehicleResource extends Resource
     {
         return Action::make('changeStatus')
             ->label(__('Change status'))
-            ->icon('heroicon-o-arrow-path')
+            ->icon('ds-arrow-path')
             ->color('warning')
             ->modalHeading(__('Change vehicle status'))
             ->modalSubmitActionLabel(__('Change status'))

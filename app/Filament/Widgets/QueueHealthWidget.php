@@ -41,17 +41,17 @@ final class QueueHealthWidget extends StatsOverviewWidget
         return [
             Stat::make(__('Queued jobs'), (string) $queued)
                 ->description(__('Waiting for a worker'))
-                ->descriptionIcon('heroicon-m-queue-list')
+                ->descriptionIcon('ds-queue-list')
                 ->color($queued > 0 ? 'warning' : 'gray'),
 
             Stat::make(__('Oldest job wait'), $this->oldestJobWait())
                 ->description(__('Backlog age of the queue'))
-                ->descriptionIcon('heroicon-m-clock')
+                ->descriptionIcon('ds-clock')
                 ->color('gray'),
 
             Stat::make(__('Failed jobs'), (string) $failed)
                 ->description(__('Need to be retried or purged'))
-                ->descriptionIcon('heroicon-m-exclamation-triangle')
+                ->descriptionIcon('ds-exclamation-triangle')
                 ->color($failed > 0 ? 'danger' : 'success'),
         ];
     }

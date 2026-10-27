@@ -38,7 +38,7 @@ final class StoreUserResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-building-storefront';
+        return 'ds-building-storefront';
     }
 
     public static function getNavigationGroup(): string
@@ -119,7 +119,7 @@ final class StoreUserResource extends Resource
             ->recordActions([
                 EditAction::make()
                     ->label(__('Assign store'))
-                    ->icon('heroicon-o-building-storefront')
+                    ->icon('ds-building-storefront')
                     ->modalHeading(__('Assign store node')),
             ]);
     }

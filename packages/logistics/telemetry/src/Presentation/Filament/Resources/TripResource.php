@@ -62,7 +62,7 @@ final class TripResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-flag';
+        return 'ds-flag';
     }
 
     public static function getModelLabel(): string

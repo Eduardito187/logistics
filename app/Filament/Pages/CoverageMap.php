@@ -23,7 +23,7 @@ use Logistics\Coverage\Domain\ValueObject\ZoneRules;
  */
 final class CoverageMap extends Page
 {
-    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-map';
+    protected static string | \BackedEnum | null $navigationIcon = 'ds-map';
 
     protected static ?int $navigationSort = 5;
 

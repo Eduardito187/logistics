@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class NodeMap extends Page
 {
-    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-map-pin';
+    protected static string | \BackedEnum | null $navigationIcon = 'ds-map-pin';
 
     protected static ?int $navigationSort = 6;
 

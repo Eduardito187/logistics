@@ -44,7 +44,7 @@ final class LicensesDocumentsExpiringWidget extends TableWidget
             ->paginated([10, 25, 50])
             ->emptyStateHeading(__('Nothing expiring'))
             ->emptyStateDescription(__('No licenses or documents are expired or due within 30 days.'))
-            ->emptyStateIcon('heroicon-o-check-badge')
+            ->emptyStateIcon('ds-check-badge')
             ->columns([
                 TextColumn::make('threshold_label')
                     ->label(__('Status'))

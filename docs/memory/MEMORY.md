@@ -30,3 +30,4 @@
 - [2FA + OTP](auth-2fa-otp.md) — TOTP unificado admin(Filament MFA)+app(API), reseteo por código OTP 6 díg; núcleo app/Auth; composer bacon/google2fa; MAIL_MAILER=log para ver el código en dev
 - [Datos de prueba app](test-data-seeders.md) — TestDataSeeder (14 días) todos los roles (idempotente), cuentas *@dismac.test/password123, chofer↔vehículo, tienda↔T-SCZ-01
 - [Etiquetado de productos](product-labeling-rules.md) — regla dura: nunca "bulto" (decir "producto"), nunca null/vacío; SIEMPRE nombre + SKU del producto donde se muestre
+- [Set de íconos DisTrack (ds-*)](distrack-icon-set.md) — 183 SVG propios en el 100% del admin + 222 alias internos; animación del ícono COMPLETO en hover/clic; sin <style> en los SVG; zip para diseño

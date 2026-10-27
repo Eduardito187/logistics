@@ -68,7 +68,7 @@ final class TelemetryAlertResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-exclamation-triangle';
+        return 'ds-exclamation-triangle';
     }
 
     public static function getModelLabel(): string
@@ -224,7 +224,7 @@ final class TelemetryAlertResource extends Resource
                 // el email del usuario del admin como actor.
                 Action::make('acknowledge')
                     ->label(__('Acknowledge'))
-                    ->icon('heroicon-o-check')
+                    ->icon('ds-check')
                     ->color('success')
                     ->requiresConfirmation()
                     ->visible(static fn (AlertRecord $record): bool => $record->acknowledged_at === null)

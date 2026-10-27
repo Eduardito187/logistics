@@ -22,7 +22,7 @@ final class ReceivingCalendar extends Page
 {
     use OfficeOnly;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-calendar';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-calendar';
 
     protected static ?int $navigationSort = 31;
 

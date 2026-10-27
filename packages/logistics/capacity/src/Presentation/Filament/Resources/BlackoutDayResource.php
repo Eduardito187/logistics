@@ -49,7 +49,7 @@ final class BlackoutDayResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-no-symbol';
+        return 'ds-no-symbol';
     }
 
     public static function getNavigationGroup(): string
@@ -136,7 +136,7 @@ final class BlackoutDayResource extends Resource
     {
         return Action::make('block')
             ->label(__('Block a day'))
-            ->icon('heroicon-o-no-symbol')
+            ->icon('ds-no-symbol')
             ->modalHeading(__('Block a dispatch day'))
             ->modalDescription(__('Mark a day as a holiday or otherwise closed. Leave the municipality empty to block the whole network.'))
             ->schema(self::blockFormComponents())
@@ -169,7 +169,7 @@ final class BlackoutDayResource extends Resource
     {
         return Action::make('unblock')
             ->label(__('Unblock'))
-            ->icon('heroicon-o-check-circle')
+            ->icon('ds-check-circle')
             ->color('success')
             ->requiresConfirmation()
             ->modalHeading(__('Unblock this dispatch day'))

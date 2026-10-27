@@ -45,7 +45,7 @@ final class ZoneResource extends Resource
 
     protected static ?string $model = ZoneRecord::class;
 
-    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-globe-americas';
+    protected static string | \BackedEnum | null $navigationIcon = 'ds-globe-americas';
 
     protected static string | \UnitEnum | null $navigationGroup = 'Network';
 

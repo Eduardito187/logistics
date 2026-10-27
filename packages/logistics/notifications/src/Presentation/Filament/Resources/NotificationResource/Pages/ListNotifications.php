@@ -39,7 +39,7 @@ final class ListNotifications extends ListRecords
     {
         return Action::make('queueNotification')
             ->label(__('Queue notification'))
-            ->icon('heroicon-o-paper-airplane')
+            ->icon('ds-paper-airplane')
             ->modalHeading(__('Queue a customer notification'))
             ->modalDescription(__('Pick the shipment and message type. Backup contacts are optional; the primary channel uses the shipment push topic.'))
             ->schema([

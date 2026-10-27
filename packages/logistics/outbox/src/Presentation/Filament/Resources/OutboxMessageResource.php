@@ -64,7 +64,7 @@ final class OutboxMessageResource extends Resource
 
     protected static ?string $model = OutboxMessageRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-inbox-arrow-down';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-paper-airplane';
 
     protected static ?string $recordTitleAttribute = 'event_name';
 
@@ -279,7 +279,8 @@ final class OutboxMessageResource extends Resource
     {
         return Action::make('retry')
             ->label(__('Retry'))
-            ->icon('heroicon-o-arrow-path')
+            ->icon('ds-arrow-path')
+            ->extraAttributes(['class' => 'ds-icon-spin-hover'])
             ->color('warning')
             ->requiresConfirmation()
             ->modalHeading(__('Retry outbox message'))
@@ -302,7 +303,8 @@ final class OutboxMessageResource extends Resource
     {
         return BulkAction::make('retrySelected')
             ->label(__('Retry selected'))
-            ->icon('heroicon-o-arrow-path')
+            ->icon('ds-arrow-path')
+            ->extraAttributes(['class' => 'ds-icon-spin-hover'])
             ->color('warning')
             ->requiresConfirmation()
             ->modalHeading(__('Retry selected messages'))
@@ -342,7 +344,7 @@ final class OutboxMessageResource extends Resource
     {
         return Action::make('discard')
             ->label(__('Move to dead-letter'))
-            ->icon('heroicon-o-archive-box-x-mark')
+            ->icon('ds-archive-box-x-mark')
             ->color('danger')
             ->visible(static fn (OutboxMessageRecord $record): bool => self::isDispatchable($record))
             ->schema([

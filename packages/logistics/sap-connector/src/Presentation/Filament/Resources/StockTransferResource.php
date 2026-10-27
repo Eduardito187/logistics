@@ -52,7 +52,7 @@ final class StockTransferResource extends Resource
 
     protected static ?string $model = StockTransferRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-arrow-path-rounded-square';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-arrow-path-rounded-square';
 
     protected static string | UnitEnum | null $navigationGroup = 'Administration';
 
@@ -234,7 +234,7 @@ final class StockTransferResource extends Resource
     {
         return Action::make('acknowledge')
             ->label(__('Acknowledge'))
-            ->icon('heroicon-o-check-circle')
+            ->icon('ds-check-circle')
             ->color('success')
             ->requiresConfirmation()
             ->modalHeading(__('Acknowledge SAP stock transfer'))

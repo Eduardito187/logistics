@@ -57,42 +57,42 @@ final class PlatformStatsWidget extends StatsOverviewWidget
         return [
             Stat::make(__('Orders received'), (string) $this->count('shipments'))
                 ->description(__('Total registered orders'))
-                ->descriptionIcon('heroicon-m-inbox-arrow-down')
+                ->descriptionIcon('ds-inbox-arrow-down')
                 ->color('primary'),
 
             Stat::make(__('Out for delivery'), (string) ($deliveries['IN_TRANSIT'] ?? 0))
                 ->description(__('On route right now'))
-                ->descriptionIcon('heroicon-m-truck')
+                ->descriptionIcon('ds-truck')
                 ->color('warning'),
 
             Stat::make(__('Delivered'), (string) ($deliveries['DELIVERED'] ?? 0))
                 ->description(__('Completed deliveries'))
-                ->descriptionIcon('heroicon-m-check-circle')
+                ->descriptionIcon('ds-check-circle')
                 ->color('success'),
 
             Stat::make(__('Failed deliveries'), (string) ($deliveries['FAILED'] ?? 0))
                 ->description(__('Need rescheduling'))
-                ->descriptionIcon('heroicon-m-exclamation-triangle')
+                ->descriptionIcon('ds-exclamation-triangle')
                 ->color('danger'),
 
             Stat::make(__("Today's plans"), (string) $this->count('planning_plans'))
                 ->description(__('Dispatch plans'))
-                ->descriptionIcon('heroicon-m-map')
+                ->descriptionIcon('ds-map')
                 ->color('gray'),
 
             Stat::make(__('Reserved promises'), (string) (($promises['RESERVED'] ?? 0) + ($promises['CONFIRMED'] ?? 0)))
                 ->description(__('Committed delivery windows'))
-                ->descriptionIcon('heroicon-m-clock')
+                ->descriptionIcon('ds-clock')
                 ->color('primary'),
 
             Stat::make(__('Active vehicles'), (string) $this->count('fleet_vehicles'))
                 ->description(__('Fleet in service'))
-                ->descriptionIcon('heroicon-m-truck')
+                ->descriptionIcon('ds-truck')
                 ->color('gray'),
 
             Stat::make(__('Outbox dead-letter'), (string) $this->whereCount('outbox_messages', 'status', 'dead_lettered'))
                 ->description(__('Messages that need attention'))
-                ->descriptionIcon('heroicon-m-bell-alert')
+                ->descriptionIcon('ds-bell-alert')
                 ->color('danger'),
         ];
     }

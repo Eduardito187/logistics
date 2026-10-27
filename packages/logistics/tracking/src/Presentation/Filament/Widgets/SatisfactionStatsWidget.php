@@ -35,7 +35,7 @@ final class SatisfactionStatsWidget extends StatsOverviewWidget
         return [
             Stat::make(__('NPS'), $summary->nps === null ? '—' : (string) $summary->nps)
                 ->description(__('Promoters minus detractors'))
-                ->descriptionIcon('heroicon-m-face-smile')
+                ->descriptionIcon('ds-face-smile')
                 ->color($this->npsColor($summary->nps)),
 
             Stat::make(__('Average rating'), $summary->averageRating === null
@@ -46,12 +46,12 @@ final class SatisfactionStatsWidget extends StatsOverviewWidget
                     'passives' => $summary->passives,
                     'detractors' => $summary->detractors,
                 ]))
-                ->descriptionIcon('heroicon-m-star')
+                ->descriptionIcon('ds-star')
                 ->color('warning'),
 
             Stat::make(__('Responses'), (string) $summary->responseCount)
                 ->description(__('Delivered shipments rated by customers'))
-                ->descriptionIcon('heroicon-m-inbox-stack')
+                ->descriptionIcon('ds-inbox-stack')
                 ->color('primary'),
         ];
     }

@@ -38,7 +38,7 @@ final class PlannedStopResource extends Resource
 
     protected static ?string $model = PlannedStopRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-flag';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-flag';
 
     protected static ?int $navigationSort = 12;
 

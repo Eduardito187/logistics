@@ -81,7 +81,7 @@ final class DeliveryResource extends Resource
 
     protected static ?string $model = DeliveryRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-truck';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-truck';
 
     protected static ?int $navigationSort = 30;
 
@@ -193,7 +193,7 @@ final class DeliveryResource extends Resource
                     self::failedDeliveryAction(),
                 ])
                     ->label(__('Record scan'))
-                    ->icon('heroicon-o-qr-code')
+                    ->icon('ds-qr-code')
                     ->button(),
             ])
             ->defaultSort('created_at', 'desc');
@@ -286,7 +286,7 @@ final class DeliveryResource extends Resource
     {
         return Action::make('recordPreparationScan')
             ->label(__('Record preparation scan'))
-            ->icon('heroicon-o-qr-code')
+            ->icon('ds-qr-code')
             ->modalHeading(__('Record preparation scan'))
             ->modalDescription(__('Scan a unit at preparation. Opens the delivery for the order if it does not exist yet.'))
             ->modalSubmitActionLabel(__('Record scan'))
@@ -331,7 +331,7 @@ final class DeliveryResource extends Resource
     {
         return Action::make('recordLoadScan')
             ->label(__('Load scan'))
-            ->icon('heroicon-o-arrow-up-tray')
+            ->icon('ds-arrow-up-tray')
             ->modalHeading(__('Record load scan'))
             ->modalDescription(__('Confirm a unit loaded onto the vehicle.'))
             ->modalSubmitActionLabel(__('Record scan'))
@@ -360,7 +360,7 @@ final class DeliveryResource extends Resource
     {
         return Action::make('recordUnloadScan')
             ->label(__('Unload scan'))
-            ->icon('heroicon-o-arrow-down-tray')
+            ->icon('ds-arrow-down-tray')
             ->modalHeading(__('Record unload scan'))
             ->modalDescription(__('Confirm a unit unloaded at a stop (node).'))
             ->modalSubmitActionLabel(__('Record scan'))
@@ -391,7 +391,7 @@ final class DeliveryResource extends Resource
     {
         return Action::make('recordNodeReception')
             ->label(__('Node reception'))
-            ->icon('heroicon-o-building-office-2')
+            ->icon('ds-inbox-arrow-down')
             ->modalHeading(__('Record node reception'))
             ->modalDescription(__('Confirm a unit received at a logistics node.'))
             ->modalSubmitActionLabel(__('Record scan'))
@@ -423,7 +423,8 @@ final class DeliveryResource extends Resource
     {
         return Action::make('recordProofOfDelivery')
             ->label(__('Proof of delivery'))
-            ->icon('heroicon-o-check-badge')
+            ->icon('ds-check-badge')
+            ->extraAttributes(['class' => 'ds-icon-pop-hover'])
             ->color('success')
             ->modalHeading(__('Record proof of delivery'))
             ->modalDescription(__('Confirm the delivery with the customer confirmation (QR or signature) and an optional photo.'))
@@ -468,7 +469,7 @@ final class DeliveryResource extends Resource
     {
         return Action::make('recordFailedDelivery')
             ->label(__('Failed delivery'))
-            ->icon('heroicon-o-x-circle')
+            ->icon('ds-x-circle')
             ->color('danger')
             ->requiresConfirmation()
             ->modalHeading(__('Record failed delivery'))

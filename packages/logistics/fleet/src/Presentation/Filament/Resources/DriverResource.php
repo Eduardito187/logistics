@@ -55,7 +55,7 @@ final class DriverResource extends Resource
 
     protected static ?string $model = DriverModel::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-identification';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-identification';
 
     protected static ?int $navigationSort = 12;
 

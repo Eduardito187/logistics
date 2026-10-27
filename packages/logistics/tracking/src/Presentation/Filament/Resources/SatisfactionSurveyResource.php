@@ -42,7 +42,7 @@ final class SatisfactionSurveyResource extends Resource
 
     protected static ?string $model = SatisfactionSurveyRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-star';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-star';
 
     public static function getNavigationGroup(): string
     {

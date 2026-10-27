@@ -54,7 +54,7 @@ final class MaintenancePlanResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-clipboard-document-check';
+        return 'ds-clipboard-document-check';
     }
 
     public static function getModelLabel(): string
@@ -156,7 +156,7 @@ final class MaintenancePlanResource extends Resource
                 // Registrar servicio hecho: recalcula el próximo vencimiento. Odómetro opcional.
                 Action::make('record_service_done')
                     ->label(__('Record service done'))
-                    ->icon('heroicon-o-check')
+                    ->icon('ds-check')
                     ->color('success')
                     ->modalHeading(__('Record service done'))
                     ->modalSubmitActionLabel(__('Record service done'))
@@ -180,7 +180,7 @@ final class MaintenancePlanResource extends Resource
                 // Activar: vuelve a vigilar vencimientos. Solo visible si está inactivo.
                 Action::make('activate')
                     ->label(__('Activate'))
-                    ->icon('heroicon-o-play')
+                    ->icon('ds-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading(__('Activate plan'))
@@ -198,7 +198,7 @@ final class MaintenancePlanResource extends Resource
                 // Desactivar: deja de vigilar vencimientos. Solo visible si está activo.
                 Action::make('deactivate')
                     ->label(__('Deactivate'))
-                    ->icon('heroicon-o-pause')
+                    ->icon('ds-no-symbol')
                     ->color('gray')
                     ->requiresConfirmation()
                     ->modalHeading(__('Deactivate plan'))

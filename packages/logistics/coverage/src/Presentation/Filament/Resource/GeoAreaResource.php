@@ -40,7 +40,7 @@ final class GeoAreaResource extends Resource
 
     protected static ?string $model = GeoAreaRecord::class;
 
-    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-map';
+    protected static string | \BackedEnum | null $navigationIcon = 'ds-map';
 
     protected static string | \UnitEnum | null $navigationGroup = 'Network';
 

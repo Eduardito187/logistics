@@ -37,7 +37,7 @@ final class MessageTypeRuleResource extends Resource
 
     protected static ?string $model = MessageTypeRuleRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-adjustments-horizontal';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-adjustments-horizontal';
 
     protected static ?string $recordTitleAttribute = 'message_type';
 
@@ -193,7 +193,7 @@ final class MessageTypeRuleResource extends Resource
     {
         return Action::make('reset')
             ->label(__('Reset to default'))
-            ->icon('heroicon-o-arrow-uturn-left')
+            ->icon('ds-arrow-uturn-left')
             ->color('danger')
             ->requiresConfirmation()
             ->modalHeading(__('Reset to default cascade'))

@@ -79,7 +79,7 @@ final class OwnerDocuments
                             ->placeholder('—')
                             ->formatStateUsing(static fn (?string $state): ?string => $state !== null && $state !== '' ? (string) __('Open file') : null)
                             ->url(static fn (?string $state): ?string => $state !== null && $state !== '' ? $state : null, shouldOpenInNewTab: true)
-                            ->icon('heroicon-o-arrow-top-right-on-square')
+                            ->icon('ds-arrow-top-right-on-square')
                             ->color('primary'),
                     ])
                     ->columns(3),
@@ -98,7 +98,7 @@ final class OwnerDocuments
     {
         return Action::make('registerDocument')
             ->label(__('Register document'))
-            ->icon('heroicon-o-document-plus')
+            ->icon('ds-document-plus')
             ->modalHeading(__('Register document'))
             ->schema([
                 Select::make('document_type')

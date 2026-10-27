@@ -61,7 +61,7 @@ final class RefuelResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-beaker';
+        return 'ds-beaker';
     }
 
     public static function getModelLabel(): string

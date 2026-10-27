@@ -49,7 +49,7 @@ final class VehicleProfileResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-identification';
+        return 'ds-identification';
     }
 
     public static function getModelLabel(): string

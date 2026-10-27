@@ -54,7 +54,7 @@ final class ListStockTransfers extends ListRecords
     {
         return Action::make('enqueueTransfer')
             ->label(__('Enqueue stock transfer'))
-            ->icon('heroicon-o-inbox-arrow-down')
+            ->icon('ds-inbox-arrow-down')
             ->modalHeading(__('Enqueue stock transfer to SAP'))
             ->modalDescription(__('Queue a stock transfer from a node reception. SAP is pushed later by the dispatch worker.'))
             ->modalSubmitActionLabel(__('Enqueue'))
@@ -123,7 +123,7 @@ final class ListStockTransfers extends ListRecords
     {
         return Action::make('dispatchPending')
             ->label(__('Dispatch pending transfers'))
-            ->icon('heroicon-o-paper-airplane')
+            ->icon('ds-paper-airplane')
             ->color('danger')
             ->requiresConfirmation()
             ->modalDescription(__('Push all pending and failed stock transfers to SAP now. Failed transfers are retried.'))

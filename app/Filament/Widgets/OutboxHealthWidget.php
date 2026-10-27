@@ -44,22 +44,22 @@ final class OutboxHealthWidget extends StatsOverviewWidget
         return [
             Stat::make(__('Pending'), (string) $pending)
                 ->description(__('Waiting to be dispatched'))
-                ->descriptionIcon('heroicon-m-clock')
+                ->descriptionIcon('ds-clock')
                 ->color($pending > 0 ? 'warning' : 'gray'),
 
             Stat::make(__('Failed'), (string) $failed)
                 ->description(__('Will be retried'))
-                ->descriptionIcon('heroicon-m-arrow-path')
+                ->descriptionIcon('ds-arrow-path')
                 ->color($failed > 0 ? 'warning' : 'gray'),
 
             Stat::make(__('Dead-letter'), (string) $deadLettered)
                 ->description(__('Exhausted retries, need attention'))
-                ->descriptionIcon('heroicon-m-bell-alert')
+                ->descriptionIcon('ds-bell-alert')
                 ->color($deadLettered > 0 ? 'danger' : 'success'),
 
             Stat::make(__('Dispatched'), (string) $dispatched)
                 ->description(__('Delivered to external systems'))
-                ->descriptionIcon('heroicon-m-check-circle')
+                ->descriptionIcon('ds-check-circle')
                 ->color('success'),
         ];
     }

@@ -49,7 +49,7 @@ final class MaterialMappingResource extends Resource
 
     protected static ?string $model = MaterialMappingRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-arrows-right-left';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-arrows-right-left';
 
     protected static string | UnitEnum | null $navigationGroup = 'Administration';
 

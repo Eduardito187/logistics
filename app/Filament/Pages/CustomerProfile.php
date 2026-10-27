@@ -25,7 +25,7 @@ final class CustomerProfile extends Page
     // No se lista en el menú (shouldRegisterNavigation = false), pero igual se gatea el acceso directo.
     use OfficeOnly;
 
-    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-identification';
+    protected static string | \BackedEnum | null $navigationIcon = 'ds-identification';
 
     protected string $view = 'filament.pages.customer-profile';
 

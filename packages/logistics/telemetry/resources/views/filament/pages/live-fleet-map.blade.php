@@ -14,6 +14,11 @@
             </div>
 
             <div class="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                {{-- Indicador de datos en vivo: el polling de abajo repinta cada 10 s. --}}
+                <span class="inline-flex items-center gap-2 font-medium text-success-600 dark:text-success-400">
+                    @include('icons.sync-live')
+                    {{ __('Live · refreshes every 10 s') }}
+                </span>
                 <span class="inline-flex items-center gap-2">
                     <span style="display:inline-block;width:12px;height:12px;border-radius:9999px;background:#16a34a;"></span>
                     {{ __('Moving') }}

@@ -49,7 +49,7 @@ final class AsnResource extends Resource
 
     protected static ?string $model = AsnRecord::class;
 
-    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-inbox-arrow-down';
+    protected static string | \BackedEnum | null $navigationIcon = 'ds-inbox-arrow-down';
 
     public static function getNavigationGroup(): string
     {
@@ -154,7 +154,7 @@ final class AsnResource extends Resource
     {
         return Action::make('schedule')
             ->label(__('Schedule'))
-            ->icon('heroicon-o-calendar-days')
+            ->icon('ds-calendar-days')
             ->modalHeading(__('Schedule appointment'))
             ->modalSubmitActionLabel(__('Schedule'))
             ->visible(static fn (AsnRecord $record): bool => in_array($record->status, [
@@ -192,7 +192,7 @@ final class AsnResource extends Resource
     {
         return Action::make('arrival')
             ->label(__('Record arrival'))
-            ->icon('heroicon-o-truck')
+            ->icon('ds-truck')
             ->color('info')
             ->modalHeading(__('Record arrival'))
             ->modalSubmitActionLabel(__('Record arrival'))
@@ -221,7 +221,7 @@ final class AsnResource extends Resource
     {
         return Action::make('receipt')
             ->label(__('Record receipt'))
-            ->icon('heroicon-o-clipboard-document-check')
+            ->icon('ds-clipboard-document-check')
             ->color('warning')
             ->modalHeading(__('Record goods receipt'))
             ->modalSubmitActionLabel(__('Record receipt'))
@@ -303,7 +303,7 @@ final class AsnResource extends Resource
     {
         return Action::make('label')
             ->label(__('Label units'))
-            ->icon('heroicon-o-qr-code')
+            ->icon('ds-qr-code')
             ->color('success')
             ->requiresConfirmation()
             ->modalHeading(__('Label received units'))
@@ -323,7 +323,7 @@ final class AsnResource extends Resource
     {
         return Action::make('close')
             ->label(__('Close'))
-            ->icon('heroicon-o-check-circle')
+            ->icon('ds-check-circle')
             ->requiresConfirmation()
             ->modalHeading(__('Close ASN'))
             ->visible(static fn (AsnRecord $record): bool => $record->status === AsnStatus::Received->value)
@@ -341,7 +341,7 @@ final class AsnResource extends Resource
     {
         return Action::make('cancel')
             ->label(__('Cancel'))
-            ->icon('heroicon-o-x-circle')
+            ->icon('ds-x-circle')
             ->color('danger')
             ->requiresConfirmation()
             ->modalHeading(__('Cancel ASN'))

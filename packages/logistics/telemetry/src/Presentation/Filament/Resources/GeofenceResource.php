@@ -61,7 +61,7 @@ final class GeofenceResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-map-pin';
+        return 'ds-map-pin';
     }
 
     public static function getModelLabel(): string
@@ -177,7 +177,7 @@ final class GeofenceResource extends Resource
                 // Activar: solo visible si está inactiva. Despacha ActivateGeofence al bus.
                 Action::make('activate')
                     ->label(__('Activate'))
-                    ->icon('heroicon-o-check-circle')
+                    ->icon('ds-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
                     ->visible(static fn (GeofenceRecord $record): bool => !$record->active)
@@ -194,7 +194,7 @@ final class GeofenceResource extends Resource
                 // Desactivar: solo visible si está activa. Despacha DeactivateGeofence al bus.
                 Action::make('deactivate')
                     ->label(__('Deactivate'))
-                    ->icon('heroicon-o-no-symbol')
+                    ->icon('ds-no-symbol')
                     ->color('warning')
                     ->requiresConfirmation()
                     ->visible(static fn (GeofenceRecord $record): bool => $record->active)

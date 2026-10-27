@@ -25,7 +25,7 @@ final class ListLegs extends ListRecords
         return [
             CreateAction::make()
                 ->label(__('Define leg'))
-                ->icon('heroicon-o-plus'),
+                ->icon('ds-plus'),
         ];
     }
 }

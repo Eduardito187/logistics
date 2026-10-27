@@ -48,7 +48,7 @@ final class LegResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-arrows-right-left';
+        return 'ds-arrows-right-left';
     }
 
     public static function getNavigationGroup(): string
@@ -180,7 +180,7 @@ final class LegResource extends Resource
     {
         return Action::make('remove')
             ->label(__('Remove'))
-            ->icon('heroicon-o-trash')
+            ->icon('ds-trash')
             ->color('danger')
             ->requiresConfirmation()
             ->modalHeading(__('Remove corridor leg'))

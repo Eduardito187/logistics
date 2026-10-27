@@ -47,7 +47,7 @@ final class StockOnHandResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'sku';
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-squares-2x2';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-squares-2x2';
 
     public static function getNavigationGroup(): string
     {

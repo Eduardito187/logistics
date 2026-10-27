@@ -54,7 +54,7 @@
                                         <x-filament::button
                                             size="xs"
                                             color="warning"
-                                            icon="heroicon-o-wrench-screwdriver"
+                                            icon="ds-wrench-screwdriver"
                                             wire:click="mountAction('scheduleMaintenance', { vehicle_id: @js($row['vehicle_id']) })"
                                         >
                                             {{ __('Schedule order') }}
@@ -168,7 +168,7 @@
                                     <td class="py-2 pr-4 text-right">
                                         <x-filament::button
                                             size="xs"
-                                            icon="heroicon-o-arrow-trending-up"
+                                            icon="ds-arrow-trending-up"
                                             wire:click="mountAction('recordOdometer', { vehicle_id: @js($row['vehicle_id']) })"
                                         >
                                             {{ __('Record reading') }}

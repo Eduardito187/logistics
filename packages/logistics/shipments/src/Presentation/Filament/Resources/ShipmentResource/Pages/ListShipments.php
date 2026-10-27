@@ -69,7 +69,7 @@ final class ListShipments extends ListRecords
     {
         return Action::make('receiveOrder')
             ->label(__('Receive order'))
-            ->icon('heroicon-o-inbox-arrow-down')
+            ->icon('ds-inbox-arrow-down')
             ->modalHeading(__('Receive order'))
             ->modalDescription(__('Register an incoming order. The order enters through the single receive use case (transaction + outbox).'))
             ->modalSubmitActionLabel(__('Receive'))
@@ -189,7 +189,7 @@ final class ListShipments extends ListRecords
     {
         return Action::make('importSpreadsheet')
             ->label(__('Import spreadsheet'))
-            ->icon('heroicon-o-arrow-up-tray')
+            ->icon('ds-arrow-up-tray')
             ->color('gray')
             ->modalHeading(__('Import orders from spreadsheet'))
             ->modalDescription(__('Upload a CSV with columns: source, external_id, customer_name, address_text, address_reference, lat, lng, sku, product_name, quantity.'))

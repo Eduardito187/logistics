@@ -76,7 +76,7 @@ final class ShipmentTrackingResource extends Resource
 
     protected static ?string $model = TrackingRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map-pin';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-map-pin';
 
     public static function getNavigationGroup(): string
     {
@@ -258,8 +258,8 @@ final class ShipmentTrackingResource extends Resource
                     ->boolean()
                     // Verdadero cuando ya hay al menos una posición GPS reportada.
                     ->state(fn (TrackingRecord $record): bool => $record->last_position_at !== null)
-                    ->trueIcon('heroicon-o-map-pin')
-                    ->falseIcon('heroicon-o-no-symbol'),
+                    ->trueIcon('ds-map-pin')
+                    ->falseIcon('ds-no-symbol'),
                 TextColumn::make('last_position_at')
                     ->label(__('Last position'))
                     ->dateTime()
@@ -326,7 +326,7 @@ final class ShipmentTrackingResource extends Resource
     {
         return Action::make('openTracking')
             ->label(__('Open tracking'))
-            ->icon('heroicon-o-plus-circle')
+            ->icon('ds-plus-circle')
             ->modalHeading(__('Open tracking for a shipment'))
             ->modalDescription(__('Generate a public tracking link for a shipment that is not tracked yet.'))
             ->modalSubmitActionLabel(__('Open tracking'))
@@ -390,7 +390,7 @@ final class ShipmentTrackingResource extends Resource
     {
         return Action::make('placeOnRoute')
             ->label(__('Place on route'))
-            ->icon('heroicon-o-queue-list')
+            ->icon('ds-queue-list')
             ->color('gray')
             // Un seguimiento terminal (entregado/fallido) ya no se reubica en la ruta.
             ->visible(static fn (TrackingRecord $record): bool => !self::isTerminalStatus($record->status))
@@ -436,7 +436,7 @@ final class ShipmentTrackingResource extends Resource
     {
         return Action::make('projectExecutionEvent')
             ->label(__('Advance status'))
-            ->icon('heroicon-o-forward')
+            ->icon('ds-forward')
             ->color('info')
             // Un seguimiento terminal (entregado/fallido) ya no avanza.
             ->visible(static fn (TrackingRecord $record): bool => !self::isTerminalStatus($record->status))
@@ -474,7 +474,7 @@ final class ShipmentTrackingResource extends Resource
     {
         return Action::make('updateTruckPosition')
             ->label(__('Report GPS position'))
-            ->icon('heroicon-o-map-pin')
+            ->icon('ds-map-pin')
             ->modalHeading(__('Report truck position'))
             ->modalDescription(__('Ingest the latest known truck position for this shipment.'))
             ->modalSubmitActionLabel(__('Report position'))

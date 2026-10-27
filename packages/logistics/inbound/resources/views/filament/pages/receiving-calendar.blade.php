@@ -4,13 +4,13 @@
     <div class="space-y-6">
         <x-filament::section>
             <div class="flex items-center gap-2">
-                <x-filament::button color="gray" wire:click="shiftWeek(-1)" icon="heroicon-m-chevron-left">
+                <x-filament::button color="gray" wire:click="shiftWeek(-1)" icon="ds-chevron-left">
                     {{ __('Previous week') }}
                 </x-filament::button>
                 <x-filament::button color="gray" wire:click="goToThisWeek">
                     {{ __('This week') }}
                 </x-filament::button>
-                <x-filament::button color="gray" wire:click="shiftWeek(1)" icon="heroicon-m-chevron-right" icon-position="after">
+                <x-filament::button color="gray" wire:click="shiftWeek(1)" icon="ds-chevron-right" icon-position="after">
                     {{ __('Next week') }}
                 </x-filament::button>
                 <span class="ml-2 text-sm font-medium text-gray-700 dark:text-gray-200">

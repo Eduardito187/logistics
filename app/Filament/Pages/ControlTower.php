@@ -38,7 +38,7 @@ final class ControlTower extends Dashboard
     protected static string $routePath = '/';
 
     // Icono operativo (heroicons v2): señal/monitoreo, no un dashboard genérico.
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-signal';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-signal';
 
     public static function getNavigationLabel(): string
     {

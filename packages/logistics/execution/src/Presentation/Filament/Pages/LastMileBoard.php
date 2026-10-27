@@ -57,7 +57,7 @@ final class LastMileBoard extends Page
         return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer');
     }
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-truck';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-truck';
 
     protected static ?int $navigationSort = 5;
 
@@ -240,7 +240,8 @@ final class LastMileBoard extends Page
     {
         return Action::make('confirmDelivery')
             ->label(__('Confirm delivery (POD)'))
-            ->icon('heroicon-o-check-badge')
+            ->icon('ds-check-badge')
+            ->extraAttributes(['class' => 'ds-icon-pop-hover'])
             ->color('success')
             ->modalHeading(__('Record proof of delivery'))
             ->modalDescription(__('Confirm the delivery with the customer confirmation (QR or signature) and an optional photo.'))
@@ -285,7 +286,7 @@ final class LastMileBoard extends Page
     {
         return Action::make('markFailed')
             ->label(__('Mark failed'))
-            ->icon('heroicon-o-x-circle')
+            ->icon('ds-x-circle')
             ->color('danger')
             ->requiresConfirmation()
             ->modalHeading(__('Record failed delivery'))

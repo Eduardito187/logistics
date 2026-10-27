@@ -46,22 +46,22 @@ final class DeliveriesTodayWidget extends StatsOverviewWidget
         return [
             Stat::make(__('In preparation'), (string) $inPipeline)
                 ->description(__('Pending, prepared or loaded'))
-                ->descriptionIcon('heroicon-m-inbox-stack')
+                ->descriptionIcon('ds-inbox-stack')
                 ->color('gray'),
 
             Stat::make(__('Out for delivery'), (string) $inTransit)
                 ->description(__('On route right now'))
-                ->descriptionIcon('heroicon-m-truck')
+                ->descriptionIcon('ds-truck')
                 ->color($inTransit > 0 ? 'warning' : 'gray'),
 
             Stat::make(__('Delivered'), (string) $delivered)
                 ->description(__('Completed today'))
-                ->descriptionIcon('heroicon-m-check-circle')
+                ->descriptionIcon('ds-check-circle')
                 ->color('success'),
 
             Stat::make(__('Failed deliveries'), (string) $failed)
                 ->description(__('Need rescheduling'))
-                ->descriptionIcon('heroicon-m-exclamation-triangle')
+                ->descriptionIcon('ds-exclamation-triangle')
                 ->color($failed > 0 ? 'danger' : 'gray'),
         ];
     }

@@ -45,22 +45,22 @@ final class NotificationsTodayWidget extends StatsOverviewWidget
         return [
             Stat::make(__('Queued'), (string) $queued)
                 ->description(__('Awaiting a channel in the cascade'))
-                ->descriptionIcon('heroicon-m-clock')
+                ->descriptionIcon('ds-clock')
                 ->color($queued > 0 ? 'warning' : 'gray'),
 
             Stat::make(__('Sent'), (string) $sent)
                 ->description(__('Reached the customer'))
-                ->descriptionIcon('heroicon-m-paper-airplane')
+                ->descriptionIcon('ds-paper-airplane')
                 ->color('success'),
 
             Stat::make(__('Failed'), (string) $failed)
                 ->description(__('Exhausted the cascade'))
-                ->descriptionIcon('heroicon-m-exclamation-triangle')
+                ->descriptionIcon('ds-exclamation-triangle')
                 ->color($failed > 0 ? 'danger' : 'gray'),
 
             Stat::make(__('Suppressed'), (string) $suppressed)
                 ->description(__('Not sent by rule or budget'))
-                ->descriptionIcon('heroicon-m-no-symbol')
+                ->descriptionIcon('ds-no-symbol')
                 ->color('gray'),
         ];
     }

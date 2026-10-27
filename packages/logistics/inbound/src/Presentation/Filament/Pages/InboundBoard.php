@@ -35,7 +35,7 @@ final class InboundBoard extends Page
 {
     use OfficeOnly;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-inbox-stack';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-inbox-stack';
 
     protected static ?int $navigationSort = 6;
 
@@ -133,7 +133,7 @@ final class InboundBoard extends Page
     {
         return Action::make('schedule')
             ->label(__('Schedule'))
-            ->icon('heroicon-o-calendar-days')
+            ->icon('ds-calendar-days')
             ->modalHeading(__('Schedule appointment'))
             ->modalSubmitActionLabel(__('Schedule'))
             ->schema([
@@ -158,7 +158,7 @@ final class InboundBoard extends Page
     {
         return Action::make('arrival')
             ->label(__('Record arrival'))
-            ->icon('heroicon-o-truck')
+            ->icon('ds-truck')
             ->color('info')
             ->requiresConfirmation()
             ->modalHeading(__('Record arrival'))
@@ -176,7 +176,7 @@ final class InboundBoard extends Page
     {
         return Action::make('label')
             ->label(__('Label units'))
-            ->icon('heroicon-o-qr-code')
+            ->icon('ds-qr-code')
             ->color('success')
             ->requiresConfirmation()
             ->modalHeading(__('Label received units'))

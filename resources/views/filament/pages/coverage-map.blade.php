@@ -45,7 +45,7 @@
                         {{ __('Use the polygon tool on the map to draw the coverage area. Click to add points, double-click to finish, drag points to adjust.') }}
                     </p>
 
-                    <x-filament::button class="w-full" wire:click="save" icon="heroicon-m-check">
+                    <x-filament::button class="w-full" wire:click="save" icon="ds-check">
                         {{ __('Save zone') }}
                     </x-filament::button>
                 </div>

@@ -48,7 +48,8 @@ final class ViewVehicleRoute extends ViewRecord
     {
         return Action::make('reportIncident')
             ->label(__('Report incident'))
-            ->icon('heroicon-o-exclamation-triangle')
+            ->icon('ds-exclamation-triangle')
+            ->extraAttributes(['class' => 'ds-icon-bounce-hover'])
             ->color('danger')
             ->modalHeading(__('Report vehicle incident'))
             ->modalDescription(__('Report a breakdown or accident. Pending stops will be rescheduled automatically; delivered stops are not touched.'))

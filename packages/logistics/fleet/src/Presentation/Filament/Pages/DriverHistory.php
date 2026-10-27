@@ -29,7 +29,7 @@ final class DriverHistory extends Page
 {
     use OfficeOnly;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-chart-bar';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-chart-bar';
 
     protected static ?int $navigationSort = 8;
 
@@ -85,7 +85,7 @@ final class DriverHistory extends Page
     {
         return Action::make('choose')
             ->label(__('Choose driver & range'))
-            ->icon('heroicon-o-user')
+            ->icon('ds-user')
             ->modalHeading(__('Driver performance'))
             ->modalDescription(__('Pick a driver and a date range to see their operational history.'))
             ->modalSubmitActionLabel(__('Show history'))

@@ -44,7 +44,7 @@ final class ReturnResource extends Resource
 
     protected static ?string $model = ReturnRecord::class;
 
-    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-arrow-uturn-left';
+    protected static string | \BackedEnum | null $navigationIcon = 'ds-arrow-uturn-left';
 
     public static function getNavigationGroup(): string
     {
@@ -153,7 +153,7 @@ final class ReturnResource extends Resource
     {
         return Action::make('receive')
             ->label(__('Record receipt'))
-            ->icon('heroicon-o-inbox-arrow-down')
+            ->icon('ds-inbox-arrow-down')
             ->color('info')
             ->requiresConfirmation()
             ->modalHeading(__('Record return receipt'))
@@ -172,7 +172,7 @@ final class ReturnResource extends Resource
     {
         return Action::make('disposition')
             ->label(__('Disposition'))
-            ->icon('heroicon-o-clipboard-document-check')
+            ->icon('ds-clipboard-document-check')
             ->color('warning')
             ->modalHeading(__('Disposition return'))
             ->modalSubmitActionLabel(__('Disposition'))

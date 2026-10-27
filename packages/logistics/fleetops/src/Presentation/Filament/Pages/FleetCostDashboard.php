@@ -82,7 +82,7 @@ final class FleetCostDashboard extends Page
     /** Vida del caché de las proyecciones de odómetro (segundos); el atraso se mide en días, 5 min sobra. */
     private const STALE_ODOMETER_TTL_SECONDS = 300;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-heart';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-heart';
 
     protected string $view = 'fleetops.filament.pages.fleet-cost-dashboard';
 
@@ -151,7 +151,7 @@ final class FleetCostDashboard extends Page
     {
         return Action::make('cost_breakdown')
             ->label(__('Cost & profitability'))
-            ->icon('heroicon-o-chart-bar')
+            ->icon('ds-chart-bar')
             ->color('gray')
             ->modalHeading(__('Cost & profitability by range'))
             ->modalSubmitActionLabel(__('Calculate'))
@@ -305,7 +305,7 @@ final class FleetCostDashboard extends Page
     {
         return Action::make('scheduleMaintenance')
             ->label(__('Schedule order'))
-            ->icon('heroicon-o-wrench-screwdriver')
+            ->icon('ds-wrench-screwdriver')
             ->color('warning')
             ->modalHeading(__('Schedule maintenance order'))
             ->modalSubmitActionLabel(__('Schedule'))
@@ -368,7 +368,7 @@ final class FleetCostDashboard extends Page
     {
         return Action::make('recordOdometer')
             ->label(__('Record odometer'))
-            ->icon('heroicon-o-arrow-trending-up')
+            ->icon('ds-gauge')
             ->modalHeading(__('Record odometer reading'))
             ->modalSubmitActionLabel(__('Record reading'))
             ->fillForm(static fn (array $arguments): array => [
@@ -421,7 +421,7 @@ final class FleetCostDashboard extends Page
     {
         return Action::make('cost_summary')
             ->label(__('Cost summary'))
-            ->icon('heroicon-o-calculator')
+            ->icon('ds-calculator')
             ->color('gray')
             ->modalHeading(__('Vehicle cost summary'))
             ->modalSubmitActionLabel(__('Calculate'))

@@ -59,7 +59,7 @@ final class UserResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-users';
+        return 'ds-users';
     }
 
     public static function getModelLabel(): string
@@ -223,7 +223,7 @@ final class UserResource extends Resource
                 // Suspender: despacha SuspendUser al bus. Visible solo si no está ya suspendido.
                 Action::make('suspend')
                     ->label(__('Suspend'))
-                    ->icon('heroicon-o-no-symbol')
+                    ->icon('ds-no-symbol')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading(__('Suspend user'))
@@ -244,7 +244,7 @@ final class UserResource extends Resource
                 // Reactivar: despacha ReactivateUser al bus. Visible solo si está suspendido.
                 Action::make('reactivate')
                     ->label(__('Reactivate'))
-                    ->icon('heroicon-o-arrow-path')
+                    ->icon('ds-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading(__('Reactivate user'))
@@ -266,7 +266,7 @@ final class UserResource extends Resource
                 // comando por cada diferencia (AssignRoleToUser / RemoveRoleFromUser), nunca un write directo.
                 Action::make('roles')
                     ->label(__('Manage roles'))
-                    ->icon('heroicon-o-user-group')
+                    ->icon('ds-user-group')
                     ->modalHeading(__('Manage user roles'))
                     ->modalSubmitActionLabel(__('Save'))
                     ->fillForm(static fn (UserRecord $record): array => [
@@ -324,7 +324,7 @@ final class UserResource extends Resource
                 // Cambiar contraseña: despacha ChangeUserPassword al bus (texto plano, hasheado en el dominio).
                 Action::make('changePassword')
                     ->label(__('Change password'))
-                    ->icon('heroicon-o-lock-closed')
+                    ->icon('ds-lock-closed')
                     ->modalHeading(__('Change user password'))
                     ->modalSubmitActionLabel(__('Change password'))
                     ->schema([

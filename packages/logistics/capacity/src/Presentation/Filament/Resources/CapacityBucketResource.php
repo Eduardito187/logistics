@@ -58,7 +58,7 @@ final class CapacityBucketResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-chart-bar-square';
+        return 'ds-chart-bar-square';
     }
 
     public static function getNavigationGroup(): string
@@ -194,7 +194,7 @@ final class CapacityBucketResource extends Resource
     {
         return Action::make('define')
             ->label(__('Define capacity'))
-            ->icon('heroicon-o-plus-circle')
+            ->icon('ds-plus-circle')
             ->modalHeading(__('Define a capacity bucket'))
             ->modalDescription(__('Create a capacity limit for a node or a zone on a given date, time slot and unit.'))
             ->schema(self::defineFormComponents())
@@ -228,7 +228,7 @@ final class CapacityBucketResource extends Resource
     {
         return Action::make('consume')
             ->label(__('Consume'))
-            ->icon('heroicon-o-arrow-trending-down')
+            ->icon('ds-arrow-trending-down')
             ->color('warning')
             ->modalHeading(__('Consume capacity'))
             ->schema([
@@ -269,7 +269,7 @@ final class CapacityBucketResource extends Resource
     {
         return Action::make('release')
             ->label(__('Release'))
-            ->icon('heroicon-o-arrow-trending-up')
+            ->icon('ds-arrow-trending-up')
             ->color('success')
             ->modalHeading(__('Release capacity'))
             ->schema([

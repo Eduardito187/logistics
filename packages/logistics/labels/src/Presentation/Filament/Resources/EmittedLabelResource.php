@@ -13,7 +13,6 @@ use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -53,7 +52,7 @@ final class EmittedLabelResource extends Resource
 
     protected static ?string $model = EmittedLabelRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = Heroicon::OutlinedQrCode;
+    protected static string | BackedEnum | null $navigationIcon = 'ds-qr-code';
 
     public static function getNavigationGroup(): string
     {
@@ -206,7 +205,7 @@ final class EmittedLabelResource extends Resource
                 // nunca leyendo el Record directo.
                 Action::make('orderLabels')
                     ->label(__('Order labels & ZPL'))
-                    ->icon('heroicon-o-printer')
+                    ->icon('ds-printer')
                     ->modalHeading(fn (EmittedLabelRecord $record): string => __('Labels for order ').$record->order_id)
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel(__('Close'))

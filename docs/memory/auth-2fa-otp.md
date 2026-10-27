@@ -9,7 +9,7 @@ metadata:
 ---
 
 **2FA (TOTP) unificado por usuario** (un secreto sirve en admin y app) + **reseteo de contraseña por
-código OTP** (6 dígitos por email), para admin y clientes de la app. Todo local, sin CDN. Ver [[auth-iam-context]].
+código OTP** (6 dígitos por email), para admin y clientes de la app. Todo local, sin CDN. Ver [[access-iam-context]].
 
 **Núcleo compartido** (`app/Auth/`):
 - `App\Auth\TwoFactor\TotpService`: TOTP estándar RFC 6238 **nativo** (HMAC-SHA1, 6 díg, 30s, secreto Base32;

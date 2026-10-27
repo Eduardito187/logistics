@@ -25,7 +25,7 @@ final class ListNodes extends ListRecords
         return [
             CreateAction::make()
                 ->label(__('Register node'))
-                ->icon('heroicon-o-plus'),
+                ->icon('ds-plus'),
         ];
     }
 }

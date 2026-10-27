@@ -47,7 +47,7 @@ final class ShipmentLineResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-list-bullet';
+        return 'ds-list-bullet';
     }
 
     public static function getNavigationGroup(): string

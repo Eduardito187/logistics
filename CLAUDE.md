@@ -74,3 +74,26 @@ El formato de firma es un contrato con la app Flutter. Si cambia `LabelPayload::
 el JSON del QR: subir `v`, regenerar el vector con
 `php packages/logistics/labels/tests/Support/generate-test-vector.php` y copiarlo idéntico a
 `logistics-app/test/fixtures/label_test_vector.json`.
+
+## Quality gates de CI (SonarCloud / PHPStan / Pint)
+
+Antes de tocar algo que el CI revise, leer `docs/ci-quality-gates.md`. Lo esencial:
+
+- Cerrar el PR en verde en **un solo lote**; no pushear un arreglo por vez.
+- El Quality Gate de SonarCloud **solo** falla por **Duplication on New Code > 3%** y **Reliability
+  Rating < A**. Lo demás (TODO, conteo de parámetros/métodos, atributos HTML deprecados,
+  "immediate return", literal duplicado) son issues de mantenibilidad que **no** bloquean el gate.
+- El Análisis Automático lee **`.sonarcloud.properties`**, NO `sonar-project.properties`. Las
+  exclusiones de CPD y los `issue.ignore` van ahí (o en la UI: Analysis Scope).
+- La duplicación de este repo es intencional (adaptadores HTTP/Filament por contexto, autónomos
+  ADR 001/008): se **excluye de CPD**, no se refactoriza (unificar acoplaría contextos).
+- Evitar el token `todo` suelto en comentarios: Sonar lo marca como tarea TODO (usar `cada`, `completo`).
+- `DB::table()->first()` → tipar el método como `?\stdClass` (no `object{...}`, no `@var` temporal).
+
+## Iconos del admin (Filament v4)
+
+Para crear/animar iconos custom en el panel, leer `docs/filament-iconos-custom-animados.md`:
+catálogo semántico de Heroicons, registro de iconos SVG propios (regla CERO CDN, self-host en
+`resources/svg/`) y animación vía CSS en el tema compilado `resources/css/filament/admin/theme.css`.
+El panel usa SOLO el set propio `ds-*` (animación del ícono completo); flujo corto en el skill
+`.claude/skills/distrack-ds-icons/SKILL.md`.

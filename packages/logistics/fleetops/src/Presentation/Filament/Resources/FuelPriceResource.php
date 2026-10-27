@@ -56,7 +56,7 @@ final class FuelPriceResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-currency-dollar';
+        return 'ds-currency-dollar';
     }
 
     public static function getModelLabel(): string
@@ -168,7 +168,7 @@ final class FuelPriceResource extends Resource
                 // Activar: despacha ActivateFuelPrice al bus. Solo visible si está inactivo.
                 Action::make('activate')
                     ->label(__('Activate'))
-                    ->icon('heroicon-o-check-circle')
+                    ->icon('ds-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading(__('Activate fuel price'))
@@ -186,7 +186,7 @@ final class FuelPriceResource extends Resource
                 // Desactivar: despacha DeactivateFuelPrice al bus. Solo visible si está activo.
                 Action::make('deactivate')
                     ->label(__('Deactivate'))
-                    ->icon('heroicon-o-no-symbol')
+                    ->icon('ds-no-symbol')
                     ->color('warning')
                     ->requiresConfirmation()
                     ->modalHeading(__('Deactivate fuel price'))
@@ -204,7 +204,7 @@ final class FuelPriceResource extends Resource
                 // Eliminar: despacha DeleteFuelPrice al bus (no escribe el record directo).
                 Action::make('delete')
                     ->label(__('Delete'))
-                    ->icon('heroicon-o-trash')
+                    ->icon('ds-trash')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading(__('Delete fuel price'))

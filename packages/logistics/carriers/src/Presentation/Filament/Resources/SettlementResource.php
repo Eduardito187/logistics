@@ -119,7 +119,7 @@ final class SettlementResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-document-currency-dollar';
+        return 'ds-document-currency-dollar';
     }
 
     public static function getModelLabel(): string
@@ -181,7 +181,7 @@ final class SettlementResource extends Resource
                 // Aprobar: despacha ApproveSettlement. Visible solo si está enviada u objetada.
                 Action::make('approve')
                     ->label(__('Approve'))
-                    ->icon('heroicon-o-check-circle')
+                    ->icon('ds-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading(__('Approve settlement'))
@@ -199,7 +199,7 @@ final class SettlementResource extends Resource
                 // Pagar: despacha MarkSettlementPaid. Visible solo si está aprobada.
                 Action::make('markPaid')
                     ->label(__('Mark paid'))
-                    ->icon('heroicon-o-banknotes')
+                    ->icon('ds-banknotes')
                     ->color('success')
                     ->visible(static fn (SettlementRecord $record): bool => $record->status === 'approved')
                     ->schema([
@@ -223,7 +223,8 @@ final class SettlementResource extends Resource
                 // Objetar: despacha DisputeSettlement. Visible mientras no esté pagada.
                 Action::make('dispute')
                     ->label(__('Dispute'))
-                    ->icon('heroicon-o-exclamation-triangle')
+                    ->icon('ds-exclamation-triangle')
+                    ->extraAttributes(['class' => 'ds-icon-bounce-hover'])
                     ->color('danger')
                     ->visible(static fn (SettlementRecord $record): bool => $record->status !== 'paid')
                     ->schema([
@@ -247,7 +248,7 @@ final class SettlementResource extends Resource
                 // Adjuntar documento: despacha AttachSettlementDocument. Visible mientras no esté pagada.
                 Action::make('attachDocument')
                     ->label(__('Attach document'))
-                    ->icon('heroicon-o-paper-clip')
+                    ->icon('ds-paper-clip')
                     ->visible(static fn (SettlementRecord $record): bool => $record->status !== 'paid')
                     ->schema([
                         TextInput::make('type')

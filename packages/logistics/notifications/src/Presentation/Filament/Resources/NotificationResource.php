@@ -47,7 +47,7 @@ final class NotificationResource extends Resource
 
     protected static ?string $model = NotificationRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-bell-alert';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-bell-alert';
 
     public static function getNavigationGroup(): string
     {
@@ -221,8 +221,8 @@ final class NotificationResource extends Resource
                     ->label(__('Recipient'))
                     ->state(fn (NotificationRecord $record): string => self::formatRecipient($record))
                     ->icon(fn (NotificationRecord $record): string => $record->email !== null
-                        ? 'heroicon-o-envelope'
-                        : ($record->phone !== null ? 'heroicon-o-device-phone-mobile' : 'heroicon-o-signal')),
+                        ? 'ds-envelope'
+                        : ($record->phone !== null ? 'ds-device-phone-mobile' : 'ds-signal')),
                 TextColumn::make('attempts')
                     ->label(__('Attempts'))
                     ->state(fn (NotificationRecord $record): int => array_sum($record->attempts))
@@ -305,7 +305,7 @@ final class NotificationResource extends Resource
     {
         return Action::make('advanceCascade')
             ->label(__('Advance cascade'))
-            ->icon('heroicon-o-forward')
+            ->icon('ds-forward')
             ->color('warning')
             ->visible(fn (NotificationRecord $record): bool => $record->status === NotificationStatus::Queued->value)
             ->requiresConfirmation()
@@ -327,7 +327,7 @@ final class NotificationResource extends Resource
     {
         return Action::make('markSent')
             ->label(__('Mark sent'))
-            ->icon('heroicon-o-check-circle')
+            ->icon('ds-check-circle')
             ->color('success')
             ->visible(fn (NotificationRecord $record): bool => $record->status === NotificationStatus::Queued->value)
             ->schema([
@@ -359,7 +359,7 @@ final class NotificationResource extends Resource
     {
         return Action::make('suppress')
             ->label(__('Suppress'))
-            ->icon('heroicon-o-no-symbol')
+            ->icon('ds-no-symbol')
             ->color('gray')
             ->visible(fn (NotificationRecord $record): bool => $record->status === NotificationStatus::Queued->value)
             ->requiresConfirmation()

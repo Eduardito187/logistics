@@ -61,7 +61,7 @@ final class IntegrationTokenResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-command-line';
+        return 'ds-command-line';
     }
 
     public static function getModelLabel(): string
@@ -116,7 +116,7 @@ final class IntegrationTokenResource extends Resource
             ->actions([
                 Action::make('copy')
                     ->label(__('Copy token'))
-                    ->icon('heroicon-o-clipboard')
+                    ->icon('ds-clipboard')
                     ->extraAttributes([
                         'x-on:click' => "window.navigator.clipboard.writeText('".addslashes($view->plainToken)."')",
                     ]),
@@ -240,7 +240,7 @@ final class IntegrationTokenResource extends Resource
                 // Editar permisos: reemplaza el conjunto completo vía SetTokenPermissions.
                 Action::make('editPermissions')
                     ->label(__('Edit permissions'))
-                    ->icon('heroicon-o-key')
+                    ->icon('ds-key')
                     ->modalHeading(__('Edit token permissions'))
                     ->modalSubmitActionLabel(__('Save'))
                     ->visible(static fn (IntegrationTokenRecord $record): bool => $record->status === 'active')
@@ -279,7 +279,7 @@ final class IntegrationTokenResource extends Resource
                 // Rotar secreto: el Issuer genera un secreto nuevo y revela el token en claro una vez más.
                 Action::make('rotate')
                     ->label(__('Rotate secret'))
-                    ->icon('heroicon-o-arrow-path')
+                    ->icon('ds-arrow-path')
                     ->requiresConfirmation()
                     ->modalHeading(__('Rotate token secret'))
                     ->modalDescription(__('The current secret stops working immediately and a new one is revealed once.'))
@@ -296,7 +296,7 @@ final class IntegrationTokenResource extends Resource
                 // Revocar: despacha RevokeIntegrationToken al bus. Irreversible.
                 Action::make('revoke')
                     ->label(__('Revoke'))
-                    ->icon('heroicon-o-no-symbol')
+                    ->icon('ds-no-symbol')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading(__('Revoke integration token'))

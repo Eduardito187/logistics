@@ -95,7 +95,7 @@ final class ShipmentResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-inbox-arrow-down';
+        return 'ds-inbox-arrow-down';
     }
 
     public static function getNavigationGroup(): string
@@ -227,7 +227,7 @@ final class ShipmentResource extends Resource
     {
         return $schema->components([
             Section::make(__('Order summary'))
-                ->icon('heroicon-o-inbox-arrow-down')
+                ->icon('ds-inbox-arrow-down')
                 ->schema([
                     TextEntry::make('external_id')
                         ->label(__('External reference'))
@@ -255,30 +255,30 @@ final class ShipmentResource extends Resource
                 ->columns(['default' => 1, 'sm' => 2, 'xl' => 4]),
 
             Section::make(__('Customer'))
-                ->icon('heroicon-o-user')
+                ->icon('ds-user')
                 ->description(__('Basic customer details on this order.'))
                 ->schema([
                     TextEntry::make('customer_name')
                         ->label(__('Customer name'))
-                        ->icon('heroicon-o-user')
+                        ->icon('ds-user')
                         ->weight('bold')
                         ->url(static fn (ShipmentRecord $record): string => CustomerProfile::getUrl(['customer' => $record->customer_name]))
                         ->openUrlInNewTab()
                         ->color('primary'),
                     TextEntry::make('customer_document_id')
                         ->label(__('Identity document'))
-                        ->icon('heroicon-o-identification')
+                        ->icon('ds-identification')
                         ->copyable()
                         ->placeholder('—'),
                     TextEntry::make('customer_phone')
                         ->label(__('Phone'))
-                        ->icon('heroicon-o-phone')
+                        ->icon('ds-phone')
                         ->copyable()
                         ->url(static fn (ShipmentRecord $record): ?string => $record->customer_phone !== null ? 'tel:'.$record->customer_phone : null)
                         ->placeholder('—'),
                     TextEntry::make('customer_email')
                         ->label(__('Email'))
-                        ->icon('heroicon-o-envelope')
+                        ->icon('ds-envelope')
                         ->copyable()
                         ->url(static fn (ShipmentRecord $record): ?string => $record->customer_email !== null ? 'mailto:'.$record->customer_email : null)
                         ->placeholder('—'),
@@ -286,7 +286,7 @@ final class ShipmentResource extends Resource
                         ->hiddenLabel()
                         ->state(__('View full profile'))
                         ->badge()
-                        ->icon('heroicon-o-identification')
+                        ->icon('ds-identification')
                         ->color('primary')
                         ->url(static fn (ShipmentRecord $record): string => CustomerProfile::getUrl(['customer' => $record->customer_name]))
                         ->openUrlInNewTab()
@@ -295,11 +295,11 @@ final class ShipmentResource extends Resource
                 ->columns(['default' => 1, 'sm' => 2, 'xl' => 4]),
 
             Section::make(__('Delivery address'))
-                ->icon('heroicon-o-map-pin')
+                ->icon('ds-map-pin')
                 ->schema([
                     TextEntry::make('address_text')
                         ->label(__('Delivery address'))
-                        ->icon('heroicon-o-map-pin')
+                        ->icon('ds-map-pin')
                         ->columnSpanFull(),
                     TextEntry::make('address_reference')
                         ->label(__('Address reference'))
@@ -324,7 +324,7 @@ final class ShipmentResource extends Resource
                 ->columns(['default' => 1, 'sm' => 2, 'xl' => 4]),
 
             Section::make(__('Delivery slot'))
-                ->icon('heroicon-o-calendar-days')
+                ->icon('ds-calendar-days')
                 ->schema([
                     TextEntry::make('delivery_date')
                         ->label(__('Delivery date'))
@@ -339,7 +339,7 @@ final class ShipmentResource extends Resource
                 ->columns(['default' => 1, 'sm' => 3]),
 
             Section::make(__('Delivery location'))
-                ->icon('heroicon-o-map')
+                ->icon('ds-map')
                 ->schema([
                     ViewEntry::make('delivery_map')
                         ->hiddenLabel()
@@ -347,7 +347,7 @@ final class ShipmentResource extends Resource
                 ]),
 
             Section::make(__('Order lines'))
-                ->icon('heroicon-o-shopping-bag')
+                ->icon('ds-shopping-bag')
                 ->schema([
                     RepeatableEntry::make('lines')
                         ->hiddenLabel()
@@ -377,7 +377,7 @@ final class ShipmentResource extends Resource
                 ]),
 
             Section::make(__('Other orders from this customer'))
-                ->icon('heroicon-o-clock')
+                ->icon('ds-clock')
                 ->collapsible()
                 ->schema([
                     ViewEntry::make('customer_orders')
@@ -482,7 +482,7 @@ final class ShipmentResource extends Resource
     {
         return Action::make('reGeocode')
             ->label(__('Re-geocode'))
-            ->icon('heroicon-o-map-pin')
+            ->icon('ds-map-pin')
             ->requiresConfirmation()
             ->modalHeading(__('Re-geocode address'))
             ->modalDescription(__('Recalculate the address confidence for this order.'))

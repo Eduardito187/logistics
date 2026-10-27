@@ -59,7 +59,7 @@ final class ListZones extends ListRecords
                 $this->importKmlAction(),
             ])
                 ->label(__('Paste coverage map'))
-                ->icon('heroicon-o-clipboard-document')
+                ->icon('ds-clipboard-document')
                 ->button(),
         ];
     }
@@ -88,7 +88,7 @@ final class ListZones extends ListRecords
     {
         return Action::make('importCoverage')
             ->label(__('Import coverage'))
-            ->icon('heroicon-o-arrow-up-tray')
+            ->icon('ds-arrow-up-tray')
             ->color('primary')
             ->modalHeading(__('Import coverage by department'))
             ->modalDescription(__('Upload a KML or GeoJSON file with the coverage polygons of a department. Zones are matched by name and updated in place, so re-importing never duplicates them.'))
@@ -211,7 +211,7 @@ final class ListZones extends ListRecords
     {
         return Action::make('resolvePoint')
             ->label(__('Resolve point to zone'))
-            ->icon('heroicon-o-map-pin')
+            ->icon('ds-map-pin')
             ->color('primary')
             ->modalHeading(__('Resolve a coordinate'))
             ->modalDescription(__('Find which coverage zone contains a point, with its serving node and rules.'))
@@ -270,7 +270,7 @@ final class ListZones extends ListRecords
     {
         return Action::make('importGeoJson')
             ->label(__('From GeoJSON'))
-            ->icon('heroicon-o-code-bracket')
+            ->icon('ds-code-bracket')
             ->modalHeading(__('Import coverage map (GeoJSON)'))
             ->modalDescription(__('Paste a GeoJSON FeatureCollection with the current coverage polygons.'))
             ->modalSubmitActionLabel(__('Import'))
@@ -327,7 +327,7 @@ final class ListZones extends ListRecords
     {
         return Action::make('importKml')
             ->label(__('From KML'))
-            ->icon('heroicon-o-globe-alt')
+            ->icon('ds-globe-alt')
             ->modalHeading(__('Import coverage map (KML)'))
             ->modalDescription(__('Paste a KML document (Google Earth / Maps) with the current coverage polygons.'))
             ->modalSubmitActionLabel(__('Import'))

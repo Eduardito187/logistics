@@ -50,7 +50,7 @@ final class PermissionResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-key';
+        return 'ds-key';
     }
 
     public static function getModelLabel(): string

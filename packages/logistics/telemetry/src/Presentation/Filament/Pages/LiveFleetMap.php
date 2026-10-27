@@ -40,7 +40,7 @@ final class LiveFleetMap extends Page
 {
     use OfficeOnly;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-radar';
 
     protected string $view = 'logistics-telemetry::filament.pages.live-fleet-map';
 

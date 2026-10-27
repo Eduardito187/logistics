@@ -34,7 +34,7 @@ final class ViewStockTransfer extends ViewRecord
         return [
             Action::make('acknowledge')
                 ->label(__('Acknowledge'))
-                ->icon('heroicon-o-check-circle')
+                ->icon('ds-check-circle')
                 ->color('success')
                 ->requiresConfirmation()
                 ->modalDescription(__('Record SAP confirmation for this transfer. Only sent transfers can be acknowledged.'))
@@ -64,7 +64,7 @@ final class ViewStockTransfer extends ViewRecord
                 }),
             Action::make('dispatchPending')
                 ->label(__('Dispatch pending transfers'))
-                ->icon('heroicon-o-paper-airplane')
+                ->icon('ds-paper-airplane')
                 ->requiresConfirmation()
                 ->modalDescription(__('Push all pending and failed stock transfers to SAP now.'))
                 ->action(function (CommandBus $commandBus): void {

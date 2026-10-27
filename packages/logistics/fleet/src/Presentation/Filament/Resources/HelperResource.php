@@ -50,7 +50,7 @@ final class HelperResource extends Resource
 
     protected static ?string $model = HelperModel::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-user-plus';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-user-plus';
 
     protected static ?int $navigationSort = 14;
 

@@ -38,7 +38,7 @@ final class MessageTemplateResource extends Resource
 
     protected static ?string $model = MessageTemplateRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-document-text';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-document-text';
 
     protected static ?string $recordTitleAttribute = 'message_type';
 

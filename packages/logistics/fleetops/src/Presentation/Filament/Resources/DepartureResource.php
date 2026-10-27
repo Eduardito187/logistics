@@ -60,7 +60,7 @@ final class DepartureResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-arrow-right-start-on-rectangle';
+        return 'ds-arrow-right-start-on-rectangle';
     }
 
     public static function getModelLabel(): string
@@ -280,7 +280,7 @@ final class DepartureResource extends Resource
                 // Cerrar la salida: despacha CloseDeparture al bus. Solo visible si sigue en ruta ('out').
                 Action::make('close')
                     ->label(__('Close'))
-                    ->icon('heroicon-o-arrow-left-end-on-rectangle')
+                    ->icon('ds-arrow-left-end-on-rectangle')
                     ->modalHeading(__('Close departure'))
                     ->modalSubmitActionLabel(__('Close departure'))
                     ->visible(static fn (DepartureRecord $record): bool => $record->status === DepartureStatus::Out->value)

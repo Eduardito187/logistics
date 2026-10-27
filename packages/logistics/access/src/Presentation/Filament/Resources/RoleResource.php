@@ -59,7 +59,7 @@ final class RoleResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-user-group';
+        return 'ds-user-group';
     }
 
     public static function getModelLabel(): string
@@ -177,7 +177,7 @@ final class RoleResource extends Resource
                 // Renombrar: despacha RenameRole al bus (nombre y/o descripción visibles).
                 Action::make('rename')
                     ->label(__('Rename'))
-                    ->icon('heroicon-o-pencil-square')
+                    ->icon('ds-pencil-square')
                     ->modalHeading(__('Rename role'))
                     ->modalSubmitActionLabel(__('Save'))
                     ->fillForm(static fn (RoleRecord $record): array => [
@@ -217,7 +217,7 @@ final class RoleResource extends Resource
                 // Editar permisos: reemplaza el conjunto completo vía SetRolePermissions.
                 Action::make('editPermissions')
                     ->label(__('Edit permissions'))
-                    ->icon('heroicon-o-key')
+                    ->icon('ds-key')
                     ->modalHeading(__('Edit role permissions'))
                     ->modalSubmitActionLabel(__('Save'))
                     ->fillForm(static fn (RoleRecord $record): array => [
@@ -254,7 +254,7 @@ final class RoleResource extends Resource
                 // Borrar: despacha DeleteRole al bus. Oculto para roles de sistema (protegidos).
                 Action::make('delete')
                     ->label(__('Delete'))
-                    ->icon('heroicon-o-trash')
+                    ->icon('ds-trash')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading(__('Delete role'))

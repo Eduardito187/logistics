@@ -110,7 +110,7 @@ final class TariffResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-banknotes';
+        return 'ds-banknotes';
     }
 
     public static function getModelLabel(): string

@@ -52,7 +52,7 @@ final class DocumentResource extends Resource
 
     protected static ?string $model = FleetDocumentModel::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-document-text';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-document-text';
 
     protected static ?int $navigationSort = 20;
 
@@ -264,7 +264,7 @@ final class DocumentResource extends Resource
                 ->placeholder('—')
                 ->formatStateUsing(static fn (?string $state): ?string => self::hasFile($state) ? (string) __('Open file') : null)
                 ->url(static fn (?string $state): ?string => self::fileUrl($state), shouldOpenInNewTab: true)
-                ->icon('heroicon-o-arrow-top-right-on-square')
+                ->icon('ds-arrow-top-right-on-square')
                 ->color('primary'),
             TextEntry::make('note')->label(__('Note'))->placeholder('—'),
         ]);

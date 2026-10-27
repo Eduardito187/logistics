@@ -57,7 +57,7 @@ final class CarrierResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-truck';
+        return 'ds-truck';
     }
 
     public static function getModelLabel(): string
@@ -229,7 +229,7 @@ final class CarrierResource extends Resource
                 // Calificar: despacha RateCarrier al bus (1 a 5).
                 Action::make('rate')
                     ->label(__('Rate'))
-                    ->icon('heroicon-o-star')
+                    ->icon('ds-star')
                     ->modalHeading(__('Rate carrier'))
                     ->modalSubmitActionLabel(__('Submit rating'))
                     ->schema([
@@ -254,7 +254,7 @@ final class CarrierResource extends Resource
                 // Suspender: despacha SuspendCarrier al bus. Solo visible si está activo.
                 Action::make('suspend')
                     ->label(__('Suspend'))
-                    ->icon('heroicon-o-no-symbol')
+                    ->icon('ds-no-symbol')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading(__('Suspend carrier'))
@@ -273,7 +273,7 @@ final class CarrierResource extends Resource
                 // Reactivar: despacha ReactivateCarrier al bus. Solo visible si está suspendido.
                 Action::make('reactivate')
                     ->label(__('Reactivate'))
-                    ->icon('heroicon-o-arrow-path')
+                    ->icon('ds-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading(__('Reactivate carrier'))

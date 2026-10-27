@@ -45,7 +45,7 @@ final class SettingVersionResource extends Resource
 
     protected static ?string $model = SettingVersionRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-adjustments-horizontal';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-adjustments-horizontal';
 
     protected static ?int $navigationSort = 52;
 

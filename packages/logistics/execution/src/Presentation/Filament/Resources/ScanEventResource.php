@@ -50,7 +50,7 @@ final class ScanEventResource extends Resource
 
     protected static ?string $model = ScanEventRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-qr-code';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-qr-code';
 
     protected static ?int $navigationSort = 36;
 

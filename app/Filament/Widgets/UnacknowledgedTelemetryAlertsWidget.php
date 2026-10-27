@@ -52,7 +52,7 @@ final class UnacknowledgedTelemetryAlertsWidget extends TableWidget
             ->paginated([10, 25])
             ->emptyStateHeading(__('All alerts acknowledged'))
             ->emptyStateDescription(__('No open telemetry alerts right now.'))
-            ->emptyStateIcon('heroicon-o-shield-check')
+            ->emptyStateIcon('ds-shield-check')
             ->columns([
                 TextColumn::make('severity_label')
                     ->label(__('Severity'))
@@ -77,7 +77,7 @@ final class UnacknowledgedTelemetryAlertsWidget extends TableWidget
             ->recordActions([
                 Action::make('acknowledge')
                     ->label(__('Acknowledge'))
-                    ->icon('heroicon-o-check')
+                    ->icon('ds-check')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading(__('Acknowledge alert'))

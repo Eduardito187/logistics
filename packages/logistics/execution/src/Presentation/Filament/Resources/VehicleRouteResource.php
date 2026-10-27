@@ -62,7 +62,7 @@ final class VehicleRouteResource extends Resource
 
     protected static ?string $model = VehicleRouteRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map-pin';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-map-pin';
 
     protected static ?int $navigationSort = 32;
 

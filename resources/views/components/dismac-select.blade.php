@@ -155,9 +155,8 @@
             class="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-950 shadow-sm transition focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
         >
             <span class="truncate" :class="hasSelection ? '' : 'text-gray-400 dark:text-gray-500'" x-text="selectedLabel"></span>
-            <svg class="h-5 w-5 shrink-0 text-gray-400 transition-transform" width="20" height="20" :class="open ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-            </svg>
+            {{-- Ícono del set DisTrack (anima al hover del botón); Alpine lo gira 180° al abrir. --}}
+            @svg('ds-chevron-down', 'h-5 w-5 shrink-0 text-gray-400 transition-transform', [':class' => "open ? 'rotate-180' : ''"])
         </button>
 
         {{-- Panel de opciones basado en DIVs (no <option> nativos). --}}
@@ -185,9 +184,7 @@
                     }"
                 >
                     <span class="truncate" x-text="option.label"></span>
-                    <svg x-show="option.value === value" class="h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400" width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path fill-rule="evenodd" d="M16.704 5.29a.75.75 0 0 1 .006 1.06l-7.5 7.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.97 2.97 6.97-6.97a.75.75 0 0 1 1.054.006Z" clip-rule="evenodd" />
-                    </svg>
+                    @svg('ds-check', 'h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400', ['x-show' => 'option.value === value'])
                 </div>
             </template>
         </div>

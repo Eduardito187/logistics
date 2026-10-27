@@ -35,7 +35,7 @@ final class AutoPlanRunsWidget extends TableWidget
             ->records(fn (): array => $this->recentRuns())
             ->paginated(false)
             ->emptyStateHeading(__('No auto-plan runs yet'))
-            ->emptyStateIcon('heroicon-o-map')
+            ->emptyStateIcon('ds-map')
             ->columns([
                 TextColumn::make('status')
                     ->label(__('Status'))

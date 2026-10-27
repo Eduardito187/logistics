@@ -53,7 +53,7 @@ final class NodeResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-map-pin';
+        return 'ds-map-pin';
     }
 
     public static function getNavigationGroup(): string
@@ -212,7 +212,7 @@ final class NodeResource extends Resource
     {
         return Action::make('deactivate')
             ->label(__('Deactivate'))
-            ->icon('heroicon-o-no-symbol')
+            ->icon('ds-no-symbol')
             ->color('danger')
             ->requiresConfirmation()
             ->modalHeading(__('Deactivate node'))

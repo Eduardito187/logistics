@@ -48,7 +48,7 @@ final class SellerResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'legal_name';
 
-    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-building-storefront';
+    protected static string | \BackedEnum | null $navigationIcon = 'ds-building-storefront';
 
     public static function getNavigationGroup(): string
     {
@@ -203,7 +203,7 @@ final class SellerResource extends Resource
                 // Activar: despacha ActivateSeller al bus. Visible si no está activo.
                 Action::make('activate')
                     ->label(__('Activate'))
-                    ->icon('heroicon-o-check-circle')
+                    ->icon('ds-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading(__('Activate seller'))
@@ -219,7 +219,7 @@ final class SellerResource extends Resource
                 // Suspender: despacha SuspendSeller al bus. Visible si no está suspendido.
                 Action::make('suspend')
                     ->label(__('Suspend'))
-                    ->icon('heroicon-o-no-symbol')
+                    ->icon('ds-no-symbol')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading(__('Suspend seller'))
@@ -235,7 +235,7 @@ final class SellerResource extends Resource
                 // Editar términos de liquidación: despacha SetSettlementTerms al bus.
                 Action::make('settlementTerms')
                     ->label(__('Settlement terms'))
-                    ->icon('heroicon-o-banknotes')
+                    ->icon('ds-banknotes')
                     ->modalHeading(__('Set settlement terms'))
                     ->modalSubmitActionLabel(__('Save terms'))
                     ->fillForm(static function (SellerRecord $record): array {

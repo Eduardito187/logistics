@@ -68,7 +68,7 @@ final class PlanResource extends Resource
 
     protected static ?string $model = PlanRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-map';
 
     public static function getNavigationGroup(): string
     {
@@ -160,7 +160,7 @@ final class PlanResource extends Resource
                 // el envío entra al final y queda pendiente de reordenar o regenerar.
                 Action::make('assignShipment')
                     ->label(__('Assign shipment'))
-                    ->icon('heroicon-o-plus-circle')
+                    ->icon('ds-plus-circle')
                     ->modalHeading(__('Assign a shipment to this truck'))
                     ->modalSubmitActionLabel(__('Assign'))
                     ->visible(static fn (PlanRecord $record): bool => $record->status !== PlanStatus::Published->value)
@@ -206,7 +206,7 @@ final class PlanResource extends Resource
                 // las paradas; se envía el nuevo orden completo de envíos.
                 Action::make('reorderStops')
                     ->label(__('Reorder stops'))
-                    ->icon('heroicon-o-arrows-up-down')
+                    ->icon('ds-arrows-up-down')
                     ->modalHeading(__('Reorder the delivery sequence'))
                     ->modalDescription(__('Drag the stops into the desired delivery order, then save.'))
                     ->modalSubmitActionLabel(__('Save order'))
@@ -262,7 +262,7 @@ final class PlanResource extends Resource
                 // la ejecución. Solo visible cuando está propuesto.
                 Action::make('publishPlan')
                     ->label(__('Publish'))
-                    ->icon('heroicon-o-paper-airplane')
+                    ->icon('ds-paper-airplane')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading(__('Publish this delivery plan'))
@@ -361,7 +361,8 @@ final class PlanResource extends Resource
     {
         return Action::make('generateProposal')
             ->label(__('Generate proposal'))
-            ->icon('heroicon-o-sparkles')
+            ->icon('ds-sparkles')
+            ->extraAttributes(['class' => 'ds-icon-pulse-hover'])
             ->modalHeading(__('Generate an automatic plan proposal'))
             ->modalDescription(__('Pick the truck, the departure time and the shipments. The route engine resolves order and ETA.'))
             ->modalSubmitActionLabel(__('Generate'))
@@ -455,7 +456,8 @@ final class PlanResource extends Resource
     {
         return Action::make('autoPlanTheDay')
             ->label(__('Auto-plan the day'))
-            ->icon('heroicon-o-truck')
+            ->icon('ds-sparkles')
+            ->extraAttributes(['class' => 'ds-icon-pulse-hover'])
             ->color('primary')
             ->modalHeading(__('Auto-plan the day'))
             ->modalDescription(__('Build trucks, routes and the load plan from pending orders. The heavy work runs in the background.'))

@@ -68,7 +68,7 @@ final class DispatchCalendar extends Page
 {
     use OfficeOnly;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-calendar-days';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-calendar-days';
 
     protected static ?int $navigationSort = 20;
 
@@ -221,7 +221,7 @@ final class DispatchCalendar extends Page
     {
         return Action::make('activate_slots')
             ->label(__('Activate slots'))
-            ->icon('heroicon-o-bolt')
+            ->icon('ds-bolt')
             ->modalHeading(__('Activate dispatch slots for a date range'))
             ->modalDescription(__('Open slots for a date range (e.g. through November), by weekday and time window, for one or all municipalities. Buckets are generated in the background.'))
             ->modalSubmitActionLabel(__('Activate slots'))
@@ -246,7 +246,7 @@ final class DispatchCalendar extends Page
     {
         return Action::make('block_day')
             ->label(__('Block a day'))
-            ->icon('heroicon-o-no-symbol')
+            ->icon('ds-no-symbol')
             ->color('gray')
             ->modalHeading(__('Block a dispatch day'))
             ->modalDescription(__('Mark a day as a holiday or otherwise closed. Leave the municipality empty to block the whole network.'))
@@ -307,7 +307,8 @@ final class DispatchCalendar extends Page
     {
         return Action::make('generate')
             ->label(__('Generate calendar'))
-            ->icon('heroicon-o-sparkles')
+            ->icon('ds-sparkles')
+            ->extraAttributes(['class' => 'ds-icon-pulse-hover'])
             ->color('gray')
             ->modalHeading(__('Generate the dispatch calendar'))
             ->modalDescription(__('Create the capacity buckets the current rules prescribe for the horizon. Existing buckets are left untouched.'))
@@ -370,7 +371,7 @@ final class DispatchCalendar extends Page
     {
         return Action::make('edit_rules')
             ->label(__('Edit rules'))
-            ->icon('heroicon-o-adjustments-horizontal')
+            ->icon('ds-adjustments-horizontal')
             ->color('gray')
             ->modalHeading(__('Edit capacity rules'))
             ->modalDescription(__('Publish a new version of the dispatch rules. Previous versions are kept as history.'))

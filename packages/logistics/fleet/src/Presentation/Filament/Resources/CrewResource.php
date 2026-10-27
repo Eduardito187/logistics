@@ -42,7 +42,7 @@ final class CrewResource extends Resource
 
     protected static ?string $model = CrewModel::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-user-group';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-user-group';
 
     protected static ?int $navigationSort = 16;
 

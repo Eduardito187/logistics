@@ -44,7 +44,7 @@ final class FailedDeliveriesTodayWidget extends TableWidget
             ->paginated([10, 25])
             ->emptyStateHeading(__('No failed deliveries today'))
             ->emptyStateDescription(__('Every delivery touched today is on track.'))
-            ->emptyStateIcon('heroicon-o-check-badge')
+            ->emptyStateIcon('ds-check-badge')
             ->recordUrl(fn (array $record): ?string => $record['url'])
             ->columns([
                 TextColumn::make('customer')

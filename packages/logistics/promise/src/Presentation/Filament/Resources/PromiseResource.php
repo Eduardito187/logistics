@@ -70,7 +70,7 @@ final class PromiseResource extends Resource
 
     protected static ?string $model = PromiseRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-clock';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-clock';
 
     protected static ?string $recordTitleAttribute = 'shipment_ref';
 
@@ -351,7 +351,7 @@ final class PromiseResource extends Resource
     {
         return Action::make('quote')
             ->label(__('Quote promise'))
-            ->icon('heroicon-o-calculator')
+            ->icon('ds-calculator')
             ->modalHeading(__('Quote a delivery promise'))
             ->modalDescription(__('Pick an available slot for the zone and date, then quote the promise.'))
             ->modalSubmitActionLabel(__('Quote'))
@@ -422,7 +422,7 @@ final class PromiseResource extends Resource
     {
         return Action::make('reserve')
             ->label(__('Reserve slot'))
-            ->icon('heroicon-o-lock-closed')
+            ->icon('ds-lock-closed')
             ->color('warning')
             ->visible(static fn (PromiseRecord $record): bool => $record->status === 'QUOTED')
             ->modalHeading(__('Reserve the slot'))
@@ -455,7 +455,7 @@ final class PromiseResource extends Resource
     {
         return Action::make('confirm')
             ->label(__('Confirm promise'))
-            ->icon('heroicon-o-check-circle')
+            ->icon('ds-check-circle')
             ->color('success')
             ->visible(static fn (PromiseRecord $record): bool => $record->status === 'RESERVED')
             ->requiresConfirmation()
@@ -479,7 +479,7 @@ final class PromiseResource extends Resource
     {
         return Action::make('expire')
             ->label(__('Expire reservation'))
-            ->icon('heroicon-o-x-circle')
+            ->icon('ds-x-circle')
             ->color('danger')
             ->visible(static fn (PromiseRecord $record): bool => $record->status === 'RESERVED')
             ->requiresConfirmation()

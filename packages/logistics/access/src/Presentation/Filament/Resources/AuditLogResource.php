@@ -42,7 +42,7 @@ final class AuditLogResource extends Resource
 
     public static function getNavigationIcon(): string
     {
-        return 'heroicon-o-clipboard-document-list';
+        return 'ds-clipboard-document-list';
     }
 
     public static function getModelLabel(): string

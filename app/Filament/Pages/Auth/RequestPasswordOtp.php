@@ -19,7 +19,6 @@ use Filament\Schemas\Components\EmbeddedSchema;
 use Filament\Schemas\Components\Form;
 use Filament\Schemas\Concerns\RestrictsFileUploadsToSchemaComponents;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
@@ -236,7 +235,7 @@ class RequestPasswordOtp extends SimplePage
         return Action::make('login')
             ->link()
             ->label(__('Back to sign in'))
-            ->icon(Heroicon::ArrowLeft)
+            ->icon('ds-arrow-left')
             ->url(filament()->getLoginUrl());
     }
 

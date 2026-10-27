@@ -59,7 +59,7 @@ final class ManageIntegrations extends Page
     {
         return Action::make('configure_routing')
             ->label(__('Configure routing'))
-            ->icon('heroicon-o-map')
+            ->icon('ds-map')
             ->modalHeading(__('Routing integration'))
             ->modalDescription(__('Road routing engines (OSRM and VROOM). Leave a field empty to fall back to the environment default.'))
             ->modalSubmitActionLabel(__('Save'))
@@ -127,7 +127,7 @@ final class ManageIntegrations extends Page
     {
         return Action::make('configure_sap')
             ->label(__('Configure SAP'))
-            ->icon('heroicon-o-circle-stack')
+            ->icon('ds-circle-stack')
             ->color('gray')
             ->modalHeading(__('SAP connector integration'))
             ->modalDescription(__('Endpoint and service credentials for the SAP connector. Without a base URL the connector falls back to the null stub.'))
@@ -207,7 +207,7 @@ final class ManageIntegrations extends Page
     {
         return Action::make('configure_storage')
             ->label(__('Configure storage'))
-            ->icon('heroicon-o-cloud')
+            ->icon('ds-cloud')
             ->color('gray')
             ->modalHeading(__('Storage integration'))
             ->modalDescription(__('S3-compatible credentials for document and evidence disks (MinIO, R2, Spaces or AWS S3). Applied to every S3 disk.'))
@@ -293,7 +293,7 @@ final class ManageIntegrations extends Page
     {
         return Action::make('configure_fcm')
             ->label(__('Configure push (FCM)'))
-            ->icon('heroicon-o-bell-alert')
+            ->icon('ds-bell-alert')
             ->color('gray')
             ->modalHeading(__('Firebase Cloud Messaging integration'))
             ->modalDescription(__('Credentials for push notifications to the customer app via Firebase Cloud Messaging.'))

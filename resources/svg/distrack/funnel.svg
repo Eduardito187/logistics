@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <g class="ds-i ds-m-nudge-d">
+    <path pathLength="1" d="M3.5 4h17l-6.5 7.5v6.25L10 20.5v-9Z"/>
+    <path pathLength="1" class="ds-accent" d="M6.5 7.5h11"/>
+  </g>
+</svg>

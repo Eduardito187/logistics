@@ -30,7 +30,7 @@ final class ListMessageTypeRules extends ListRecords
         return [
             Action::make('history')
                 ->label(__('Version history'))
-                ->icon('heroicon-o-clock')
+                ->icon('ds-clock')
                 ->color('gray')
                 ->modalHeading(__('Cascade rules version history'))
                 ->modalSubmitAction(false)

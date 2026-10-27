@@ -49,7 +49,7 @@ final class NodeReceptionResource extends Resource
 
     protected static ?string $model = NodeReceptionRecord::class;
 
-    protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-inbox-arrow-down';
+    protected static string | BackedEnum | null $navigationIcon = 'ds-inbox-arrow-down';
 
     protected static ?int $navigationSort = 34;
 
