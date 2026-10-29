@@ -30,7 +30,7 @@ final class CatalogDemoSeeder extends Seeder
             ['name' => 'Tecnología', 'slug' => 'tecnologia'],
         ];
         foreach ($categories as $category) {
-            if (! CategoryRecord::query()->where('slug', $category['slug'])->exists()) {
+            if (!CategoryRecord::query()->where('slug', $category['slug'])->exists()) {
                 $bus->dispatch(new CreateCategory($category['name'], $category['slug']));
             }
         }

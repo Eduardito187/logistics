@@ -158,13 +158,13 @@ final class DatabaseProductSearchReader implements ProductSearchReader
         }
 
         $decoded = json_decode($json, true);
-        if (! is_array($decoded)) {
+        if (!is_array($decoded)) {
             return null;
         }
 
         $name = $decoded['n'] ?? null;
         $id = $decoded['i'] ?? null;
-        if (! is_string($name) || ! is_string($id)) {
+        if (!is_string($name) || !is_string($id)) {
             return null;
         }
 

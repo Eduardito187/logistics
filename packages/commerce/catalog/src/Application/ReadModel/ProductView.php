@@ -15,7 +15,7 @@ final readonly class ProductView
 {
     /**
      * @param list<array{sku: string, name: string, attributes: array<string, string>}> $variants
-     * @param list<array{path: string, alt: string, position: int}>                      $media
+     * @param list<array{path: string, alt: string, position: int}>                     $media
      */
     private function __construct(
         public string $id,

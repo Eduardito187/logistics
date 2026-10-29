@@ -152,7 +152,7 @@ final class Product extends AggregateRoot
     {
         $this->variants = array_values(array_filter(
             $this->variants,
-            static fn (ProductVariant $variant): bool => ! $variant->sku->equals($sku),
+            static fn (ProductVariant $variant): bool => !$variant->sku->equals($sku),
         ));
     }
 

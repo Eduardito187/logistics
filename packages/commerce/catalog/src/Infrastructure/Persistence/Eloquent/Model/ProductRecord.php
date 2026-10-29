@@ -14,15 +14,15 @@ use Illuminate\Database\Eloquent\Model;
  * La PK es un UUID en texto (lo genera el dominio). Variantes y medios se guardan como JSONB en la
  * misma fila (son value objects del agregado, no entidades consultables aparte en esta fase).
  *
- * @property string                                                                      $id
- * @property string|null                                                                 $seller_id
- * @property string|null                                                                 $category_id
- * @property string                                                                      $name
- * @property string|null                                                                 $description
- * @property string                                                                      $canonical_sku
- * @property string                                                                      $status
- * @property list<array{sku: string, name: string, attributes: array<string, string>}>  $variants
- * @property list<array{path: string, alt: string, position: int}>                       $media
+ * @property string                                                                    $id
+ * @property string|null                                                               $seller_id
+ * @property string|null                                                               $category_id
+ * @property string                                                                    $name
+ * @property string|null                                                               $description
+ * @property string                                                                    $canonical_sku
+ * @property string                                                                    $status
+ * @property list<array{sku: string, name: string, attributes: array<string, string>}> $variants
+ * @property list<array{path: string, alt: string, position: int}>                     $media
  */
 final class ProductRecord extends Model
 {

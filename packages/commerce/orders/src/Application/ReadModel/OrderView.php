@@ -14,7 +14,7 @@ final readonly class OrderView
 {
     /**
      * @param array{customer_name: string, address_text: string, reference: ?string, phone: ?string, email: ?string} $shipTo
-     * @param list<array{sku: string, product_name: string, unit_price_cents: int, quantity: int}>                    $lines
+     * @param list<array{sku: string, product_name: string, unit_price_cents: int, quantity: int}>                   $lines
      */
     private function __construct(
         public string $id,

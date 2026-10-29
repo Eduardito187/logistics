@@ -97,7 +97,7 @@ final class Cart extends AggregateRoot
                 break;
             }
         }
-        if (! $found) {
+        if (!$found) {
             $this->lines[] = $line;
         }
         $this->lines = array_values($this->lines);
@@ -135,7 +135,7 @@ final class Cart extends AggregateRoot
                 break;
             }
         }
-        if (! $found) {
+        if (!$found) {
             throw CartException::because("El carrito no tiene una línea con el SKU {$sku->value}.");
         }
         $this->lines = array_values($this->lines);
@@ -147,7 +147,7 @@ final class Cart extends AggregateRoot
 
         $this->lines = array_values(array_filter(
             $this->lines,
-            static fn (CartLine $line): bool => ! $line->sku->equals($sku),
+            static fn (CartLine $line): bool => !$line->sku->equals($sku),
         ));
     }
 
@@ -175,7 +175,7 @@ final class Cart extends AggregateRoot
                     break;
                 }
             }
-            if (! $found) {
+            if (!$found) {
                 $this->lines[] = $line;
             }
         }

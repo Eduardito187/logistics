@@ -151,7 +151,7 @@ final class Account extends AggregateRoot
         $before = count($this->addresses);
         $this->addresses = array_values(array_filter(
             $this->addresses,
-            static fn (Address $address): bool => ! $address->hasLabel($label),
+            static fn (Address $address): bool => !$address->hasLabel($label),
         ));
         if (count($this->addresses) !== $before) {
             $this->recordEvent(new AddressRemoved($this->id->toString(), $label));

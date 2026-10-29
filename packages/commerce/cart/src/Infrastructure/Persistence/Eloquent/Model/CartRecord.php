@@ -14,12 +14,12 @@ use Illuminate\Database\Eloquent\Model;
  * La PK es un UUID en texto (lo genera el dominio). Las líneas se guardan como JSONB en la misma fila
  * (son value objects del agregado, no entidades consultables aparte).
  *
- * @property string                                                                                                    $id
- * @property string|null                                                                                               $customer_id
- * @property string                                                                                                    $session_id
- * @property string                                                                                                    $status
- * @property string                                                                                                    $currency
- * @property list<array{sku: string, product_name: string, unit_price_cents: int, qty: int, subtotal_cents: int}>      $lines
+ * @property string                                                                                               $id
+ * @property string|null                                                                                          $customer_id
+ * @property string                                                                                               $session_id
+ * @property string                                                                                               $status
+ * @property string                                                                                               $currency
+ * @property list<array{sku: string, product_name: string, unit_price_cents: int, qty: int, subtotal_cents: int}> $lines
  */
 final class CartRecord extends Model
 {

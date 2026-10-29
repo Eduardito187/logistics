@@ -14,13 +14,13 @@ use Illuminate\Database\Eloquent\Model;
  * La PK es un UUID en texto (lo genera el dominio). Dirección de entrega y líneas se guardan como
  * JSONB (value objects del agregado).
  *
- * @property string                                                                                              $id
- * @property string|null                                                                                         $customer_id
- * @property string                                                                                              $status
- * @property string                                                                                              $currency
- * @property bool                                                                                                $shipment_requested
+ * @property string                                                                                                 $id
+ * @property string|null                                                                                            $customer_id
+ * @property string                                                                                                 $status
+ * @property string                                                                                                 $currency
+ * @property bool                                                                                                   $shipment_requested
  * @property array{customer_name: string, address_text: string, reference: ?string, phone: ?string, email: ?string} $ship_to
- * @property list<array{sku: string, product_name: string, unit_price_cents: int, quantity: int}>                $lines
+ * @property list<array{sku: string, product_name: string, unit_price_cents: int, quantity: int}>                   $lines
  */
 final class OrderRecord extends Model
 {

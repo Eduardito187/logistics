@@ -30,7 +30,7 @@ final readonly class PaymentCapturedOrderDispatcher implements MessageDispatcher
         $orderId = $payload['order_id'] ?? null;
         $gatewayRef = $payload['gateway_ref'] ?? null;
 
-        if (! is_string($orderId) || $orderId === '') {
+        if (!is_string($orderId) || $orderId === '') {
             return;
         }
 

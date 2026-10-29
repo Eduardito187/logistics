@@ -49,7 +49,7 @@ final readonly class SearchCriteria
         $categoryId = self::normalizeNullable($categoryId);
         $cursor = self::normalizeNullable($cursor);
 
-        if (! in_array($status, self::ALLOWED_STATUSES, true)) {
+        if (!in_array($status, self::ALLOWED_STATUSES, true)) {
             throw SearchException::because(
                 sprintf('Estado de búsqueda no permitido: "%s".', $status),
             );

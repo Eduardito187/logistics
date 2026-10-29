@@ -38,7 +38,7 @@ final readonly class AddItemHandler implements CommandHandler
         }
 
         $sku = Sku::of($command->sku);
-        if (! $this->inventory->isAvailable($sku, $command->qty)) {
+        if (!$this->inventory->isAvailable($sku, $command->qty)) {
             throw CartException::because("No hay disponibilidad para el SKU {$sku->value}.");
         }
 
