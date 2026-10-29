@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "5aba866ca15840a4031cc19079911161",
+    "content-hash": "4f4b85508597bd6fc0d00ad2e86e65b7",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -724,6 +724,80 @@
             "time": "2026-03-20T21:10:52+00:00"
         },
         {
+            "name": "commerce/accounts",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/commerce/accounts",
+                "reference": "9420d23e88f8a61d27647d52db650ec4708e49fe"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Commerce\\Accounts\\Infrastructure\\Providers\\AccountsServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Commerce\\Accounts\\": "src/",
+                    "Commerce\\Accounts\\Database\\Factories\\": "database/factories/",
+                    "Commerce\\Accounts\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Cuentas / identidad comercial de comercio (tipo de cuenta, direcciones, estado) — plataforma Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "commerce/cart",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/commerce/cart",
+                "reference": "d5018f23841f15797e4504d9d62e4d627c9f02c9"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Commerce\\Cart\\Infrastructure\\Providers\\CartServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Commerce\\Cart\\": "src/",
+                    "Commerce\\Cart\\Database\\Factories\\": "database/factories/",
+                    "Commerce\\Cart\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Carrito de comercio (líneas, fusión invitado→cliente, conversión a orden) — plataforma Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "commerce/catalog",
             "version": "0.1.0",
             "dist": {
@@ -755,6 +829,44 @@
                 "proprietary"
             ],
             "description": "Catálogo / PIM de comercio (producto, variantes, categorías, medios) — plataforma Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "commerce/orders",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/commerce/orders",
+                "reference": "9094a0a7f3a073167093b7a5c7428695d1b7209c"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "logistics/shipments": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Commerce\\Orders\\Infrastructure\\Providers\\OrdersServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Commerce\\Orders\\": "src/",
+                    "Commerce\\Orders\\Database\\Factories\\": "database/factories/",
+                    "Commerce\\Orders\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Órdenes de compra comerciales (OMS) + puente a fulfillment — plataforma Dismac",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -827,6 +939,40 @@
                 "proprietary"
             ],
             "description": "Precios e impuestos de comercio (listas de precios por canal, IVA/IT Bolivia) — plataforma Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "commerce/search",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/commerce/search",
+                "reference": "10d9bb3df4f5d86da13e5d19f6d4e132a87b0810"
+            },
+            "require": {
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Commerce\\Search\\Infrastructure\\Providers\\SearchServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Commerce\\Search\\": "src/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Búsqueda y navegación de catálogo (read-side) del frente comercial — plataforma Dismac",
             "transport-options": {
                 "symlink": true,
                 "relative": true

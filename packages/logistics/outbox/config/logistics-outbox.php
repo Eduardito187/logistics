@@ -1,6 +1,8 @@
 <?php
 
 declare(strict_types=1);
+use Commerce\Orders\Infrastructure\Dispatch\OrderPaidShipmentDispatcher;
+use Commerce\Orders\Infrastructure\Dispatch\PaymentCapturedOrderDispatcher;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
 use Logistics\Inventory\Infrastructure\Dispatch\GoodsReceivedStockDispatcher;
 use Logistics\Inventory\Infrastructure\Dispatch\ReturnRestockDispatcher;
@@ -103,6 +105,12 @@ return [
         // Logística inversa (Fase 4): una devolución dispuesta como "restock" reingresa su producto al
         // lote del dueño correcto. El dispatcher ignora disposiciones return_to_seller/scrap.
         'returns.return_dispositioned' => ReturnRestockDispatcher::class,
+
+        // Comercio (ADR 018, Fase 0): puente de pagos → órdenes → fulfillment.
+        //   payments.captured  → marca la orden como pagada (emite orders.order_paid).
+        //   orders.order_paid  → crea el envío (ReceiveShipment, idempotente por orden) y pasa a fulfilling.
+        'payments.captured' => PaymentCapturedOrderDispatcher::class,
+        'orders.order_paid' => OrderPaidShipmentDispatcher::class,
     ],
 
     // Abanico por evento: eventos que disparan reacciones en varios contextos a la vez. El

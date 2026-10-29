@@ -1,0 +1,27 @@
+{
+    "name": "commerce/orders",
+    "description": "Órdenes de compra comerciales (OMS) + puente a fulfillment — plataforma Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1",
+        "logistics/shipments": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Commerce\\Orders\\": "src/",
+            "Commerce\\Orders\\Database\\Factories\\": "database/factories/",
+            "Commerce\\Orders\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Commerce\\Orders\\Infrastructure\\Providers\\OrdersServiceProvider"
+            ]
+        }
+    }
+}
