@@ -10,6 +10,7 @@ use Commerce\Catalog\Domain\Event\ProductPublished;
 use Commerce\Catalog\Domain\Exception\CatalogException;
 use Commerce\Catalog\Domain\ValueObject\CategoryId;
 use Commerce\Catalog\Domain\ValueObject\MediaAsset;
+use Commerce\Catalog\Domain\ValueObject\ProductId;
 use Commerce\Catalog\Domain\ValueObject\ProductStatus;
 use Commerce\Catalog\Domain\ValueObject\ProductVariant;
 use Commerce\Catalog\Domain\ValueObject\Sku;

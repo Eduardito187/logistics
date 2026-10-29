@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Commerce\Invoicing\Infrastructure\Dispatch\OrderPaidInvoiceDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\OrderPaidShipmentDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\PaymentCapturedOrderDispatcher;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
@@ -110,7 +111,8 @@ return [
         //   payments.captured  → marca la orden como pagada (emite orders.order_paid).
         //   orders.order_paid  → crea el envío (ReceiveShipment, idempotente por orden) y pasa a fulfilling.
         'payments.captured' => PaymentCapturedOrderDispatcher::class,
-        'orders.order_paid' => OrderPaidShipmentDispatcher::class,
+        // orders.order_paid tiene DOS reactores (crear envío + emitir factura) → abanico (ver 'fanout').
+        'orders.order_paid' => FanOutMessageDispatcher::class,
     ],
 
     // Abanico por evento: eventos que disparan reacciones en varios contextos a la vez. El

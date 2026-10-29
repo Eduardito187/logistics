@@ -7,6 +7,7 @@ namespace Commerce\Cart\Infrastructure\Persistence\Eloquent\Model;
 use Commerce\Cart\Database\Factories\CartFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * Modelo Eloquent de la tabla `commerce_carts`. Detalle de infraestructura: nunca cruza a Domain.
@@ -20,6 +21,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property string                                                                                               $status
  * @property string                                                                                               $currency
  * @property list<array{sku: string, product_name: string, unit_price_cents: int, qty: int, subtotal_cents: int}> $lines
+ * @property Carbon|null                                                                                          $created_at
+ * @property Carbon|null                                                                                          $updated_at
  */
 final class CartRecord extends Model
 {

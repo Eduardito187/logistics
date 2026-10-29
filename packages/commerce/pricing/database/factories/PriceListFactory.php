@@ -25,7 +25,7 @@ final class PriceListFactory extends Factory
     {
         return [
             'id' => PriceListId::generate()->toString(),
-            'name' => $this->faker->unique()->words(2, true).' price list',
+            'name' => ucfirst($this->faker->unique()->word()).' price list',
             'currency' => 'BOB',
             'channel' => 'retail',
             'status' => 'draft',

@@ -22,7 +22,7 @@ final class CategoryFactory extends Factory
 
     public function definition(): array
     {
-        $name = ucwords((string) $this->faker->unique()->words(2, true));
+        $name = ucwords($this->faker->unique()->word());
 
         return [
             'id' => Uuid::generate()->value,

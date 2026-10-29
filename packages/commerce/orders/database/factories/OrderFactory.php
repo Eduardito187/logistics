@@ -38,7 +38,7 @@ final class OrderFactory extends Factory
             'lines' => [
                 [
                     'sku' => strtoupper((string) $this->faker->bothify('SKU-####')),
-                    'product_name' => ucwords((string) $this->faker->words(2, true)),
+                    'product_name' => ucwords(implode(' ', $this->faker->words(2))),
                     'unit_price_cents' => $this->faker->numberBetween(1000, 500000),
                     'quantity' => $this->faker->numberBetween(1, 3),
                 ],
