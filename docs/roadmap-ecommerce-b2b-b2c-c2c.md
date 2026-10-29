@@ -1,6 +1,7 @@
 # Roadmap — Ecommerce B2B / B2C / C2C
 
-> **Estado: 100% PENDIENTE — no se avanzó NADA de este roadmap.** Todos los ítems están en `[ ]`.
+> **Estado: Fase 0 EN CURSO.** Fundaciones de comercio arrancadas (ADR 018 + contextos `catalog`,
+> `pricing`, `payments`). El resto de la Fase 0 y las fases B2C/B2B/C2C siguen pendientes.
 > Fecha de alta: 2026-10-29. Es una **iniciativa nueva**, separada del backend logístico ya construido.
 
 Este roadmap cubre la **capa de comercio** (tienda, catálogo, carrito, checkout, pagos, cuentas) sobre
@@ -29,12 +30,14 @@ este documento planifica — es el **frente comercial** en sus tres modelos:
 
 ## FASE 0 — Fundaciones de comercio (transversal a los 3 modelos)
 
-- `[ ]` EC-F0-01 **ADR**: decidir si el comercio es un dominio nuevo (`packages/commerce/*`) o extiende
-  `logistics/*`; límites con `sellers`, `inventory`, `shipments`, `access`. (Escribir ADR 018.)
-- `[ ]` EC-F0-02 **Catálogo / PIM**: contexto `catalog` — producto, variantes, atributos, categorías,
+- `[x]` EC-F0-01 **ADR**: decidir si el comercio es un dominio nuevo (`packages/commerce/*`) o extiende
+  `logistics/*`; límites con `sellers`, `inventory`, `shipments`, `access`. → **ADR 018** (`docs/adr/018-comercio-dominio-separado-commerce.md`): familia `packages/commerce/*`, namespace `Commerce\`, integración por outbox/puertos.
+- `[~]` EC-F0-02 **Catálogo / PIM**: contexto `catalog` — producto, variantes, atributos, categorías,
   medios (imágenes), estados (publicado/borrador), SKU canónico. Reutiliza `inventory` para stock/ATP.
-- `[ ]` EC-F0-03 **Pricing**: listas de precio, moneda (BOB), impuestos (IVA/IT Bolivia), redondeo,
+  → Construido (`packages/commerce/catalog`): dominio+CQRS+persistencia+tests. **Pendiente DoD verde en CI.**
+- `[~]` EC-F0-03 **Pricing**: listas de precio, moneda (BOB), impuestos (IVA/IT Bolivia), redondeo,
   precios por canal/segmento (base para B2B price lists y B2C retail).
+  → Construido (`packages/commerce/pricing`): listas por canal + `TaxPolicy` IVA 13% incluido / IT 3%. **Pendiente DoD verde en CI.**
 - `[ ]` EC-F0-04 **Cuentas/identidad comercial**: extender `access` con tipos de cuenta (persona,
   empresa, seller-persona), direcciones, perfiles; SSO/login para storefront (separado del admin).
 - `[ ]` EC-F0-05 **Carrito**: contexto `cart` — carrito por sesión/usuario, líneas, reglas de
@@ -42,9 +45,10 @@ este documento planifica — es el **frente comercial** en sus tres modelos:
 - `[ ]` EC-F0-06 **Checkout + Order (OMS)**: contexto `orders` — orden de compra comercial, estados
   (pending/paid/fulfilling/…); **puente al backend logístico**: una orden pagada **crea un Shipment**
   (reusa `shipments`/`planning`/`execution`). Idempotente por orden.
-- `[ ]` EC-F0-07 **Pagos**: contexto `payments` detrás de contrato (`PaymentGateway`), con adaptador
+- `[~]` EC-F0-07 **Pagos**: contexto `payments` detrás de contrato (`PaymentGateway`), con adaptador
   stub + al menos una pasarela real por env (QR interoperable BCB / transferencia / tarjeta vía proveedor).
   Webhooks de confirmación → evento `payments.captured` → outbox → `orders`.
+  → Construido (`packages/commerce/payments`): agregado `Payment`, `PaymentGateway`+`StubPaymentGateway`, webhook `POST /api/v1/integrations/payments/webhook`, evento `payments.captured`. **Pendiente DoD verde en CI y cableado del puente a `orders` (EC-F0-06).**
 - `[ ]` EC-F0-08 **Búsqueda y navegación**: búsqueda de catálogo (Postgres FTS o Meilisearch self-host),
   filtros/facetas, orden, paginación con cursores.
 - `[ ]` EC-F0-09 **Promociones/cupones**: motor de reglas (descuentos, cupones, envíos gratis) versionado.

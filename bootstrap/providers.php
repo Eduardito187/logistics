@@ -6,6 +6,9 @@ use App\Providers\AppServiceProvider;
 use App\Providers\AuthServiceProvider;
 use App\Providers\Filament\AdminPanelProvider;
 use App\Providers\SlowQueryLoggingServiceProvider;
+use Commerce\Catalog\Infrastructure\Providers\CatalogServiceProvider;
+use Commerce\Payments\Infrastructure\Providers\PaymentsServiceProvider;
+use Commerce\Pricing\Infrastructure\Providers\PricingServiceProvider;
 use Logistics\Access\Infrastructure\Providers\AccessServiceProvider;
 use Logistics\Capacity\Infrastructure\Providers\CapacityServiceProvider;
 use Logistics\Carriers\Infrastructure\Providers\CarriersServiceProvider;
@@ -96,6 +99,13 @@ return [
     SettlementServiceProvider::class,
     ReturnsServiceProvider::class,
     SellerPortalServiceProvider::class,
+
+    // Comercio / frente ecommerce (ADR 018, Fase 0): familia de contextos `commerce/*`. Dependen solo
+    // del núcleo compartido y el outbox (ya registrados arriba); se integran con la logística aguas abajo
+    // por eventos de outbox (una orden pagada → shipment), nunca por llamadas directas entre familias.
+    CatalogServiceProvider::class,
+    PricingServiceProvider::class,
+    PaymentsServiceProvider::class,
 
     // Admin web (al final: los resources de cada contexto ya están registrados)
     AdminPanelProvider::class,

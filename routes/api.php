@@ -64,6 +64,7 @@ $contextMaps = [
     require __DIR__.'/api/network.php',
     require __DIR__.'/api/notifications.php',
     require __DIR__.'/api/outbox.php',
+    require __DIR__.'/api/payments.php',
     require __DIR__.'/api/planning.php',
     require __DIR__.'/api/promise.php',
     require __DIR__.'/api/returns.php',

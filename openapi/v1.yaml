@@ -30,6 +30,8 @@ tags:
   description: Third-party carriers, tariffs and rating
 - name: Sellers
   description: Marketplace sellers (onboarding, settlement terms, SKU catalog)
+- name: Payments
+  description: Commerce payments (gateway capture webhook, ADR 018)
 - name: Inbound
   description: Marketplace inbound (ASN announcement, dock scheduling, goods receipt, labeling)
 - name: Inventory
@@ -7404,6 +7406,48 @@ paths:
       responses:
         '202':
           description: Seller SKU accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
+  /integrations/payments/webhook:
+    post:
+      tags:
+      - Payments
+      summary: Payment gateway capture webhook (idempotent)
+      operationId: paymentsWebhook
+      description: |
+        La pasarela confirma el cobro de un pago (frente comercial, ADR 018 / EC-F0-07). Despacha la
+        captura por el CommandBus; es idempotente por el pago/orden, así que un reintento del proveedor
+        no duplica la captura. Identifica el pago por payment_id o por order_id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - gateway_ref
+              properties:
+                payment_id:
+                  type: string
+                  format: uuid
+                  description: Id del pago (alternativo a order_id).
+                order_id:
+                  type: string
+                  format: uuid
+                  description: Id de la orden (alternativo a payment_id).
+                gateway_ref:
+                  type: string
+                  maxLength: 255
+                  description: Referencia del cobro en el proveedor.
+      responses:
+        '202':
+          description: Capture accepted (dispatched to the command bus; idempotent)
           content:
             application/json:
               schema:
