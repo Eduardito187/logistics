@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4f4b85508597bd6fc0d00ad2e86e65b7",
+    "content-hash": "0ffe4503432e4524263c5a1108147c60",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -835,6 +835,41 @@
             }
         },
         {
+            "name": "commerce/invoicing",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/commerce/invoicing",
+                "reference": "1054b7e4bd3e93bea67ee5af33e82132ab433eb0"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Commerce\\Invoicing\\Infrastructure\\Providers\\InvoicingServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Commerce\\Invoicing\\": "src/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Facturación / documento fiscal (EC-F0-10) — frente comercial de la plataforma Dismac (ADR 018)",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "commerce/orders",
             "version": "0.1.0",
             "dist": {
@@ -939,6 +974,43 @@
                 "proprietary"
             ],
             "description": "Precios e impuestos de comercio (listas de precios por canal, IVA/IT Bolivia) — plataforma Dismac",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "commerce/promotions",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/commerce/promotions",
+                "reference": "b42f568eb88bb26e76a37d10ae11bc727f36726c"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Commerce\\Promotions\\Infrastructure\\Providers\\PromotionsServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Commerce\\Promotions\\": "src/",
+                    "Commerce\\Promotions\\Database\\Factories\\": "database/factories/",
+                    "Commerce\\Promotions\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Motor de promociones / cupones de comercio (descuentos por canal, condiciones, versionado) — plataforma Dismac",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -14314,5 +14386,5 @@
         "ext-sodium": "*"
     },
     "platform-dev": {},
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }
