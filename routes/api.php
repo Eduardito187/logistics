@@ -52,6 +52,7 @@ require __DIR__.'/api/auth.php';
 */
 $contextMaps = [
     require __DIR__.'/api/access.php',
+    require __DIR__.'/api/accounts.php',
     require __DIR__.'/api/capacity.php',
     require __DIR__.'/api/carriers.php',
     require __DIR__.'/api/cart.php',
@@ -69,6 +70,7 @@ $contextMaps = [
     require __DIR__.'/api/outbox.php',
     require __DIR__.'/api/payments.php',
     require __DIR__.'/api/planning.php',
+    require __DIR__.'/api/pricing.php',
     require __DIR__.'/api/promise.php',
     require __DIR__.'/api/returns.php',
     require __DIR__.'/api/sap-connector.php',
