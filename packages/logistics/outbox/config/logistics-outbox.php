@@ -1,8 +1,6 @@
 <?php
 
 declare(strict_types=1);
-use Commerce\Invoicing\Infrastructure\Dispatch\OrderPaidInvoiceDispatcher;
-use Commerce\Orders\Infrastructure\Dispatch\OrderPaidShipmentDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\PaymentCapturedOrderDispatcher;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
 use Logistics\Inventory\Infrastructure\Dispatch\GoodsReceivedStockDispatcher;

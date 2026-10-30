@@ -13,6 +13,10 @@ use Commerce\Promotions\Domain\ValueObject\PromotionId;
 use Commerce\Promotions\Domain\ValueObject\PromotionStatus;
 use Commerce\Promotions\Domain\ValueObject\PromotionType;
 
+// Instante de referencia para los casos de discountFor. Nombre único: las consts top-level son
+// globales dentro del único proceso de Pest y no deben colisionar con otros archivos de test.
+const PROMOTION_TEST_AT = '2026-10-29T12:00:00+00:00';
+
 function promotionsAt(string $iso): DateTimeImmutable
 {
     return new DateTimeImmutable($iso);
@@ -126,7 +130,7 @@ it('discountFor de 10% sobre 100000 centavos da 10000 (activa)', function (): vo
     $promotion = promotionsCreate(PromotionType::PercentageOff, 1000);
     $promotion->activate();
 
-    expect($promotion->discountFor(100000, 'Retail', promotionsAt('2026-10-29T12:00:00+00:00')))
+    expect($promotion->discountFor(100000, 'Retail', promotionsAt(PROMOTION_TEST_AT)))
         ->toBe(10000);
 });
 
@@ -135,14 +139,14 @@ it('discountFor de monto fijo se topa al subtotal', function (): void {
     $promotion->activate();
 
     // Monto fijo 1500.00 Bs pero el subtotal es 1000.00 Bs → se topa a 100000.
-    expect($promotion->discountFor(100000, 'Retail', promotionsAt('2026-10-29T12:00:00+00:00')))
+    expect($promotion->discountFor(100000, 'Retail', promotionsAt(PROMOTION_TEST_AT)))
         ->toBe(100000);
 });
 
 it('discountFor es 0 si la promoción no está activa', function (): void {
     $promotion = promotionsCreate(PromotionType::PercentageOff, 1000);
 
-    expect($promotion->discountFor(100000, 'Retail', promotionsAt('2026-10-29T12:00:00+00:00')))
+    expect($promotion->discountFor(100000, 'Retail', promotionsAt(PROMOTION_TEST_AT)))
         ->toBe(0);
 });
 
@@ -156,7 +160,7 @@ it('discountFor es 0 fuera de la ventana de fechas', function (): void {
     $promotion->activate();
 
     // Antes del inicio.
-    expect($promotion->discountFor(100000, 'Retail', promotionsAt('2026-10-29T12:00:00+00:00')))
+    expect($promotion->discountFor(100000, 'Retail', promotionsAt(PROMOTION_TEST_AT)))
         ->toBe(0);
     // Dentro de la ventana.
     expect($promotion->discountFor(100000, 'Retail', promotionsAt('2026-11-10T12:00:00+00:00')))
@@ -172,9 +176,9 @@ it('discountFor es 0 para otro canal', function (): void {
     );
     $promotion->activate();
 
-    expect($promotion->discountFor(100000, 'Retail', promotionsAt('2026-10-29T12:00:00+00:00')))
+    expect($promotion->discountFor(100000, 'Retail', promotionsAt(PROMOTION_TEST_AT)))
         ->toBe(0);
-    expect($promotion->discountFor(100000, 'B2B', promotionsAt('2026-10-29T12:00:00+00:00')))
+    expect($promotion->discountFor(100000, 'B2B', promotionsAt(PROMOTION_TEST_AT)))
         ->toBe(10000);
 });
 
@@ -187,9 +191,9 @@ it('discountFor es 0 si no se alcanza el subtotal mínimo', function (): void {
     );
     $promotion->activate();
 
-    expect($promotion->discountFor(40000, 'Retail', promotionsAt('2026-10-29T12:00:00+00:00')))
+    expect($promotion->discountFor(40000, 'Retail', promotionsAt(PROMOTION_TEST_AT)))
         ->toBe(0);
-    expect($promotion->discountFor(60000, 'Retail', promotionsAt('2026-10-29T12:00:00+00:00')))
+    expect($promotion->discountFor(60000, 'Retail', promotionsAt(PROMOTION_TEST_AT)))
         ->toBe(6000);
 });
 
@@ -198,6 +202,6 @@ it('free shipping no descuenta productos pero se marca como tal', function (): v
     $promotion->activate();
 
     expect($promotion->isFreeShipping())->toBeTrue()
-        ->and($promotion->discountFor(100000, 'Retail', promotionsAt('2026-10-29T12:00:00+00:00')))
+        ->and($promotion->discountFor(100000, 'Retail', promotionsAt(PROMOTION_TEST_AT)))
         ->toBe(0);
 });

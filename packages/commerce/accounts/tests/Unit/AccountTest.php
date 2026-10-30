@@ -14,6 +14,10 @@ use Commerce\Accounts\Domain\ValueObject\AccountType;
 use Commerce\Accounts\Domain\ValueObject\Address;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
+// Literales de dirección reutilizados; nombres únicos para evitar colisión global entre tests Pest.
+const ACCOUNT_STREET = 'Calle 1';
+const ACCOUNT_CITY = 'La Paz';
+
 function accountsRegisterPerson(): Account
 {
     return Account::register(
@@ -66,8 +70,8 @@ it('addAddress con isDefault desmarca a las demás', function (): void {
     $account = accountsRegisterPerson();
     $account->releaseEvents();
 
-    $account->addAddress(Address::of('Casa', 'Juan', 'Calle 1', null, 'La Paz', null, null, true));
-    $account->addAddress(Address::of('Oficina', 'Juan', 'Calle 2', null, 'La Paz', null, null, true));
+    $account->addAddress(Address::of('Casa', 'Juan', ACCOUNT_STREET, null, ACCOUNT_CITY, null, null, true));
+    $account->addAddress(Address::of('Oficina', 'Juan', 'Calle 2', null, ACCOUNT_CITY, null, null, true));
 
     $addresses = $account->addresses();
     expect($addresses)->toHaveCount(2)
@@ -82,9 +86,9 @@ it('addAddress con isDefault desmarca a las demás', function (): void {
 
 it('addAddress rechaza etiqueta duplicada', function (): void {
     $account = accountsRegisterPerson();
-    $account->addAddress(Address::of('Casa', 'Juan', 'Calle 1', null, 'La Paz', null, null));
+    $account->addAddress(Address::of('Casa', 'Juan', ACCOUNT_STREET, null, ACCOUNT_CITY, null, null));
 
-    expect(fn () => $account->addAddress(Address::of('Casa', 'Juan', 'Calle 9', null, 'La Paz', null, null)))
+    expect(fn () => $account->addAddress(Address::of('Casa', 'Juan', 'Calle 9', null, ACCOUNT_CITY, null, null)))
         ->toThrow(AccountsException::class);
 
     expect($account->addresses())->toHaveCount(1);
@@ -92,7 +96,7 @@ it('addAddress rechaza etiqueta duplicada', function (): void {
 
 it('removeAddress quita por etiqueta y es idempotente', function (): void {
     $account = accountsRegisterPerson();
-    $account->addAddress(Address::of('Casa', 'Juan', 'Calle 1', null, 'La Paz', null, null));
+    $account->addAddress(Address::of('Casa', 'Juan', ACCOUNT_STREET, null, ACCOUNT_CITY, null, null));
     $account->releaseEvents();
 
     $account->removeAddress('Casa');

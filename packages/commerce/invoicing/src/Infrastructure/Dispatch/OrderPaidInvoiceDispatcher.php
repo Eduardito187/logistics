@@ -47,15 +47,13 @@ final readonly class OrderPaidInvoiceDispatcher implements MessageDispatcher
             return;
         }
 
-        if ($order === null) {
+        // Combina los guards de orden inexistente y de líneas vacías en un solo retorno (≤3 returns).
+        $lines = $order === null ? [] : $this->mapLines($this->decode($this->rawValue($order, 'lines')));
+        if ($order === null || $lines === []) {
             return;
         }
 
         $shipTo = $this->decode($this->rawValue($order, 'ship_to'));
-        $lines = $this->mapLines($this->decode($this->rawValue($order, 'lines')));
-        if ($lines === []) {
-            return;
-        }
 
         $this->commandBus->dispatch(new IssueInvoiceForOrder(
             orderId: $orderId,

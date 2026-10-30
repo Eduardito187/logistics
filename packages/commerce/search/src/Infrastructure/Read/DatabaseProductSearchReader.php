@@ -152,18 +152,12 @@ final class DatabaseProductSearchReader implements ProductSearchReader
             return null;
         }
 
+        // Base64/JSON inválidos degradan a un decode no-arreglo; los nombres/ids se validan en un solo
+        // guard, de modo que el método mantiene ≤3 returns sin cambiar el resultado.
         $json = base64_decode($cursor, true);
-        if ($json === false) {
-            return null;
-        }
-
-        $decoded = json_decode($json, true);
-        if (!is_array($decoded)) {
-            return null;
-        }
-
-        $name = $decoded['n'] ?? null;
-        $id = $decoded['i'] ?? null;
+        $decoded = $json === false ? [] : json_decode($json, true);
+        $name = is_array($decoded) ? ($decoded['n'] ?? null) : null;
+        $id = is_array($decoded) ? ($decoded['i'] ?? null) : null;
         if (!is_string($name) || !is_string($id)) {
             return null;
         }

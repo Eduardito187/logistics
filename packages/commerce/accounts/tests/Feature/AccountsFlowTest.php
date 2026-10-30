@@ -11,6 +11,9 @@ use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
+// Nombre del titular reutilizado en el circuito; nombre único para evitar colisión global entre tests Pest.
+const ACCOUNTS_FLOW_HOLDER = 'Juan Pérez';
+
 /**
  * Circuito de cuentas contra PostgreSQL real (logistics_test, RefreshDatabase): registrar una cuenta,
  * agregarle dos direcciones y consultarla por las queries. Atraviesa CommandBus → handler → repositorio
@@ -27,14 +30,14 @@ beforeEach(function (): void {
 it('registra una cuenta, agrega dos direcciones y la consulta', function (): void {
     $userId = Uuid::generate()->value;
 
-    $this->commands->dispatch(new RegisterAccount('person', $userId, 'Juan Pérez'));
+    $this->commands->dispatch(new RegisterAccount('person', $userId, ACCOUNTS_FLOW_HOLDER));
 
     $accounts = $this->queries->ask(new ListAccounts('person'));
     expect($accounts)->toHaveCount(1);
     $accountId = $accounts[0]->id;
 
-    $this->commands->dispatch(new AddAddress($accountId, 'Casa', 'Juan Pérez', 'Av. Siempre Viva 123', 'La Paz', isDefault: true));
-    $this->commands->dispatch(new AddAddress($accountId, 'Oficina', 'Juan Pérez', 'Calle Comercio 50', 'La Paz', isDefault: true));
+    $this->commands->dispatch(new AddAddress($accountId, 'Casa', ACCOUNTS_FLOW_HOLDER, 'Av. Siempre Viva 123', 'La Paz', isDefault: true));
+    $this->commands->dispatch(new AddAddress($accountId, 'Oficina', ACCOUNTS_FLOW_HOLDER, 'Calle Comercio 50', 'La Paz', isDefault: true));
 
     $view = $this->queries->ask(new GetAccount($accountId));
     expect($view)->not->toBeNull()

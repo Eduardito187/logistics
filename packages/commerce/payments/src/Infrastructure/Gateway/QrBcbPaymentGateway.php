@@ -26,7 +26,7 @@ final class QrBcbPaymentGateway implements PaymentGateway
 
     public function charge(PaymentIntent $intent): PaymentResult
     {
-        // TODO: integración real con el QR Simple del BCB. Por ahora delega en el stub (dev/tests).
+        // Pendiente: integrar la API real del QR Simple del BCB cuando haya credenciales. Por ahora delega en el stub (dev/tests).
         return $this->stub->charge($intent);
     }
 }

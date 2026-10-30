@@ -281,6 +281,10 @@ final class Promotion extends AggregateRoot
                     throw PromotionsException::because('El envío gratis no lleva valor (debe ser 0).');
                 }
                 break;
+            default:
+                // Inalcanzable: PromotionType es un enum cerrado y los tres casos ya están cubiertos.
+                // Si se agrega un tipo nuevo sin tratarlo aquí, esto lo delata de inmediato.
+                throw PromotionsException::because('Tipo de promoción inesperado: '.$type->value.'.');
         }
     }
 }

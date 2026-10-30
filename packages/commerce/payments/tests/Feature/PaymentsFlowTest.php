@@ -93,7 +93,8 @@ it('captura por el handler y deja el pago en captured con el hecho payments.capt
 
 it('capturar dos veces es idempotente (un solo pago capturado)', function (): void {
     $orderId = Uuid::generate()->value;
-    $id = paymentsInitiateViaBus($this->commands, $orderId);
+    // Inicia el pago (efecto necesario); el id no se usa en este test de idempotencia.
+    paymentsInitiateViaBus($this->commands, $orderId);
 
     $this->commands->dispatch(new CapturePayment(gatewayRef: 'GW-DUP', orderId: $orderId));
     $this->commands->dispatch(new CapturePayment(gatewayRef: 'GW-DUP', orderId: $orderId));

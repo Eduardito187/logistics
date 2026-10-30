@@ -18,6 +18,9 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final class PromotionsDemoSeeder extends Seeder
 {
+    /** Nombre (clave natural) de la promoción automática de envío gratis. */
+    private const FREE_SHIPPING_NAME = 'Envío gratis sobre Bs 500';
+
     public function run(): void
     {
         /** @var CommandBus $bus */
@@ -38,16 +41,16 @@ final class PromotionsDemoSeeder extends Seeder
         }
 
         // Promoción automática: envío gratis a partir de Bs 500 (50000 centavos), activa, sin código.
-        if (!PromotionRecord::query()->whereNull('code')->where('name', 'Envío gratis sobre Bs 500')->exists()) {
+        if (!PromotionRecord::query()->whereNull('code')->where('name', self::FREE_SHIPPING_NAME)->exists()) {
             $bus->dispatch(new CreatePromotion(
-                name: 'Envío gratis sobre Bs 500',
+                name: self::FREE_SHIPPING_NAME,
                 type: 'free_shipping',
                 value: 0,
                 minSubtotalCents: 50000,
             ));
             $record = PromotionRecord::query()
                 ->whereNull('code')
-                ->where('name', 'Envío gratis sobre Bs 500')
+                ->where('name', self::FREE_SHIPPING_NAME)
                 ->first();
             if ($record instanceof PromotionRecord) {
                 $bus->dispatch(new ActivatePromotion($record->id));

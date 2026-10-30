@@ -158,7 +158,10 @@ WORKDIR /app
 # Capa de dependencias cacheable: solo se reinstala si cambian los manifiestos.
 COPY package.json package-lock.json ./
 # Cache mount de npm: reusa los paquetes descargados entre builds (persistido por gha cache mode=max).
-RUN --mount=type=cache,target=/root/.npm npm ci
+# --ignore-scripts: NO ejecuta lifecycle scripts de las dependencias en la instalación (defensa de
+# cadena de suministro; SonarCloud lo exige). Es seguro acá: esbuild (vía Vite) trae su binario por
+# plataforma como dependencia OPCIONAL (@esbuild/*), no por postinstall, así que `npm run build` funciona.
+RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 
 # Fuente necesaria para `vite build` (resources/, vite.config.js, etc.).
 COPY . .

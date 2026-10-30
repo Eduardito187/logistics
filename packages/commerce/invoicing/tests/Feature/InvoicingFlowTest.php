@@ -96,7 +96,8 @@ it('es idempotente por orden: emitir dos veces no crea una segunda factura', fun
 });
 
 it('lista y filtra por estado', function (): void {
-    [, $id] = invoicingIssueViaBus($this->commands);
+    // Emite una factura (efecto necesario); el id no se usa en este test de listado/filtro.
+    invoicingIssueViaBus($this->commands);
 
     /** @var list<InvoiceView> $issued */
     $issued = $this->queries->ask(new ListInvoices(status: 'issued'));
