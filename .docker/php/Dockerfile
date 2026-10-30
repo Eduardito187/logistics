@@ -139,8 +139,11 @@ USER logistics
 # (packages/logistics/*): sin esas carpetas, `composer install` falla al resolverlos.
 COPY --chown=${UID}:${GID} . /var/www/html
 
-RUN composer install --no-dev --no-interaction --prefer-dist --no-progress --no-scripts \
-    && composer clear-cache
+# Cache mount de Composer: reusa los tarballs descargados entre builds (se persiste con
+# `cache-to: gha,mode=max` del job `image`). NO se hace `composer clear-cache`: la caché vive en el
+# mount, no en la capa de la imagen, así que no la infla y borrarla solo desperdiciaría la reutilización.
+RUN --mount=type=cache,target=/home/logistics/.composer/cache,uid=1000,gid=1000 \
+    composer install --no-dev --no-interaction --prefer-dist --no-progress --no-scripts
 
 # ============================================================
 # Assets stage — compila el tema Filament y los assets con Vite
@@ -154,7 +157,8 @@ WORKDIR /app
 
 # Capa de dependencias cacheable: solo se reinstala si cambian los manifiestos.
 COPY package.json package-lock.json ./
-RUN npm ci
+# Cache mount de npm: reusa los paquetes descargados entre builds (persistido por gha cache mode=max).
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Fuente necesaria para `vite build` (resources/, vite.config.js, etc.).
 COPY . .
@@ -205,9 +209,9 @@ COPY --chown=${UID}:${GID} . /var/www/html
 USER logistics
 
 # Dependencias de producción, autoloader autoritativo (sin escaneo de FS en runtime).
-RUN composer install --no-dev --no-interaction --prefer-dist --no-progress \
-        --optimize-autoloader --classmap-authoritative --no-scripts \
-    && composer clear-cache
+RUN --mount=type=cache,target=/home/logistics/.composer/cache,uid=1000,gid=1000 \
+    composer install --no-dev --no-interaction --prefer-dist --no-progress \
+        --optimize-autoloader --classmap-authoritative --no-scripts
 
 # Assets compilados por Vite (tema Filament + app) desde el stage `assets`, y los
 # assets propios de Filament/Livewire publicados a public/ (vendor/filament, etc.).
