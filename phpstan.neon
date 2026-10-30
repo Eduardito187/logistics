@@ -5,6 +5,7 @@ parameters:
     paths:
         - app
         - packages/logistics
+        - packages/commerce
         - database/factories
         - database/seeders
 
@@ -45,6 +46,20 @@ parameters:
         -
             identifier: return.type
             path: packages/logistics/*/src/Infrastructure/Persistence/Eloquent/*
+
+        # Familia commerce (ADR 018): mismos casos que logistics.
+        -
+            identifier: method.childReturnType
+            path: packages/commerce/*/database/factories/*
+        -
+            identifier: method.childReturnType
+            path: packages/commerce/*/src/Infrastructure/Persistence/Eloquent/Factory/*
+        -
+            identifier: return.type
+            path: packages/commerce/*/src/Infrastructure/Persistence/Eloquent/*
+        -
+            identifier: larastan.noEnvCallsOutsideOfConfig
+            path: packages/commerce/*/config/*.php
 
         # El @var del handler resuelto por el bus no fija el genérico T (se despacha por el registry).
         -

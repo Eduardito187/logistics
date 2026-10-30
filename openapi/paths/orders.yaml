@@ -1,0 +1,211 @@
+# Fragmento OpenAPI del contexto commerce/orders (checkout + OMS — storefront B2C, ADR 018 / EC-F0-06).
+#
+# Paths y schemas para fusionar en openapi/v1.yaml. Schemas con prefijo `Commerce`. Puerta: /channels.
+# El checkout es asíncrono: PlaceOrder va por comando + outbox (emite orders.order_placed; pago y
+# fulfillment ocurren después), así que POST /orders responde 202 de acuse. La orden se consulta por GET.
+
+paths:
+  /channels/orders:
+    post:
+      tags: [orders]
+      operationId: placeOrder
+      summary: Place an order (checkout)
+      description: >-
+        Creates a commercial order from the checkout snapshot (lines with frozen unit price in cents and
+        the delivery address). Asynchronous: the command is persisted transactionally and its events go
+        through the outbox (payment and fulfillment happen afterwards), so the response is a 202
+        acknowledgement without the generated order id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercePlaceOrderRequest'
+      responses:
+        '202':
+          description: Checkout accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceCheckoutAccepted'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+  /channels/orders/{order}:
+    get:
+      tags: [orders]
+      operationId: getOrder
+      summary: Get an order by id
+      parameters:
+      - name: order
+        in: path
+        required: true
+        description: Order id.
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceOrder'
+        '404':
+          description: No order found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/checkout:
+    post:
+      tags: [orders]
+      operationId: checkout
+      summary: Place an order from an existing cart (checkout)
+      description: >-
+        Creates the order from a cart snapshot (lines and frozen price come from the cart, not the body)
+        plus the delivery address. Asynchronous (202); the cart is marked converted via the outbox.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceCheckoutRequest'
+      responses:
+        '202':
+          description: Checkout accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+components:
+  schemas:
+    CommerceCheckoutRequest:
+      type: object
+      required: [cart_id, ship_to]
+      properties:
+        cart_id:
+          type: string
+          format: uuid
+        ship_to:
+          $ref: '#/components/schemas/CommerceShipTo'
+    CommerceShipTo:
+      type: object
+      required: [customer_name, address_text]
+      properties:
+        customer_name:
+          type: string
+          maxLength: 255
+        address_text:
+          type: string
+          maxLength: 1000
+        reference:
+          type: [string, 'null']
+          maxLength: 1000
+        phone:
+          type: [string, 'null']
+          maxLength: 40
+        email:
+          type: [string, 'null']
+          format: email
+          maxLength: 180
+    CommerceOrderLine:
+      type: object
+      required: [sku, product_name, unit_price_cents, quantity]
+      properties:
+        sku:
+          type: string
+          maxLength: 255
+        product_name:
+          type: string
+          maxLength: 255
+        unit_price_cents:
+          type: integer
+          minimum: 0
+        quantity:
+          type: integer
+          minimum: 1
+    CommercePlaceOrderRequest:
+      type: object
+      required: [ship_to, lines]
+      properties:
+        customer_id:
+          type: [string, 'null']
+          format: uuid
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 code; defaults to BOB when omitted.
+        ship_to:
+          $ref: '#/components/schemas/CommerceShipTo'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CommerceOrderLine'
+    CommerceCheckoutAccepted:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+        customer_name:
+          type: string
+        currency:
+          type: string
+    CommerceOrder:
+      type: object
+      required: [id, status, currency, total_cents, shipment_requested, ship_to, lines]
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: [string, 'null']
+          format: uuid
+        status:
+          type: string
+          description: Order status (e.g. pending, paid, fulfilling, cancelled).
+        currency:
+          type: string
+        total_cents:
+          type: integer
+        shipment_requested:
+          type: boolean
+        ship_to:
+          $ref: '#/components/schemas/CommerceShipTo'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceOrderLine'

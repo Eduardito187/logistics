@@ -1,0 +1,216 @@
+# Fragmento OpenAPI del contexto commerce/catalog (catálogo / PIM — storefront B2C, ADR 018 / EC-F0-02).
+#
+# NO es un documento OpenAPI completo: son los paths y schemas de este contexto, para que el integrador
+# los una a openapi/v1.yaml (bajo `paths:` y `components.schemas:`). Los schemas van con prefijo `Commerce`
+# para no colisionar con los de logística. Puerta: /channels (lectura pública del storefront).
+
+paths:
+  /channels/catalog/products:
+    get:
+      tags: [catalog]
+      operationId: listCatalogProducts
+      summary: List catalog products (storefront browse)
+      description: >-
+        Returns the catalog products for the storefront. Optional filter by publication `status` and
+        optional additive pagination (E-02): without any pagination parameter the full collection is
+        returned with no `meta`.
+      parameters:
+      - name: status
+        in: query
+        required: false
+        description: Filter by publication status.
+        schema:
+          type: string
+          enum: [draft, published, archived]
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Product collection (with pagination meta only when requested)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommerceProduct'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
+        '422':
+          description: Validation error in the query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+  /channels/catalog/products/{id}:
+    get:
+      tags: [catalog]
+      operationId: getCatalogProduct
+      summary: Get a catalog product by id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Product id.
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The product
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceProduct'
+        '404':
+          description: No product found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/catalog/categories:
+    get:
+      tags: [catalog]
+      operationId: listCatalogCategories
+      summary: List catalog categories
+      responses:
+        '200':
+          description: Category collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommerceCategory'
+      security:
+      - channelApiKey: []
+
+  /channels/catalog/products/{id}/availability:
+    get:
+      tags: [catalog]
+      operationId: getCatalogProductAvailability
+      summary: Available-to-promise quantity of a product (read from inventory)
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Availability for the product's canonical SKU
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [canonical_sku, available]
+                    properties:
+                      canonical_sku:
+                        type: string
+                      available:
+                        type: integer
+                        minimum: 0
+        '404':
+          description: No product found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+components:
+  schemas:
+    CommerceProduct:
+      type: object
+      required: [id, name, canonical_sku, status, variants, media]
+      properties:
+        id:
+          type: string
+          format: uuid
+        seller_id:
+          type: [string, 'null']
+          format: uuid
+          description: Owning seller (null = Dismac-owned/retail, ADR 017).
+        category_id:
+          type: [string, 'null']
+          format: uuid
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        canonical_sku:
+          type: string
+          description: Canonical SKU; the 1:1 bridge to inventory (ATP).
+        status:
+          type: string
+          enum: [draft, published, archived]
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceProductVariant'
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceProductMedia'
+    CommerceProductVariant:
+      type: object
+      required: [sku, name, attributes]
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    CommerceProductMedia:
+      type: object
+      required: [path, alt, position]
+      properties:
+        path:
+          type: string
+        alt:
+          type: string
+        position:
+          type: integer
+    CommerceCategory:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        parent_id:
+          type: [string, 'null']
+          format: uuid

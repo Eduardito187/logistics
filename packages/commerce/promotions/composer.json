@@ -1,0 +1,26 @@
+{
+    "name": "commerce/promotions",
+    "description": "Motor de promociones / cupones de comercio (descuentos por canal, condiciones, versionado) — plataforma Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Commerce\\Promotions\\": "src/",
+            "Commerce\\Promotions\\Database\\Factories\\": "database/factories/",
+            "Commerce\\Promotions\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Commerce\\Promotions\\Infrastructure\\Providers\\PromotionsServiceProvider"
+            ]
+        }
+    }
+}

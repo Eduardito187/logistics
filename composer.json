@@ -20,6 +20,15 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.0",
+        "commerce/accounts": "^0.1",
+        "commerce/cart": "^0.1",
+        "commerce/catalog": "^0.1",
+        "commerce/invoicing": "^0.1",
+        "commerce/orders": "^0.1",
+        "commerce/payments": "^0.1",
+        "commerce/pricing": "^0.1",
+        "commerce/promotions": "^0.1",
+        "commerce/search": "^0.1",
         "logistics/access": "^0.1",
         "logistics/capacity": "^0.1",
         "logistics/carriers": "^0.1",
@@ -67,6 +76,13 @@
             "options": {
                 "symlink": true
             }
+        },
+        {
+            "type": "path",
+            "url": "packages/commerce/*",
+            "options": {
+                "symlink": true
+            }
         }
     ],
     "autoload": {
@@ -74,6 +90,15 @@
             "App\\": "app/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/",
+            "Commerce\\Accounts\\Database\\Factories\\": "packages/commerce/accounts/database/factories/",
+            "Commerce\\Cart\\Database\\Factories\\": "packages/commerce/cart/database/factories/",
+            "Commerce\\Catalog\\Database\\Factories\\": "packages/commerce/catalog/database/factories/",
+            "Commerce\\Catalog\\Database\\Seeders\\": "packages/commerce/catalog/database/seeders/",
+            "Commerce\\Orders\\Database\\Factories\\": "packages/commerce/orders/database/factories/",
+            "Commerce\\Promotions\\Database\\Factories\\": "packages/commerce/promotions/database/factories/",
+            "Commerce\\Promotions\\Database\\Seeders\\": "packages/commerce/promotions/database/seeders/",
+            "Commerce\\Pricing\\Database\\Factories\\": "packages/commerce/pricing/database/factories/",
+            "Commerce\\Pricing\\Database\\Seeders\\": "packages/commerce/pricing/database/seeders/",
             "Logistics\\Capacity\\Database\\Seeders\\": "packages/logistics/capacity/database/seeders/",
             "Logistics\\Execution\\Database\\Seeders\\": "packages/logistics/execution/database/seeders/",
             "Logistics\\Fleet\\Database\\Seeders\\": "packages/logistics/fleet/database/seeders/",
@@ -105,6 +130,15 @@
     "autoload-dev": {
         "psr-4": {
             "Tests\\": "tests/",
+            "Commerce\\Accounts\\Tests\\": "packages/commerce/accounts/tests/",
+            "Commerce\\Cart\\Tests\\": "packages/commerce/cart/tests/",
+            "Commerce\\Catalog\\Tests\\": "packages/commerce/catalog/tests/",
+            "Commerce\\Invoicing\\Tests\\": "packages/commerce/invoicing/tests/",
+            "Commerce\\Orders\\Tests\\": "packages/commerce/orders/tests/",
+            "Commerce\\Promotions\\Tests\\": "packages/commerce/promotions/tests/",
+            "Commerce\\Payments\\Tests\\": "packages/commerce/payments/tests/",
+            "Commerce\\Pricing\\Tests\\": "packages/commerce/pricing/tests/",
+            "Commerce\\Search\\Tests\\": "packages/commerce/search/tests/",
             "Logistics\\Coverage\\Tests\\": "packages/logistics/coverage/tests/",
             "Logistics\\Execution\\Tests\\": "packages/logistics/execution/tests/",
             "Logistics\\Fleet\\Tests\\": "packages/logistics/fleet/tests/",
@@ -153,6 +187,15 @@
     "extra": {
         "laravel": {
             "dont-discover": [
+                "commerce/accounts",
+                "commerce/cart",
+                "commerce/catalog",
+                "commerce/invoicing",
+                "commerce/orders",
+                "commerce/payments",
+                "commerce/pricing",
+                "commerce/promotions",
+                "commerce/search",
                 "logistics/access",
                 "logistics/capacity",
                 "logistics/carriers",

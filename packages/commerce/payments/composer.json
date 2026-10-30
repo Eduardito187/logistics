@@ -1,0 +1,24 @@
+{
+    "name": "commerce/payments",
+    "description": "Pagos (EC-F0-07) — frente comercial de la plataforma Dismac (ADR 018)",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Commerce\\Payments\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Commerce\\Payments\\Infrastructure\\Providers\\PaymentsServiceProvider"
+            ]
+        }
+    }
+}
