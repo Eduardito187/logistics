@@ -68,23 +68,37 @@ final readonly class DbCartSnapshotReader implements CartSnapshotReader
 
         $lines = [];
         foreach ($decoded as $line) {
-            if (!is_array($line)) {
-                continue;
+            $mapped = $this->mapLine($line);
+            if ($mapped !== null) {
+                $lines[] = $mapped;
             }
-            $sku = isset($line['sku']) ? (string) $line['sku'] : '';
-            $name = isset($line['product_name']) ? (string) $line['product_name'] : '';
-            if ($sku === '' || $name === '') {
-                continue;
-            }
-
-            $lines[] = [
-                'sku' => $sku,
-                'product_name' => $name,
-                'unit_price_cents' => isset($line['unit_price_cents']) ? (int) $line['unit_price_cents'] : 0,
-                'quantity' => isset($line['qty']) ? (int) $line['qty'] : 0,
-            ];
         }
 
         return $lines;
+    }
+
+    /**
+     * Mapea una línea cruda del carrito a la forma que consume `orders`, o null si está malformada
+     * (sin sku/nombre o no es un arreglo). El precio viaja congelado del carrito.
+     *
+     * @return array{sku: string, product_name: string, unit_price_cents: int, quantity: int}|null
+     */
+    private function mapLine(mixed $line): ?array
+    {
+        if (!is_array($line)) {
+            return null;
+        }
+        $sku = isset($line['sku']) ? (string) $line['sku'] : '';
+        $name = isset($line['product_name']) ? (string) $line['product_name'] : '';
+        if ($sku === '' || $name === '') {
+            return null;
+        }
+
+        return [
+            'sku' => $sku,
+            'product_name' => $name,
+            'unit_price_cents' => isset($line['unit_price_cents']) ? (int) $line['unit_price_cents'] : 0,
+            'quantity' => isset($line['qty']) ? (int) $line['qty'] : 0,
+        ];
     }
 }

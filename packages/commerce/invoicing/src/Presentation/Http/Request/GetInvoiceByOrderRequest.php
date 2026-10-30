@@ -34,7 +34,7 @@ final class GetInvoiceByOrderRequest extends FormRequest
      *
      * @return array<string, mixed>
      */
-    protected function validationData(): array
+    public function validationData(): array
     {
         return array_merge(['orderId' => $this->route('orderId')], parent::validationData());
     }
@@ -44,9 +44,6 @@ final class GetInvoiceByOrderRequest extends FormRequest
      */
     public function orderId(): string
     {
-        /** @var string $orderId */
-        $orderId = $this->validated()['orderId'];
-
-        return $orderId;
+        return (string) $this->validated()['orderId'];
     }
 }

@@ -145,15 +145,15 @@
         <table class="totals">
             <tbody>
                 <tr>
-                    <td class="label">Subtotal neto</td>
+                    <th scope="row" class="label">Subtotal neto</th>
                     <td class="num">{{ $money($invoice['net_cents']) }} {{ $currency }}</td>
                 </tr>
                 <tr>
-                    <td class="label">IVA (13 %)</td>
+                    <th scope="row" class="label">IVA (13 %)</th>
                     <td class="num">{{ $money($invoice['iva_cents']) }} {{ $currency }}</td>
                 </tr>
                 <tr class="grand">
-                    <td>Total</td>
+                    <th scope="row">Total</th>
                     <td class="num">{{ $money($invoice['total_cents']) }} {{ $currency }}</td>
                 </tr>
             </tbody>

@@ -48,17 +48,14 @@ final class DatabaseProductSearchReader implements ProductSearchReader
                 return $this->searchByRank($criteria);
             }
 
-            // Caminos 2–4: orden estable por `(name, id)` con, cuando hay término sin FTS, filtro ILIKE.
-            if ($projection) {
-                $likeTerm = (!$this->isPostgres() && $criteria->hasTerm()) ? $criteria->term : null;
+            // Caminos 2–4 unificados (≤3 returns): orden estable por `(name, id)` sobre la proyección si
+            // existe, o el catálogo como fallback seguro si aún no se indexó. El filtro ILIKE solo se usa
+            // cuando hay término pero NO hay FTS (proyección ausente o motor no-PostgreSQL).
+            $table = $projection ? self::PROJECTION : self::SOURCE;
+            $idColumn = $projection ? 'product_id' : 'id';
+            $useLike = $criteria->hasTerm() && (!$projection || !$this->isPostgres());
 
-                return $this->searchByName($criteria, self::PROJECTION, 'product_id', $likeTerm);
-            }
-
-            // Fallback: la proyección aún no existe → ILIKE sobre el catálogo (degradado seguro).
-            $likeTerm = $criteria->hasTerm() ? $criteria->term : null;
-
-            return $this->searchByName($criteria, self::SOURCE, 'id', $likeTerm);
+            return $this->searchByName($criteria, $table, $idColumn, $useLike ? $criteria->term : null);
         } catch (Throwable) {
             // Fuente inexistente o caída: degradar a página vacía en vez de romper el endpoint.
             return new SearchPage([], null, null);

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Commerce\Catalog\Infrastructure\ReadModel;
 
 use Commerce\Catalog\Application\Contract\ProductAvailabilityReader;
-use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\Connection;
 
 /**
  * Lee la disponibilidad (available-to-promise) desde la tabla `inventory_lots` del contexto `inventory`,
@@ -25,7 +25,7 @@ final readonly class InventoryProductAvailabilityReader implements ProductAvaila
     private const LOTS_TABLE = 'inventory_lots';
 
     public function __construct(
-        private ConnectionInterface $connection,
+        private Connection $connection,
     ) {}
 
     public function availableForSku(string $canonicalSku): int
