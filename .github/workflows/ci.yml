@@ -27,20 +27,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 (2.40.0)
+      - name: PHP + deps (cacheado)
+        uses: ./.github/actions/php-deps
         with:
           php-version: ${{ env.PHP_VERSION }}
-          extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
-          tools: composer:v2
-          coverage: none
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.composer/cache
-          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
-
-      - run: composer install --no-interaction --no-progress --prefer-dist
 
       # Pint --test: falla si algún archivo no cumple el estilo (no corrige).
       - name: Pint
@@ -91,24 +81,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 (2.40.0)
+      - name: PHP + deps (cacheado)
+        uses: ./.github/actions/php-deps
         with:
           php-version: ${{ env.PHP_VERSION }}
-          extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
-          tools: composer:v2
           coverage: pcov
           # pcov solo instrumenta los archivos bajo pcov.directory. Sin fijarla, pcov la autodetecta a una
           # subcarpeta (p.ej. app/) y deja TODO packages/logistics/*/src en 0% → la cobertura caía a ~5%.
           # Se fija al root del checkout para cubrir app/ Y los packages, igual que los containers.
           ini-values: pcov.directory=${{ github.workspace }}
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.composer/cache
-          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
-
-      - run: composer install --no-interaction --no-progress --prefer-dist
 
       - name: Prepare environment
         run: |
@@ -133,21 +114,10 @@ jobs:
 
       # Sólo se necesita PHP/Composer para traer vendor/filament: el tema de Filament hace
       # `@import` de vendor/filament/filament/resources/css/theme.css y Tailwind escanea sus vistas.
-      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 (2.40.0)
+      - name: PHP + deps (cacheado)
+        uses: ./.github/actions/php-deps
         with:
           php-version: ${{ env.PHP_VERSION }}
-          extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
-          tools: composer:v2
-          coverage: none
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.composer/cache
-          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
-
-      - name: Install PHP deps (vendor/filament para el tema)
-        run: composer install --no-interaction --no-progress --prefer-dist
 
       - uses: actions/setup-node@v4
         with:

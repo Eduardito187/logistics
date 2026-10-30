@@ -1,0 +1,26 @@
+{
+    "name": "commerce/accounts",
+    "description": "Cuentas / identidad comercial de comercio (tipo de cuenta, direcciones, estado) — plataforma Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Commerce\\Accounts\\": "src/",
+            "Commerce\\Accounts\\Database\\Factories\\": "database/factories/",
+            "Commerce\\Accounts\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Commerce\\Accounts\\Infrastructure\\Providers\\AccountsServiceProvider"
+            ]
+        }
+    }
+}

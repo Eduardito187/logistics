@@ -1,0 +1,24 @@
+{
+    "name": "commerce/invoicing",
+    "description": "Facturación / documento fiscal (EC-F0-10) — frente comercial de la plataforma Dismac (ADR 018)",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Commerce\\Invoicing\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Commerce\\Invoicing\\Infrastructure\\Providers\\InvoicingServiceProvider"
+            ]
+        }
+    }
+}

@@ -30,6 +30,8 @@ tags:
   description: Third-party carriers, tariffs and rating
 - name: Sellers
   description: Marketplace sellers (onboarding, settlement terms, SKU catalog)
+- name: Payments
+  description: Commerce payments (gateway capture webhook, ADR 018)
 - name: Inbound
   description: Marketplace inbound (ASN announcement, dock scheduling, goods receipt, labeling)
 - name: Inventory
@@ -7412,6 +7414,48 @@ paths:
           $ref: '#/components/responses/DomainError'
       security:
       - serviceCredential: []
+  /integrations/payments/webhook:
+    post:
+      tags:
+      - Payments
+      summary: Payment gateway capture webhook (idempotent)
+      operationId: paymentsWebhook
+      description: |
+        La pasarela confirma el cobro de un pago (frente comercial, ADR 018 / EC-F0-07). Despacha la
+        captura por el CommandBus; es idempotente por el pago/orden, así que un reintento del proveedor
+        no duplica la captura. Identifica el pago por payment_id o por order_id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - gateway_ref
+              properties:
+                payment_id:
+                  type: string
+                  format: uuid
+                  description: Id del pago (alternativo a order_id).
+                order_id:
+                  type: string
+                  format: uuid
+                  description: Id de la orden (alternativo a payment_id).
+                gateway_ref:
+                  type: string
+                  maxLength: 255
+                  description: Referencia del cobro en el proveedor.
+      responses:
+        '202':
+          description: Capture accepted (dispatched to the command bus; idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedEnvelope'
+        '422':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - serviceCredential: []
   /integrations/inbound/asn:
     post:
       tags:
@@ -8107,6 +8151,729 @@ paths:
           description: El token no concede sellerportal.read o no identifica a un seller
       security:
       - integrationToken: []
+
+  # ── commerce/catalog (ADR 018, Fase 0) ──
+  /channels/catalog/products:
+    get:
+      tags: [catalog]
+      operationId: listCatalogProducts
+      summary: List catalog products (storefront browse)
+      description: >-
+        Returns the catalog products for the storefront. Optional filter by publication `status` and
+        optional additive pagination (E-02): without any pagination parameter the full collection is
+        returned with no `meta`.
+      parameters:
+      - name: status
+        in: query
+        required: false
+        description: Filter by publication status.
+        schema:
+          type: string
+          enum: [draft, published, archived]
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Product collection (with pagination meta only when requested)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommerceProduct'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
+        '422':
+          description: Validation error in the query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+  /channels/catalog/products/{id}:
+    get:
+      tags: [catalog]
+      operationId: getCatalogProduct
+      summary: Get a catalog product by id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Product id.
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The product
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceProduct'
+        '404':
+          description: No product found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/catalog/categories:
+    get:
+      tags: [catalog]
+      operationId: listCatalogCategories
+      summary: List catalog categories
+      responses:
+        '200':
+          description: Category collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommerceCategory'
+      security:
+      - channelApiKey: []
+
+
+  # ── commerce/cart (ADR 018, Fase 0) ──
+  /channels/cart:
+    post:
+      tags: [cart]
+      operationId: openCart
+      summary: Open a cart for a session/customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceOpenCartRequest'
+      responses:
+        '201':
+          description: Cart opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '422':
+          description: Validation error in the payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+  /channels/cart/{cart}:
+    get:
+      tags: [cart]
+      operationId: getCart
+      summary: Get a cart by id
+      parameters:
+      - $ref: '#/components/parameters/CommerceCartId'
+      responses:
+        '200':
+          description: The cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '404':
+          description: Cart not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/cart/{cart}/items:
+    post:
+      tags: [cart]
+      operationId: addCartItem
+      summary: Add an item to the cart
+      parameters:
+      - $ref: '#/components/parameters/CommerceCartId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceAddItemRequest'
+      responses:
+        '200':
+          description: The updated cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '404':
+          description: Cart not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Validation or domain-rule error (e.g. no availability, cart not open)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/cart/{cart}/items/{sku}:
+    patch:
+      tags: [cart]
+      operationId: updateCartItemQty
+      summary: Update the quantity of a cart line (0 removes it)
+      parameters:
+      - $ref: '#/components/parameters/CommerceCartId'
+      - $ref: '#/components/parameters/CommerceCartSku'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceUpdateItemQtyRequest'
+      responses:
+        '200':
+          description: The updated cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '404':
+          description: Cart not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+    delete:
+      tags: [cart]
+      operationId: removeCartItem
+      summary: Remove a line from the cart
+      parameters:
+      - $ref: '#/components/parameters/CommerceCartId'
+      - $ref: '#/components/parameters/CommerceCartSku'
+      responses:
+        '200':
+          description: The updated cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '404':
+          description: Cart not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+
+  # ── commerce/orders (ADR 018, Fase 0) ──
+  /channels/orders:
+    post:
+      tags: [orders]
+      operationId: placeOrder
+      summary: Place an order (checkout)
+      description: >-
+        Creates a commercial order from the checkout snapshot (lines with frozen unit price in cents and
+        the delivery address). Asynchronous: the command is persisted transactionally and its events go
+        through the outbox (payment and fulfillment happen afterwards), so the response is a 202
+        acknowledgement without the generated order id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercePlaceOrderRequest'
+      responses:
+        '202':
+          description: Checkout accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceCheckoutAccepted'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+  /channels/orders/{order}:
+    get:
+      tags: [orders]
+      operationId: getOrder
+      summary: Get an order by id
+      parameters:
+      - name: order
+        in: path
+        required: true
+        description: Order id.
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceOrder'
+        '404':
+          description: No order found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+
+  # ── commerce/pricing (ADR 018, Fase 0) ──
+  /channels/pricing/price:
+    get:
+      tags: [pricing]
+      operationId: getPrice
+      summary: Resolve the current price of a SKU for a sales channel
+      parameters:
+      - name: sku
+        in: query
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+      - name: channel
+        in: query
+        required: false
+        description: Sales channel; defaults to retail (B2C storefront).
+        schema:
+          type: string
+          enum: [retail, b2b, c2c]
+          default: retail
+      responses:
+        '200':
+          description: The resolved price quote (net + taxes + gross)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommercePriceQuote'
+        '404':
+          description: No price found for the given SKU and channel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/pricing/prices:
+    get:
+      tags: [pricing]
+      operationId: listPrices
+      summary: List the prices of a price list
+      parameters:
+      - name: price_list_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Price collection (with pagination meta only when requested)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommercePriceView'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
+      security:
+      - channelApiKey: []
+
+  /integrations/pricing/price-lists:
+    get:
+      tags: [pricing]
+      operationId: listPriceLists
+      summary: List price lists
+      parameters:
+      - name: channel
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [retail, b2b, c2c]
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Price list collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommercePriceList'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
+      security:
+      - serviceCredential: []
+    post:
+      tags: [pricing]
+      operationId: createPriceList
+      summary: Create a price list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceCreatePriceListRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - serviceCredential: []
+
+  /integrations/pricing/price-lists/{id}/prices:
+    post:
+      tags: [pricing]
+      operationId: setPrice
+      summary: Set the price of a SKU in a price list
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceSetPriceRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+
+  /integrations/pricing/price-lists/{id}/activate:
+    post:
+      tags: [pricing]
+      operationId: activatePriceList
+      summary: Activate a price list
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+      security:
+      - serviceCredential: []
+
+  /integrations/pricing/price-lists/{id}/archive:
+    post:
+      tags: [pricing]
+      operationId: archivePriceList
+      summary: Archive a price list
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+      security:
+      - serviceCredential: []
+
+
+  # ── commerce/accounts (ADR 018, Fase 0) ──
+  /channels/accounts:
+    post:
+      tags: [accounts]
+      operationId: registerAccount
+      summary: Register a customer account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceRegisterAccountRequest'
+      responses:
+        '201':
+          description: Account created (read back by user)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '202':
+          description: Accepted (fallback when the account cannot be read back synchronously)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation error in the payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+  /channels/accounts/by-user/{userId}:
+    get:
+      tags: [accounts]
+      operationId: getAccountByUser
+      summary: Get the account of a user
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '404':
+          description: No account found for the given user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/accounts/{account}:
+    get:
+      tags: [accounts]
+      operationId: getAccount
+      summary: Get an account by id
+      parameters:
+      - $ref: '#/components/parameters/CommerceAccountId'
+      responses:
+        '200':
+          description: The account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/accounts/{account}/addresses:
+    post:
+      tags: [accounts]
+      operationId: addAccountAddress
+      summary: Add an address to an account
+      parameters:
+      - $ref: '#/components/parameters/CommerceAccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceAddAddressRequest'
+      responses:
+        '200':
+          description: The updated account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/accounts/{account}/addresses/{address}:
+    delete:
+      tags: [accounts]
+      operationId: removeAccountAddress
+      summary: Remove an address from an account (identified by its label)
+      parameters:
+      - $ref: '#/components/parameters/CommerceAccountId'
+      - name: address
+        in: path
+        required: true
+        description: The address label (the VO Address has no id).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The updated account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
 components:
   securitySchemes:
     appBearer:
@@ -14657,7 +15424,452 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SellerPortalSettlement'
+    CommerceProduct:
+      type: object
+      required: [id, name, canonical_sku, status, variants, media]
+      properties:
+        id:
+          type: string
+          format: uuid
+        seller_id:
+          type: [string, 'null']
+          format: uuid
+          description: Owning seller (null = Dismac-owned/retail, ADR 017).
+        category_id:
+          type: [string, 'null']
+          format: uuid
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        canonical_sku:
+          type: string
+          description: Canonical SKU; the 1:1 bridge to inventory (ATP).
+        status:
+          type: string
+          enum: [draft, published, archived]
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceProductVariant'
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceProductMedia'
+    CommerceProductVariant:
+      type: object
+      required: [sku, name, attributes]
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    CommerceProductMedia:
+      type: object
+      required: [path, alt, position]
+      properties:
+        path:
+          type: string
+        alt:
+          type: string
+        position:
+          type: integer
+    CommerceCategory:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        parent_id:
+          type: [string, 'null']
+          format: uuid
+
+    CommerceCartResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CommerceCart'
+    CommerceCart:
+      type: object
+      required: [id, session_id, status, currency, lines, total_cents]
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: [string, 'null']
+          format: uuid
+        session_id:
+          type: string
+        status:
+          type: string
+          description: Cart status (e.g. open, converted).
+        currency:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceCartLine'
+        total_cents:
+          type: integer
+    CommerceCartLine:
+      type: object
+      required: [sku, product_name, unit_price_cents, qty, subtotal_cents]
+      properties:
+        sku:
+          type: string
+        product_name:
+          type: string
+        unit_price_cents:
+          type: integer
+        qty:
+          type: integer
+        subtotal_cents:
+          type: integer
+    CommerceOpenCartRequest:
+      type: object
+      required: [session_id]
+      properties:
+        session_id:
+          type: string
+          maxLength: 255
+        customer_id:
+          type: [string, 'null']
+          format: uuid
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 code; defaults to BOB when omitted.
+    CommerceAddItemRequest:
+      type: object
+      required: [sku, product_name, unit_price_cents]
+      properties:
+        sku:
+          type: string
+          maxLength: 255
+        product_name:
+          type: string
+          maxLength: 255
+        unit_price_cents:
+          type: integer
+          minimum: 0
+          description: Unit price in cents, already resolved by the storefront.
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+    CommerceUpdateItemQtyRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 0
+          description: New quantity; 0 removes the line.
+
+    CommerceShipTo:
+      type: object
+      required: [customer_name, address_text]
+      properties:
+        customer_name:
+          type: string
+          maxLength: 255
+        address_text:
+          type: string
+          maxLength: 1000
+        reference:
+          type: [string, 'null']
+          maxLength: 1000
+        phone:
+          type: [string, 'null']
+          maxLength: 40
+        email:
+          type: [string, 'null']
+          format: email
+          maxLength: 180
+    CommerceOrderLine:
+      type: object
+      required: [sku, product_name, unit_price_cents, quantity]
+      properties:
+        sku:
+          type: string
+          maxLength: 255
+        product_name:
+          type: string
+          maxLength: 255
+        unit_price_cents:
+          type: integer
+          minimum: 0
+        quantity:
+          type: integer
+          minimum: 1
+    CommercePlaceOrderRequest:
+      type: object
+      required: [ship_to, lines]
+      properties:
+        customer_id:
+          type: [string, 'null']
+          format: uuid
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 code; defaults to BOB when omitted.
+        ship_to:
+          $ref: '#/components/schemas/CommerceShipTo'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CommerceOrderLine'
+    CommerceCheckoutAccepted:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+        customer_name:
+          type: string
+        currency:
+          type: string
+    CommerceOrder:
+      type: object
+      required: [id, status, currency, total_cents, shipment_requested, ship_to, lines]
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: [string, 'null']
+          format: uuid
+        status:
+          type: string
+          description: Order status (e.g. pending, paid, fulfilling, cancelled).
+        currency:
+          type: string
+        total_cents:
+          type: integer
+        shipment_requested:
+          type: boolean
+        ship_to:
+          $ref: '#/components/schemas/CommerceShipTo'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceOrderLine'
+
+    CommerceAck:
+      type: object
+      description: Acknowledgement of an accepted asynchronous write (202).
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+      additionalProperties: true
+    CommercePriceQuote:
+      type: object
+      required: [sku, channel, net_cents, tax_cents, gross_cents, currency]
+      properties:
+        sku:
+          type: string
+        channel:
+          type: string
+          enum: [retail, b2b, c2c]
+        net_cents:
+          type: integer
+        tax_cents:
+          type: integer
+          description: Total taxes included in the gross amount.
+        gross_cents:
+          type: integer
+        currency:
+          type: string
+        tax_breakdown:
+          type: object
+          properties:
+            iva_cents:
+              type: integer
+            iva_basis_points:
+              type: integer
+            it_cents:
+              type: integer
+            it_basis_points:
+              type: integer
+    CommercePriceView:
+      type: object
+      required: [price_list_id, sku, gross_amount_cents, currency]
+      properties:
+        price_list_id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        gross_amount_cents:
+          type: integer
+        currency:
+          type: string
+    CommercePriceList:
+      type: object
+      required: [id, name, currency, channel, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        currency:
+          type: string
+        channel:
+          type: string
+          enum: [retail, b2b, c2c]
+        status:
+          type: string
+          enum: [draft, active, archived]
+    CommerceCreatePriceListRequest:
+      type: object
+      required: [name, channel]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        channel:
+          type: string
+          enum: [retail, b2b, c2c]
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217; defaults to BOB when omitted.
+    CommerceSetPriceRequest:
+      type: object
+      required: [sku, gross_amount_cents]
+      properties:
+        sku:
+          type: string
+          maxLength: 255
+        gross_amount_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+
+    CommerceAccount:
+      type: object
+      required: [id, type, user_id, display_name, status, addresses]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [person, company, seller_person]
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        tax_id:
+          type: [string, 'null']
+        status:
+          type: string
+        addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceAddress'
+    CommerceAddress:
+      type: object
+      required: [label, recipient, line1, city, is_default]
+      properties:
+        label:
+          type: string
+        recipient:
+          type: string
+        line1:
+          type: string
+        line2:
+          type: [string, 'null']
+        city:
+          type: string
+        state:
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+        is_default:
+          type: boolean
+    CommerceRegisterAccountRequest:
+      type: object
+      required: [type, user_id, display_name]
+      properties:
+        type:
+          type: string
+          enum: [person, company, seller_person]
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        tax_id:
+          type: [string, 'null']
+    CommerceAddAddressRequest:
+      type: object
+      required: [label, recipient, line1, city]
+      properties:
+        label:
+          type: string
+        recipient:
+          type: string
+        line1:
+          type: string
+        line2:
+          type: [string, 'null']
+        city:
+          type: string
+        state:
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+        is_default:
+          type: boolean
+
   parameters:
+    CommerceAccountId:
+      name: account
+      in: path
+      required: true
+      description: Account id.
+      schema:
+        type: string
+        format: uuid
+
+    CommerceCartId:
+      name: cart
+      in: path
+      required: true
+      description: Cart id.
+      schema:
+        type: string
+        format: uuid
+    CommerceCartSku:
+      name: sku
+      in: path
+      required: true
+      description: Line SKU within the cart.
+      schema:
+        type: string
+
     PageNumber:
       name: page
       in: query
