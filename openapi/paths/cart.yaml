@@ -1,0 +1,252 @@
+# Fragmento OpenAPI del contexto commerce/cart (carrito — storefront B2C, ADR 018 / EC-F0-05).
+#
+# Paths y schemas de este contexto para fusionar en openapi/v1.yaml. Schemas con prefijo `Commerce`.
+# Puerta: /channels. El precio unitario lo resuelve el storefront y viaja congelado en el ítem (el
+# carrito no consulta precios). Cada escritura responde el carrito ya actualizado (read-after-write).
+
+paths:
+  /channels/cart:
+    post:
+      tags: [cart]
+      operationId: openCart
+      summary: Open a cart for a session/customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceOpenCartRequest'
+      responses:
+        '201':
+          description: Cart opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '422':
+          description: Validation error in the payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+  /channels/cart/{cart}:
+    get:
+      tags: [cart]
+      operationId: getCart
+      summary: Get a cart by id
+      parameters:
+      - $ref: '#/components/parameters/CommerceCartId'
+      responses:
+        '200':
+          description: The cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '404':
+          description: Cart not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/cart/{cart}/items:
+    post:
+      tags: [cart]
+      operationId: addCartItem
+      summary: Add an item to the cart
+      parameters:
+      - $ref: '#/components/parameters/CommerceCartId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceAddItemRequest'
+      responses:
+        '200':
+          description: The updated cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '404':
+          description: Cart not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Validation or domain-rule error (e.g. no availability, cart not open)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/cart/{cart}/items/{sku}:
+    patch:
+      tags: [cart]
+      operationId: updateCartItemQty
+      summary: Update the quantity of a cart line (0 removes it)
+      parameters:
+      - $ref: '#/components/parameters/CommerceCartId'
+      - $ref: '#/components/parameters/CommerceCartSku'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceUpdateItemQtyRequest'
+      responses:
+        '200':
+          description: The updated cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '404':
+          description: Cart not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+    delete:
+      tags: [cart]
+      operationId: removeCartItem
+      summary: Remove a line from the cart
+      parameters:
+      - $ref: '#/components/parameters/CommerceCartId'
+      - $ref: '#/components/parameters/CommerceCartSku'
+      responses:
+        '200':
+          description: The updated cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceCartResponse'
+        '404':
+          description: Cart not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+components:
+  parameters:
+    CommerceCartId:
+      name: cart
+      in: path
+      required: true
+      description: Cart id.
+      schema:
+        type: string
+        format: uuid
+    CommerceCartSku:
+      name: sku
+      in: path
+      required: true
+      description: Line SKU within the cart.
+      schema:
+        type: string
+  schemas:
+    CommerceCartResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CommerceCart'
+    CommerceCart:
+      type: object
+      required: [id, session_id, status, currency, lines, total_cents]
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: [string, 'null']
+          format: uuid
+        session_id:
+          type: string
+        status:
+          type: string
+          description: Cart status (e.g. open, converted).
+        currency:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceCartLine'
+        total_cents:
+          type: integer
+    CommerceCartLine:
+      type: object
+      required: [sku, product_name, unit_price_cents, qty, subtotal_cents]
+      properties:
+        sku:
+          type: string
+        product_name:
+          type: string
+        unit_price_cents:
+          type: integer
+        qty:
+          type: integer
+        subtotal_cents:
+          type: integer
+    CommerceOpenCartRequest:
+      type: object
+      required: [session_id]
+      properties:
+        session_id:
+          type: string
+          maxLength: 255
+        customer_id:
+          type: [string, 'null']
+          format: uuid
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 code; defaults to BOB when omitted.
+    CommerceAddItemRequest:
+      type: object
+      required: [sku, product_name, unit_price_cents]
+      properties:
+        sku:
+          type: string
+          maxLength: 255
+        product_name:
+          type: string
+          maxLength: 255
+        unit_price_cents:
+          type: integer
+          minimum: 0
+          description: Unit price in cents, already resolved by the storefront.
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+    CommerceUpdateItemQtyRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 0
+          description: New quantity; 0 removes the line.

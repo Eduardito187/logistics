@@ -1,6 +1,8 @@
 <?php
 
 declare(strict_types=1);
+use Commerce\Invoicing\Infrastructure\Dispatch\OrderPaidInvoiceDispatcher;
+use Commerce\Orders\Infrastructure\Dispatch\OrderPaidShipmentDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\PaymentCapturedOrderDispatcher;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
 use Logistics\Inventory\Infrastructure\Dispatch\GoodsReceivedStockDispatcher;
@@ -124,6 +126,16 @@ return [
             VehicleIncidentReplanningDispatcher::class,
             // Notificaciones: avisa a los clientes afectados (reprogramado / retraso) y al supervisor.
             VehicleIncidentNotificationDispatcher::class,
+        ],
+
+        // Comercio (ADR 018, Fase 0): una orden pagada dispara DOS reactores aguas abajo, cada uno
+        // idempotente (el outbox reentrega at-least-once):
+        'orders.order_paid' => [
+            // Fulfillment: crea el envío en logística (ReceiveShipment, idempotente por ('commerce', orderId))
+            // y pasa la orden a "fulfilling". Es el puente comercio → última milla.
+            OrderPaidShipmentDispatcher::class,
+            // Facturación: emite el documento fiscal de la orden (IssueInvoiceForOrder).
+            OrderPaidInvoiceDispatcher::class,
         ],
     ],
 
