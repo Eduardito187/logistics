@@ -1,0 +1,49 @@
+name: 'PHP + deps (cacheado)'
+description: >-
+  Instala PHP con las extensiones del proyecto, restaura la caché de descargas de Composer Y la carpeta
+  vendor/ (clave por composer.lock), y corre composer install. Centraliza el setup repetido de los jobs
+  lint/test/assets para no reinstalar las mismas dependencias en cada uno.
+
+inputs:
+  php-version:
+    description: 'Versión de PHP'
+    required: true
+  coverage:
+    description: 'Driver de cobertura de setup-php (none|pcov|xdebug)'
+    required: false
+    default: 'none'
+  ini-values:
+    description: 'Valores php.ini extra (p. ej. pcov.directory)'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 (2.40.0)
+      with:
+        php-version: ${{ inputs.php-version }}
+        extensions: mbstring, intl, pdo_pgsql, pgsql, bcmath, redis, sodium
+        tools: composer:v2
+        coverage: ${{ inputs.coverage }}
+        ini-values: ${{ inputs.ini-values }}
+
+    # Caché de DESCARGAS de Composer (tarballs): acelera una instalación en frío.
+    - uses: actions/cache@v4
+      with:
+        path: ~/.composer/cache
+        key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+
+    # Caché de la carpeta vendor/ YA INSTALADA: con acierto de clave, `composer install` queda en
+    # near-no-op (solo valida y re-dumpea el autoload). Clave atada a la versión de PHP + composer.lock;
+    # los paquetes path (packages/*) son symlinks, así que sus cambios de código se reflejan sin
+    # invalidar la caché (solo un cambio de composer.lock la invalida, que es lo correcto).
+    - uses: actions/cache@v4
+      with:
+        path: vendor
+        key: ${{ runner.os }}-vendor-php${{ inputs.php-version }}-${{ hashFiles('composer.lock') }}
+        restore-keys: ${{ runner.os }}-vendor-php${{ inputs.php-version }}-
+
+    - shell: bash
+      run: composer install --no-interaction --no-progress --prefer-dist

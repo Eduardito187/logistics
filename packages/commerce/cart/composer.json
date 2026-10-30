@@ -1,0 +1,26 @@
+{
+    "name": "commerce/cart",
+    "description": "Carrito de comercio (líneas, fusión invitado→cliente, conversión a orden) — plataforma Dismac",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "logistics/shared": "^0.1",
+        "logistics/outbox": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Commerce\\Cart\\": "src/",
+            "Commerce\\Cart\\Database\\Factories\\": "database/factories/",
+            "Commerce\\Cart\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Commerce\\Cart\\Infrastructure\\Providers\\CartServiceProvider"
+            ]
+        }
+    }
+}

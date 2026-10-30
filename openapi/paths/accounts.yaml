@@ -1,0 +1,266 @@
+# Fragmento OpenAPI del contexto commerce/accounts (cuentas de cliente — ADR 018 / EC-F0-04).
+#
+# Paths y schemas para fusionar en openapi/v1.yaml. Schemas con prefijo `Commerce`. Puerta: channels
+# (autoservicio del cliente). La dirección (VO Address) NO tiene id: se identifica por su `label`.
+
+paths:
+  /channels/accounts:
+    post:
+      tags: [accounts]
+      operationId: registerAccount
+      summary: Register a customer account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceRegisterAccountRequest'
+      responses:
+        '201':
+          description: Account created (read back by user)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '202':
+          description: Accepted (fallback when the account cannot be read back synchronously)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation error in the payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+  /channels/accounts/by-user/{userId}:
+    get:
+      tags: [accounts]
+      operationId: getAccountByUser
+      summary: Get the account of a user
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '404':
+          description: No account found for the given user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/accounts/{account}:
+    get:
+      tags: [accounts]
+      operationId: getAccount
+      summary: Get an account by id
+      parameters:
+      - $ref: '#/components/parameters/CommerceAccountId'
+      responses:
+        '200':
+          description: The account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/accounts/{account}/addresses:
+    post:
+      tags: [accounts]
+      operationId: addAccountAddress
+      summary: Add an address to an account
+      parameters:
+      - $ref: '#/components/parameters/CommerceAccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceAddAddressRequest'
+      responses:
+        '200':
+          description: The updated account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/accounts/{account}/addresses/{address}:
+    delete:
+      tags: [accounts]
+      operationId: removeAccountAddress
+      summary: Remove an address from an account (identified by its label)
+      parameters:
+      - $ref: '#/components/parameters/CommerceAccountId'
+      - name: address
+        in: path
+        required: true
+        description: The address label (the VO Address has no id).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The updated account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAccount'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+components:
+  parameters:
+    CommerceAccountId:
+      name: account
+      in: path
+      required: true
+      description: Account id.
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    CommerceAccount:
+      type: object
+      required: [id, type, user_id, display_name, status, addresses]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [person, company, seller_person]
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        tax_id:
+          type: [string, 'null']
+        status:
+          type: string
+        addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceAddress'
+    CommerceAddress:
+      type: object
+      required: [label, recipient, line1, city, is_default]
+      properties:
+        label:
+          type: string
+        recipient:
+          type: string
+        line1:
+          type: string
+        line2:
+          type: [string, 'null']
+        city:
+          type: string
+        state:
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+        is_default:
+          type: boolean
+    CommerceRegisterAccountRequest:
+      type: object
+      required: [type, user_id, display_name]
+      properties:
+        type:
+          type: string
+          enum: [person, company, seller_person]
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        tax_id:
+          type: [string, 'null']
+    CommerceAddAddressRequest:
+      type: object
+      required: [label, recipient, line1, city]
+      properties:
+        label:
+          type: string
+        recipient:
+          type: string
+        line1:
+          type: string
+        line2:
+          type: [string, 'null']
+        city:
+          type: string
+        state:
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+        is_default:
+          type: boolean
