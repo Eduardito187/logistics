@@ -26,7 +26,7 @@ final class ProductFactory extends Factory
             'id' => Uuid::generate()->value,
             'seller_id' => null,
             'category_id' => null,
-            'name' => ucwords(implode(' ', $this->faker->words(3))),
+            'name' => ucwords(implode(' ', (array) $this->faker->words(3))),
             'description' => $this->faker->sentence(),
             'canonical_sku' => strtoupper((string) $this->faker->unique()->bothify('SKU-####-???')),
             'status' => 'draft',

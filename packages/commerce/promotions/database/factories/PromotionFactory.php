@@ -24,7 +24,7 @@ final class PromotionFactory extends Factory
     {
         return [
             'id' => Uuid::generate()->value,
-            'name' => ucwords((string) $this->faker->words(2, true)),
+            'name' => ucwords(implode(' ', (array) $this->faker->words(2))),
             'code' => null,
             'type' => 'percentage_off',
             'value' => 1000,

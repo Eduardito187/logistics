@@ -41,7 +41,9 @@ final readonly class OrderPaidInvoiceDispatcher implements MessageDispatcher
 
         try {
             // Lectura cruzada read-only: si la tabla aún no existe (orders no desplegado) o falla, degrada
-            // silenciosamente en vez de romper el relay.
+            // silenciosamente en vez de romper el relay. El query builder devuelve stdClass (o null); se
+            // estrecha a object|null para que rawValue() (que accede por propiedad) lo reciba tipado.
+            /** @var object|null $order */
             $order = DB::table(self::ORDERS_TABLE)->find($orderId);
         } catch (Throwable) {
             return;
