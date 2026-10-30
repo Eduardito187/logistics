@@ -17,6 +17,7 @@ final readonly class OrderPlaced extends BaseDomainEvent
         public string $currency,
         public int $totalCents,
         public int $lineCount,
+        public ?string $cartId = null,
     ) {
         parent::__construct($aggregateId);
     }
@@ -33,6 +34,7 @@ final readonly class OrderPlaced extends BaseDomainEvent
             'currency' => $this->currency,
             'total_cents' => $this->totalCents,
             'line_count' => $this->lineCount,
+            'cart_id' => $this->cartId,
         ];
     }
 }

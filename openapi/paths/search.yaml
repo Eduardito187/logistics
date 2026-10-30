@@ -1,0 +1,131 @@
+# Fragmento OpenAPI del contexto commerce/search (ADR 018 / EC-F0-08). PostgreSQL FTS. Puerta channels.
+
+paths:
+  /channels/search/products:
+    get:
+      tags: [search]
+      operationId: searchProducts
+      summary: Full-text search of catalog products
+      parameters:
+      - name: q
+        in: query
+        required: false
+        description: Search term (Postgres FTS, spanish). Omitted = browse by filters.
+        schema:
+          type: string
+      - name: category_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [draft, published, archived]
+          default: published
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        description: Opaque keyset cursor for the next page.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Search results (keyset paginated)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceSearchResult'
+        '422':
+          description: Validation or domain-rule error (limit out of range / invalid status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
+  /channels/search/facets:
+    get:
+      tags: [search]
+      operationId: searchFacets
+      summary: Category facets (counts) for the catalog
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [draft, published, archived]
+          default: published
+      responses:
+        '200':
+          description: Category facet counts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommerceSearchFacet'
+      security:
+      - channelApiKey: []
+
+components:
+  schemas:
+    CommerceSearchItem:
+      type: object
+      required: [id, name, canonical_sku, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        canonical_sku:
+          type: string
+        category_id:
+          type: [string, 'null']
+          format: uuid
+        status:
+          type: string
+    CommerceSearchResult:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceSearchItem'
+        next_cursor:
+          type: [string, 'null']
+        total:
+          type: [integer, 'null']
+          description: Total hit count, present only on the first page.
+    CommerceSearchFacet:
+      type: object
+      required: [count]
+      properties:
+        category_id:
+          type: [string, 'null']
+          format: uuid
+        count:
+          type: integer

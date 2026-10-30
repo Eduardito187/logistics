@@ -1,0 +1,348 @@
+# Fragmento OpenAPI del contexto commerce/promotions (ADR 018 / EC-F0-09). Schemas con prefijo Commerce.
+# channels: evaluación (el storefront aplica client-side). integrations: gestión.
+# Nota: el canal en promotions es capitalizado (Retail|B2B|C2C), distinto de pricing (minúscula).
+
+paths:
+  /channels/promotions/evaluate:
+    post:
+      tags: [promotions]
+      operationId: evaluatePromotions
+      summary: Evaluate applicable promotions for a cart context (no side effects)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceEvaluatePromotionsRequest'
+      responses:
+        '200':
+          description: The applicable promotions and computed discounts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceDiscountQuote'
+      security:
+      - channelApiKey: []
+
+  /integrations/promotions:
+    get:
+      tags: [promotions]
+      operationId: listPromotions
+      summary: List promotions
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [draft, active, expired]
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Promotion collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommercePromotionView'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
+      security:
+      - serviceCredential: []
+    post:
+      tags: [promotions]
+      operationId: createPromotion
+      summary: Create a promotion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceCreatePromotionRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - serviceCredential: []
+
+  /integrations/promotions/{id}:
+    get:
+      tags: [promotions]
+      operationId: getPromotion
+      summary: Get a promotion by id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The promotion
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommercePromotionView'
+        '404':
+          description: No promotion found for the given id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+
+  /integrations/promotions/{id}/activate:
+    post:
+      tags: [promotions]
+      operationId: activatePromotion
+      summary: Activate a promotion
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+      security:
+      - serviceCredential: []
+
+  /integrations/promotions/{id}/expire:
+    post:
+      tags: [promotions]
+      operationId: expirePromotion
+      summary: Expire a promotion
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+      security:
+      - serviceCredential: []
+
+  /integrations/promotions/{id}/rules:
+    post:
+      tags: [promotions]
+      operationId: changePromotionRules
+      summary: Change the rules of a promotion
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceChangePromotionRulesRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+
+components:
+  schemas:
+    CommerceEvaluatePromotionsRequest:
+      type: object
+      required: [subtotal_cents, channel]
+      properties:
+        subtotal_cents:
+          type: integer
+          minimum: 0
+        channel:
+          type: string
+          enum: [Retail, B2B, C2C]
+        coupon_code:
+          type: [string, 'null']
+          maxLength: 64
+    CommerceAppliedPromotion:
+      type: object
+      required: [promotion_id, name, discount_cents, free_shipping]
+      properties:
+        promotion_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        discount_cents:
+          type: integer
+        free_shipping:
+          type: boolean
+    CommerceDiscountQuote:
+      type: object
+      required: [applied, total_discount_cents, free_shipping]
+      properties:
+        applied:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceAppliedPromotion'
+        total_discount_cents:
+          type: integer
+        free_shipping:
+          type: boolean
+    CommercePromotionConditions:
+      type: object
+      properties:
+        min_subtotal_cents:
+          type: integer
+        channel:
+          type: [string, 'null']
+          enum: [Retail, B2B, C2C, null]
+        starts_at:
+          type: [string, 'null']
+        ends_at:
+          type: [string, 'null']
+    CommercePromotionView:
+      type: object
+      required: [id, name, type, value, currency, status, version, is_coupon, free_shipping]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: [string, 'null']
+        type:
+          type: string
+          enum: [percentage_off, fixed_amount_off, free_shipping]
+        value:
+          type: integer
+          description: Basis points (percentage), cents (fixed amount) or 0 (free shipping).
+        currency:
+          type: string
+        conditions:
+          $ref: '#/components/schemas/CommercePromotionConditions'
+        status:
+          type: string
+          enum: [draft, active, expired]
+        version:
+          type: integer
+        is_coupon:
+          type: boolean
+        free_shipping:
+          type: boolean
+    CommerceCreatePromotionRequest:
+      type: object
+      required: [name, type, value]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        type:
+          type: string
+          enum: [percentage_off, fixed_amount_off, free_shipping]
+        value:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        code:
+          type: [string, 'null']
+          maxLength: 64
+        min_subtotal_cents:
+          type: integer
+          minimum: 0
+        channel:
+          type: [string, 'null']
+          enum: [Retail, B2B, C2C, null]
+        starts_at:
+          type: [string, 'null']
+        ends_at:
+          type: [string, 'null']
+    CommerceChangePromotionRulesRequest:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [percentage_off, fixed_amount_off, free_shipping]
+        value:
+          type: integer
+          minimum: 0
+        min_subtotal_cents:
+          type: integer
+          minimum: 0
+        channel:
+          type: [string, 'null']
+          enum: [Retail, B2B, C2C, null]
+        starts_at:
+          type: [string, 'null']
+        ends_at:
+          type: [string, 'null']

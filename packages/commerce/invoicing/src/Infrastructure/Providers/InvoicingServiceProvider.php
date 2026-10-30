@@ -68,6 +68,10 @@ final class InvoicingServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
 
+        // Vistas del documento fiscal interno (render HTML imprimible, EC-F0-10). Namespace propio del
+        // contexto para no colisionar con otros packages.
+        $this->loadViewsFrom(__DIR__.'/../../../resources/views', 'commerce-invoicing');
+
         $registry = $this->app->make(HandlerRegistry::class);
         foreach (self::HANDLERS as $message => $handler) {
             $registry->register($message, $handler);

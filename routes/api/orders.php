@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Commerce\Orders\Presentation\Http\Controller\CheckoutController;
 use Commerce\Orders\Presentation\Http\Controller\GetOrderController;
 use Commerce\Orders\Presentation\Http\Controller\PlaceOrderController;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +18,10 @@ use Illuminate\Support\Facades\Route;
 return [
     // Puerta channels — storefront/clientes: crear órdenes (checkout) y consultarlas.
     'channels' => static function (): void {
+        // POST /api/v1/channels/checkout — checkout orquestado: toma un carrito existente y despacha
+        // PlaceOrderFromCart (202, escritura asíncrona). La conversión del carrito va por outbox.
+        Route::post('checkout', CheckoutController::class)->name('checkout');
+
         Route::prefix('orders')->name('orders.')->group(function (): void {
             // POST /api/v1/channels/orders — checkout: despacha PlaceOrder (202, escritura asíncrona).
             Route::post('/', PlaceOrderController::class)->name('place');
