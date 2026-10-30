@@ -24,5 +24,6 @@ final readonly class PlaceOrder implements Command
         public ?string $phone = null,
         public ?string $email = null,
         public string $currency = 'BOB',
+        public ?string $cartId = null,
     ) {}
 }

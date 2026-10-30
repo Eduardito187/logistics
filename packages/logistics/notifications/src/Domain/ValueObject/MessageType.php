@@ -61,4 +61,15 @@ enum MessageType: string
 
     /** Se pide al cliente confirmar su ubicación (dirección de baja confianza). */
     case ConfirmLocation = 'CONFIRM_LOCATION';
+
+    // --- Comercio (EC-F0-11): hitos del checkout y del pago, previos al ciclo logístico del envío. ---
+
+    /** Comercio: se registró el pedido en el checkout; queda pendiente de pago. */
+    case OrderPlaced = 'ORDER_PLACED';
+
+    /** Comercio: el pago del pedido fue confirmado (capturado); ya se prepara. */
+    case PaymentConfirmed = 'PAYMENT_CONFIRMED';
+
+    /** Comercio: la pasarela rechazó el cobro del pago del pedido. */
+    case PaymentFailed = 'PAYMENT_FAILED';
 }

@@ -1,8 +1,11 @@
 # Roadmap — Ecommerce B2B / B2C / C2C
 
-> **Estado: Fase 0 EN CURSO.** Fundaciones de comercio arrancadas (ADR 018 + contextos `catalog`,
-> `pricing`, `payments`). El resto de la Fase 0 y las fases B2C/B2B/C2C siguen pendientes.
-> Fecha de alta: 2026-10-29. Es una **iniciativa nueva**, separada del backend logístico ya construido.
+> **Estado: Fase 0 COMPLETA en backend** (auditado 2026-10-30): los 11 ítems de código construidos,
+> cableados (rutas, outbox, bindings) y con contrato en `openapi/v1.yaml`. **Pendiente para la DoD
+> plena:** CI verde (Pest/PHPStan nivel 8/Spectator — no corre local sin Docker), la **emisión fiscal
+> ante el SIN** (externo, vía `TaxDocumentGateway`) y el **storefront** (EC-F0-12, delegado a Magento —
+> ver `docs/storefront-magento-brief.md`). Decisiones cross-context en **ADR 019**. Las fases
+> B2C/B2B/C2C siguen pendientes. Fecha de alta: 2026-10-29.
 
 Este roadmap cubre la **capa de comercio** (tienda, catálogo, carrito, checkout, pagos, cuentas) sobre
 la plataforma. El backend actual (`logistics`) ya resuelve **fulfillment, última milla, flota, ruteo,
@@ -32,32 +35,40 @@ este documento planifica — es el **frente comercial** en sus tres modelos:
 
 - `[x]` EC-F0-01 **ADR**: decidir si el comercio es un dominio nuevo (`packages/commerce/*`) o extiende
   `logistics/*`; límites con `sellers`, `inventory`, `shipments`, `access`. → **ADR 018** (`docs/adr/018-comercio-dominio-separado-commerce.md`): familia `packages/commerce/*`, namespace `Commerce\`, integración por outbox/puertos.
-- `[~]` EC-F0-02 **Catálogo / PIM**: contexto `catalog` — producto, variantes, atributos, categorías,
-  medios (imágenes), estados (publicado/borrador), SKU canónico. Reutiliza `inventory` para stock/ATP.
-  → Construido (`packages/commerce/catalog`): dominio+CQRS+persistencia+tests. **Pendiente DoD verde en CI.**
-- `[~]` EC-F0-03 **Pricing**: listas de precio, moneda (BOB), impuestos (IVA/IT Bolivia), redondeo,
-  precios por canal/segmento (base para B2B price lists y B2C retail).
-  → Construido (`packages/commerce/pricing`): listas por canal + `TaxPolicy` IVA 13% incluido / IT 3%. **Pendiente DoD verde en CI.**
-- `[ ]` EC-F0-04 **Cuentas/identidad comercial**: extender `access` con tipos de cuenta (persona,
-  empresa, seller-persona), direcciones, perfiles; SSO/login para storefront (separado del admin).
-- `[ ]` EC-F0-05 **Carrito**: contexto `cart` — carrito por sesión/usuario, líneas, reglas de
-  disponibilidad (ATP de `inventory`), persistencia, merge invitado→logueado.
-- `[ ]` EC-F0-06 **Checkout + Order (OMS)**: contexto `orders` — orden de compra comercial, estados
-  (pending/paid/fulfilling/…); **puente al backend logístico**: una orden pagada **crea un Shipment**
-  (reusa `shipments`/`planning`/`execution`). Idempotente por orden.
-- `[~]` EC-F0-07 **Pagos**: contexto `payments` detrás de contrato (`PaymentGateway`), con adaptador
-  stub + al menos una pasarela real por env (QR interoperable BCB / transferencia / tarjeta vía proveedor).
-  Webhooks de confirmación → evento `payments.captured` → outbox → `orders`.
-  → Construido (`packages/commerce/payments`): agregado `Payment`, `PaymentGateway`+`StubPaymentGateway`, webhook `POST /api/v1/integrations/payments/webhook`, evento `payments.captured`. **Pendiente DoD verde en CI y cableado del puente a `orders` (EC-F0-06).**
-- `[ ]` EC-F0-08 **Búsqueda y navegación**: búsqueda de catálogo (Postgres FTS o Meilisearch self-host),
-  filtros/facetas, orden, paginación con cursores.
-- `[ ]` EC-F0-09 **Promociones/cupones**: motor de reglas (descuentos, cupones, envíos gratis) versionado.
-- `[ ]` EC-F0-10 **Impuestos y facturación**: cálculo de impuestos y emisión de documento fiscal
-  (factura) — integración con el sistema tributario (adaptador).
-- `[ ]` EC-F0-11 **Notificaciones comerciales**: reutilizar `notifications` (confirmación de orden, pago,
-  envío, entrega) con plantillas nuevas.
-- `[ ]` EC-F0-12 **Storefront (SPA)**: frontend de tienda (Vue 3 + Inertia, coherente con `/app`) —
-  catálogo, ficha de producto, carrito, checkout, cuenta/pedidos, tracking público ya existente.
+- `[x]` EC-F0-02 **Catálogo / PIM** (`packages/commerce/catalog`): dominio+CQRS+persistencia+tests;
+  **API** (`GET /channels/catalog/products|/{id}|/categories`), **admin Filament** (Product/Category
+  despachando Commands), **OpenAPI**, y **ATP** por puerto `ProductAvailabilityReader` (lee `inventory`
+  por SKU, read-only) → `GET /channels/catalog/products/{id}/availability`.
+- `[x]` EC-F0-03 **Pricing** (`packages/commerce/pricing`): listas por canal + IVA 13% / IT 3%.
+  **API** `channels` (`GET /pricing/price` con desglose de impuestos, `/prices`) + `integrations`
+  (gestión de listas) + OpenAPI. Aplicación de precio **client-side** (ADR 019).
+- `[x]` EC-F0-04 **Cuentas** (`packages/commerce/accounts`): tipos persona/empresa/seller-persona +
+  direcciones. **API** `channels` (register/get/by-user/addresses) + OpenAPI. Vínculo con `access` por
+  referencia `user_id` (ADR 019).
+- `[x]` EC-F0-05 **Carrito** (`packages/commerce/cart`): **API** (open/get/add/update/remove, con
+  chequeo de disponibilidad), checkout→order (ver 06). Precio congelado client-side.
+- `[x]` EC-F0-06 **Checkout + OMS** (`packages/commerce/orders`): **API** (`POST /channels/orders`,
+  `GET /{order}`) + **`POST /channels/checkout`** (orden desde el carrito). Conversión del carrito
+  **desacoplada por outbox** (`orders.order_placed` lleva `cart_id` → `OrderPlacedCartConverter`).
+  Puente **orden pagada → Shipment** (`ReceiveShipment`, idempotente) + factura, por fanout de outbox.
+- `[x]` EC-F0-07 **Pagos** (`packages/commerce/payments`): `PaymentGateway`+`StubPaymentGateway`,
+  **inicio de pago** `POST /channels/payments` (devuelve `gateway_ref`), **webhook** de captura
+  (`integrations`) → `payments.captured` → (fanout) marca la orden pagada + avisa al cliente.
+- `[x]` EC-F0-08 **Búsqueda** (`packages/commerce/search`): **PostgreSQL FTS** (tabla de proyección
+  `commerce_product_search` + GIN), reader con `websearch_to_tsquery`/`ts_rank` (keyset numérico exacto)
+  y fallback ILIKE, comando `commerce:search:reindex`, indexado incremental por `catalog.product_*`
+  (outbox). **API** `GET /channels/search/products|facets` + OpenAPI.
+- `[x]` EC-F0-09 **Promociones** (`packages/commerce/promotions`): motor de reglas (descuentos/cupones/
+  envío gratis). **API** `channels` (`POST /promotions/evaluate` para el storefront) + `integrations`
+  (CRUD/activate/expire/rules) + OpenAPI.
+- `[x]` EC-F0-10 **Impuestos / Facturación** (`packages/commerce/invoicing`): factura emitida al pagar
+  la orden. **API** (get/by-order/cancel) + **documento HTML imprimible**. ⚠️ La **emisión fiscal real
+  ante el SIN** (CUF/CUFD/firma) es **pendiente externo** (vía `TaxDocumentGateway` + conector).
+- `[x]` EC-F0-11 **Notificaciones comerciales** (`logistics/notifications`): `CommerceEventNotification
+  Dispatcher` + plantillas ES (pedido recibido / pago confirmado / pago fallido); cableado en outbox
+  (`orders.order_placed`, `payments.captured` por fanout; `payments.failed`).
+- `[→]` EC-F0-12 **Storefront**: delegado al **equipo de Magento** (no se construye en este repo). Brief
+  autocontenido con el contrato en `docs/storefront-magento-brief.md`.
 
 ## FASE B2C — Retail a consumidor final
 

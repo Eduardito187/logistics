@@ -1,12 +1,15 @@
 <?php
 
 declare(strict_types=1);
+use Commerce\Cart\Infrastructure\Dispatch\OrderPlacedCartConverter;
 use Commerce\Invoicing\Infrastructure\Dispatch\OrderPaidInvoiceDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\OrderPaidShipmentDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\PaymentCapturedOrderDispatcher;
+use Commerce\Search\Infrastructure\Dispatch\CatalogProductIndexerDispatcher;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
 use Logistics\Inventory\Infrastructure\Dispatch\GoodsReceivedStockDispatcher;
 use Logistics\Inventory\Infrastructure\Dispatch\ReturnRestockDispatcher;
+use Logistics\Notifications\Infrastructure\Dispatch\CommerceEventNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\DomainEventNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\FleetDocumentExpiryNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationDispatcher;
@@ -107,12 +110,19 @@ return [
         // lote del dueño correcto. El dispatcher ignora disposiciones return_to_seller/scrap.
         'returns.return_dispositioned' => ReturnRestockDispatcher::class,
 
-        // Comercio (ADR 018, Fase 0): puente de pagos → órdenes → fulfillment.
-        //   payments.captured  → marca la orden como pagada (emite orders.order_paid).
-        //   orders.order_paid  → crea el envío (ReceiveShipment, idempotente por orden) y pasa a fulfilling.
-        'payments.captured' => PaymentCapturedOrderDispatcher::class,
-        // orders.order_paid tiene DOS reactores (crear envío + emitir factura) → abanico (ver 'fanout').
+        // Búsqueda (ADR 018, Fase 0): indexado incremental del catálogo en la proyección FTS. El prefijo
+        // 'catalog.product_' cubre drafted/published/archived (gana por longest-prefix; no la categoría).
+        'catalog.product_' => CatalogProductIndexerDispatcher::class,
+
+        // Comercio (ADR 018/019, Fase 0): pagos → órdenes → fulfillment + avisos al cliente. Varios
+        // eventos tienen MÁS de un reactor, así que van por abanico (ver 'fanout'):
+        //   payments.captured  → marca la orden pagada (MarkOrderPaid) + avisa "pago confirmado".
+        //   orders.order_paid  → crea el envío (ReceiveShipment) + emite la factura.
+        //   orders.order_placed→ marca el carrito convertido + avisa "pedido recibido".
+        'payments.captured' => FanOutMessageDispatcher::class,
+        'payments.failed' => CommerceEventNotificationDispatcher::class,
         'orders.order_paid' => FanOutMessageDispatcher::class,
+        'orders.order_placed' => FanOutMessageDispatcher::class,
     ],
 
     // Abanico por evento: eventos que disparan reacciones en varios contextos a la vez. El
@@ -136,6 +146,22 @@ return [
             OrderPaidShipmentDispatcher::class,
             // Facturación: emite el documento fiscal de la orden (IssueInvoiceForOrder).
             OrderPaidInvoiceDispatcher::class,
+        ],
+
+        // Checkout: al crear la orden desde un carrito, dos reactores idempotentes:
+        'orders.order_placed' => [
+            // Carrito: lo marca como convertido (MarkCartConverted) por el cart_id del evento.
+            OrderPlacedCartConverter::class,
+            // Notificaciones: avisa al cliente "pedido recibido, esperando el pago".
+            CommerceEventNotificationDispatcher::class,
+        ],
+
+        // Pago capturado: puente a la orden + aviso al cliente, ambos idempotentes:
+        'payments.captured' => [
+            // Marca la orden como pagada (emite orders.order_paid, que a su vez abre su propio abanico).
+            PaymentCapturedOrderDispatcher::class,
+            // Notificaciones: aviso "pago confirmado".
+            CommerceEventNotificationDispatcher::class,
         ],
     ],
 

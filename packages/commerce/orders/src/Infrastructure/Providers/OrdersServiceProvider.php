@@ -12,12 +12,16 @@ use Commerce\Orders\Application\Command\MarkOrderPaid\MarkOrderPaid;
 use Commerce\Orders\Application\Command\MarkOrderPaid\MarkOrderPaidHandler;
 use Commerce\Orders\Application\Command\PlaceOrder\PlaceOrder;
 use Commerce\Orders\Application\Command\PlaceOrder\PlaceOrderHandler;
+use Commerce\Orders\Application\Command\PlaceOrderFromCart\PlaceOrderFromCart;
+use Commerce\Orders\Application\Command\PlaceOrderFromCart\PlaceOrderFromCartHandler;
+use Commerce\Orders\Application\Contract\CartSnapshotReader;
 use Commerce\Orders\Application\Query\GetOrder\GetOrder;
 use Commerce\Orders\Application\Query\GetOrder\GetOrderHandler;
 use Commerce\Orders\Application\Query\ListOrders\ListOrders;
 use Commerce\Orders\Application\Query\ListOrders\ListOrdersHandler;
 use Commerce\Orders\Domain\Contract\OrderRepository;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Repository\EloquentOrderRepository;
+use Commerce\Orders\Infrastructure\ReadModel\DbCartSnapshotReader;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -34,6 +38,7 @@ final class OrdersServiceProvider extends ServiceProvider
      */
     private const HANDLERS = [
         PlaceOrder::class => PlaceOrderHandler::class,
+        PlaceOrderFromCart::class => PlaceOrderFromCartHandler::class,
         MarkOrderPaid::class => MarkOrderPaidHandler::class,
         MarkOrderFulfilling::class => MarkOrderFulfillingHandler::class,
         CancelOrder::class => CancelOrderHandler::class,
@@ -44,6 +49,8 @@ final class OrdersServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(OrderRepository::class, EloquentOrderRepository::class);
+        // Lectura cruzada read-only del carrito para el checkout orquestado (carrito → orden).
+        $this->app->bind(CartSnapshotReader::class, DbCartSnapshotReader::class);
     }
 
     public function boot(): void

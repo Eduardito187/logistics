@@ -5,15 +5,17 @@ declare(strict_types=1);
 use Commerce\Search\Application\Query\SearchProducts\SearchProducts;
 use Commerce\Search\Application\Query\SearchProducts\SearchProductsHandler;
 use Commerce\Search\Application\ReadModel\SearchPage;
+use Commerce\Search\Infrastructure\Index\ProductSearchIndexer;
 use Commerce\Search\Infrastructure\Read\DatabaseProductSearchReader;
 use Illuminate\Support\Facades\DB;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
 /**
- * Búsqueda sobre `commerce_products` (tabla read-only de catalog) con Postgres Full-Text Search y
- * paginación por cursor, en logistics_test. Se siembran filas directamente con DB::table (no se depende
- * de catalog por composer). Skip sin PostgreSQL. El handler se instancia a mano con su reader: el
- * contexto no necesita estar registrado para probar la lectura.
+ * Búsqueda sobre la proyección propia `commerce_product_search` con Postgres Full-Text Search y paginación
+ * por cursor, en logistics_test. Se siembran productos en `commerce_products` (tabla read-only de catalog,
+ * con DB::table, sin depender de catalog por composer) y luego se reconstruye la proyección con el indexador
+ * (`reindexAll`), tal como lo hace el comando `commerce:search:reindex`. Skip sin PostgreSQL. El handler se
+ * instancia a mano con su reader: el contexto no necesita estar registrado para probar la lectura.
  */
 beforeEach(function (): void {
     $this->categoryA = Uuid::generate()->value;
@@ -26,6 +28,9 @@ beforeEach(function (): void {
         // Borrador: no debe aparecer en búsquedas por defecto (status published).
         productSearchRow('Secadora Samsung oculta', 'Borrador no publicado', 'SKU-SEC-1', $this->categoryA, 'draft'),
     ]);
+
+    // Poblar la proyección de búsqueda desde el catálogo (lo que hace el reindex en operación).
+    (new ProductSearchIndexer)->reindexAll();
 
     $this->handler = new SearchProductsHandler(new DatabaseProductSearchReader);
 })->skip(

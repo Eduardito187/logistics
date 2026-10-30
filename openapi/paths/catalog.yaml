@@ -105,6 +105,45 @@ paths:
       security:
       - channelApiKey: []
 
+  /channels/catalog/products/{id}/availability:
+    get:
+      tags: [catalog]
+      operationId: getCatalogProductAvailability
+      summary: Available-to-promise quantity of a product (read from inventory)
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Availability for the product's canonical SKU
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [canonical_sku, available]
+                    properties:
+                      canonical_sku:
+                        type: string
+                      available:
+                        type: integer
+                        minimum: 0
+        '404':
+          description: No product found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+
 components:
   schemas:
     CommerceProduct:

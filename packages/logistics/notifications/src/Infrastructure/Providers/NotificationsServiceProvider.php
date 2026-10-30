@@ -56,6 +56,7 @@ use Logistics\Notifications\Infrastructure\Channel\NotificationContentRenderer;
 use Logistics\Notifications\Infrastructure\Channel\RoutingChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\SmsChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\TelegramChannelSender;
+use Logistics\Notifications\Infrastructure\Dispatch\CommerceEventNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\DomainEventNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\FleetDocumentExpiryNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\NotificationChannelDispatcher;
@@ -297,8 +298,12 @@ final class NotificationsServiceProvider extends ServiceProvider
         // - NotificationChannelDispatcher: materializa el envío real de las `notifications.*`.
         // - DomainEventNotificationDispatcher: ante `shipments.*`/`execution.*`/`tracking.*`, encola la
         //   notificación al cliente (QueueNotification), de forma idempotente.
+        // - CommerceEventNotificationDispatcher: ante `orders.order_placed` / `payments.captured` /
+        //   `payments.failed`, encola la notificación al cliente (pedido recibido / pago confirmado /
+        //   pago rechazado) anclada al id de la orden, de forma idempotente.
         $this->app->bind(NotificationChannelDispatcher::class);
         $this->app->bind(DomainEventNotificationDispatcher::class);
+        $this->app->bind(CommerceEventNotificationDispatcher::class);
 
         // - VehicleIncidentNotificationDispatcher: ante execution.vehicle_incident_reported, avisa a los
         //   clientes afectados (reprogramado / en camino con retraso) y al supervisor (contactos de la

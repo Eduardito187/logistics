@@ -46,6 +46,7 @@ final readonly class PlaceOrderHandler implements CommandHandler
             ),
             $lines,
             $command->currency,
+            $command->cartId,
         );
 
         $this->orders->save($order);

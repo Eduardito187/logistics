@@ -79,6 +79,10 @@ final readonly class NotificationContentRenderer
             MessageType::ReadyForPickup => RenderedMessage::of('Tu pedido está listo para recojo', 'Tu pedido ya está listo para que lo recojas en la tienda seleccionada.'),
             MessageType::PickedUp => RenderedMessage::of('Pedido recogido', 'Confirmamos que recogiste tu pedido. ¡Gracias por tu compra!'),
             MessageType::ConfirmLocation => RenderedMessage::of('Confirma tu ubicación', 'Necesitamos que confirmes tu dirección de entrega para completar tu pedido.'),
+            // Comercio (EC-F0-11): hitos del checkout y del pago.
+            MessageType::OrderPlaced => RenderedMessage::of('Recibimos tu pedido', 'Recibimos tu pedido y estamos esperando la confirmación de tu pago. Te avisaremos apenas se acredite.'),
+            MessageType::PaymentConfirmed => RenderedMessage::of('¡Pago confirmado!', 'Confirmamos el pago de tu pedido. ¡Gracias por elegir Dismac! Ya lo estamos preparando.'),
+            MessageType::PaymentFailed => RenderedMessage::of('No pudimos procesar tu pago', 'No pudimos procesar el pago de tu pedido. Por favor intenta nuevamente o usa otro medio de pago.'),
         };
     }
 }

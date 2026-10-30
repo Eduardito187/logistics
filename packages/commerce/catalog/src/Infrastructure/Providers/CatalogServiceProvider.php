@@ -14,6 +14,7 @@ use Commerce\Catalog\Application\Command\DraftProduct\DraftProduct;
 use Commerce\Catalog\Application\Command\DraftProduct\DraftProductHandler;
 use Commerce\Catalog\Application\Command\PublishProduct\PublishProduct;
 use Commerce\Catalog\Application\Command\PublishProduct\PublishProductHandler;
+use Commerce\Catalog\Application\Contract\ProductAvailabilityReader;
 use Commerce\Catalog\Application\Query\GetProduct\GetProduct;
 use Commerce\Catalog\Application\Query\GetProduct\GetProductHandler;
 use Commerce\Catalog\Application\Query\ListCategories\ListCategories;
@@ -24,6 +25,7 @@ use Commerce\Catalog\Domain\Contract\CategoryRepository;
 use Commerce\Catalog\Domain\Contract\ProductRepository;
 use Commerce\Catalog\Infrastructure\Persistence\Eloquent\Repository\EloquentCategoryRepository;
 use Commerce\Catalog\Infrastructure\Persistence\Eloquent\Repository\EloquentProductRepository;
+use Commerce\Catalog\Infrastructure\ReadModel\InventoryProductAvailabilityReader;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -55,6 +57,10 @@ final class CatalogServiceProvider extends ServiceProvider
     {
         $this->app->bind(ProductRepository::class, EloquentProductRepository::class);
         $this->app->bind(CategoryRepository::class, EloquentCategoryRepository::class);
+        // Puerto de disponibilidad: lectura cruzada read-only contra la tabla de inventory (sin acople).
+        $this->app->bind(ProductAvailabilityReader::class, static function ($app): ProductAvailabilityReader {
+            return new InventoryProductAvailabilityReader($app->make('db')->connection());
+        });
     }
 
     public function boot(): void

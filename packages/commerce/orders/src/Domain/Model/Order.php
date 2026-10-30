@@ -50,6 +50,7 @@ final class Order extends AggregateRoot
         ShippingAddress $shipTo,
         array $lines,
         string $currency = 'BOB',
+        ?string $cartId = null,
     ): self {
         if ($lines === []) {
             throw OrdersException::because('No se puede crear una orden sin líneas.');
@@ -62,6 +63,7 @@ final class Order extends AggregateRoot
             $currency,
             $order->totalCents(),
             count($lines),
+            $cartId,
         ));
 
         return $order;

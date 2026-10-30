@@ -8874,6 +8874,571 @@ paths:
       security:
       - channelApiKey: []
 
+
+  # ── commerce Fase 0: endpoints nuevos (ADR 018/019) ──
+  /channels/catalog/products/{id}/availability:
+    get:
+      tags:
+      - catalog
+      operationId: getCatalogProductAvailability
+      summary: Available-to-promise quantity of a product (read from inventory)
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Availability for the product's canonical SKU
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                    - canonical_sku
+                    - available
+                    properties:
+                      canonical_sku:
+                        type: string
+                      available:
+                        type: integer
+                        minimum: 0
+        '404':
+          description: No product found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+  /channels/checkout:
+    post:
+      tags:
+      - orders
+      operationId: checkout
+      summary: Place an order from an existing cart (checkout)
+      description: Creates the order from a cart snapshot (lines and frozen price come from the cart, not the body) plus the
+        delivery address. Asynchronous (202); the cart is marked converted via the outbox.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceCheckoutRequest'
+      responses:
+        '202':
+          description: Checkout accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+  /channels/promotions/evaluate:
+    post:
+      tags:
+      - promotions
+      operationId: evaluatePromotions
+      summary: Evaluate applicable promotions for a cart context (no side effects)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceEvaluatePromotionsRequest'
+      responses:
+        '200':
+          description: The applicable promotions and computed discounts
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceDiscountQuote'
+      security:
+      - channelApiKey: []
+  /integrations/promotions:
+    get:
+      tags:
+      - promotions
+      operationId: listPromotions
+      summary: List promotions
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - draft
+          - active
+          - expired
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Promotion collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommercePromotionView'
+                  meta:
+                    oneOf:
+                    - $ref: '#/components/schemas/PaginationMeta'
+                    - $ref: '#/components/schemas/CursorMeta'
+      security:
+      - serviceCredential: []
+    post:
+      tags:
+      - promotions
+      operationId: createPromotion
+      summary: Create a promotion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceCreatePromotionRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - serviceCredential: []
+  /integrations/promotions/{id}:
+    get:
+      tags:
+      - promotions
+      operationId: getPromotion
+      summary: Get a promotion by id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The promotion
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommercePromotionView'
+        '404':
+          description: No promotion found for the given id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+  /integrations/promotions/{id}/activate:
+    post:
+      tags:
+      - promotions
+      operationId: activatePromotion
+      summary: Activate a promotion
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+      security:
+      - serviceCredential: []
+  /integrations/promotions/{id}/expire:
+    post:
+      tags:
+      - promotions
+      operationId: expirePromotion
+      summary: Expire a promotion
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+      security:
+      - serviceCredential: []
+  /integrations/promotions/{id}/rules:
+    post:
+      tags:
+      - promotions
+      operationId: changePromotionRules
+      summary: Change the rules of a promotion
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceChangePromotionRulesRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+  /integrations/invoicing/invoices/{id}:
+    get:
+      tags:
+      - invoicing
+      operationId: getInvoice
+      summary: Get an invoice by id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceInvoice'
+        '404':
+          description: No invoice found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+  /integrations/invoicing/invoices/by-order/{orderId}:
+    get:
+      tags:
+      - invoicing
+      operationId: getInvoiceByOrder
+      summary: Get the invoice of an order
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceInvoice'
+        '404':
+          description: No invoice found for the given order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+  /integrations/invoicing/invoices/{id}/cancel:
+    post:
+      tags:
+      - invoicing
+      operationId: cancelInvoice
+      summary: Cancel an invoice
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+  /integrations/invoicing/invoices/{id}/document:
+    get:
+      tags:
+      - invoicing
+      operationId: renderInvoiceDocument
+      summary: Render the printable invoice document (internal)
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The invoice document as printable HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: No invoice found for the given identifier
+          content:
+            text/html:
+              schema:
+                type: string
+      security:
+      - serviceCredential: []
+
+
+  # ── commerce Fase 0: search ──
+  /channels/search/products:
+    get:
+      tags:
+      - search
+      operationId: searchProducts
+      summary: Full-text search of catalog products
+      parameters:
+      - name: q
+        in: query
+        required: false
+        description: Search term (Postgres FTS, spanish). Omitted = browse by filters.
+        schema:
+          type: string
+      - name: category_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - draft
+          - published
+          - archived
+          default: published
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        description: Opaque keyset cursor for the next page.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Search results (keyset paginated)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceSearchResult'
+        '422':
+          description: Validation or domain-rule error (limit out of range / invalid status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - channelApiKey: []
+  /channels/search/facets:
+    get:
+      tags:
+      - search
+      operationId: searchFacets
+      summary: Category facets (counts) for the catalog
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - draft
+          - published
+          - archived
+          default: published
+      responses:
+        '200':
+          description: Category facet counts
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommerceSearchFacet'
+      security:
+      - channelApiKey: []
+
+
+  # ── commerce/payments (ADR 018) ──
+  /channels/payments:
+    post:
+      tags:
+      - payments
+      operationId: initiatePayment
+      summary: Initiate the payment of an order
+      description: Starts the charge of an order and returns the payment with its gateway reference, which the storefront uses
+        to redirect the customer to the gateway checkout. The final state is confirmed later by the gateway webhook (integrations
+        gate).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceInitiatePaymentRequest'
+      responses:
+        '201':
+          description: Payment initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommercePayment'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
 components:
   securitySchemes:
     appBearer:
@@ -15843,6 +16408,400 @@ components:
           type: [string, 'null']
         is_default:
           type: boolean
+
+    CommerceCheckoutRequest:
+      type: object
+      required:
+      - cart_id
+      - ship_to
+      properties:
+        cart_id:
+          type: string
+          format: uuid
+        ship_to:
+          $ref: '#/components/schemas/CommerceShipTo'
+    CommerceEvaluatePromotionsRequest:
+      type: object
+      required:
+      - subtotal_cents
+      - channel
+      properties:
+        subtotal_cents:
+          type: integer
+          minimum: 0
+        channel:
+          type: string
+          enum:
+          - Retail
+          - B2B
+          - C2C
+        coupon_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 64
+    CommerceAppliedPromotion:
+      type: object
+      required:
+      - promotion_id
+      - name
+      - discount_cents
+      - free_shipping
+      properties:
+        promotion_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        discount_cents:
+          type: integer
+        free_shipping:
+          type: boolean
+    CommerceDiscountQuote:
+      type: object
+      required:
+      - applied
+      - total_discount_cents
+      - free_shipping
+      properties:
+        applied:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceAppliedPromotion'
+        total_discount_cents:
+          type: integer
+        free_shipping:
+          type: boolean
+    CommercePromotionConditions:
+      type: object
+      properties:
+        min_subtotal_cents:
+          type: integer
+        channel:
+          type:
+          - string
+          - 'null'
+          enum:
+          - Retail
+          - B2B
+          - C2C
+          - null
+        starts_at:
+          type:
+          - string
+          - 'null'
+        ends_at:
+          type:
+          - string
+          - 'null'
+    CommercePromotionView:
+      type: object
+      required:
+      - id
+      - name
+      - type
+      - value
+      - currency
+      - status
+      - version
+      - is_coupon
+      - free_shipping
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type:
+          - string
+          - 'null'
+        type:
+          type: string
+          enum:
+          - percentage_off
+          - fixed_amount_off
+          - free_shipping
+        value:
+          type: integer
+          description: Basis points (percentage), cents (fixed amount) or 0 (free shipping).
+        currency:
+          type: string
+        conditions:
+          $ref: '#/components/schemas/CommercePromotionConditions'
+        status:
+          type: string
+          enum:
+          - draft
+          - active
+          - expired
+        version:
+          type: integer
+        is_coupon:
+          type: boolean
+        free_shipping:
+          type: boolean
+    CommerceCreatePromotionRequest:
+      type: object
+      required:
+      - name
+      - type
+      - value
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        type:
+          type: string
+          enum:
+          - percentage_off
+          - fixed_amount_off
+          - free_shipping
+        value:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        code:
+          type:
+          - string
+          - 'null'
+          maxLength: 64
+        min_subtotal_cents:
+          type: integer
+          minimum: 0
+        channel:
+          type:
+          - string
+          - 'null'
+          enum:
+          - Retail
+          - B2B
+          - C2C
+          - null
+        starts_at:
+          type:
+          - string
+          - 'null'
+        ends_at:
+          type:
+          - string
+          - 'null'
+    CommerceChangePromotionRulesRequest:
+      type: object
+      required:
+      - type
+      - value
+      properties:
+        type:
+          type: string
+          enum:
+          - percentage_off
+          - fixed_amount_off
+          - free_shipping
+        value:
+          type: integer
+          minimum: 0
+        min_subtotal_cents:
+          type: integer
+          minimum: 0
+        channel:
+          type:
+          - string
+          - 'null'
+          enum:
+          - Retail
+          - B2B
+          - C2C
+          - null
+        starts_at:
+          type:
+          - string
+          - 'null'
+        ends_at:
+          type:
+          - string
+          - 'null'
+    CommerceInvoiceLine:
+      type: object
+      required:
+      - description
+      - quantity
+      - unit_price_cents
+      - line_total_cents
+      properties:
+        description:
+          type: string
+        quantity:
+          type: integer
+        unit_price_cents:
+          type: integer
+        line_total_cents:
+          type: integer
+    CommerceInvoice:
+      type: object
+      required:
+      - id
+      - order_id
+      - customer_name
+      - currency
+      - lines
+      - net_cents
+      - iva_cents
+      - total_cents
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        number:
+          type:
+          - string
+          - 'null'
+        customer_name:
+          type: string
+        customer_tax_id:
+          type:
+          - string
+          - 'null'
+        currency:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceInvoiceLine'
+        net_cents:
+          type: integer
+        iva_cents:
+          type: integer
+        total_cents:
+          type: integer
+        status:
+          type: string
+          enum:
+          - draft
+          - issued
+          - cancelled
+        issued_at:
+          type:
+          - string
+          - 'null'
+
+    CommerceSearchItem:
+      type: object
+      required:
+      - id
+      - name
+      - canonical_sku
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        canonical_sku:
+          type: string
+        category_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        status:
+          type: string
+    CommerceSearchResult:
+      type: object
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceSearchItem'
+        next_cursor:
+          type:
+          - string
+          - 'null'
+        total:
+          type:
+          - integer
+          - 'null'
+          description: Total hit count, present only on the first page.
+    CommerceSearchFacet:
+      type: object
+      required:
+      - count
+      properties:
+        category_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        count:
+          type: integer
+
+    CommerceMoney:
+      type: object
+      required:
+      - cents
+      - currency
+      properties:
+        cents:
+          type: integer
+        currency:
+          type: string
+    CommercePayment:
+      type: object
+      required:
+      - id
+      - order_id
+      - amount
+      - method
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        amount:
+          $ref: '#/components/schemas/CommerceMoney'
+        method:
+          type: string
+        status:
+          type: string
+        gateway_ref:
+          type:
+          - string
+          - 'null'
+    CommerceInitiatePaymentRequest:
+      type: object
+      required:
+      - order_id
+      - amount_cents
+      - method
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        amount_cents:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217; defaults to BOB when omitted.
+        method:
+          type: string
+          maxLength: 64
 
   parameters:
     CommerceAccountId:
