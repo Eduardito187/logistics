@@ -123,15 +123,19 @@ final class DatabaseProductSearchReader implements ProductSearchReader
         $keysetBindings = [];
         $decoded = self::decodeCursor($criteria->cursor);
         if ($decoded !== null && $decoded['rank'] !== null) {
-            $keyset = 'WHERE (ranked.rank < ? OR (ranked.rank = ? AND ranked.name > ?) '
-                .'OR (ranked.rank = ? AND ranked.name = ? AND ranked.id > ?)) ';
-            $rank = (float) $decoded['rank'];
+            // Cast explícito a numeric en cada comparación del rank: el binding viaja como texto decimal
+            // (sin pérdida de precisión) y PostgreSQL lo compara contra la columna numeric de forma exacta.
+            $keyset = 'WHERE (ranked.rank < ?::numeric OR (ranked.rank = ?::numeric AND ranked.name > ?) '
+                .'OR (ranked.rank = ?::numeric AND ranked.name = ? AND ranked.id > ?)) ';
+            $rank = $decoded['rank'];
             $keysetBindings = [$rank, $rank, $decoded['name'], $rank, $decoded['name'], $decoded['id']];
         }
 
         $sql = 'SELECT * FROM ('
             .'SELECT product_id AS id, name, canonical_sku, category_id, status, '
-            ."ts_rank(search_vector, websearch_to_tsquery('spanish', ?)) AS rank "
+            // rank como numeric(.,6): valor estable y comparable EXACTO (evita la imprecisión de float en
+            // el cursor keyset). Los empates de relevancia se desempatan por (name, id).
+            .'ROUND(ts_rank(search_vector, '."websearch_to_tsquery('spanish', ?))::numeric, 6) AS rank "
             .'FROM '.self::PROJECTION.' WHERE '.$filter
             .') ranked '
             .$keyset

@@ -1,0 +1,85 @@
+# Fragmento OpenAPI del contexto commerce/payments (ADR 018 / EC-F0-07). Schemas con prefijo Commerce.
+# channels: el storefront inicia el cobro. El webhook de captura vive en integrations (lo llama la pasarela).
+
+paths:
+  /channels/payments:
+    post:
+      tags: [payments]
+      operationId: initiatePayment
+      summary: Initiate the payment of an order
+      description: >-
+        Starts the charge of an order and returns the payment with its gateway reference, which the
+        storefront uses to redirect the customer to the gateway checkout. The final state is confirmed
+        later by the gateway webhook (integrations gate).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceInitiatePaymentRequest'
+      responses:
+        '201':
+          description: Payment initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommercePayment'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
+components:
+  schemas:
+    CommerceMoney:
+      type: object
+      required: [cents, currency]
+      properties:
+        cents:
+          type: integer
+        currency:
+          type: string
+    CommercePayment:
+      type: object
+      required: [id, order_id, amount, method, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        amount:
+          $ref: '#/components/schemas/CommerceMoney'
+        method:
+          type: string
+        status:
+          type: string
+        gateway_ref:
+          type: [string, 'null']
+    CommerceInitiatePaymentRequest:
+      type: object
+      required: [order_id, amount_cents, method]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        amount_cents:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217; defaults to BOB when omitted.
+        method:
+          type: string
+          maxLength: 64
