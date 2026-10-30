@@ -89,6 +89,9 @@ final class MessageTemplateResource extends Resource
             'READY_FOR_PICKUP' => __('Ready for pickup'),
             'PICKED_UP' => __('Picked up'),
             'CONFIRM_LOCATION' => __('Confirm location'),
+            'ORDER_PLACED' => __('Order placed'),
+            'PAYMENT_CONFIRMED' => __('Payment confirmed'),
+            'PAYMENT_FAILED' => __('Payment failed'),
         ];
     }
 

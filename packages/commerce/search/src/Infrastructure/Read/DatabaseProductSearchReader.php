@@ -11,69 +11,66 @@ use Commerce\Search\Application\ReadModel\SearchPage;
 use Commerce\Search\Domain\ValueObject\SearchCriteria;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
- * Adaptador de lectura contra la tabla `commerce_products` (del contexto `catalog`), en modo read-only.
+ * Adaptador de lectura de la búsqueda contra la proyección propia `commerce_product_search` (dueño: este
+ * contexto). La proyección la (re)construye el indexador desde el catálogo; así la lectura NO se acopla al
+ * esquema de `commerce/catalog` ni depende de él por composer, y `search` sigue siendo extraíble a servicio.
  *
- * Patrón cross-context del skill: NO depende de `catalog` por composer ni hace `use` de sus clases;
- * consulta su tabla con `DB::table('commerce_products')` envuelto en `try/catch`, de modo que si la tabla
- * aún no existe (catalog no desplegado) degrada a resultado vacío en vez de romper. Así cada contexto
- * sigue siendo extraíble a microservicio.
+ * Estrategia de texto (degradado seguro, de mayor a menor capacidad):
+ *  1. Proyección + PostgreSQL + término → **Full-Text Search** (`websearch_to_tsquery('spanish', :q) @@
+ *     search_vector`) ordenada por relevancia (`ts_rank`) con paginación keyset por `(rank, name, id)`.
+ *  2. Proyección + término sin FTS (motor no-pgsql) → **ILIKE** sobre `name`/`canonical_sku`.
+ *  3. Proyección sin término → navegación por filtros, orden estable `(name, id)`.
+ *  4. Proyección inexistente (aún sin indexar / search no desplegado) → **fallback ILIKE** sobre la tabla
+ *     `commerce_products` del catálogo (read-only), para no dejar caído el endpoint antes del primer reindex.
  *
- * Búsqueda de texto con **Postgres Full-Text Search** (`to_tsvector('spanish', …) @@ plainto_tsquery`);
- * orden estable por `(name, id)` y **paginación por cursor** (keyset sobre `(name, id)`, no offset) para
- * barrer millones de filas sin degradar.
+ * Toda la lectura va envuelta en `try/catch`: si la fuente no existe o falla, degrada a página vacía en vez
+ * de romper. La paginación por cursor es keyset (no offset) para barrer millones de filas sin degradar.
  */
 final class DatabaseProductSearchReader implements ProductSearchReader
 {
-    /** Tabla read-only del catálogo (dueño: `commerce/catalog`). */
-    private const TABLE = 'commerce_products';
+    /** Proyección de búsqueda (dueño: este contexto). */
+    private const PROJECTION = 'commerce_product_search';
+
+    /** Tabla read-only del catálogo (fallback cuando la proyección aún no existe). */
+    private const SOURCE = 'commerce_products';
 
     public function search(SearchCriteria $criteria): SearchPage
     {
         try {
-            $base = $this->baseQuery($criteria);
+            $projection = $this->projectionExists();
 
-            // El total solo se calcula en la primera página (sin cursor): en páginas siguientes es caro y
-            // no aporta. Se clona antes de aplicar keyset/orden/límite.
-            $total = $criteria->cursor === null ? (int) (clone $base)->count() : null;
+            // Camino 1: FTS por relevancia (proyección + PostgreSQL + término).
+            if ($projection && $this->isPostgres() && $criteria->hasTerm()) {
+                return $this->searchByRank($criteria);
+            }
 
-            $query = $base
-                ->orderBy('name')
-                ->orderBy('id')
-                ->limit($criteria->limit + 1); // +1 para detectar si hay página siguiente.
+            // Caminos 2–4: orden estable por `(name, id)` con, cuando hay término sin FTS, filtro ILIKE.
+            if ($projection) {
+                $likeTerm = (!$this->isPostgres() && $criteria->hasTerm()) ? $criteria->term : null;
 
-            $this->applyCursor($query, $criteria->cursor);
+                return $this->searchByName($criteria, self::PROJECTION, 'product_id', $likeTerm);
+            }
 
-            /** @var array<int, \stdClass> $rows */
-            $rows = $query->get()->all();
+            // Fallback: la proyección aún no existe → ILIKE sobre el catálogo (degradado seguro).
+            $likeTerm = $criteria->hasTerm() ? $criteria->term : null;
+
+            return $this->searchByName($criteria, self::SOURCE, 'id', $likeTerm);
         } catch (Throwable) {
-            // La tabla del otro contexto no existe (o la fuente falló): degradar a página vacía.
+            // Fuente inexistente o caída: degradar a página vacía en vez de romper el endpoint.
             return new SearchPage([], null, null);
         }
-
-        $hasMore = count($rows) > $criteria->limit;
-        $pageRows = array_slice($rows, 0, $criteria->limit);
-
-        $items = array_values(array_map(
-            static fn (object $row): ProductSearchResult => ProductSearchResult::fromRow($row),
-            $pageRows,
-        ));
-
-        $nextCursor = null;
-        if ($hasMore && $pageRows !== []) {
-            $last = $pageRows[array_key_last($pageRows)];
-            $nextCursor = self::encodeCursor(self::str($last, 'name'), self::str($last, 'id'));
-        }
-
-        return new SearchPage($items, $nextCursor, $total);
     }
 
     public function facetsByCategory(string $status): array
     {
+        $table = $this->projectionExists() ? self::PROJECTION : self::SOURCE;
+
         try {
-            $rows = DB::table(self::TABLE)
+            $rows = DB::table($table)
                 ->selectRaw('category_id, count(*) as total')
                 ->where('status', $status)
                 ->groupBy('category_id')
@@ -91,60 +88,195 @@ final class DatabaseProductSearchReader implements ProductSearchReader
     }
 
     /**
-     * Consulta base con los filtros (FTS + estado + categoría), SIN orden, keyset ni límite.
+     * Camino FTS por relevancia (PostgreSQL): filtra con `websearch_to_tsquery @@ search_vector`, ordena por
+     * `ts_rank` descendente y pagina keyset por `(rank, name, product_id)`. Se arma SQL explícito (y no el
+     * query builder) para controlar el orden exacto de los bindings del `tsquery`, que aparece en el SELECT
+     * del rank y en el filtro. El keyset usa el alias `rank` en un envoltorio para no recalcular el tsquery.
      */
-    private function baseQuery(SearchCriteria $criteria): Builder
+    private function searchByRank(SearchCriteria $criteria): SearchPage
     {
-        $query = DB::table(self::TABLE)->where('status', $criteria->status);
+        $term = (string) $criteria->term;
+
+        // Filtro común (estado + categoría + FTS), con sus bindings en orden.
+        $filter = 'status = ?';
+        $filterBindings = [$criteria->status];
+        if ($criteria->categoryId !== null) {
+            $filter .= ' AND category_id = ?';
+            $filterBindings[] = $criteria->categoryId;
+        }
+        $filter .= " AND websearch_to_tsquery('spanish', ?) @@ search_vector";
+        $filterBindings[] = $term;
+
+        // Total solo en la primera página (sin cursor): en páginas siguientes es caro y no aporta.
+        $total = null;
+        if ($criteria->cursor === null) {
+            /** @var \stdClass|null $countRow */
+            $countRow = DB::selectOne(
+                'SELECT count(*) AS total FROM '.self::PROJECTION.' WHERE '.$filter,
+                $filterBindings,
+            );
+            $total = $countRow === null ? 0 : (int) ($countRow->total ?? 0);
+        }
+
+        // Keyset sobre el alias `rank` (envoltorio): rank < r OR (rank = r AND name > n) OR (= AND = AND id > i).
+        $keyset = '';
+        $keysetBindings = [];
+        $decoded = self::decodeCursor($criteria->cursor);
+        if ($decoded !== null && $decoded['rank'] !== null) {
+            $keyset = 'WHERE (ranked.rank < ? OR (ranked.rank = ? AND ranked.name > ?) '
+                .'OR (ranked.rank = ? AND ranked.name = ? AND ranked.id > ?)) ';
+            $rank = (float) $decoded['rank'];
+            $keysetBindings = [$rank, $rank, $decoded['name'], $rank, $decoded['name'], $decoded['id']];
+        }
+
+        $sql = 'SELECT * FROM ('
+            .'SELECT product_id AS id, name, canonical_sku, category_id, status, '
+            ."ts_rank(search_vector, websearch_to_tsquery('spanish', ?)) AS rank "
+            .'FROM '.self::PROJECTION.' WHERE '.$filter
+            .') ranked '
+            .$keyset
+            .'ORDER BY ranked.rank DESC, ranked.name ASC, ranked.id ASC '
+            .'LIMIT ?';
+
+        // Bindings en el mismo orden en que aparecen los `?`: rank(SELECT), filtro, keyset, límite(+1).
+        $bindings = array_merge([$term], $filterBindings, $keysetBindings, [$criteria->limit + 1]);
+
+        /** @var array<int, \stdClass> $rows */
+        $rows = DB::select($sql, $bindings);
+
+        return $this->paginate(
+            $rows,
+            $criteria->limit,
+            $total,
+            static fn (object $row): string => self::encodeCursor(
+                self::str($row, 'name'),
+                self::str($row, 'id'),
+                self::str($row, 'rank'),
+            ),
+        );
+    }
+
+    /**
+     * Camino de orden estable por `(name, id)`: navegación por filtros y, si hay `$likeTerm`, filtro ILIKE
+     * sobre `name`/`canonical_sku` (fallback sin FTS). Pagina keyset por `(name, id)` con el query builder.
+     *
+     * @param 'product_id'|'id' $idColumn columna de id en la tabla consultada (se proyecta como `id`)
+     */
+    private function searchByName(SearchCriteria $criteria, string $table, string $idColumn, ?string $likeTerm): SearchPage
+    {
+        $base = $this->baseNameQuery($criteria, $table, $likeTerm);
+
+        // El total solo se calcula en la primera página (sin cursor). Se clona antes de orden/keyset/límite.
+        $total = $criteria->cursor === null ? (int) (clone $base)->count() : null;
+
+        $query = $base
+            ->select([DB::raw("{$idColumn} as id"), 'name', 'canonical_sku', 'category_id', 'status'])
+            ->orderBy('name')
+            ->orderBy($idColumn)
+            ->limit($criteria->limit + 1); // +1 para detectar si hay página siguiente.
+
+        $this->applyNameCursor($query, $idColumn, $criteria->cursor);
+
+        /** @var array<int, \stdClass> $rows */
+        $rows = $query->get()->all();
+
+        return $this->paginate(
+            $rows,
+            $criteria->limit,
+            $total,
+            static fn (object $row): string => self::encodeCursor(self::str($row, 'name'), self::str($row, 'id')),
+        );
+    }
+
+    /**
+     * Consulta base por nombre (estado + categoría + ILIKE opcional), SIN orden, keyset ni límite.
+     */
+    private function baseNameQuery(SearchCriteria $criteria, string $table, ?string $likeTerm): Builder
+    {
+        $query = DB::table($table)->where('status', $criteria->status);
 
         if ($criteria->categoryId !== null) {
             $query->where('category_id', $criteria->categoryId);
         }
 
-        if ($criteria->hasTerm()) {
-            $query->whereRaw(
-                "to_tsvector('spanish', coalesce(name, '') || ' ' || coalesce(description, '')) "
-                .'@@ plainto_tsquery(\'spanish\', ?)',
-                [$criteria->term],
-            );
+        if ($likeTerm !== null) {
+            // ILIKE en PostgreSQL (case-insensitive); LIKE en motores sin ILIKE (p. ej. sqlite de test).
+            $operator = $this->isPostgres() ? 'ilike' : 'like';
+            $pattern = '%'.$likeTerm.'%';
+            $query->where(function (Builder $inner) use ($operator, $pattern): void {
+                $inner->where('name', $operator, $pattern)
+                    ->orWhere('canonical_sku', $operator, $pattern);
+            });
         }
 
         return $query;
     }
 
     /**
-     * Aplica el predicado keyset del cursor sobre `(name, id)`: `name > :name OR (name = :name AND id > :id)`.
+     * Arma la página a partir de las filas crudas (una de más = hay siguiente) y el generador del cursor.
+     *
+     * @param array<int, object>       $rows
+     * @param callable(object): string $cursorOf genera el cursor opaco de la última fila de la página
+     */
+    private function paginate(array $rows, int $limit, ?int $total, callable $cursorOf): SearchPage
+    {
+        $hasMore = count($rows) > $limit;
+        $pageRows = array_slice($rows, 0, $limit);
+
+        $items = array_values(array_map(
+            static fn (object $row): ProductSearchResult => ProductSearchResult::fromRow($row),
+            $pageRows,
+        ));
+
+        $nextCursor = null;
+        if ($hasMore && $pageRows !== []) {
+            $nextCursor = $cursorOf($pageRows[array_key_last($pageRows)]);
+        }
+
+        return new SearchPage($items, $nextCursor, $total);
+    }
+
+    /**
+     * Aplica el keyset del cursor sobre `(name, id)`: `name > :name OR (name = :name AND id > :id)`.
      * Un cursor nulo o inválido no agrega predicado (arranca desde el inicio).
      */
-    private function applyCursor(Builder $query, ?string $cursor): void
+    private function applyNameCursor(Builder $query, string $idColumn, ?string $cursor): void
     {
         $decoded = self::decodeCursor($cursor);
         if ($decoded === null) {
             return;
         }
 
-        [$name, $id] = $decoded;
+        $name = $decoded['name'];
+        $id = $decoded['id'];
 
-        $query->where(function (Builder $outer) use ($name, $id): void {
+        $query->where(function (Builder $outer) use ($idColumn, $name, $id): void {
             $outer->where('name', '>', $name)
-                ->orWhere(function (Builder $inner) use ($name, $id): void {
-                    $inner->where('name', '=', $name)->where('id', '>', $id);
+                ->orWhere(function (Builder $inner) use ($idColumn, $name, $id): void {
+                    $inner->where('name', '=', $name)->where($idColumn, '>', $id);
                 });
         });
     }
 
     /**
-     * Codifica el cursor keyset como un string opaco base64 de `{"n": name, "i": id}`.
+     * Codifica el cursor keyset como string opaco base64 de `{"n": name, "i": id, "r": rank?}`. El rank solo
+     * se incluye en el camino FTS por relevancia (null en la navegación por nombre).
      */
-    private static function encodeCursor(string $name, string $id): string
+    private static function encodeCursor(string $name, string $id, ?string $rank = null): string
     {
-        return base64_encode((string) json_encode(['n' => $name, 'i' => $id]));
+        $payload = ['n' => $name, 'i' => $id];
+        if ($rank !== null) {
+            $payload['r'] = $rank;
+        }
+
+        return base64_encode((string) json_encode($payload));
     }
 
     /**
-     * Decodifica el cursor a `[name, id]`. Devuelve null si falta o es inválido (se ignora con seguridad).
+     * Decodifica el cursor a `['name' => ..., 'id' => ..., 'rank' => ?]`. Devuelve null si falta o es
+     * inválido (se ignora con seguridad y la búsqueda arranca desde el inicio).
      *
-     * @return array{0: string, 1: string}|null
+     * @return array{name: string, id: string, rank: ?string}|null
      */
     private static function decodeCursor(?string $cursor): ?array
     {
@@ -152,17 +284,31 @@ final class DatabaseProductSearchReader implements ProductSearchReader
             return null;
         }
 
-        // Base64/JSON inválidos degradan a un decode no-arreglo; los nombres/ids se validan en un solo
-        // guard, de modo que el método mantiene ≤3 returns sin cambiar el resultado.
+        // Base64/JSON inválidos degradan a un decode no-arreglo; name/id se validan en un solo guard.
         $json = base64_decode($cursor, true);
         $decoded = $json === false ? [] : json_decode($json, true);
         $name = is_array($decoded) ? ($decoded['n'] ?? null) : null;
         $id = is_array($decoded) ? ($decoded['i'] ?? null) : null;
+        $rank = is_array($decoded) ? ($decoded['r'] ?? null) : null;
         if (!is_string($name) || !is_string($id)) {
             return null;
         }
 
-        return [$name, $id];
+        return ['name' => $name, 'id' => $id, 'rank' => is_scalar($rank) ? (string) $rank : null];
+    }
+
+    private function projectionExists(): bool
+    {
+        try {
+            return Schema::hasTable(self::PROJECTION);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function isPostgres(): bool
+    {
+        return DB::getDriverName() === 'pgsql';
     }
 
     private static function str(object $row, string $field): string

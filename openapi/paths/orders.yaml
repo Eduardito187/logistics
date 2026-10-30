@@ -74,8 +74,51 @@ paths:
       security:
       - channelApiKey: []
 
+  /channels/checkout:
+    post:
+      tags: [orders]
+      operationId: checkout
+      summary: Place an order from an existing cart (checkout)
+      description: >-
+        Creates the order from a cart snapshot (lines and frozen price come from the cart, not the body)
+        plus the delivery address. Asynchronous (202); the cart is marked converted via the outbox.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceCheckoutRequest'
+      responses:
+        '202':
+          description: Checkout accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Validation or domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+      security:
+      - channelApiKey: []
+
 components:
   schemas:
+    CommerceCheckoutRequest:
+      type: object
+      required: [cart_id, ship_to]
+      properties:
+        cart_id:
+          type: string
+          format: uuid
+        ship_to:
+          $ref: '#/components/schemas/CommerceShipTo'
     CommerceShipTo:
       type: object
       required: [customer_name, address_text]

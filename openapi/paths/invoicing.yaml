@@ -1,0 +1,176 @@
+# Fragmento OpenAPI del contexto commerce/invoicing (ADR 018 / EC-F0-10). Schemas con prefijo Commerce.
+# Puerta: integrations. La emisión fiscal real ante el SIN (CUF/CUFD/firma) es pendiente externo; acá
+# se expone la factura y su documento interno imprimible.
+
+paths:
+  /integrations/invoicing/invoices/{id}:
+    get:
+      tags: [invoicing]
+      operationId: getInvoice
+      summary: Get an invoice by id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceInvoice'
+        '404':
+          description: No invoice found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+
+  /integrations/invoicing/invoices/by-order/{orderId}:
+    get:
+      tags: [invoicing]
+      operationId: getInvoiceByOrder
+      summary: Get the invoice of an order
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceInvoice'
+        '404':
+          description: No invoice found for the given order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+
+  /integrations/invoicing/invoices/{id}/cancel:
+    post:
+      tags: [invoicing]
+      operationId: cancelInvoice
+      summary: Cancel an invoice
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '422':
+          description: Domain-rule error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+
+  /integrations/invoicing/invoices/{id}/document:
+    get:
+      tags: [invoicing]
+      operationId: renderInvoiceDocument
+      summary: Render the printable invoice document (internal)
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The invoice document as printable HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: No invoice found for the given identifier
+          content:
+            text/html:
+              schema:
+                type: string
+      security:
+      - serviceCredential: []
+
+components:
+  schemas:
+    CommerceInvoiceLine:
+      type: object
+      required: [description, quantity, unit_price_cents, line_total_cents]
+      properties:
+        description:
+          type: string
+        quantity:
+          type: integer
+        unit_price_cents:
+          type: integer
+        line_total_cents:
+          type: integer
+    CommerceInvoice:
+      type: object
+      required: [id, order_id, customer_name, currency, lines, net_cents, iva_cents, total_cents, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        number:
+          type: [string, 'null']
+        customer_name:
+          type: string
+        customer_tax_id:
+          type: [string, 'null']
+        currency:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceInvoiceLine'
+        net_cents:
+          type: integer
+        iva_cents:
+          type: integer
+        total_cents:
+          type: integer
+        status:
+          type: string
+          enum: [draft, issued, cancelled]
+        issued_at:
+          type: [string, 'null']

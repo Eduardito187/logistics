@@ -55,6 +55,11 @@ final class NotificationsSeeder extends Seeder
             [MessageType::ReadyForPickup, 'Tu pedido está listo para recojo', 'Tu pedido {{order}} ya está listo para que lo recojas en la tienda seleccionada.'],
             [MessageType::PickedUp, 'Pedido recogido', 'Confirmamos que recogiste tu pedido {{order}}. ¡Gracias por tu compra!'],
             [MessageType::ConfirmLocation, 'Confirma tu ubicación', 'Necesitamos que confirmes tu dirección para entregar el pedido {{order}}.'],
+            // Comercio (EC-F0-11): hitos del checkout y del pago, previos al ciclo logístico del envío.
+            // Se anclan al id de la orden, así que {{order}} resuelve a la referencia del pedido.
+            [MessageType::OrderPlaced, 'Recibimos tu pedido', 'Recibimos tu pedido {{order}} y estamos esperando la confirmación de tu pago. Te avisaremos apenas se acredite.'],
+            [MessageType::PaymentConfirmed, '¡Pago confirmado!', 'Confirmamos el pago de tu pedido {{order}}. ¡Gracias por elegir Dismac! Ya lo estamos preparando.'],
+            [MessageType::PaymentFailed, 'No pudimos procesar tu pago', 'No pudimos procesar el pago de tu pedido {{order}}. Por favor intenta nuevamente o usa otro medio de pago.'],
         ];
 
         // Todos los canales: push FCM, Telegram, email y SMS.

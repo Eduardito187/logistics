@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Commerce\Catalog\Presentation\Http\Controller\GetProductAvailabilityController;
 use Commerce\Catalog\Presentation\Http\Controller\GetProductController;
 use Commerce\Catalog\Presentation\Http\Controller\ListCategoriesController;
 use Commerce\Catalog\Presentation\Http\Controller\ListProductsController;
@@ -20,6 +21,7 @@ return [
         Route::prefix('catalog')->name('catalog.')->group(function (): void {
             Route::get('products', ListProductsController::class)->name('products.index');
             Route::get('products/{id}', GetProductController::class)->name('products.show');
+            Route::get('products/{id}/availability', GetProductAvailabilityController::class)->name('products.availability');
             Route::get('categories', ListCategoriesController::class)->name('categories.index');
         });
     },

@@ -6,7 +6,8 @@ namespace Commerce\Search\Application\ReadModel;
 
 /**
  * Resultado de búsqueda de un producto: proyección mínima para listados/storefront. Forma primitiva,
- * no expone dominio. Se construye desde una fila cruda (stdClass) de `commerce_products` leída read-only.
+ * no expone dominio. Se construye desde una fila cruda (stdClass) de la proyección `commerce_product_search`
+ * (el id de producto se proyecta como `id`); también sirve al fallback read-only sobre `commerce_products`.
  */
 final readonly class ProductSearchResult
 {
