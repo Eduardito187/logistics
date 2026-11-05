@@ -880,6 +880,7 @@
     "Opened at": "Abierta el",
     "Operating rules applied to deliveries inside this zone.": "Reglas de operación aplicadas a las entregas dentro de esta zona.",
     "Operations": "Operaciones",
+    "Order pipeline": "Pipeline de pedidos",
     "Shipment pipeline": "Pipeline de envíos",
     "Optimization (capacity + proximity)": "Optimización (capacidad + cercanía)",
     "Optimization packs by capacity and proximity; Slots groups by the chosen delivery time slot.": "Optimización empaca por capacidad y cercanía; Franjas agrupa por la franja de entrega elegida.",

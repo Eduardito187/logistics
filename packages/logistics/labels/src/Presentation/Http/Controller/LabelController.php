@@ -6,6 +6,7 @@ namespace Logistics\Labels\Presentation\Http\Controller;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use Logistics\Labels\Application\Command\EmitOrderLabels\EmitOrderLabels;
 use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
 use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
 use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLines;
@@ -69,17 +70,30 @@ final readonly class LabelController
     }
 
     /**
-     * Emite el lote de etiquetas del pedido y devuelve el resultado ya firmado y renderizado.
+     * Emite las etiquetas del pedido y devuelve el resultado ya firmado y renderizado.
+     *
+     * Dos modos sobre el mismo endpoint:
+     *  - LOTE EXPLÍCITO (origen + destino + líneas en el cuerpo): emite ese lote tal cual (EmitShipmentLabels).
+     *  - POR ORDEN (cuerpo vacío, o solo `origin` como escape hatch): el backend deriva origen/destino/líneas
+     *    de los envíos del pedido y del plan publicado, y emite SOLO lo autorizado y aún pending, de forma
+     *    idempotente/parcial. Siempre responde 201 con la colección completa de etiquetas del pedido.
      */
     public function store(EmitShipmentLabelsRequest $request, string $orderNumber): JsonResponse
     {
         try {
-            $this->commandBus->dispatch(new EmitShipmentLabels(
-                orderNumber: $orderNumber,
-                origin: $request->origin(),
-                destination: $request->destination(),
-                lines: $request->orderLines(),
-            ));
+            if ($request->hasExplicitBatch()) {
+                $this->commandBus->dispatch(new EmitShipmentLabels(
+                    orderNumber: $orderNumber,
+                    origin: $request->origin(),
+                    destination: $request->destination(),
+                    lines: $request->orderLines(),
+                ));
+            } else {
+                $this->commandBus->dispatch(new EmitOrderLabels(
+                    orderNumber: $orderNumber,
+                    originOverride: $request->origin() !== '' ? $request->origin() : null,
+                ));
+            }
         } catch (DuplicateLabelException $e) {
             // El `id` de una etiqueta es único por unidad física: reemitir es un conflicto duro (ADR 004).
             return new JsonResponse([

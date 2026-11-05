@@ -38,8 +38,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>Seguimiento de tu pedido</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    {{-- Leaflet AUTO-HOSPEDADO (regla CERO-CDN, mismo origen 'self'): nada de unpkg. --}}
+    <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}">
     <style>
         :root {
             --dismac-red: #E2231A;
@@ -188,8 +188,7 @@
     <footer>Dismac &middot; Este enlace es privado, no lo compartas.</footer>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
 <script src="{{ asset('js/dismac-maps.js') }}"></script>
 <script>
     (function () {

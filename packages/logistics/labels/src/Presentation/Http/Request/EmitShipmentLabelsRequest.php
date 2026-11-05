@@ -10,8 +10,13 @@ use Logistics\Labels\Application\Dto\OrderLineInput;
 /**
  * Validación de la emisión de etiquetas de un pedido (puerta app).
  *
- * El número de pedido llega por la ruta; el cuerpo trae origen, destino y las líneas. La posición de
- * cada línea fija su número de línea (el handler respeta el orden del array).
+ * Dos modos sobre el MISMO endpoint (POST .../labels):
+ *  - LOTE EXPLÍCITO: el cuerpo trae origen, destino y líneas (la posición fija el número de línea). Lo usa
+ *    el integrador/worker que ya conoce el detalle.
+ *  - POR ORDEN: cuerpo vacío (o solo `origin` como escape hatch). El backend deriva origen/destino/líneas
+ *    del envío y del plan publicado y emite lo autorizado y pending. Por eso todos los campos son OPCIONALES
+ *    aquí; `hasExplicitBatch()` decide el modo. La pre-emisión (worker) mantiene su contrato estricto en
+ *    PreEmitOrderLabelsRequest.
  */
 class EmitShipmentLabelsRequest extends FormRequest
 {
@@ -28,14 +33,22 @@ class EmitShipmentLabelsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'origin' => ['required', 'string', 'max:64'],
-            'destination' => ['required', 'string', 'max:64'],
-            'lines' => ['required', 'array', 'min:1'],
-            'lines.*.sku' => ['required', 'string', 'max:64'],
-            'lines.*.name' => ['required', 'string', 'max:255'],
-            'lines.*.quantity' => ['required', 'integer', 'min:1'],
+            'origin' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'destination' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'lines' => ['sometimes', 'nullable', 'array'],
+            'lines.*.sku' => ['required_with:lines', 'string', 'max:64'],
+            'lines.*.name' => ['required_with:lines', 'string', 'max:255'],
+            'lines.*.quantity' => ['required_with:lines', 'integer', 'min:1'],
             'lines.*.pieces_per_unit' => ['sometimes', 'integer', 'min:1'],
         ];
+    }
+
+    /**
+     * ¿El cuerpo trae un LOTE EXPLÍCITO (origen + destino + al menos una línea)? Si no, es emisión por orden.
+     */
+    public function hasExplicitBatch(): bool
+    {
+        return $this->origin() !== '' && $this->destination() !== '' && $this->orderLines() !== [];
     }
 
     /**
@@ -45,8 +58,11 @@ class EmitShipmentLabelsRequest extends FormRequest
      */
     public function orderLines(): array
     {
-        /** @var list<array{sku: string, name: string, quantity: int, pieces_per_unit?: int}> $lines */
+        /** @var list<array{sku: string, name: string, quantity: int, pieces_per_unit?: int}>|null $lines */
         $lines = $this->validated('lines');
+        if (!is_array($lines)) {
+            return [];
+        }
 
         return array_map(
             static fn (array $line): OrderLineInput => new OrderLineInput(
@@ -61,11 +77,15 @@ class EmitShipmentLabelsRequest extends FormRequest
 
     public function origin(): string
     {
-        return (string) $this->validated('origin');
+        $origin = $this->validated('origin');
+
+        return is_string($origin) ? $origin : '';
     }
 
     public function destination(): string
     {
-        return (string) $this->validated('destination');
+        $destination = $this->validated('destination');
+
+        return is_string($destination) ? $destination : '';
     }
 }

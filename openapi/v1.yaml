@@ -2818,24 +2818,28 @@ paths:
       tags:
       - labels
       operationId: emitShipmentLabels
-      summary: Emit the label batch for an order
+      summary: Emit the labels of an order
       description: |
-        Emite una etiqueta por cada bulto físico de cada línea del pedido: arma el payload, lo firma y renderiza su ZPL. Reemitir una etiqueta ya emitida es un conflicto (409).
+        Emite las etiquetas del pedido (una por bulto físico): arma el payload, lo firma y renderiza su ZPL.
+
+        Dos modos sobre el mismo endpoint:
+        - **Lote explícito**: el cuerpo trae `origin` + `destination` + `lines`. Emite ese lote tal cual; reemitir una etiqueta ya emitida es un conflicto (409).
+        - **Por orden** (cuerpo VACÍO, o solo con `origin`): el backend deriva origen, destino y líneas de los envíos del pedido y del plan publicado, y emite solo lo AUTORIZADO (con plan publicado) y aún PENDING. Es idempotente/parcial: reabrir la pantalla emite lo que falta sin duplicar, y responde 201 con la colección completa (no 409).
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmitLabelsRequest'
+              $ref: '#/components/schemas/EmitLabelsByOrderRequest'
       responses:
         '201':
-          description: Labels emitted
+          description: Labels emitted (full order collection)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/LabelCollection'
         '409':
-          description: A label with the same identity was already emitted
+          description: A label with the same identity was already emitted (explicit-batch mode only)
           content:
             application/json:
               schema:
@@ -12512,6 +12516,32 @@ components:
         lines:
           type: array
           minItems: 1
+          items:
+            $ref: '#/components/schemas/EmitLabelLine'
+    EmitLabelsByOrderRequest:
+      type: object
+      description: >-
+        Cuerpo OPCIONAL del POST de etiquetas por la app. Si se envía con `origin` + `destination` + `lines`,
+        se emite ese lote explícito (igual que EmitLabelsRequest). Si se envía VACÍO (o solo con `origin`
+        como escape hatch), el backend emite por ORDEN: deriva origen, destino y líneas de los envíos del
+        pedido y del plan publicado, y emite solo las líneas AUTORIZADAS (con plan publicado) y aún
+        PENDING. El valor de `origin` del QR lo fija el backend (no es contrato con la app); este campo
+        solo lo impone cuando el integrador ya conoce el CD de origen.
+      properties:
+        origin:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: Nodo de origen (opcional; si se omite, el backend lo deriva por envío)
+        destination:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: Nodo de destino (opcional; requerido solo para el lote explícito)
+        lines:
+          type: array
+          nullable: true
+          description: Líneas del lote explícito (opcional; si se omite, se derivan del pedido)
           items:
             $ref: '#/components/schemas/EmitLabelLine'
     EmittedLabel:

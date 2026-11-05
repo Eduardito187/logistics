@@ -7,10 +7,15 @@ namespace Logistics\Labels\Infrastructure\ReadModel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Logistics\Labels\Application\Contract\DispatchLinesReader;
+use Logistics\Labels\Application\Contract\OrderLabelEmissionPlanReader;
+use Logistics\Labels\Application\Contract\OriginResolver;
+use Logistics\Labels\Application\Dto\OrderLineInput;
 use Logistics\Labels\Application\ReadModel\DispatchLinesView;
 use Logistics\Labels\Application\ReadModel\DispatchLineView;
+use Logistics\Labels\Application\ReadModel\OrderLabelEmissionGroup;
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
 use Logistics\Labels\Domain\Model\EmittedLabel;
+use Logistics\Labels\Domain\ValueObject\LabelPayload;
 use Throwable;
 
 /**
@@ -26,7 +31,7 @@ use Throwable;
  *
  * Cada fuente va en su try/catch: si una tabla/contexto falta, ese dato degrada a null/[] sin romper.
  */
-final class EloquentDispatchLinesReader implements DispatchLinesReader
+final class EloquentDispatchLinesReader implements DispatchLinesReader, OrderLabelEmissionPlanReader
 {
     /** @var array<string, string> network_nodes.type → {store|warehouse} */
     private const NODE_TYPE_MAP = [
@@ -38,7 +43,81 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader
 
     public function __construct(
         private readonly EmittedLabelRepository $labels,
+        private readonly OriginResolver $origin,
     ) {}
+
+    /**
+     * Plan de emisión por orden: un grupo por envío hermano (multishipping) con origen/destino derivados,
+     * sus líneas y las banderas de autorización/emisión. Reutiliza las mismas lecturas que read() (envíos,
+     * líneas, destino, autorización) para no duplicar SQL; añade origen (OriginResolver) y el estado de
+     * emisión por destino. El `dst` del QR distingue a los hermanos (todos bajo la referencia de la orden).
+     *
+     * @return list<OrderLabelEmissionGroup>
+     */
+    public function emissionPlan(string $orderNumber): array
+    {
+        $shipments = $this->shipmentsForOrder($orderNumber);
+        $activeDestinations = $this->activeDestinationCodes($orderNumber);
+
+        $groups = [];
+        foreach ($shipments as $shipment) {
+            $shipmentId = (string) $shipment->id;
+            $rows = $this->shipmentLines($shipmentId);
+            if ($rows === []) {
+                continue;
+            }
+
+            // Destino del QR: código del nodo (retiro) o el marcador de domicilio 'C'.
+            $nodeCode = $this->destinationCode($shipment);
+            $destination = $nodeCode !== '' ? $nodeCode : LabelPayload::CUSTOMER_DESTINATION;
+
+            $lines = array_map(
+                static fn (array $r): OrderLineInput => new OrderLineInput(
+                    sku: $r['sku'],
+                    name: ($r['name'] ?? null) ?? $r['sku'],
+                    quantity: $r['quantity'],
+                    piecesPerUnit: 1,
+                ),
+                $rows,
+            );
+
+            $groups[] = new OrderLabelEmissionGroup(
+                origin: $this->origin->resolve(
+                    destinationNodeId: is_string($shipment->destination_node_id) ? $shipment->destination_node_id : null,
+                    lat: is_numeric($shipment->lat) ? (float) $shipment->lat : null,
+                    lng: is_numeric($shipment->lng) ? (float) $shipment->lng : null,
+                    orderReference: $orderNumber,
+                ),
+                destination: $destination,
+                lines: $lines,
+                authorized: $this->shipmentInPublishedPlan($shipmentId),
+                alreadyEmitted: in_array($destination, $activeDestinations, true),
+            );
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Códigos de destino (`dst`) con etiqueta VIGENTE en la orden: sirve para saltar los envíos ya emitidos
+     * (idempotencia parcial por destino). Domicilio queda como 'C'.
+     *
+     * @return list<string>
+     */
+    private function activeDestinationCodes(string $orderNumber): array
+    {
+        try {
+            $codes = [];
+            foreach ($this->labels->activeForOrder($orderNumber) as $label) {
+                assert($label instanceof EmittedLabel);
+                $codes[$label->destinationCode()] = true;
+            }
+
+            return array_keys($codes);
+        } catch (Throwable) {
+            return [];
+        }
+    }
 
     public function read(string $orderNumber): DispatchLinesView
     {
@@ -131,7 +210,7 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader
                 ->orWhere('external_id', $orderNumber)
                 ->orderBy('created_at')
                 ->orderBy('id')
-                ->get(['id', 'external_id', 'destination_node_id', 'customer_name', 'address_text', 'address_reference'])
+                ->get(['id', 'external_id', 'destination_node_id', 'customer_name', 'address_text', 'address_reference', 'lat', 'lng'])
                 ->all());
         } catch (Throwable) {
             return [];
