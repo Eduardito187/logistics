@@ -24,6 +24,20 @@ final class ViewShipment extends ViewRecord
     // Vista propia (cockpit); conserva el chrome de página Filament (cabecera + acciones).
     protected string $view = 'filament.shipments.shipment-hub';
 
+    // Título por el nº de pedido (external_id) o el cliente, no un genérico ni el UUID (consistencia).
+    public function getTitle(): string
+    {
+        $record = $this->getRecord();
+        foreach (['external_id', 'customer_name'] as $field) {
+            $value = $record->getAttribute($field);
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return __('Shipment');
+    }
+
     /**
      * @return array<int, Action>
      */

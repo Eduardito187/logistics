@@ -23,6 +23,17 @@ final class ViewOrder extends ViewRecord
     // Vista propia (cockpit); conserva el chrome de página Filament (cabecera + acción Cancelar).
     protected string $view = 'filament.orders.order-hub';
 
+    // Título por el cliente (instantánea de ship_to), no un genérico ni el UUID (consistencia con los hubs).
+    public function getTitle(): string
+    {
+        $shipTo = $this->getRecord()->getAttribute('ship_to');
+        $name = is_array($shipTo) && isset($shipTo['customer_name']) && is_string($shipTo['customer_name'])
+            ? $shipTo['customer_name']
+            : '';
+
+        return $name !== '' ? $name : __('Order');
+    }
+
     /**
      * @return array<int, Action>
      */
