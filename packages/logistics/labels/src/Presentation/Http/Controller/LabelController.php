@@ -10,8 +10,10 @@ use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
 use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
 use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLines;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
+use Logistics\Labels\Application\Query\ResolveLabelUnit\ResolveLabelUnit;
 use Logistics\Labels\Application\ReadModel\DispatchLinesView;
 use Logistics\Labels\Application\ReadModel\EmittedLabelView;
+use Logistics\Labels\Application\ReadModel\LabelUnitView;
 use Logistics\Labels\Domain\Exception\DuplicateLabelException;
 use Logistics\Labels\Presentation\Http\Request\EmitShipmentLabelsRequest;
 use Logistics\Labels\Presentation\Http\Request\ReprintOrderLabelsRequest;
@@ -49,6 +51,19 @@ final readonly class LabelController
     {
         $view = $this->queryBus->ask(new GetDispatchLines($orderNumber));
         assert($view instanceof DispatchLinesView);
+
+        return new JsonResponse($view->toArray());
+    }
+
+    /**
+     * FALLBACK ONLINE: resuelve una etiqueta escaneada (su id/ULID) al bulto físico + envío. El flujo normal
+     * es offline-first (la app mapea label_id→unit_id desde lo que ya cacheó: EmittedLabel / UnitTracking);
+     * este endpoint es solo para una etiqueta que la app no tenga cacheada.
+     */
+    public function resolveUnit(string $labelId): JsonResponse
+    {
+        $view = $this->queryBus->ask(new ResolveLabelUnit($labelId));
+        assert($view instanceof LabelUnitView);
 
         return new JsonResponse($view->toArray());
     }

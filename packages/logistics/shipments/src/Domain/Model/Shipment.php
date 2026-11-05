@@ -49,7 +49,12 @@ final class Shipment extends AggregateRoot
         private readonly Ownership $ownership,
         private ?DeliverySlot $deliverySlot = null,
         private ?string $destinationNodeId = null,
-    ) {}
+        private ?string $orderReference = null,
+    ) {
+        // En el flujo de un solo destino la orden ES la referencia de origen; multishipping la fija
+        // explícita para agrupar hermanos (ver migración add_order_reference_to_shipments_table).
+        $this->orderReference ??= $sourceReference->externalId;
+    }
 
     /**
      * API de ingreso: valida los datos, arma el envío con sus bultos y graba el evento de recepción.
@@ -66,6 +71,7 @@ final class Shipment extends AggregateRoot
         array $lines,
         ?string $destinationNodeId = null,
         ?Ownership $ownership = null,
+        ?string $orderReference = null,
     ): self {
         if ($sourceReference->source !== $source) {
             throw ShipmentsException::because('la fuente del envío no coincide con la de su referencia de origen');
@@ -99,6 +105,7 @@ final class Shipment extends AggregateRoot
             $ownership,
             null,
             $destinationNodeId,
+            $orderReference,
         );
 
         $shipment->recordEvent(new ShipmentReceived(
@@ -134,6 +141,7 @@ final class Shipment extends AggregateRoot
         ?DeliverySlot $deliverySlot = null,
         ?string $destinationNodeId = null,
         ?Ownership $ownership = null,
+        ?string $orderReference = null,
     ): self {
         return new self(
             $id,
@@ -148,6 +156,7 @@ final class Shipment extends AggregateRoot
             $ownership ?? Ownership::dismacOwned(),
             $deliverySlot,
             $destinationNodeId,
+            $orderReference,
         );
     }
 
@@ -259,6 +268,15 @@ final class Shipment extends AggregateRoot
     public function destinationNodeId(): ?string
     {
         return $this->destinationNodeId;
+    }
+
+    /**
+     * Referencia de la ORDEN que originó el envío. Agrupa los envíos hermanos de una orden multishipping
+     * (cada uno a su destino). En un solo destino coincide con la referencia de origen (external_id).
+     */
+    public function orderReference(): string
+    {
+        return $this->orderReference ?? $this->sourceReference->externalId;
     }
 
     /**

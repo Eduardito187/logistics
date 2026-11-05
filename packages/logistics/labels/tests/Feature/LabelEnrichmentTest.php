@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Logistics\Labels\Application\Contract\LabelEnricher;
 use Logistics\Labels\Application\ReadModel\EmittedLabelView;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
+use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
@@ -70,6 +71,29 @@ it('resuelve el destino de nodo a tipo store/warehouse con su nombre, sin direcc
     expect($d['type'])->toBe('store')
         ->and($d['name'])->toBe('Tienda Prueba')
         ->and($d['address'])->toBeNull();
+})->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');
+
+it('resuelve el unit_id del bulto por correlación línea+unit+piece (puente offline-first)', function (): void {
+    $shipment = ShipmentRecord::factory()->create(['external_id' => 'ORD-ENR-UNIT', 'destination_node_id' => null]);
+    $line = ShipmentLineRecord::factory()->create(['shipment_id' => $shipment->id, 'sku' => 'SKU-U', 'product_name' => 'Heladera']);
+    $unit = PhysicalUnitRecord::factory()->create([
+        'shipment_id' => $shipment->id,
+        'line_id' => $line->id,
+        'unit_index' => 1,
+        'unit_total' => 1,
+        'piece_index' => 1,
+        'piece_total' => 1,
+    ]);
+
+    // Etiqueta de la 1ª línea (sku coincide), unidad 1, pieza 1 → debe atar a ese bulto.
+    $view = baseLabelView('ORD-ENR-UNIT', 'SKU-U', 'CD-X');
+    $out = app(LabelEnricher::class)->enrich('ORD-ENR-UNIT', [$view]);
+    $a = $out[0]->toArray();
+
+    expect($a['unit_id'])->toBe((string) $unit->id)
+        ->and($a['shipment_id'])->toBe((string) $shipment->id)
+        ->and($a['unit'])->toBe(['index' => 1, 'total' => 1])
+        ->and($a['piece'])->toBe(['index' => 1, 'total' => 1]);
 })->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');
 
 it('degrada a null cuando no hay envío para la orden (tolerante)', function (): void {

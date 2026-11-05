@@ -41,6 +41,15 @@ final readonly class EmittedLabelView
         public ?string $destinationType = null,
         public ?string $destinationName = null,
         public ?string $destinationAddress = null,
+        // Bulto físico resuelto (offline-first: la app mapea label_id→unit_id localmente, sin red, para
+        // escanear contra el bulto real). Base = null; los rellena el enricher.
+        public ?string $unitId = null,
+        public ?string $shipmentId = null,
+        // Índices del bulto dentro de la línea (del payload del QR), para orden/correlación.
+        public int $unitIndex = 1,
+        public int $unitTotal = 1,
+        public int $pieceIndex = 1,
+        public int $pieceTotal = 1,
     ) {}
 
     public static function fromEmittedLabel(EmittedLabel $label): self
@@ -58,6 +67,10 @@ final readonly class EmittedLabelView
             revokedAt: $label->revokedAt,
             revokedReason: $label->revokedReason,
             originCode: $label->originCode(),
+            unitIndex: $label->unitIndex(),
+            unitTotal: $label->unitTotal(),
+            pieceIndex: $label->pieceIndex(),
+            pieceTotal: $label->pieceTotal(),
         );
     }
 
@@ -72,6 +85,8 @@ final readonly class EmittedLabelView
         ?string $imageUrl,
         ?string $originName,
         array $destination,
+        ?string $unitId = null,
+        ?string $shipmentId = null,
     ): self {
         return new self(
             orderNumber: $this->orderNumber,
@@ -92,6 +107,12 @@ final readonly class EmittedLabelView
             destinationType: $destination['type'] ?? null,
             destinationName: $destination['name'] ?? null,
             destinationAddress: $destination['address'] ?? null,
+            unitId: $unitId,
+            shipmentId: $shipmentId,
+            unitIndex: $this->unitIndex,
+            unitTotal: $this->unitTotal,
+            pieceIndex: $this->pieceIndex,
+            pieceTotal: $this->pieceTotal,
         );
     }
 
@@ -101,7 +122,9 @@ final readonly class EmittedLabelView
      *   qr_content: string, zpl: string, emitted_at: int, revoked: bool, revoked_at: int|null,
      *   revoked_reason: string|null, product_name: string|null, image_url: string|null,
      *   origin: array{code: string, name: string|null},
-     *   destination: array{type: string|null, name: string|null, address: string|null}
+     *   destination: array{type: string|null, name: string|null, address: string|null},
+     *   unit_id: string|null, shipment_id: string|null,
+     *   unit: array{index: int, total: int}, piece: array{index: int, total: int}
      * }
      */
     public function toArray(): array
@@ -129,6 +152,11 @@ final readonly class EmittedLabelView
                 'name' => $this->destinationName,
                 'address' => $this->destinationAddress,
             ],
+            // Bulto físico real (offline-first): la app mapea label_id→unit_id localmente para el escaneo.
+            'unit_id' => $this->unitId,
+            'shipment_id' => $this->shipmentId,
+            'unit' => ['index' => $this->unitIndex, 'total' => $this->unitTotal],
+            'piece' => ['index' => $this->pieceIndex, 'total' => $this->pieceTotal],
         ];
     }
 }

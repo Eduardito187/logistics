@@ -42,16 +42,9 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader
 
     public function read(string $orderNumber): DispatchLinesView
     {
-        $shipment = $this->shipmentForOrder($orderNumber);
-        $destination = $this->resolveDestination($shipment);
-        $shipmentId = $shipment !== null ? (string) $shipment->id : null;
-        $shipmentRef = $shipment !== null && is_string($shipment->external_id) ? $shipment->external_id : null;
-        $authorized = $shipmentId !== null && $this->shipmentInPublishedPlan($shipmentId);
-        $authorizedReason = $authorized ? null : 'sin plan publicado';
-
-        $rows = $shipmentId !== null ? $this->shipmentLines($shipmentId) : [];
-        $skus = array_values(array_unique(array_map(static fn (array $r): string => $r['sku'], $rows)));
-        $catalog = $this->catalogProducts($skus);
+        // Multishipping: una orden puede tener varios envíos hermanos (uno por destino). Se recorren
+        // TODOS y se construye un grupo de destino por envío + el detalle plano de líneas con su envío.
+        $shipments = $this->shipmentsForOrder($orderNumber);
         $labelsByKey = $this->labelsByKey($orderNumber);
         $originNames = $this->nodeNamesByCode(array_values(array_unique(array_filter(
             array_map(static fn (array $l): string => $l['origin_code'], $labelsByKey),
@@ -59,59 +52,106 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader
         ))));
 
         $lines = [];
-        $lineNumber = 0;
-        foreach ($rows as $row) {
-            $lineNumber++;
-            $sku = $row['sku'];
-            $key = $sku.'|'.$lineNumber;
-            $label = $labelsByKey[$key] ?? null;
+        $destinations = [];
+        foreach ($shipments as $shipment) {
+            $shipmentId = (string) $shipment->id;
+            $shipmentRef = is_string($shipment->external_id) ? $shipment->external_id : null;
+            $destination = $this->resolveDestination($shipment);
+            $destCode = $this->destinationCode($shipment);
+            $authorized = $this->shipmentInPublishedPlan($shipmentId);
+            $authorizedReason = $authorized ? null : 'sin plan publicado';
 
-            $cat = $catalog[$sku] ?? null;
-            $name = ($row['name'] ?? null) ?: ($cat['name'] ?? null);
-            $image = ($row['image'] ?? null) ?: ($cat['image'] ?? null);
+            $rows = $this->shipmentLines($shipmentId);
+            $skus = array_values(array_unique(array_map(static fn (array $r): string => $r['sku'], $rows)));
+            $catalog = $this->catalogProducts($skus);
 
-            $originCode = $label['origin_code'] ?? '';
-            $originName = $originCode !== '' ? ($originNames[$originCode] ?? null) : null;
+            $shipmentLineCount = 0;
+            $lineNumber = 0;
+            foreach ($rows as $row) {
+                $lineNumber++;
+                $sku = $row['sku'];
+                // Las etiquetas numeran la línea DENTRO de su envío (EmitShipmentLabels es por envío), así
+                // que la clave se busca primero acotada al destino de este envío y luego a nivel orden.
+                $label = $labelsByKey[$destCode.'|'.$sku.'|'.$lineNumber]
+                    ?? $labelsByKey['|'.$sku.'|'.$lineNumber]
+                    ?? $labelsByKey[$sku.'|'.$lineNumber]
+                    ?? null;
 
-            $lines[] = new DispatchLineView(
-                sku: $sku,
-                productName: $name !== '' ? $name : null,
-                imageUrl: $image !== '' ? $image : null,
-                quantity: $row['quantity'],
-                piecesPerUnit: 1,
-                lineNumber: $lineNumber,
-                originCode: $originCode,
-                originName: $originName,
-                destinationType: $destination['type'],
-                destinationName: $destination['name'],
-                destinationAddress: $destination['address'],
-                shipmentId: $shipmentId,
-                shipmentReference: $shipmentRef,
-                authorized: $authorized,
-                authorizedReason: $authorizedReason,
-                labelStatus: $label['status'] ?? 'pending',
-            );
+                $cat = $catalog[$sku] ?? null;
+                $name = ($row['name'] ?? null) ?: ($cat['name'] ?? null);
+                $image = ($row['image'] ?? null) ?: ($cat['image'] ?? null);
+
+                $originCode = $label['origin_code'] ?? '';
+                $originName = $originCode !== '' ? ($originNames[$originCode] ?? null) : null;
+
+                $lines[] = new DispatchLineView(
+                    sku: $sku,
+                    productName: $name !== '' ? $name : null,
+                    imageUrl: $image !== '' ? $image : null,
+                    quantity: $row['quantity'],
+                    piecesPerUnit: 1,
+                    lineNumber: $lineNumber,
+                    originCode: $originCode,
+                    originName: $originName,
+                    destinationType: $destination['type'],
+                    destinationName: $destination['name'],
+                    destinationAddress: $destination['address'],
+                    shipmentId: $shipmentId,
+                    shipmentReference: $shipmentRef,
+                    authorized: $authorized,
+                    authorizedReason: $authorizedReason,
+                    labelStatus: $label['status'] ?? 'pending',
+                );
+                $shipmentLineCount++;
+            }
+
+            if ($shipmentLineCount > 0) {
+                $destinations[] = [
+                    'shipment_reference' => $shipmentRef,
+                    'destination' => $destination,
+                    'line_count' => $shipmentLineCount,
+                ];
+            }
         }
-
-        $destinations = $lines === [] ? [] : [[
-            'shipment_reference' => $shipmentRef,
-            'destination' => $destination,
-            'line_count' => count($lines),
-        ]];
 
         return new DispatchLinesView($orderNumber, $destinations, $lines);
     }
 
-    /** Envío más reciente de la orden (por external_id), o null. */
-    private function shipmentForOrder(string $orderNumber): ?\stdClass
+    /**
+     * Envíos hermanos de la orden (por order_reference; cae a external_id para filas previas al backfill),
+     * en orden estable de creación. Multishipping: puede devolver más de uno (uno por destino).
+     *
+     * @return list<\stdClass>
+     */
+    private function shipmentsForOrder(string $orderNumber): array
     {
         try {
-            return DB::table('shipments')
-                ->where('external_id', $orderNumber)
-                ->orderByDesc('created_at')
-                ->first(['id', 'external_id', 'destination_node_id', 'customer_name', 'address_text', 'address_reference']);
+            return array_values(DB::table('shipments')
+                ->where('order_reference', $orderNumber)
+                ->orWhere('external_id', $orderNumber)
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->get(['id', 'external_id', 'destination_node_id', 'customer_name', 'address_text', 'address_reference'])
+                ->all());
         } catch (Throwable) {
-            return null;
+            return [];
+        }
+    }
+
+    /** Código del nodo destino del envío (para acotar sus etiquetas por `dst`), o '' si es a domicilio. */
+    private function destinationCode(\stdClass $shipment): string
+    {
+        $nodeId = is_string($shipment->destination_node_id) ? $shipment->destination_node_id : null;
+        if ($nodeId === null || $nodeId === '') {
+            return '';
+        }
+
+        try {
+            $code = DB::table('network_nodes')->where('id', $nodeId)->value('code');
+
+            return is_string($code) ? $code : '';
+        } catch (Throwable) {
+            return '';
         }
     }
 
@@ -167,8 +207,10 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader
     }
 
     /**
-     * Mapa "sku|lineNumber" → {status, origin_code} desde las etiquetas emitidas de la orden.
-     * status: emitted si hay una vigente; revoked si solo hay revocadas; (ausente = pending).
+     * Mapa de etiquetas emitidas de la orden → {status, origin_code}, indexado por TRES claves para que el
+     * reader resuelva de más específico a más laxo (multishipping): `dst|sku|lineNumber` (acotado al destino
+     * del envío por el `dst` del QR) y `sku|lineNumber` (a nivel orden, retrocompatible). status: emitted si
+     * hay una vigente; revoked si solo hay revocadas; (ausente = pending).
      *
      * @return array<string, array{status: string, origin_code: string}>
      */
@@ -178,13 +220,16 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader
             $out = [];
             foreach ($this->labels->forOrder($orderNumber) as $label) {
                 assert($label instanceof EmittedLabel);
-                $key = $label->sku().'|'.$label->lineNumber();
-                $existing = $out[$key] ?? null;
-
                 $status = $label->isRevoked() ? 'revoked' : 'emitted';
-                // Una etiqueta vigente manda sobre revocadas previas del mismo (sku, línea).
-                if ($existing === null || ($existing['status'] === 'revoked' && $status === 'emitted')) {
-                    $out[$key] = ['status' => $status, 'origin_code' => $label->originCode()];
+                $value = ['status' => $status, 'origin_code' => $label->originCode()];
+                $suffix = $label->sku().'|'.$label->lineNumber();
+
+                // Clave acotada al destino (dst del QR) y clave a nivel orden; una vigente pisa revocadas.
+                foreach ([$label->destinationCode().'|'.$suffix, $suffix] as $key) {
+                    $existing = $out[$key] ?? null;
+                    if ($existing === null || ($existing['status'] === 'revoked' && $status === 'emitted')) {
+                        $out[$key] = $value;
+                    }
                 }
             }
 

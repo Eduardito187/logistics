@@ -2914,6 +2914,31 @@ paths:
                 $ref: '#/components/schemas/DispatchLinesResponse'
       security:
       - appBearer: []
+  /app/labels/{labelId}/resolve:
+    parameters:
+    - name: labelId
+      in: path
+      required: true
+      description: Id (ULID) de la etiqueta escaneada
+      schema:
+        type: string
+    get:
+      tags:
+      - labels
+      operationId: resolveLabelUnit
+      summary: Resolve a scanned label to its physical unit (online fallback)
+      description: |
+        FALLBACK ONLINE: resuelve una etiqueta escaneada (ULID del QR) al bulto físico (unit_id) y su envío.
+        El flujo normal es offline-first (label_id→unit_id ya viene en EmittedLabel y UnitTracking cacheados).
+      responses:
+        '200':
+          description: Resolution (resolved=false si no se pudo atar al bulto)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabelUnitResolution'
+      security:
+      - appBearer: []
   /app/outbox/messages:
     get:
       tags:
@@ -12585,6 +12610,62 @@ components:
               type: string
               nullable: true
               description: Dirección (solo en home; null en nodo)
+        unit_id:
+          type: string
+          nullable: true
+          description: >-
+            UUID del BULTO FÍSICO (shipment_units) de esta etiqueta, resuelto por correlación. La app mapea
+            label_id→unit_id localmente (offline) para escanear. Mismo valor que UnitTracking.unit_id. null
+            si no se pudo atar.
+        shipment_id:
+          type: string
+          nullable: true
+          description: UUID del envío del bulto (opaco), o null
+        unit:
+          type: object
+          required:
+          - index
+          - total
+          properties:
+            index: { type: integer }
+            total: { type: integer }
+        piece:
+          type: object
+          required:
+          - index
+          - total
+          properties:
+            index: { type: integer }
+            total: { type: integer }
+    LabelUnitResolution:
+      type: object
+      description: Resolución de una etiqueta escaneada (ULID) al bulto físico + envío (fallback online).
+      required:
+      - label_id
+      - resolved
+      - unit_id
+      - shipment_id
+      - sku
+      - product_name
+      - line_number
+      - unit
+      - piece
+      properties:
+        label_id: { type: string }
+        resolved: { type: boolean }
+        unit_id: { type: string, nullable: true }
+        shipment_id: { type: string, nullable: true }
+        sku: { type: string, nullable: true }
+        product_name: { type: string, nullable: true }
+        line_number: { type: integer, nullable: true }
+        unit:
+          type: object
+          nullable: true
+          properties: { index: { type: integer }, total: { type: integer } }
+        piece:
+          type: object
+          nullable: true
+          properties: { index: { type: integer }, total: { type: integer } }
     EnqueueStockTransferRequest:
       type: object
       required:
@@ -15649,6 +15730,13 @@ components:
           type:
           - integer
           - 'null'
+        label_id:
+          type:
+          - string
+          - 'null'
+          description: >-
+            Id (ULID del QR) de la etiqueta de este bulto, para que la app mapee label_id→unit_id offline al
+            escanear. Mismo unit_id que EmittedLabel. null si el bulto aún no tiene etiqueta emitida.
     GeoPoint:
       type: object
       required:

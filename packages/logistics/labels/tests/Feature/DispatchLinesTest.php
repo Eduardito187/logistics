@@ -79,3 +79,45 @@ it('devuelve envelope vacío cuando la orden no tiene envío', function (): void
         ->and($res['destinations'])->toBe([])
         ->and($res['data'])->toBe([]);
 })->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');
+
+it('multishipping: agrupa los envíos hermanos de una orden en un grupo de destino por envío', function (): void {
+    $store = NodeRecord::factory()->create(['code' => 'T-DL-MS', 'name' => 'Tienda Retiro', 'type' => 'store']);
+
+    // Hermano 1: a domicilio (external_id == orden). Hermano 2: retiro en tienda (external_id compuesto).
+    $home = ShipmentRecord::factory()->create([
+        'external_id' => 'ORD-DL-MS',
+        'order_reference' => 'ORD-DL-MS',
+        'destination_node_id' => null,
+        'customer_name' => 'Caro Cliente',
+        'address_text' => 'Calle Hogar 1',
+    ]);
+    ShipmentLineRecord::factory()->create(['shipment_id' => $home->id, 'sku' => 'SKU-HOME', 'product_name' => 'Sofá', 'quantity' => 1]);
+
+    $pickup = ShipmentRecord::factory()->create([
+        'external_id' => 'ORD-DL-MS#n:'.$store->id,
+        'order_reference' => 'ORD-DL-MS',
+        'destination_node_id' => $store->id,
+    ]);
+    ShipmentLineRecord::factory()->create(['shipment_id' => $pickup->id, 'sku' => 'SKU-PICK', 'product_name' => 'Taladro', 'quantity' => 2]);
+
+    $res = dispatchLines('ORD-DL-MS');
+
+    // Dos grupos de destino (uno por hermano) y las dos líneas en el detalle plano, cada una con su envío.
+    expect($res['order_reference'])->toBe('ORD-DL-MS')
+        ->and($res['destinations'])->toHaveCount(2)
+        ->and($res['data'])->toHaveCount(2);
+
+    $types = array_map(static fn (array $d): ?string => $d['destination']['type'], $res['destinations']);
+    sort($types);
+    expect($types)->toBe(['home', 'store']);
+
+    $bySku = [];
+    foreach ($res['data'] as $line) {
+        $bySku[$line['sku']] = $line;
+    }
+    expect($bySku['SKU-HOME']['destination']['type'])->toBe('home')
+        ->and($bySku['SKU-HOME']['shipment_id'])->toBe((string) $home->id)
+        ->and($bySku['SKU-PICK']['destination']['type'])->toBe('store')
+        ->and($bySku['SKU-PICK']['destination']['name'])->toBe('Tienda Retiro')
+        ->and($bySku['SKU-PICK']['shipment_id'])->toBe((string) $pickup->id);
+})->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');

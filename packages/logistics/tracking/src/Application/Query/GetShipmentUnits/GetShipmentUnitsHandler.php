@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Application\Query\GetShipmentUnits;
 
+use Illuminate\Support\Facades\DB;
+use Logistics\Labels\Domain\ValueObject\SignedLabel;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Tracking\Application\ReadModel\UnitTrackingView;
 use Logistics\Tracking\Domain\Contract\UnitTrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
+use Throwable;
 
 /**
  * Resuelve el detalle por unidad física de un envío. Enriquece cada unidad con su etiqueta humana
@@ -39,15 +42,83 @@ final class GetShipmentUnitsHandler implements QueryHandler
         }
 
         $resolved = $this->resolveUnits(array_map(static fn ($unit): string => $unit->unitId(), $units));
+        $labelIds = $this->resolveLabelIds($query->shipmentId);
 
         return array_values(array_map(
             static fn ($unit): UnitTrackingView => UnitTrackingView::fromUnit(
                 $unit,
                 $resolved[$unit->unitId()]['label'] ?? null,
                 $resolved[$unit->unitId()]['product'] ?? [],
+                $labelIds[$unit->unitId()] ?? null,
             ),
             $units,
         ));
+    }
+
+    /**
+     * Mapa unit_id → label_id (ULID del QR) de cada bulto del envío, por correlación inversa etiqueta↔bulto
+     * (orden→envío, ordinal de línea + unit_index + piece_index). Prefiere la etiqueta vigente sobre las
+     * revocadas. Tolerante: si falta el envío/etiquetas, devuelve []. Para que el chofer mapee offline.
+     *
+     * @return array<string, string>
+     */
+    private function resolveLabelIds(string $shipmentId): array
+    {
+        try {
+            // Las etiquetas se guardan por número de ORDEN (labels_emitted.order_id). En multishipping el
+            // external_id del envío hermano es compuesto, así que se usa order_reference (cae a external_id).
+            $row = DB::table('shipments')->where('id', $shipmentId)->first(['external_id', 'order_reference']);
+            $order = is_object($row) && isset($row->order_reference) && is_string($row->order_reference) && $row->order_reference !== ''
+                ? $row->order_reference
+                : (is_object($row) && is_string($row->external_id) ? $row->external_id : null);
+            if (!is_string($order) || $order === '') {
+                return [];
+            }
+
+            // Ordinal 1-based de cada línea del envío (el lineNumber de la etiqueta es esa posición).
+            $ordinalByLineId = [];
+            $n = 0;
+            foreach (DB::table('shipment_lines')->where('shipment_id', $shipmentId)->orderBy('id')->pluck('id') as $lineId) {
+                $n++;
+                $ordinalByLineId[(string) $lineId] = $n;
+            }
+
+            // Mapa (ordinal|unit_index|piece_index) → label_id, prefiriendo la vigente.
+            $labelByKey = [];
+            foreach (DB::table('labels_emitted')->where('order_id', $order)->get(['label_id', 'signed_json', 'revoked_at']) as $row) {
+                if (!is_string($row->signed_json) || $row->signed_json === '') {
+                    continue;
+                }
+                try {
+                    $p = SignedLabel::fromQrContent($row->signed_json)->payload;
+                } catch (Throwable) {
+                    continue;
+                }
+                $key = $p->lineNumber.'|'.$p->unit->index.'|'.$p->piece->index;
+                $revoked = $row->revoked_at !== null;
+                $existing = $labelByKey[$key] ?? null;
+                if ($existing === null || ($existing['revoked'] && !$revoked)) {
+                    $labelByKey[$key] = ['label_id' => (string) $row->label_id, 'revoked' => $revoked];
+                }
+            }
+
+            // Bultos del envío → su label_id por la clave (ordinal, unit_index, piece_index).
+            $out = [];
+            foreach (DB::table('shipment_units')->where('shipment_id', $shipmentId)->get(['id', 'line_id', 'unit_index', 'piece_index']) as $u) {
+                $ordinal = $ordinalByLineId[(string) $u->line_id] ?? null;
+                if ($ordinal === null) {
+                    continue;
+                }
+                $key = $ordinal.'|'.((int) $u->unit_index).'|'.((int) $u->piece_index);
+                if (isset($labelByKey[$key])) {
+                    $out[(string) $u->id] = $labelByKey[$key]['label_id'];
+                }
+            }
+
+            return $out;
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     /**

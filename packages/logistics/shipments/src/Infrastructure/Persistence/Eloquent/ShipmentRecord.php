@@ -21,6 +21,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRe
  * @property string|null $seller_sku_ref
  * @property string      $source
  * @property string      $external_id
+ * @property string|null $order_reference
  * @property string      $customer_name
  * @property string|null $customer_document_id
  * @property string|null $customer_phone

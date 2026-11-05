@@ -40,19 +40,35 @@ final class EloquentLabelEnricher implements LabelEnricher
             return $views;
         }
 
-        $shipment = $this->shipmentForOrder($orderNumber);
-        $linesBySku = $shipment !== null ? $this->shipmentLines((string) $shipment->id) : [];
+        // Multishipping: una orden puede tener varios envíos hermanos (uno por destino). Se arma el
+        // contexto de CADA hermano (líneas por ordinal, bultos, destino) y cada etiqueta se resuelve contra
+        // el hermano que realmente la contiene (el guard ordinal+sku la ata a su envío de emisión).
+        $siblings = [];
+        $linesBySku = [];
+        foreach ($this->shipmentsForOrder($orderNumber) as $shipment) {
+            $sid = (string) $shipment->id;
+            $siblings[] = [
+                'id' => $sid,
+                'lineByOrdinal' => $this->lineByOrdinal($sid),
+                'unitsByKey' => $this->unitsByKey($sid),
+                'destination' => $this->resolveDestination($shipment),
+            ];
+            // Nombre/imagen por sku: unión de hermanos (un producto trae el mismo nombre en cualquiera).
+            $linesBySku += $this->shipmentLines($sid);
+        }
 
         $skus = array_values(array_unique(array_map(static fn (EmittedLabelView $v): string => $v->sku, $views)));
         $catalogBySku = $this->catalogProducts($skus);
-
-        $destination = $this->resolveDestination($shipment);
 
         $originCodes = array_values(array_filter(array_unique(array_map(
             static fn (EmittedLabelView $v): string => $v->originCode,
             $views,
         )), static fn (string $c): bool => $c !== ''));
         $originNames = $this->nodeNamesByCode($originCodes);
+
+        // Por defecto el primer hermano (preserva el flujo de un solo envío, aun sin líneas que casen).
+        $firstSibling = $siblings[0] ?? null;
+        $emptyDestination = $this->resolveDestination(null);
 
         $out = [];
         foreach ($views as $view) {
@@ -64,27 +80,106 @@ final class EloquentLabelEnricher implements LabelEnricher
             $image = ($line['image'] ?? null) ?: ($catalog['image'] ?? null);
             $originName = $originNames[$view->originCode] ?? null;
 
+            // Puente etiqueta→bulto (offline-first): la N-ésima línea del hermano, SOLO si su sku coincide
+            // con el de la etiqueta (guard contra desalineación emisión↔ingreso); luego el bulto por
+            // unit_index + piece_index. El hermano que resuelve el bulto fija también el destino/envío.
+            $unitId = null;
+            $shipmentId = $firstSibling['id'] ?? null;
+            $destination = $firstSibling['destination'] ?? $emptyDestination;
+            $skuFallback = null;
+            foreach ($siblings as $sibling) {
+                $ordinalLine = $sibling['lineByOrdinal'][$view->lineNumber] ?? null;
+                $containsSku = $ordinalLine !== null && $ordinalLine['sku'] === $sku;
+                if ($containsSku && $skuFallback === null) {
+                    $skuFallback = $sibling;
+                }
+                if ($containsSku) {
+                    $candidate = $sibling['unitsByKey'][$ordinalLine['id'].'|'.$view->unitIndex.'|'.$view->pieceIndex] ?? null;
+                    if ($candidate !== null) {
+                        $unitId = $candidate;
+                        $shipmentId = $sibling['id'];
+                        $destination = $sibling['destination'];
+                        break;
+                    }
+                }
+            }
+            // Sin bulto resuelto: el destino/envío cae al hermano que contiene el sku (o queda vacío).
+            if ($shipmentId === null && $skuFallback !== null) {
+                $shipmentId = $skuFallback['id'];
+                $destination = $skuFallback['destination'];
+            }
+
             $out[] = $view->enriched(
                 productName: $name !== '' ? $name : null,
                 imageUrl: $image !== '' ? $image : null,
                 originName: $originName,
                 destination: $destination,
+                unitId: $unitId,
+                shipmentId: $shipmentId,
             );
         }
 
         return $out;
     }
 
-    /** Envío más reciente de la orden (por external_id), o null. */
-    private function shipmentForOrder(string $orderNumber): ?\stdClass
+    /**
+     * Línea (id + sku) por ordinal 1-based en el envío (el lineNumber de la etiqueta es esa posición).
+     *
+     * @return array<int, array{id: string, sku: string}>
+     */
+    private function lineByOrdinal(string $shipmentId): array
     {
         try {
-            return DB::table('shipments')
-                ->where('external_id', $orderNumber)
-                ->orderByDesc('created_at')
-                ->first(['id', 'destination_node_id', 'customer_name', 'address_text', 'address_reference']);
+            $out = [];
+            $n = 0;
+            foreach (DB::table('shipment_lines')->where('shipment_id', $shipmentId)->orderBy('id')->get(['id', 'sku']) as $line) {
+                $n++;
+                $out[$n] = ['id' => (string) $line->id, 'sku' => (string) $line->sku];
+            }
+
+            return $out;
         } catch (Throwable) {
-            return null;
+            return [];
+        }
+    }
+
+    /**
+     * unit_id por clave "{line_id}|{unit_index}|{piece_index}" (el bulto físico).
+     *
+     * @return array<string, string>
+     */
+    private function unitsByKey(string $shipmentId): array
+    {
+        try {
+            $out = [];
+            foreach (DB::table('shipment_units')->where('shipment_id', $shipmentId)->get(['id', 'line_id', 'unit_index', 'piece_index']) as $u) {
+                $out[((string) $u->line_id).'|'.((int) $u->unit_index).'|'.((int) $u->piece_index)] = (string) $u->id;
+            }
+
+            return $out;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Envíos hermanos de la orden (por order_reference; cae a external_id para filas previas al backfill),
+     * en orden estable. Multishipping: puede devolver más de uno (uno por destino).
+     *
+     * @return list<\stdClass>
+     */
+    private function shipmentsForOrder(string $orderNumber): array
+    {
+        try {
+            return array_values(DB::table('shipments')
+                ->where('order_reference', $orderNumber)
+                ->orWhere('external_id', $orderNumber)
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->get(['id', 'destination_node_id', 'customer_name', 'address_text', 'address_reference'])
+                ->all());
+        } catch (Throwable) {
+            return [];
         }
     }
 
