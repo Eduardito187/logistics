@@ -7,7 +7,9 @@ namespace Commerce\Orders\Presentation\Filament\Resources;
 use Commerce\Orders\Application\Command\CancelOrder\CancelOrder;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Model\OrderRecord;
 use Commerce\Orders\Presentation\Filament\Resources\OrderResource\Pages\ListOrders;
+use Commerce\Orders\Presentation\Filament\Resources\OrderResource\Pages\ViewOrder;
 use Filament\Actions\Action;
+use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -91,7 +93,7 @@ final class OrderResource extends Resource
                 TextColumn::make('customer_name')
                     ->label(__('Customer'))
                     ->state(static fn (OrderRecord $record): string => $record->ship_to['customer_name'])
-                    ->searchable(query: static fn (Builder $query, string $search): Builder => $query->where('ship_to->customer_name', 'ilike', "%{$search}%")),
+                    ->searchable(query: static fn (Builder $query, string $search): Builder => $query->whereRaw("ship_to->>'customer_name' ILIKE ?", ['%'.$search.'%'])),
                 TextColumn::make('status')
                     ->label(__('Status'))
                     ->badge()
@@ -119,39 +121,48 @@ final class OrderResource extends Resource
                     ]),
             ])
             ->recordActions([
-                // Cancelar: despacha CancelOrder(source='manual') al bus. Visible salvo si ya está cancelada.
-                Action::make('cancel')
-                    ->label(__('Cancel order'))
-                    ->icon('heroicon-o-x-circle')
-                    ->color('danger')
-                    ->requiresConfirmation()
-                    ->modalHeading(__('Cancel order'))
-                    ->modalDescription(__('The order will be cancelled. If it was already paid, a refund and return are triggered downstream.'))
-                    ->schema([
-                        Textarea::make('reason')
-                            ->label(__('Reason'))
-                            ->rows(2)
-                            ->maxLength(500),
-                    ])
-                    ->visible(static fn (OrderRecord $record): bool => $record->status !== 'cancelled')
-                    ->action(static function (OrderRecord $record, array $data): void {
-                        $reason = is_string($data['reason'] ?? null) && $data['reason'] !== ''
-                            ? (string) $data['reason']
-                            : null;
-
-                        app(CommandBus::class)->dispatch(new CancelOrder(
-                            orderId: (string) $record->getKey(),
-                            reason: $reason,
-                            source: 'manual',
-                        ));
-
-                        Notification::make()
-                            ->title(__('Order cancelled'))
-                            ->success()
-                            ->send();
-                    }),
+                ViewAction::make(),
+                self::cancelAction(),
             ])
             ->defaultSort('created_at', 'desc');
+    }
+
+    /**
+     * Acción de cancelar la orden: despacha CancelOrder(source='manual') al bus CQRS (no escribe el
+     * record). Visible salvo si ya está cancelada. Reutilizable en la tabla y en la cabecera del hub.
+     */
+    public static function cancelAction(): Action
+    {
+        return Action::make('cancel')
+            ->label(__('Cancel order'))
+            ->icon('heroicon-o-x-circle')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->modalHeading(__('Cancel order'))
+            ->modalDescription(__('The order will be cancelled. If it was already paid, a refund and return are triggered downstream.'))
+            ->schema([
+                Textarea::make('reason')
+                    ->label(__('Reason'))
+                    ->rows(2)
+                    ->maxLength(500),
+            ])
+            ->visible(static fn (OrderRecord $record): bool => $record->status !== 'cancelled')
+            ->action(static function (OrderRecord $record, array $data): void {
+                $reason = is_string($data['reason'] ?? null) && $data['reason'] !== ''
+                    ? (string) $data['reason']
+                    : null;
+
+                app(CommandBus::class)->dispatch(new CancelOrder(
+                    orderId: (string) $record->getKey(),
+                    reason: $reason,
+                    source: 'manual',
+                ));
+
+                Notification::make()
+                    ->title(__('Order cancelled'))
+                    ->success()
+                    ->send();
+            });
     }
 
     /**
@@ -161,6 +172,7 @@ final class OrderResource extends Resource
     {
         return [
             'index' => ListOrders::route('/'),
+            'view' => ViewOrder::route('/{record}'),
         ];
     }
 }

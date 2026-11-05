@@ -8,7 +8,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
 use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
+use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLines;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
+use Logistics\Labels\Application\ReadModel\DispatchLinesView;
 use Logistics\Labels\Application\ReadModel\EmittedLabelView;
 use Logistics\Labels\Domain\Exception\DuplicateLabelException;
 use Logistics\Labels\Presentation\Http\Request\EmitShipmentLabelsRequest;
@@ -36,6 +38,19 @@ final readonly class LabelController
     public function index(string $orderNumber): JsonResponse
     {
         return new JsonResponse(['data' => $this->labelsFor($orderNumber)]);
+    }
+
+    /**
+     * Líneas de despacho del pedido para la pantalla de etiquetado por producto: cada producto con nombre,
+     * imagen, origen/destino humanos, su envío (para agrupar multishipping), si está autorizada y el estado
+     * de su etiqueta. Envelope: { order_reference, destinations[], data[] }.
+     */
+    public function dispatchLines(string $orderNumber): JsonResponse
+    {
+        $view = $this->queryBus->ask(new GetDispatchLines($orderNumber));
+        assert($view instanceof DispatchLinesView);
+
+        return new JsonResponse($view->toArray());
     }
 
     /**

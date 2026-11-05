@@ -12,6 +12,10 @@ use Logistics\Labels\Application\Command\PreEmitOrderLabels\PreEmitOrderLabels;
 use Logistics\Labels\Application\Command\PreEmitOrderLabels\PreEmitOrderLabelsHandler;
 use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
 use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabelsHandler;
+use Logistics\Labels\Application\Contract\DispatchLinesReader;
+use Logistics\Labels\Application\Contract\LabelEnricher;
+use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLines;
+use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLinesHandler;
 use Logistics\Labels\Application\Query\GetPublicKeysBundle\GetPublicKeysBundle;
 use Logistics\Labels\Application\Query\GetPublicKeysBundle\GetPublicKeysBundleHandler;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
@@ -26,6 +30,8 @@ use Logistics\Labels\Infrastructure\Crypto\ConfigPublicKeyDirectory;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelSigner;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelVerifier;
 use Logistics\Labels\Infrastructure\Persistence\Eloquent\EloquentEmittedLabelRepository;
+use Logistics\Labels\Infrastructure\ReadModel\EloquentDispatchLinesReader;
+use Logistics\Labels\Infrastructure\ReadModel\EloquentLabelEnricher;
 use Logistics\Labels\Infrastructure\Settings\SettingsLabelSymbologyProvider;
 use Logistics\Labels\Infrastructure\Zpl\ZplLabelRenderer;
 use Logistics\Labels\Presentation\Console\ExportPublicKeysCommand;
@@ -82,6 +88,9 @@ final class LabelsServiceProvider extends ServiceProvider
         // Renderizado ZPL para Zebra y persistencia de etiquetas emitidas.
         $this->app->bind(LabelRenderer::class, ZplLabelRenderer::class);
         $this->app->bind(EmittedLabelRepository::class, EloquentEmittedLabelRepository::class);
+        // Enriquecimiento cross-context de etiquetas (producto/origen/destino humanos) en lectura.
+        $this->app->bind(LabelEnricher::class, EloquentLabelEnricher::class);
+        $this->app->bind(DispatchLinesReader::class, EloquentDispatchLinesReader::class);
 
         // Simbología de la etiqueta (QR / Code128 / ambos): regla versionada en settings, con caída a la
         // config del package. El contenedor autoinyecta el QueryBus y el repositorio de config.
@@ -102,6 +111,7 @@ final class LabelsServiceProvider extends ServiceProvider
         $registry->register(PreEmitOrderLabels::class, PreEmitOrderLabelsHandler::class);
         $registry->register(ReprintOrderLabels::class, ReprintOrderLabelsHandler::class);
         $registry->register(GetShipmentLabels::class, GetShipmentLabelsHandler::class);
+        $registry->register(GetDispatchLines::class, GetDispatchLinesHandler::class);
         $registry->register(GetPublicKeysBundle::class, GetPublicKeysBundleHandler::class);
 
         if ($this->app->runningInConsole()) {

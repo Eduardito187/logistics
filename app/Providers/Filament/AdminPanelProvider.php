@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Providers\Filament;
 
+use App\Enums\Role;
 use App\Filament\Avatars\LocalAvatarProvider;
 use App\Filament\Pages\Auth\RequestPasswordOtp;
 use App\Http\Middleware\SecurityHeaders;
+use App\Models\User;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
 use Filament\Enums\ThemeMode;
+use Filament\Facades\Filament;
 use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -17,6 +20,7 @@ use Filament\Navigation\NavigationGroup;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\Width;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -40,6 +44,17 @@ use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
  */
 final class AdminPanelProvider extends PanelProvider
 {
+    /**
+     * ¿La cuenta autenticada tiene alcance de OFICINA (administrador o supervisor)? Gatea el command
+     * palette y otras superficies globales del backoffice. El administrador tiene acceso a todo.
+     */
+    private static function hasOfficeScope(): bool
+    {
+        $user = Filament::auth()->user();
+
+        return $user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor);
+    }
+
     public function panel(Panel $panel): Panel
     {
         return $panel
@@ -91,6 +106,9 @@ final class AdminPanelProvider extends PanelProvider
             // Panel interno en tema Noche (#141414) por defecto para diferenciarlo de la app de clientes.
             // Se mantiene el toggle de modo claro/oscuro de Filament (no se fuerza), solo cambia el default.
             ->defaultThemeMode(ThemeMode::Dark)
+            // Ancho COMPLETO en TODO el panel (todas las vistas usan toda la pantalla, sin la columna
+            // centrada por defecto). Cada página puede sobreescribirlo con getMaxContentWidth().
+            ->maxContentWidth(Width::Full)
             // Avatar por defecto generado localmente (iniciales en SVG data URI). El proveedor de
             // Filament por defecto sale a ui-avatars.com, que offline o con la CSP del admin cerrada
             // deja la imagen rota en la barra superior. Con este proveedor nunca depende de internet.
@@ -118,6 +136,25 @@ final class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): string => view('filament.distrack-head')->render(),
+            )
+            // Tiempo real (Fase 6): Laravel Echo + Pusher contra Soketi self-host, para el push en vivo de
+            // posiciones de flota a la Torre de Control. Solo oficina (quien ve el mapa). Env-gated en el
+            // cliente: si no hay VITE_PUSHER_APP_KEY, no conecta y queda el polling como fallback.
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): string => self::hasOfficeScope() ? view('filament.realtime-echo')->render() : '',
+            )
+            // Command palette global (⌘K) de DisTrack OS: búsqueda transversal de entidades-eje y salto
+            // directo, sin volver al menú. Disparador en el topbar; palette montado una vez al final del
+            // body. Solo alcance de OFICINA (admin/supervisor) — el admin accede a todo; los roles de campo
+            // usan su UI mínima y no lo ven.
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_END,
+                fn (): string => self::hasOfficeScope() ? view('filament.cockpit.search-trigger')->render() : '',
+            )
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): string => self::hasOfficeScope() ? view('filament.cockpit.palette-mount')->render() : '',
             )
             // Arquitectura de información "operaciones-primero": 5 grupos por modelo mental del operador
             // en vez de un grupo por bounded context (antes 16). El orden sigue el flujo del negocio:

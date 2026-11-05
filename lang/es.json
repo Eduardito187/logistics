@@ -880,6 +880,7 @@
     "Opened at": "Abierta el",
     "Operating rules applied to deliveries inside this zone.": "Reglas de operación aplicadas a las entregas dentro de esta zona.",
     "Operations": "Operaciones",
+    "Shipment pipeline": "Pipeline de envíos",
     "Optimization (capacity + proximity)": "Optimización (capacidad + cercanía)",
     "Optimization packs by capacity and proximity; Slots groups by the chosen delivery time slot.": "Optimización empaca por capacidad y cercanía; Franjas agrupa por la franja de entrega elegida.",
     "Optional VROOM solver endpoint, e.g. http://vroom:3000. Used only with the VROOM backend.": "Endpoint opcional del solver VROOM, p. ej. http://vroom:3000. Se usa solo con el backend VROOM.",

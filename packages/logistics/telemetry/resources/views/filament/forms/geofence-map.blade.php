@@ -112,10 +112,10 @@
     </div>
 
     @assets
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
+        <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
         <script src="{{ asset('js/dismac-maps.js') }}"></script>
-        <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css" />
-        <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
+        <link rel="stylesheet" href="{{ asset('vendor/leaflet-geoman/leaflet-geoman.css') }}" />
+        <script src="{{ asset('vendor/leaflet-geoman/leaflet-geoman.min.js') }}"></script>
     @endassets
 </x-dynamic-component>

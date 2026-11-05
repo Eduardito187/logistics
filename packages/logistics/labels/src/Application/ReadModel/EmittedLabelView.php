@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Labels\Application\ReadModel;
 
+use Logistics\Labels\Application\Contract\LabelEnricher;
 use Logistics\Labels\Domain\Model\EmittedLabel;
 
 /**
@@ -11,6 +12,12 @@ use Logistics\Labels\Domain\Model\EmittedLabel;
  *
  * `qrContent` es el JSON firmado exacto (lo que lleva el QR); `zpl` es lo que se manda a la impresora.
  * Si se cachea, se cachea su toArray() (regla 7 del proyecto), nunca el objeto de dominio.
+ *
+ * ENRIQUECIMIENTO (nombres humanos, CERO uuid): además de los datos de la etiqueta, la vista expone el
+ * PRODUCTO (nombre + imagen servible, resueltos por SKU), el ORIGEN (código del QR + nombre de nodo si el
+ * código matchea la red) y el DESTINO (tipo home|store|warehouse + nombre + dirección, resuelto desde el
+ * envío de la orden). Esos campos los rellena un enricher cross-context en lectura (ver
+ * {@see LabelEnricher}); sin enriquecer vienen en su valor base.
  */
 final readonly class EmittedLabelView
 {
@@ -26,27 +33,76 @@ final readonly class EmittedLabelView
         public bool $revoked,
         public ?int $revokedAt,
         public ?string $revokedReason,
+        // Enriquecimiento (nombres humanos). Base (sin enriquecer): producto/destino en null, origen = solo código.
+        public ?string $productName = null,
+        public ?string $imageUrl = null,
+        public string $originCode = '',
+        public ?string $originName = null,
+        public ?string $destinationType = null,
+        public ?string $destinationName = null,
+        public ?string $destinationAddress = null,
     ) {}
 
     public static function fromEmittedLabel(EmittedLabel $label): self
     {
         return new self(
-            $label->orderNumber,
-            $label->labelId(),
-            $label->keyId(),
-            $label->sku(),
-            $label->lineNumber(),
-            $label->signedJson(),
-            $label->zpl,
-            $label->emittedAt,
-            $label->isRevoked(),
-            $label->revokedAt,
-            $label->revokedReason,
+            orderNumber: $label->orderNumber,
+            labelId: $label->labelId(),
+            keyId: $label->keyId(),
+            sku: $label->sku(),
+            lineNumber: $label->lineNumber(),
+            qrContent: $label->signedJson(),
+            zpl: $label->zpl,
+            emittedAt: $label->emittedAt,
+            revoked: $label->isRevoked(),
+            revokedAt: $label->revokedAt,
+            revokedReason: $label->revokedReason,
+            originCode: $label->originCode(),
         );
     }
 
     /**
-     * @return array{order_number: string, label_id: string, key_id: int, sku: string, line_number: int, qr_content: string, zpl: string, emitted_at: int, revoked: bool, revoked_at: int|null, revoked_reason: string|null}
+     * Devuelve una copia con los datos humanos resueltos (producto, origen, destino). Los campos base de la
+     * etiqueta no cambian. `imageUrl` debe venir como URL servible absoluta.
+     *
+     * @param array{type: string|null, name: string|null, address: string|null} $destination
+     */
+    public function enriched(
+        ?string $productName,
+        ?string $imageUrl,
+        ?string $originName,
+        array $destination,
+    ): self {
+        return new self(
+            orderNumber: $this->orderNumber,
+            labelId: $this->labelId,
+            keyId: $this->keyId,
+            sku: $this->sku,
+            lineNumber: $this->lineNumber,
+            qrContent: $this->qrContent,
+            zpl: $this->zpl,
+            emittedAt: $this->emittedAt,
+            revoked: $this->revoked,
+            revokedAt: $this->revokedAt,
+            revokedReason: $this->revokedReason,
+            productName: $productName,
+            imageUrl: $imageUrl,
+            originCode: $this->originCode,
+            originName: $originName,
+            destinationType: $destination['type'] ?? null,
+            destinationName: $destination['name'] ?? null,
+            destinationAddress: $destination['address'] ?? null,
+        );
+    }
+
+    /**
+     * @return array{
+     *   order_number: string, label_id: string, key_id: int, sku: string, line_number: int,
+     *   qr_content: string, zpl: string, emitted_at: int, revoked: bool, revoked_at: int|null,
+     *   revoked_reason: string|null, product_name: string|null, image_url: string|null,
+     *   origin: array{code: string, name: string|null},
+     *   destination: array{type: string|null, name: string|null, address: string|null}
+     * }
      */
     public function toArray(): array
     {
@@ -62,6 +118,17 @@ final readonly class EmittedLabelView
             'revoked' => $this->revoked,
             'revoked_at' => $this->revokedAt,
             'revoked_reason' => $this->revokedReason,
+            'product_name' => $this->productName,
+            'image_url' => $this->imageUrl,
+            'origin' => [
+                'code' => $this->originCode,
+                'name' => $this->originName,
+            ],
+            'destination' => [
+                'type' => $this->destinationType,
+                'name' => $this->destinationName,
+                'address' => $this->destinationAddress,
+            ],
         ];
     }
 }

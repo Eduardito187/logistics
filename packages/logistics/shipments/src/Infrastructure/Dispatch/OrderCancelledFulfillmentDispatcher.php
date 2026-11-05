@@ -10,6 +10,7 @@ use Logistics\Outbox\Domain\OutboxMessage;
 use Logistics\Returns\Application\Command\InitiateReturn\InitiateReturn;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shipments\Application\Command\CancelShipment\CancelShipment;
+use Logistics\Shipments\Application\Contract\ReturnsWarehouseResolver;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
 use Logistics\Shipments\Domain\Model\Shipment;
 use Logistics\Shipments\Domain\Model\ShipmentLine;
@@ -48,6 +49,7 @@ final readonly class OrderCancelledFulfillmentDispatcher implements MessageDispa
         private ShipmentRepository $shipments,
         private CommandBus $commandBus,
         private Config $config,
+        private ReturnsWarehouseResolver $returnsWarehouse,
     ) {}
 
     public function dispatch(OutboxMessage $message): void
@@ -102,17 +104,24 @@ final readonly class OrderCancelledFulfillmentDispatcher implements MessageDispa
     /**
      * Despacha la devolución del envío reutilizando el contexto `returns` por su Command de Application.
      *
-     * La firma de `InitiateReturn` exige un `warehouseId` (almacén central de retorno). El envío del
-     * comercio no trae nodo destino poblado, así que se resuelve por config
-     * (`logistics-shipments.returns.warehouse_id`); si no está configurado, se omite la devolución para
-     * no mandar el mensaje a dead-letter por una condición de configuración esperable (ver REPORTE).
+     * La firma de `InitiateReturn` exige un `warehouseId` (almacén central de retorno). Se resuelve en
+     * cascada: (1) nodo destino del propio envío; (2) id configurado por env
+     * (`logistics-shipments.returns.warehouse_id`, tiene precedencia operativa cuando está puesto);
+     * (3) el almacén central de retornos resuelto desde la red (`ReturnsWarehouseResolver`). Si ninguno
+     * resuelve, se omite la devolución para no mandar el mensaje a dead-letter por una condición de
+     * configuración esperable (ver REPORTE).
      */
     private function initiateReturn(Shipment $shipment, string $orderId): void
     {
-        $warehouseId = $shipment->destinationNodeId();
-        if ($warehouseId === null || $warehouseId === '') {
-            $configured = $this->config->get('logistics-shipments.returns.warehouse_id');
-            $warehouseId = is_string($configured) ? trim($configured) : '';
+        $configured = $this->config->get('logistics-shipments.returns.warehouse_id');
+        $configured = is_string($configured) ? trim($configured) : '';
+
+        $warehouseId = $configured !== ''
+            ? $configured
+            : ($shipment->destinationNodeId() ?? '');
+
+        if ($warehouseId === '') {
+            $warehouseId = $this->returnsWarehouse->resolve() ?? '';
         }
 
         if ($warehouseId === '') {

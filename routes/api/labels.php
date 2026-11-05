@@ -30,6 +30,11 @@ return [
             Route::post('reprint', [LabelController::class, 'reprint'])->name('reprint');
             Route::get('zpl', [LabelController::class, 'zpl'])->name('zpl');
         });
+
+        // Líneas de despacho del pedido (pantalla de etiquetado por producto): producto + origen/destino
+        // humanos + envío (agrupación multishipping) + autorización + estado de etiqueta, por línea.
+        Route::get('orders/{orderNumber}/dispatch-lines', [LabelController::class, 'dispatchLines'])
+            ->name('orders.dispatch-lines');
     },
 
     // Puerta integrations — procesos internos (worker de planificación: pre-emisión al publicar un plan).

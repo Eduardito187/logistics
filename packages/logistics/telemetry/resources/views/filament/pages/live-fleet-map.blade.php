@@ -44,8 +44,8 @@
     </div>
 
     @assets
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
+        <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
         {{-- Helper de teselas con fallback automático al OSM público si el tileserver self-host no responde. --}}
         <script src="{{ asset('js/dismac-maps.js') }}"></script>
     @endassets

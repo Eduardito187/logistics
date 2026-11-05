@@ -6,6 +6,7 @@ namespace Logistics\Execution\Application\Command\AssembleDailyRoute;
 
 use DateTimeImmutable;
 use Exception;
+use Logistics\Execution\Application\Contract\PlannedRouteStopsProvider;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\Model\RouteStop;
@@ -34,6 +35,7 @@ final class AssembleDailyRouteHandler implements CommandHandler
     public function __construct(
         private readonly VehicleRouteRepository $routes,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly PlannedRouteStopsProvider $plannedStops,
     ) {}
 
     public function handle(Command $command): void
@@ -48,6 +50,16 @@ final class AssembleDailyRouteHandler implements CommandHandler
             throw ExecutionException::because("ya existe una ruta para el vehículo {$command->vehicleId} el {$command->routeDate}");
         }
 
+        // Contrato con la app: si el cliente NO manda paradas, el backend las ENSAMBLA desde el plan
+        // publicado (planning). El cliente solo elige la fecha; el server arma la secuencia.
+        $inputs = $command->stops !== []
+            ? $command->stops
+            : $this->plannedStops->forVehicleOnDate($command->vehicleId, $command->routeDate);
+
+        if ($inputs === []) {
+            throw ExecutionException::because("no hay un plan publicado para el vehículo {$command->vehicleId} el {$command->routeDate}; no se puede armar la ruta");
+        }
+
         $stops = array_map(
             static fn (RouteStopInput $input): RouteStop => RouteStop::plan(
                 RouteStopId::generate(),
@@ -60,7 +72,7 @@ final class AssembleDailyRouteHandler implements CommandHandler
                 $input->lat,
                 $input->lng,
             ),
-            $command->stops,
+            $inputs,
         );
 
         $route = VehicleRoute::assemble(

@@ -17,6 +17,8 @@ use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationD
 use Logistics\Outbox\Infrastructure\Dispatch\FanOutMessageDispatcher;
 use Logistics\Outbox\Infrastructure\Dispatch\NullMessageDispatcher;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
+use Logistics\Promise\Infrastructure\Dispatch\OrderCancelledCupoReleaseDispatcher;
+use Logistics\Promise\Infrastructure\Dispatch\OrderPaidCupoConfirmDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatcher;
 
 // Configuración del Transactional Outbox (ADR 002). Valores afinables por entorno vía .env.
@@ -148,6 +150,10 @@ return [
             // Fulfillment: crea el envío en logística (ReceiveShipment, idempotente por ('commerce', orderId))
             // y pasa la orden a "fulfilling". Es el puente comercio → última milla.
             OrderPaidShipmentDispatcher::class,
+            // Cupo (promise): confirma el cupo que la orden había reservado antes de pagar, para que el
+            // barrido de vencimiento no lo libere ahora que la orden está pagada (ADR 020). Va después
+            // del fulfillment para que el envío ya exista al conciliar la franja.
+            OrderPaidCupoConfirmDispatcher::class,
             // Facturación: emite el documento fiscal de la orden (IssueInvoiceForOrder).
             OrderPaidInvoiceDispatcher::class,
         ],
@@ -174,6 +180,9 @@ return [
             OrderCancelledFulfillmentDispatcher::class,
             // Pagos: reembolsa si la orden estaba pagada (idempotente; no-op si no estaba capturada).
             OrderCancelledRefundDispatcher::class,
+            // Cupo (promise): libera el cupo reservado/confirmado y lo devuelve a capacity, en cualquier
+            // etapa (pre o post pago) y venga de POS / manual / cron de expiración (ADR 020).
+            OrderCancelledCupoReleaseDispatcher::class,
         ],
     ],
 

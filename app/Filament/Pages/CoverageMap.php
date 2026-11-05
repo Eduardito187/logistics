@@ -13,6 +13,7 @@ use Logistics\Coverage\Domain\ValueObject\GeoAreaId;
 use Logistics\Coverage\Domain\ValueObject\Polygon;
 use Logistics\Coverage\Domain\ValueObject\ZoneId;
 use Logistics\Coverage\Domain\ValueObject\ZoneRules;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Mapa interactivo de zonas de cobertura sobre OpenStreetMap (Leaflet + Geoman).
@@ -23,6 +24,10 @@ use Logistics\Coverage\Domain\ValueObject\ZoneRules;
  */
 final class CoverageMap extends Page
 {
+    // Herramienta de planificación de red: solo oficina (administrador/supervisor). Una tienda o un rol
+    // de campo no gestiona zonas de cobertura.
+    use OfficeOnly;
+
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-map';
 
     protected static ?int $navigationSort = 5;

@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Commerce\Orders\Infrastructure\Console;
 
+use Carbon\CarbonImmutable;
 use Commerce\Orders\Application\Command\CancelOrder\CancelOrder;
 use Commerce\Orders\Application\Contract\PaymentScheduleReader;
 use Commerce\Orders\Domain\ValueObject\OrderStatus;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Model\OrderRecord;
 use Illuminate\Console\Command;
-use Illuminate\Support\CarbonImmutable;
 use Logistics\Shared\Application\Command\CommandBus;
 
 /**

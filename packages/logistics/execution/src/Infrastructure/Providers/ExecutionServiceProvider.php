@@ -33,7 +33,9 @@ use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIs
 use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIssueHandler;
 use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleIncident;
 use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleIncidentHandler;
+use Logistics\Execution\Application\Contract\DeliveryReferenceReader;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
+use Logistics\Execution\Application\Contract\PlannedRouteStopsProvider;
 use Logistics\Execution\Application\Contract\RouteGeometryReader;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitProductReader;
@@ -61,6 +63,8 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryRepo
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentNodeReceptionRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleIncidentRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleRouteRepository;
+use Logistics\Execution\Infrastructure\ReadModel\DbDeliveryReferenceReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbPlannedRouteStopsProvider;
 use Logistics\Execution\Infrastructure\ReadModel\DbRouteGeometryReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentFulfillmentReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitProductReader;
@@ -118,6 +122,14 @@ final class ExecutionServiceProvider extends ServiceProvider
         // teléfono/referencia/líneas desde shipments y la geometría de la ruta desde el plan (planning).
         $this->app->bind(StopEnrichmentReader::class, static function ($app): StopEnrichmentReader {
             return new DbStopEnrichmentReader($app->make('db')->connection());
+        });
+        // Paradas del plan publicado para armar la ruta del día (el backend ensambla; la app no manda paradas).
+        $this->app->bind(PlannedRouteStopsProvider::class, static function ($app): PlannedRouteStopsProvider {
+            return new DbPlannedRouteStopsProvider($app->make('db')->connection());
+        });
+        // Referencia legible del envío (pedido/cliente/dirección) para las entregas del chofer: NUNCA UUID.
+        $this->app->bind(DeliveryReferenceReader::class, static function ($app): DeliveryReferenceReader {
+            return new DbDeliveryReferenceReader($app->make('db')->connection());
         });
         $this->app->bind(RouteGeometryReader::class, static function ($app): RouteGeometryReader {
             // Si el plan existe sin geometría, se le pide a Planificación (su servicio de aplicación) que la
