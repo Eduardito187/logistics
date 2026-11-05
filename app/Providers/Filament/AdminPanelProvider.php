@@ -232,6 +232,10 @@ final class AdminPanelProvider extends PanelProvider
                 in: base_path('packages/commerce/catalog/src/Presentation/Filament'),
                 for: 'Commerce\Catalog\Presentation\Filament',
             )
+            ->discoverResources(
+                in: base_path('packages/commerce/orders/src/Presentation/Filament'),
+                for: 'Commerce\Orders\Presentation\Filament',
+            )
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 // Landing del panel: la Torre de control (App\Filament\Pages\ControlTower, ruta '/') se

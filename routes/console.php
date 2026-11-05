@@ -59,6 +59,14 @@ Schedule::command('logistics:fleet:document-alerts')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Expiración de órdenes comerciales impagas (ADR 020): cancela las órdenes Pending cuya ventana por
+// método de pago venció (qr_bcb 6h / card 12h / bank_transfer y cash 24h / default; configurable por
+// env en config/commerce.php), liberando así el cupo reservado. source='cron', reason='unpaid_timeout'.
+Schedule::command('commerce:orders:expire-unpaid')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Expiración de reservas de promesa vencidas: expira las promesas cuya ventana de reserva caducó y
 // libera el cupo que habían tomado en capacity. Corre cada minuto —como el relay del outbox— para que
 // ningún cupo quede retenido por una reserva abandonada por el canal.

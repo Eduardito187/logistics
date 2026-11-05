@@ -10,6 +10,8 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
+use Logistics\Shipments\Application\Command\CancelShipment\CancelShipment;
+use Logistics\Shipments\Application\Command\CancelShipment\CancelShipmentHandler;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddress;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddressHandler;
 use Logistics\Shipments\Application\Command\ReceiveShipment\ReceiveShipment;
@@ -59,6 +61,7 @@ final class ShipmentsServiceProvider extends ServiceProvider
      */
     private const HANDLERS = [
         ReceiveShipment::class => ReceiveShipmentHandler::class,
+        CancelShipment::class => CancelShipmentHandler::class,
         SetDeliverySlot::class => SetDeliverySlotHandler::class,
         GeocodeShipmentAddress::class => GeocodeShipmentAddressHandler::class,
         FindShipment::class => FindShipmentHandler::class,

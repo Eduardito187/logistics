@@ -32,7 +32,7 @@ final readonly class CancelOrderHandler implements CommandHandler
             throw OrdersException::because('La orden a cancelar no existe.');
         }
 
-        $order->cancel();
+        $order->cancel($command->reason, $command->source);
 
         $this->orders->save($order);
 

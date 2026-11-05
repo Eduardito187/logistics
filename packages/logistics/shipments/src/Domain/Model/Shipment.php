@@ -7,6 +7,7 @@ namespace Logistics\Shipments\Domain\Model;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 use Logistics\Shared\Domain\ValueObject\Ownership;
 use Logistics\Shipments\Domain\Event\ShipmentAddressRescored;
+use Logistics\Shipments\Domain\Event\ShipmentCancelled;
 use Logistics\Shipments\Domain\Event\ShipmentDeliverySlotAssigned;
 use Logistics\Shipments\Domain\Event\ShipmentPlanned;
 use Logistics\Shipments\Domain\Event\ShipmentReceived;
@@ -193,6 +194,26 @@ final class Shipment extends AggregateRoot
 
         $this->status = ShipmentStatus::Planned;
         $this->recordEvent(new ShipmentPlanned($this->id->toString()));
+    }
+
+    /**
+     * Anula el envío (ADR 020). Transición válida desde cualquier estado NO terminal
+     * (Received/Planned/InExecution). Es idempotente: si ya está Cancelled, no hace nada ni vuelve a
+     * grabar el hecho (el outbox reentrega at-least-once). Un envío ya Delivered o Failed no se cancela:
+     * son resultados cerrados y la reacción correcta en esos casos es una devolución, no una anulación.
+     */
+    public function cancel(?string $reason = null): void
+    {
+        if ($this->status === ShipmentStatus::Cancelled) {
+            return;
+        }
+
+        if ($this->status === ShipmentStatus::Delivered || $this->status === ShipmentStatus::Failed) {
+            throw ShipmentsException::because("no se puede cancelar un envío {$this->status->value}");
+        }
+
+        $this->status = ShipmentStatus::Cancelled;
+        $this->recordEvent(new ShipmentCancelled($this->id->toString(), $reason));
     }
 
     /**

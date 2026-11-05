@@ -5,6 +5,7 @@ use Commerce\Cart\Infrastructure\Dispatch\OrderPlacedCartConverter;
 use Commerce\Invoicing\Infrastructure\Dispatch\OrderPaidInvoiceDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\OrderPaidShipmentDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\PaymentCapturedOrderDispatcher;
+use Commerce\Payments\Infrastructure\Dispatch\OrderCancelledRefundDispatcher;
 use Commerce\Search\Infrastructure\Dispatch\CatalogProductIndexerDispatcher;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
 use Logistics\Inventory\Infrastructure\Dispatch\GoodsReceivedStockDispatcher;
@@ -16,6 +17,7 @@ use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationD
 use Logistics\Outbox\Infrastructure\Dispatch\FanOutMessageDispatcher;
 use Logistics\Outbox\Infrastructure\Dispatch\NullMessageDispatcher;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
+use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatcher;
 
 // Configuración del Transactional Outbox (ADR 002). Valores afinables por entorno vía .env.
 return [
@@ -123,6 +125,8 @@ return [
         'payments.failed' => CommerceEventNotificationDispatcher::class,
         'orders.order_paid' => FanOutMessageDispatcher::class,
         'orders.order_placed' => FanOutMessageDispatcher::class,
+        // Cancelación de orden (ADR 020): varios reactores (fulfillment + reembolso) → abanico.
+        'orders.order_cancelled' => FanOutMessageDispatcher::class,
     ],
 
     // Abanico por evento: eventos que disparan reacciones en varios contextos a la vez. El
@@ -162,6 +166,14 @@ return [
             PaymentCapturedOrderDispatcher::class,
             // Notificaciones: aviso "pago confirmado".
             CommerceEventNotificationDispatcher::class,
+        ],
+
+        // Cancelación de orden (ADR 020): reacciona según la etapa del envío y reembolsa si estaba pagada.
+        'orders.order_cancelled' => [
+            // Fulfillment (shipments): cancela el envío o dispara la devolución según su estado.
+            OrderCancelledFulfillmentDispatcher::class,
+            // Pagos: reembolsa si la orden estaba pagada (idempotente; no-op si no estaba capturada).
+            OrderCancelledRefundDispatcher::class,
         ],
     ],
 

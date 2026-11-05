@@ -12,6 +12,13 @@ enum OrderSource: string
 {
     case Sap = 'SAP';
 
+    /**
+     * Frente comercial propio (OMS de `packages/commerce`): el pedido entra a logística cuando la orden
+     * se paga (ADR 018/020). Es la fuente con la que el puente orders → shipments ingresa y halla los
+     * envíos, por el par ('commerce', orderId).
+     */
+    case Commerce = 'commerce';
+
     case Magento = 'MAGENTO';
 
     case Store = 'STORE';
