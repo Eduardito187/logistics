@@ -15,11 +15,13 @@ namespace Logistics\Execution\Application\Contract;
 interface StopEnrichmentReader
 {
     /**
-     * Resuelve, para un lote de envíos, el teléfono del cliente, la referencia de dirección y las líneas.
+     * Resuelve, para un lote de envíos, el teléfono del cliente, la referencia de dirección, las líneas y
+     * el TIPO DE DESTINO de la parada (cliente/domicilio vs hub/tienda/almacén), para que la app muestre la
+     * acción correcta: "Entregar" (POD) a domicilio, "Descargar" (escaneo) en un nodo.
      *
-     * @param  list<string>                                                                                                                                                            $shipmentIds ids de envío de las paradas de la ruta
-     * @return array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>}>
-     *                                                                                                                                                                                 mapa id de envío => datos; los envíos no encontrados simplemente no aparecen en el mapa
+     * @param  list<string>                                                                                                                                                                                                                                         $shipmentIds ids de envío de las paradas de la ruta
+     * @return array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>, destination: array{type: string, name: string|null, node_code: string|null}}>
+     *                                                                                                                                                                                                                                                              mapa id de envío => datos; los envíos no encontrados simplemente no aparecen en el mapa
      */
     public function forShipmentIds(array $shipmentIds): array;
 }

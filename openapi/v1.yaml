@@ -638,6 +638,105 @@ paths:
           $ref: '#/components/responses/ExecutionValidationError'
       security:
       - appBearer: []
+  /app/deliveries/evidence:
+    post:
+      tags:
+      - execution
+      operationId: captureDeliveryEvidence
+      summary: Capture delivery evidence linked to the customer (anti-fraud)
+      description: |
+        Captura una evidencia de entrega LIGADA AL CLIENTE (firma, documento, prueba de entrega o daño).
+        Guarda el archivo, calcula su HASH SHA-256 (integridad: una evidencia no se puede intercambiar por
+        otra) y deja el hecho con AUDITORÍA inmutable (quién/cuándo/GPS) más el snapshot de la identidad del
+        cliente contra el que se valida. El estado de validación arranca `pending`: lo resuelve un validador
+        asíncrono on-premise (nunca bloquea la entrega). Idempotente por `Idempotency-Key`. Devuelve el
+        estado completo de las evidencias del envío (la nueva primero).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - shipment_id
+              - kind
+              - photo
+              properties:
+                shipment_id:
+                  type: string
+                  format: uuid
+                kind:
+                  type: string
+                  enum:
+                  - pod
+                  - damage
+                  - signature
+                  - id_document
+                photo:
+                  type: string
+                  format: binary
+                customer_id:
+                  type: string
+                  nullable: true
+                document_id:
+                  type: string
+                  nullable: true
+                  description: Número de documento del cliente (contra el que se valida la foto del carnet)
+                customer_name:
+                  type: string
+                  nullable: true
+                customer_phone:
+                  type: string
+                  nullable: true
+                lat:
+                  type: number
+                  nullable: true
+                lng:
+                  type: number
+                  nullable: true
+                captured_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+      responses:
+        '201':
+          description: Evidence captured; full evidence collection of the shipment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryEvidenceCollection'
+        '500':
+          description: The evidence could not be stored or hashed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionError'
+        '422':
+          $ref: '#/components/responses/ExecutionValidationError'
+      security:
+      - appBearer: []
+  /app/deliveries/{shipmentId}/evidence:
+    parameters:
+    - name: shipmentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags:
+      - execution
+      operationId: getDeliveryEvidence
+      summary: List a shipment's evidence with its anti-fraud validation status
+      responses:
+        '200':
+          description: Evidence of the shipment, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryEvidenceCollection'
+      security:
+      - appBearer: []
   /app/deliveries/proof-of-delivery:
     post:
       tags:
@@ -4268,6 +4367,70 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       security:
       - channelApiKey: []
+  /integrations/evidence/{evidenceId}/validation:
+    parameters:
+    - name: evidenceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      tags:
+      - execution
+      operationId: recordEvidenceValidation
+      summary: Record the anti-fraud validation result of a delivery evidence
+      description: |
+        Lo llama el validador anti-fraude ASÍNCRONO (worker/sidecar on-premise) tras procesar la firma o el
+        documento. Registra el estado (`ok` | `review` | `mismatch`) — es una SEÑAL, nunca bloquea la
+        entrega; `review`/`mismatch` escalan a revisión humana. Dos modos: `status` explícito, o
+        `ocr_document_number` para que el backend cruce el número leído contra el documento del cliente.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                  - ok
+                  - review
+                  - mismatch
+                  nullable: true
+                  description: Estado decidido por el validador (gana sobre ocr_document_number si viene)
+                ocr_document_number:
+                  type: string
+                  nullable: true
+                  description: Número de documento leído por OCR; el backend lo cruza contra el del cliente
+                detail:
+                  type: string
+                  nullable: true
+                validated_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+      responses:
+        '200':
+          description: Validation recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      evidence_id:
+                        type: string
+                      status:
+                        type: string
+                        example: recorded
+      security:
+      - serviceCredential: []
   /integrations/capacity/buckets:
     post:
       tags:
@@ -6752,6 +6915,14 @@ paths:
       description: >-
         Public endpoint (rate limited). Validates the user's credentials, binds the device and issues a
         new Sanctum token, revoking previous tokens for that same device.
+
+
+        Sesión 1-por-plataforma (estilo app de banco): hay a lo sumo UNA sesión activa por BUCKET
+        (`web` | `app`) por usuario. `web` y `app` coexisten; iniciar sesión en uno no cierra el otro.
+        Un segundo dispositivo del MISMO bucket DESALOJA al anterior: ese equipo recibe, en su próximo
+        request a la puerta /app, un 401 con `code=session_superseded` (distinto del token expirado), para
+        que la app avise "iniciaste sesión en otro dispositivo" y cierre. El bucket se deriva de
+        `device.platform` (android/ios = app; web/desktop = web) o se fuerza con `device.client_kind`.
       requestBody:
         required: true
         content:
@@ -10452,6 +10623,21 @@ components:
               - string
               - 'null'
               maxLength: 64
+              description: >-
+                Plataforma del equipo (android|ios|web|desktop). Determina el BUCKET de sesión: android/ios
+                (y cualquier valor no-web) = `app`; web/desktop/browser = `web`. Máx 1 sesión activa por
+                bucket por usuario (ver client_kind y el error session_superseded).
+            client_kind:
+              type:
+              - string
+              - 'null'
+              enum:
+              - web
+              - app
+              - null
+              description: >-
+                Bucket de sesión explícito (opcional). Si se envía, gana sobre `platform`; si se omite, el
+                backend lo deriva de `platform`. Útil para forzar el tipo de sesión desde un cliente.
             name:
               type:
               - string
@@ -11459,6 +11645,26 @@ components:
           type: string
           format: date-time
           nullable: true
+        destination:
+          type: object
+          nullable: true
+          description: >-
+            Tipo de destino de la parada, para que la app muestre UNA acción: home → "Entregar" (POD);
+            store/warehouse (hub/tienda/almacén) → "Descargar" (escaneo de descarga). Derivado de
+            shipments.destination_node_id (null = home). Null si no se pudo resolver el envío.
+          properties:
+            type:
+              type: string
+              enum:
+              - home
+              - store
+              - warehouse
+            name:
+              type: string
+              nullable: true
+            node_code:
+              type: string
+              nullable: true
     DriverRoute:
       type: object
       description: The driver route sheet of a vehicle for a day, with its ordered stops
@@ -12742,6 +12948,97 @@ components:
       - NO_OPEN
       - ON_FAILURE
       description: Condition that triggers the jump to the next cascade channel.
+    DeliveryEvidence:
+      type: object
+      description: >-
+        Evidencia de entrega ligada al cliente con su estado de validación anti-fraude. El `sha256` fija la
+        integridad del archivo (una evidencia no se puede intercambiar por otra). `validation_status` es una
+        señal, no un bloqueo.
+      required:
+      - id
+      - shipment_id
+      - kind
+      - validation_status
+      - sha256
+      - storage
+      - customer
+      - location
+      properties:
+        id:
+          type: string
+          format: uuid
+        shipment_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - pod
+          - damage
+          - signature
+          - id_document
+        validation_status:
+          type: string
+          enum:
+          - pending
+          - ok
+          - review
+          - mismatch
+        validation_detail:
+          type: string
+          nullable: true
+        sha256:
+          type: string
+          description: Hash SHA-256 del archivo (64 hex) — integridad de la evidencia
+        storage:
+          type: object
+          properties:
+            disk:
+              type: string
+            path:
+              type: string
+        customer:
+          type: object
+          description: Snapshot de la identidad del cliente contra el que se valida la evidencia
+          properties:
+            id:
+              type: string
+              nullable: true
+            document_id:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
+            phone:
+              type: string
+              nullable: true
+        location:
+          type: object
+          properties:
+            lat:
+              type: number
+              nullable: true
+            lng:
+              type: number
+              nullable: true
+        captured_at:
+          type: string
+          format: date-time
+          nullable: true
+        validated_at:
+          type: string
+          format: date-time
+          nullable: true
+    DeliveryEvidenceCollection:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryEvidence'
     ExecutionError:
       type: object
       required:
@@ -14189,6 +14486,7 @@ components:
       - missing_credentials
       - invalid_credentials
       - device_revoked
+      - session_superseded
       - forbidden
       - insufficient_role
       - insufficient_scope

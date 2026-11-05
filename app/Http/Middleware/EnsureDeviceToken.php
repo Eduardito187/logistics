@@ -53,8 +53,18 @@ final class EnsureDeviceToken
         $deviceId = $token->device_id;
         $snapshot = $this->deviceSnapshot($deviceId);
 
-        if ($snapshot === null || $snapshot['revoked']) {
+        if ($snapshot === null) {
             return $this->problem($request, ErrorCode::DeviceRevoked, 'Device has been revoked.');
+        }
+
+        if ($snapshot['revoked']) {
+            // Desalojo por sesión nueva del mismo tipo → código distinguible para que la app avise y cierre;
+            // cualquier otra revocación (baja por robo/extravío) sigue como device_revoked.
+            [$code, $detail] = $snapshot['revoked_reason'] === Device::REVOKED_REASON_SUPERSEDED
+                ? [ErrorCode::SessionSuperseded, 'Signed in on another device.']
+                : [ErrorCode::DeviceRevoked, 'Device has been revoked.'];
+
+            return $this->problem($request, $code, $detail);
         }
 
         if ($snapshot['user_id'] !== null && $snapshot['user_id'] !== $user->getKey()) {
@@ -86,7 +96,7 @@ final class EnsureDeviceToken
     /**
      * Snapshot primitivo del dispositivo desde cache (con TTL corto); `null` si el equipo no existe.
      *
-     * @return array{revoked: bool, user_id: int|null}|null
+     * @return array{revoked: bool, user_id: int|null, revoked_reason: string|null}|null
      */
     private function deviceSnapshot(int $deviceId): ?array
     {
@@ -102,14 +112,18 @@ final class EnsureDeviceToken
             return null;
         }
 
-        return ['revoked' => (bool) $cached['revoked'], 'user_id' => $cached['user_id']];
+        return [
+            'revoked' => (bool) $cached['revoked'],
+            'user_id' => $cached['user_id'],
+            'revoked_reason' => is_string($cached['revoked_reason'] ?? null) ? $cached['revoked_reason'] : null,
+        ];
     }
 
     /**
      * Lee el dispositivo de la base y cachea su snapshot (positivo o negativo, con el mismo TTL corto);
      * `null` si el equipo no existe. Separa el camino frío del hit en cache para no pasar de 3 returns.
      *
-     * @return array{revoked: bool, user_id: int|null}|null
+     * @return array{revoked: bool, user_id: int|null, revoked_reason: string|null}|null
      */
     private function deviceSnapshotFromDatabase(int $deviceId, string $key): ?array
     {
@@ -121,7 +135,11 @@ final class EnsureDeviceToken
             return null;
         }
 
-        $snapshot = ['revoked' => $device->isRevoked(), 'user_id' => $device->user_id];
+        $snapshot = [
+            'revoked' => $device->isRevoked(),
+            'user_id' => $device->user_id,
+            'revoked_reason' => $device->revoked_reason,
+        ];
         Cache::put($key, ['exists' => true] + $snapshot, self::DEVICE_CACHE_TTL_SECONDS);
 
         return $snapshot;

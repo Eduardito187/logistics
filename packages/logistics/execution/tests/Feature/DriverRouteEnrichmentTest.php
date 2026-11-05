@@ -107,6 +107,11 @@ it('sirve la ruta del chofer con telefono, referencia, items y geometria', funct
     $response->assertJsonPath('data.stops.0.items.0.quantity', 2);
     $response->assertJsonPath('data.stops.0.items.0.image_url', 'https://cdn.example/fridge.jpg');
 
+    // Destino: sin nodo → domicilio (home), con el nombre del cliente. La app muestra "Entregar" (POD).
+    $response->assertJsonPath('data.stops.0.destination.type', 'home');
+    $response->assertJsonPath('data.stops.0.destination.name', 'Cliente Enriquecido');
+    $response->assertJsonPath('data.stops.0.destination.node_code', null);
+
     // La parada actual (siguiente a atender) también viaja enriquecida.
     $response->assertJsonPath('data.current_stop.customer_phone', '+591 70000001');
 
@@ -133,5 +138,52 @@ it('sirve la ruta con valores nulos cuando no hay datos cross-context', function
         ->assertJsonPath('data.stops.0.customer_phone', null)
         ->assertJsonPath('data.stops.0.address_reference', null)
         ->assertJsonPath('data.stops.0.items', [])
+        ->assertJsonPath('data.stops.0.destination', null)
         ->assertJsonPath('data.route_geometry', null);
+});
+
+it('expone el destino tipo nodo (tienda/almacén) para que la app muestre "Descargar"', function (): void {
+    $vehicle = Uuid::generate()->value;
+    $shipment = Uuid::generate()->value;
+    $nodeId = Uuid::generate()->value;
+    $date = '2026-10-16';
+
+    DB::table('network_nodes')->insert([
+        'id' => $nodeId,
+        'code' => 'T-RUTA-01',
+        'name' => 'Tienda Centro',
+        'type' => 'store',
+        'lat' => -16.5,
+        'lng' => -68.15,
+        'status' => 'active',
+        'department' => 'la_paz',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    DB::table('shipments')->insert([
+        'id' => $shipment,
+        'source' => 'TEST',
+        'external_id' => 'EXT-NODE-'.substr($shipment, 0, 6),
+        'customer_name' => 'Traspaso',
+        'address_text' => 'Nodo',
+        'destination_node_id' => $nodeId,
+        'address_confidence' => 90,
+        'address_confidence_level' => 'high',
+        'status' => 'RECEIVED',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    app(CommandBus::class)->dispatch(new AssembleDailyRoute(
+        vehicleId: $vehicle,
+        routeDate: $date,
+        stops: [new RouteStopInput(shipmentId: $shipment, sequence: 1)],
+    ));
+
+    $this->getJson("/api/v1/app/vehicles/{$vehicle}/route?date={$date}")
+        ->assertOk()
+        ->assertJsonPath('data.stops.0.destination.type', 'store')
+        ->assertJsonPath('data.stops.0.destination.name', 'Tienda Centro')
+        ->assertJsonPath('data.stops.0.destination.node_code', 'T-RUTA-01');
 });

@@ -51,6 +51,8 @@ final class AuthController
             'password' => ['required', 'string'],
             'device.fingerprint' => ['required', 'string', 'max:255'],
             'device.platform' => ['nullable', 'string', 'max:64'],
+            // Bucket de sesión explícito opcional (web|app). Si se omite, se deriva de `platform`.
+            'device.client_kind' => ['nullable', 'string', 'in:web,app'],
             'device.name' => ['nullable', 'string', 'max:255'],
             'device.push_token' => ['nullable', 'string', 'max:512'],
         ]);
@@ -155,7 +157,7 @@ final class AuthController
      * en caché con vida corta. El `challenge_id` es un token opaco de un solo uso que la
      * app presenta en verify(); nunca se derivan de él las credenciales.
      *
-     * @param array{fingerprint: string, platform?: string|null, name?: string|null, push_token?: string|null} $device
+     * @param array{fingerprint: string, platform?: string|null, client_kind?: string|null, name?: string|null, push_token?: string|null} $device
      */
     private function issueChallenge(User $user, array $device): JsonResponse
     {

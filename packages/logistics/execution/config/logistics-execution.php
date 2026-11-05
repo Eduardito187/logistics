@@ -14,6 +14,10 @@ return [
     'evidence_disks' => [
         'pod' => env('EXECUTION_POD_DISK', 'pod'),
         'damage' => env('EXECUTION_DAMAGE_DISK', 'damage'),
+        // Evidencia anti-fraude ligada al cliente (privada, PII): firma y foto de documento, cada una en
+        // su disco para separar su ciclo de vida y acceso.
+        'signature' => env('EXECUTION_SIGNATURE_DISK', 'signature'),
+        'id_document' => env('EXECUTION_ID_DOCUMENT_DISK', 'id_document'),
     ],
 
     // Reintentos al subir una evidencia al almacenamiento S3-compatible: la red del andén es inestable,
