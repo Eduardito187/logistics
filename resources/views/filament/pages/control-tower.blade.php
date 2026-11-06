@@ -105,6 +105,9 @@
                         :label="__($tile['label'] ?? '')"
                         :value="number_format((int) ($tile['value'] ?? 0))"
                         :tone="$tile['tone'] ?? 'neutral'"
+                        :delta="$tile['delta'] ?? null"
+                        :trend="$tile['trend'] ?? 'flat'"
+                        :delta-tone="$tile['delta_tone'] ?? 'neutral'"
                         :hint="$tile['hint'] ?? null"
                     />
                 @endforeach
@@ -132,6 +135,20 @@
                                 </div>
                                 <x-cockpit.pill tone="danger" :dot="false">{{ $flagged['flagged_reason'] ?? __('En riesgo') }}</x-cockpit.pill>
                             </div>
+
+                            {{-- Compartir seguimiento: enlace PÚBLICO del envío (página t/{token}) para mandar al cliente. --}}
+                            @php $shareUrl = ! empty($flagged['shipment_id']) ? $this->shareTrackingUrl($flagged['shipment_id']) : null; @endphp
+                            @if ($shareUrl)
+                                <div class="mt-3 flex items-center gap-2" x-data="{ copied: false }">
+                                    <button type="button" class="ck-btn ck-btn--ghost"
+                                        x-on:click="navigator.clipboard?.writeText(@js($shareUrl)).then(() => { copied = true; setTimeout(() => copied = false, 1800) }).catch(() => {})">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                                        <span x-show="!copied">{{ __('Share tracking') }}</span>
+                                        <span x-show="copied" x-cloak>{{ __('Link copied') }}</span>
+                                    </button>
+                                    <a href="{{ $shareUrl }}" target="_blank" rel="noopener" class="ck-link">{{ __('Open link') }}</a>
+                                </div>
+                            @endif
 
                             {{-- Tira de telemetría (solo datos reales: nada de temperatura reefer ni combustible vivo). --}}
                             <div class="ck-telemetry mt-4">
@@ -210,16 +227,27 @@
                                         @if ($done)
                                             <x-cockpit.pill tone="positive" :dot="false">{{ __('Aprobada') }}</x-cockpit.pill>
                                         @else
-                                            <button
-                                                type="button"
-                                                class="ck-btn ck-btn--approve"
-                                                wire:click="approveProposal('{{ $id }}')"
-                                                wire:loading.attr="disabled"
-                                                wire:target="approveProposal"
-                                            >
-                                                <span wire:loading.remove wire:target="approveProposal">{{ __('Aprobar') }}</span>
-                                                <span wire:loading wire:target="approveProposal">{{ __('Procesando…') }}</span>
-                                            </button>
+                                            {{-- Confirmación en dos pasos antes de despachar los comandos reales (aprobar no es trivial:
+                                                 notifica clientes / replanifica / libera cupo). Evita aprobaciones accidentales. --}}
+                                            <div x-data="{ confirming: false }" class="ck-approve">
+                                                <button type="button" class="ck-btn ck-btn--approve"
+                                                    x-show="!confirming"
+                                                    x-on:click="confirming = true">
+                                                    {{ __('Aprobar') }}
+                                                </button>
+                                                <div x-show="confirming" x-cloak class="ck-approve__confirm">
+                                                    <span class="ck-approve__ask">{{ __('Confirm?') }}</span>
+                                                    <button type="button" class="ck-btn ck-btn--approve"
+                                                        wire:click="approveProposal('{{ $id }}')"
+                                                        wire:loading.attr="disabled"
+                                                        wire:target="approveProposal"
+                                                        x-on:click="confirming = false">
+                                                        <span wire:loading.remove wire:target="approveProposal">{{ __('Yes, approve') }}</span>
+                                                        <span wire:loading wire:target="approveProposal">{{ __('Procesando…') }}</span>
+                                                    </button>
+                                                    <button type="button" class="ck-btn ck-btn--ghost" x-on:click="confirming = false">{{ __('Cancel') }}</button>
+                                                </div>
+                                            </div>
                                         @endif
                                     </x-cockpit.proposal>
                                 @endforeach

@@ -66,7 +66,7 @@
         <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
         <link rel="stylesheet" href="{{ asset('vendor/leaflet-geoman/leaflet-geoman.css') }}" />
         <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
-        {{-- Helper de teselas con fallback automático al OSM público si el self-host no responde. --}}
+        {{-- Teselas solo del tileserver self-host (CERO CDN): sin fallback a un CDN público si no responde. --}}
         <script src="{{ asset('js/dismac-maps.js') }}"></script>
         <script src="{{ asset('vendor/leaflet-geoman/leaflet-geoman.min.js') }}"></script>
     @endassets
@@ -77,7 +77,7 @@
         let zones = @js($zones);
 
         const map = L.map(container).setView([-16.5, -68.15], 11); // La Paz / Bolivia
-        // Teselas self-host (tileserver OSM del proyecto); si falla, el helper cae automáticamente al OSM público.
+        // Teselas solo del tileserver self-host (CERO CDN); si falla, el mapa queda sin fondo (sin fallback público).
         window.DismacMaps.tileLayer(L, {
             url: @js(config('maps.tile_url')),
             fallbackUrl: @js(config('maps.tile_fallback_url')),

@@ -9,6 +9,7 @@ use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
@@ -243,6 +244,14 @@ final class EmittedLabelResource extends Resource
                         ->placeholder('—'),
                 ])
                 ->columns(3),
+            Section::make(__('Label preview'))
+                ->description(__('Scannable image of the label — the signed QR and the Code128, rendered on-premise. Scan the QR from the app just like a printed label.'))
+                ->schema([
+                    ViewEntry::make('preview')
+                        ->hiddenLabel()
+                        ->view('filament.labels.label-preview')
+                        ->columnSpanFull(),
+                ]),
             Section::make(__('Signed payload'))
                 ->description(__('Signed QR content and ZPL — for auditing and printing only.'))
                 ->collapsed()

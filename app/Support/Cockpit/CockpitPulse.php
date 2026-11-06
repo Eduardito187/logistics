@@ -16,8 +16,9 @@ use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
  *   ['key', 'label', 'value', 'delta', 'trend', 'tone', 'hint'].
  *
  * Honestidad de los números:
- *   - `delta` va SIEMPRE null y `trend` 'flat': la plataforma todavía no guarda una foto histórica de
- *     estos agregados, así que no hay línea base contra la cual comparar. No se inventa una variación.
+ *   - La VARIACIÓN (delta ▲/▼) se calcula contra la última FOTO HISTÓRICA anterior
+ *     (`cockpit_metric_snapshots`, que escribe el comando `cockpit:metrics:snapshot`). Si todavía no hay
+ *     línea base (sin snapshot previo), el delta va null: nunca se inventa una variación.
  *   - Si una fuente no existe en este entorno, el mosaico vale 0 (nunca rompe la landing).
  */
 final class CockpitPulse
@@ -25,56 +26,138 @@ final class CockpitPulse
     use ReadsCockpitAggregates;
 
     /**
+     * Si "más es mejor" para cada métrica (decide el TONO del delta: verde = mejoró, rojo = empeoró).
+     * Las que no son intrínsecamente buenas ni malas (conteos) van null → delta en tono neutro.
+     *
+     * @var array<string, bool|null>
+     */
+    private const HIGHER_IS_BETTER = [
+        'active_shipments' => null,
+        'in_transit' => null,
+        'delivered_today' => true,
+        'delayed' => false,
+        'exceptions' => false,
+        'escalations' => false,
+    ];
+
+    /**
      * Mosaicos del pulso operativo.
      *
-     * @return list<array{key: string, label: string, value: int, delta: float|null, trend: string, tone: string, hint: string|null}>
+     * @return list<array{key: string, label: string, value: int, delta: string|null, trend: string, tone: string, delta_tone: string, hint: string|null}>
      */
     public function metrics(): array
     {
-        $active = $this->activeShipments();
-        $inTransit = $this->deliveriesInStatus(DeliveryStatus::InTransit->value);
-        $deliveredToday = $this->deliveriesTodayInStatus(DeliveryStatus::Delivered->value);
-        $delayed = $this->delayedCount();
-        $exceptions = $this->exceptionsCount();
-        $escalations = $this->escalationsCount();
+        $values = $this->rawValues();
+        $priors = $this->priorSnapshots();
 
+        $tone = [
+            'active_shipments' => 'neutral',
+            'in_transit' => $values['in_transit'] > 0 ? 'positive' : 'neutral',
+            'delivered_today' => 'positive',
+            'delayed' => $values['delayed'] > 0 ? 'warning' : 'neutral',
+            'exceptions' => $values['exceptions'] > 0 ? 'danger' : 'neutral',
+            'escalations' => $values['escalations'] > 0 ? 'danger' : 'neutral',
+        ];
+
+        $labels = [
+            'active_shipments' => ['Envíos activos', 'Envíos que no están en un estado terminal (entregado, fallido o cancelado).'],
+            'in_transit' => ['En tránsito', 'Entregas actualmente en ruta (estado de ejecución IN_TRANSIT).'],
+            'delivered_today' => ['Entregados hoy', 'Entregas completadas hoy (hora de la plataforma).'],
+            'delayed' => ['Demorados', 'Entregas activas cuya ventana comprometida ya venció y que aún no se entregan.'],
+            'exceptions' => ['Excepciones', 'Entregas fallidas de hoy más alertas de telemetría sin reconocer.'],
+            'escalations' => ['Escalamientos', 'Entregas fallidas de hoy más reservas de cupo vencidas que requieren una decisión.'],
+        ];
+
+        $tiles = [];
+        foreach ($labels as $key => [$label, $hint]) {
+            $tiles[] = $this->tile($key, $label, $values[$key], $tone[$key], $hint, $priors[$key] ?? null);
+        }
+
+        return $tiles;
+    }
+
+    /**
+     * Valores crudos de cada métrica del pulso (key => valor). Lo usan tanto los mosaicos como el comando
+     * que toma la foto histórica, para que ambos midan EXACTAMENTE lo mismo.
+     *
+     * @return array<string, int>
+     */
+    public function rawValues(): array
+    {
         return [
-            $this->tile('active_shipments', 'Envíos activos', $active, 'neutral',
-                'Envíos que no están en un estado terminal (entregado, fallido o cancelado).'),
-
-            $this->tile('in_transit', 'En tránsito', $inTransit, $inTransit > 0 ? 'positive' : 'neutral',
-                'Entregas actualmente en ruta (estado de ejecución IN_TRANSIT).'),
-
-            $this->tile('delivered_today', 'Entregados hoy', $deliveredToday, 'positive',
-                'Entregas completadas hoy (hora de la plataforma).'),
-
-            $this->tile('delayed', 'Demorados', $delayed, $delayed > 0 ? 'warning' : 'neutral',
-                'Entregas activas cuya ventana comprometida ya venció y que aún no se entregan.'),
-
-            $this->tile('exceptions', 'Excepciones', $exceptions, $exceptions > 0 ? 'danger' : 'neutral',
-                'Entregas fallidas de hoy más alertas de telemetría sin reconocer.'),
-
-            $this->tile('escalations', 'Escalamientos', $escalations, $escalations > 0 ? 'danger' : 'neutral',
-                'Entregas fallidas de hoy más reservas de cupo vencidas que requieren una decisión.'),
+            'active_shipments' => $this->activeShipments(),
+            'in_transit' => $this->deliveriesInStatus(DeliveryStatus::InTransit->value),
+            'delivered_today' => $this->deliveriesTodayInStatus(DeliveryStatus::Delivered->value),
+            'delayed' => $this->delayedCount(),
+            'exceptions' => $this->exceptionsCount(),
+            'escalations' => $this->escalationsCount(),
         ];
     }
 
     /**
-     * Arma un mosaico con delta null / trend flat (sin línea base histórica; ver docblock de la clase).
+     * Arma un mosaico, calculando el delta contra el último snapshot ANTERIOR si existe.
      *
-     * @return array{key: string, label: string, value: int, delta: float|null, trend: string, tone: string, hint: string|null}
+     * @return array{key: string, label: string, value: int, delta: string|null, trend: string, tone: string, delta_tone: string, hint: string|null}
      */
-    private function tile(string $key, string $label, int $value, string $tone, ?string $hint): array
+    private function tile(string $key, string $label, int $value, string $tone, ?string $hint, ?int $prior): array
     {
+        $delta = null;
+        $trend = 'flat';
+        $deltaTone = 'neutral';
+
+        if ($prior !== null) {
+            $diff = $value - $prior;
+            $trend = $diff > 0 ? 'up' : ($diff < 0 ? 'down' : 'flat');
+            $sign = $diff > 0 ? '+' : ($diff < 0 ? '−' : '');
+            $delta = $sign.abs($diff);
+
+            $higherIsBetter = self::HIGHER_IS_BETTER[$key] ?? null;
+            if ($diff !== 0 && $higherIsBetter !== null) {
+                $improved = $higherIsBetter ? $diff > 0 : $diff < 0;
+                $deltaTone = $improved ? 'positive' : 'negative';
+            }
+        }
+
         return [
             'key' => $key,
             'label' => $label,
             'value' => $value,
-            'delta' => null,
-            'trend' => 'flat',
+            'delta' => $delta,
+            'trend' => $trend,
             'tone' => $tone,
+            'delta_tone' => $deltaTone,
             'hint' => $hint,
         ];
+    }
+
+    /**
+     * Último valor de CADA métrica en una foto histórica ANTERIOR a hoy (key => valor). Tolerante: si la
+     * tabla no existe o no hay base, devuelve [] y los deltas quedan null.
+     *
+     * @return array<string, int>
+     */
+    private function priorSnapshots(): array
+    {
+        try {
+            /** @var array<string, int> $out */
+            $out = [];
+            $rows = DB::table('cockpit_metric_snapshots')
+                ->where('captured_on', '<', $this->startOfToday()->toDateString())
+                ->orderByDesc('captured_on')
+                ->get(['metric_key', 'value', 'captured_on']);
+
+            foreach ($rows as $row) {
+                $metric = (string) $row->metric_key;
+                // El primero por métrica es el más reciente anterior a hoy (orden desc).
+                if (!array_key_exists($metric, $out)) {
+                    $out[$metric] = (int) $row->value;
+                }
+            }
+
+            return $out;
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

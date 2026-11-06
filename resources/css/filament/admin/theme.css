@@ -314,6 +314,10 @@ code, kbd, samp, pre,
 }
 .distrack-cockpit .ck-delta--up    { background: var(--ck-green-bg); color: var(--ck-green); }
 .distrack-cockpit .ck-delta--down  { background: var(--ck-red-bg); color: var(--ck-red); }
+/* Color del delta por bueno/malo (el tono lo decide la métrica, no la dirección de la flecha). */
+.distrack-cockpit .ck-delta--good  { background: var(--ck-green-bg); color: var(--ck-green); }
+.distrack-cockpit .ck-delta--bad   { background: var(--ck-red-bg); color: var(--ck-red); }
+.distrack-cockpit .ck-delta__since { font-weight: 500; opacity: 0.7; margin-left: 0.1rem; }
 .distrack-cockpit .ck-stat__hint { font-size: 0.72rem; color: var(--ck-ink-3); }
 
 /* Acento por tono del tile (barra superior fina). */
@@ -641,3 +645,66 @@ code, kbd, samp, pre,
     background: var(--ck-neutral-bg); border: 1px solid var(--ck-line);
 }
 .distrack-cockpit .ck-photos figcaption { font-size: .72rem; color: var(--ck-ink-3); margin-top: .35rem; text-align: center; }
+
+/* ============================ Gantt de despacho (Fase 3) ============================ */
+.distrack-cockpit .ck-gantt {
+    background: var(--ck-card);
+    border: 1px solid var(--ck-line);
+    border-radius: 14px;
+    overflow: hidden;
+}
+.distrack-cockpit .ck-gantt__row {
+    display: flex;
+    align-items: stretch;
+    border-top: 1px solid var(--ck-line);
+    min-height: 46px;
+}
+.distrack-cockpit .ck-gantt__row--axis { border-top: 0; background: rgba(255, 255, 255, 0.02); min-height: 30px; }
+.distrack-cockpit .ck-gantt__label {
+    flex: 0 0 180px;
+    width: 180px;
+    padding: 6px 12px;
+    border-right: 1px solid var(--ck-line);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+}
+.distrack-cockpit .ck-gantt__label--axis { justify-content: center; font-size: .72rem; color: var(--ck-ink-3); }
+.distrack-cockpit .ck-gantt__plate { font-weight: 700; font-size: .82rem; letter-spacing: .02em; }
+.distrack-cockpit .ck-gantt__driver { font-size: .74rem; color: var(--ck-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.distrack-cockpit .ck-gantt__count { font-size: .68rem; color: var(--ck-ink-3); }
+.distrack-cockpit .ck-gantt__track { position: relative; flex: 1 1 auto; min-width: 0; }
+.distrack-cockpit .ck-gantt__track--axis { height: 30px; }
+.distrack-cockpit .ck-gantt__grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ck-line); }
+.distrack-cockpit .ck-gantt__tick { position: absolute; top: 0; bottom: 0; transform: translateX(-50%); display: flex; align-items: center; }
+.distrack-cockpit .ck-gantt__tick-label { font-size: .68rem; color: var(--ck-ink-3); padding: 0 4px; }
+.distrack-cockpit .ck-gantt__stop {
+    position: absolute;
+    top: 50%;
+    transform: translate(-6px, -50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px 2px 5px;
+    border-radius: 999px;
+    background: var(--ck-agent-bg);
+    border: 1px solid var(--ck-line-strong);
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: default;
+}
+.distrack-cockpit .ck-gantt__stop:hover { z-index: 5; max-width: none; background: var(--ck-card-2); }
+.distrack-cockpit .ck-gantt__dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; background: var(--ck-agent); }
+.distrack-cockpit .ck-gantt__stop-label { font-size: .7rem; color: var(--ck-ink-1, #e8e6e3); overflow: hidden; text-overflow: ellipsis; }
+.distrack-cockpit .ck-gantt__stop--done { background: var(--ck-green-bg); }
+.distrack-cockpit .ck-gantt__stop--done .ck-gantt__dot { background: var(--ck-green); }
+.distrack-cockpit .ck-gantt__stop--late { background: var(--ck-red-bg); }
+.distrack-cockpit .ck-gantt__stop--late .ck-gantt__dot { background: var(--ck-red); }
+.distrack-cockpit .ck-gantt__stop--warn { background: var(--ck-amber-bg); }
+.distrack-cockpit .ck-gantt__stop--warn .ck-gantt__dot { background: var(--ck-amber); }
+
+/* Confirmación de aprobación en dos pasos (Fase 4 — flujos pulidos). */
+.distrack-cockpit .ck-approve__confirm { display: inline-flex; align-items: center; gap: .4rem; }
+.distrack-cockpit .ck-approve__ask { font-size: .76rem; color: var(--ck-ink-2); }

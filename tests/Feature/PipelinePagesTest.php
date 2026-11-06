@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\Role;
+use App\Filament\Pages\DispatchTimeline;
 use App\Filament\Pages\OrderPipeline;
 use App\Filament\Pages\ShipmentPipeline;
 use App\Models\User;
@@ -28,19 +29,26 @@ it('renderiza el pipeline de pedidos', function (): void {
     Livewire::test(OrderPipeline::class)->assertOk();
 });
 
-it('gatea ambos pipelines a oficina (admin/supervisor), no a roles de campo', function (): void {
+it('renderiza la línea de tiempo de despacho (Gantt)', function (): void {
+    Livewire::test(DispatchTimeline::class)->assertOk();
+});
+
+it('gatea los tableros a oficina (admin/supervisor), no a roles de campo', function (): void {
     expect(ShipmentPipeline::canAccess())->toBeTrue()
-        ->and(OrderPipeline::canAccess())->toBeTrue();
+        ->and(OrderPipeline::canAccess())->toBeTrue()
+        ->and(DispatchTimeline::canAccess())->toBeTrue();
 
     $supervisor = User::factory()->create();
     $supervisor->assignRole(Role::Supervisor);
     $this->actingAs($supervisor);
     expect(ShipmentPipeline::canAccess())->toBeTrue()
-        ->and(OrderPipeline::canAccess())->toBeTrue();
+        ->and(OrderPipeline::canAccess())->toBeTrue()
+        ->and(DispatchTimeline::canAccess())->toBeTrue();
 
     $driver = User::factory()->create();
     $driver->assignRole(Role::Chofer);
     $this->actingAs($driver);
     expect(ShipmentPipeline::canAccess())->toBeFalse()
-        ->and(OrderPipeline::canAccess())->toBeFalse();
+        ->and(OrderPipeline::canAccess())->toBeFalse()
+        ->and(DispatchTimeline::canAccess())->toBeFalse();
 });

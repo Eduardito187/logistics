@@ -75,6 +75,14 @@ Schedule::command('logistics:promise:expire-reservations')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Foto histórica diaria de los KPIs de la Torre de Control (para la variación ▲/▼ de los mosaicos). A
+// las 23:55 (hora de plataforma), con los conteos del día ya consolidados. Idempotente por métrica+fecha.
+Schedule::command('cockpit:metrics:snapshot')
+    ->dailyAt('23:55')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 /*
 |--------------------------------------------------------------------------
 | Mantenimiento físico de base de datos (no destructivo)

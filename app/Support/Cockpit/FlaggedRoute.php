@@ -38,6 +38,7 @@ final class FlaggedRoute
      * El envío en riesgo con la peor violación de ventana, enriquecido, o null si no hay ninguno.
      *
      * @return array{
+     *   shipment_id: string,
      *   shipment_ref: string,
      *   origin: string|null,
      *   destination: string|null,
@@ -74,6 +75,7 @@ final class FlaggedRoute
         $delayMinutes = $windowEnd !== null ? (int) round($windowEnd->diffInMinutes($reference, false)) : null;
 
         return [
+            'shipment_id' => $shipmentId,
             'shipment_ref' => (string) ($row->external_id ?? $shipmentId),
             'origin' => null,
             'destination' => $this->nullableString($row->address_text),

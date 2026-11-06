@@ -209,8 +209,8 @@
 
         if (pos && typeof L !== 'undefined') {
             var map = L.map('map', { scrollWheelZoom: false }).setView([pos.lat, pos.lng], 14);
-            {{-- Teselas self-host con fallback automático al OSM público (helper compartido): si el --}}
-            {{-- tileserver del proyecto no responde, la capa baja sola al tile público y el mapa no queda gris. --}}
+            {{-- Teselas ÚNICAMENTE del tileserver self-host (CERO CDN, helper compartido): si el --}}
+            {{-- tileserver del proyecto no responde, el mapa queda sin fondo (SIN fallback a un CDN público). --}}
             window.DismacMaps.tileLayer(L, {
                 url: @js(config('maps.tile_url')),
                 fallbackUrl: @js(config('maps.tile_fallback_url')),

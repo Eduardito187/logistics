@@ -18,6 +18,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
 use Logistics\Telemetry\Application\Query\GetLiveFleetPositions\GetLiveFleetPositions;
@@ -198,6 +199,31 @@ final class ControlTower extends Page
     public function flagged(): ?array
     {
         return app(FlaggedRoute::class)->current();
+    }
+
+    /**
+     * Enlace PÚBLICO de seguimiento de un envío (página `t/{token}`), para compartirlo con el cliente.
+     * Tolerante: null si el envío no tiene seguimiento abierto todavía o no se pudo resolver el token.
+     */
+    public function shareTrackingUrl(string $shipmentId): ?string
+    {
+        if (trim($shipmentId) === '') {
+            return null;
+        }
+
+        try {
+            $token = DB::table('tracking_shipments')
+                ->where('shipment_id', $shipmentId)
+                ->value('token');
+
+            if (!is_string($token) || $token === '') {
+                return null;
+            }
+
+            return route('tracking.public.page', ['token' => $token]);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
