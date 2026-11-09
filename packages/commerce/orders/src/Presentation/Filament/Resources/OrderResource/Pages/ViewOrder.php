@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Commerce\Orders\Presentation\Filament\Resources\OrderResource\Pages;
 
+use App\Filament\Concerns\HasEntityNotes;
+use App\Support\Cockpit\EntityTimeline;
 use App\Support\Cockpit\OrderHub;
 use Commerce\Orders\Presentation\Filament\Resources\OrderResource;
 use Filament\Actions\Action;
 use Filament\Resources\Pages\ViewRecord;
 use Livewire\Attributes\Computed;
+use Logistics\Labels\Presentation\Filament\Resources\EmittedLabelResource;
+use Logistics\Promise\Presentation\Filament\Resources\PromiseResource;
 
 /**
  * "Hub 360" de un pedido comercial (OMS): cockpit de detalle que agrega la ficha del pedido (cliente,
@@ -18,6 +22,8 @@ use Livewire\Attributes\Computed;
  */
 final class ViewOrder extends ViewRecord
 {
+    use HasEntityNotes;
+
     protected static string $resource = OrderResource::class;
 
     // Vista propia (cockpit); conserva el chrome de página Filament (cabecera + acción Cancelar).
@@ -53,5 +59,49 @@ final class ViewOrder extends ViewRecord
     public function hub(): array
     {
         return app(OrderHub::class)->overview((string) $this->getRecord()->getKey());
+    }
+
+    /**
+     * Línea de tiempo (actividad) de la entidad, memoizada durante el request.
+     *
+     * @return list<array{at: string, when: string, label: string, kind: string, actor: ?string}>
+     */
+    #[Computed]
+    public function timeline(): array
+    {
+        return app(EntityTimeline::class)->forIds([(string) $this->getRecord()->getKey()]);
+    }
+
+    /** Tipo lógico de la entidad para las notas/seguimientos del hub. */
+    protected function noteSubjectType(): string
+    {
+        return 'order';
+    }
+
+    /**
+     * Enlaces de «Gestión»: registros que dependen de este pedido/envío (etiquetas emitidas) que ya no
+     * viven en el menú; su hogar es esta ficha. Tolerante.
+     *
+     * @return list<array{label: string, url: string}>
+     */
+    public function managementLinks(): array
+    {
+        $out = [];
+        try {
+            // Etiquetas de este pedido: lista acotada por `?order=<id>` (EmittedLabel filtra por order_id).
+            $order = '?order='.rawurlencode((string) $this->getRecord()->getKey());
+            $out[] = ['label' => 'Etiquetas emitidas', 'url' => EmittedLabelResource::getUrl('index').$order];
+        } catch (\Throwable) {
+            // recurso no disponible: se omite.
+        }
+        try {
+            // Promesas: su referencia (shipment_ref) es una clave suelta que no se empareja limpio con el id
+            // del pedido en los datos actuales, así que se enlaza a la lista completa (su hogar es esta ficha).
+            $out[] = ['label' => 'Promesas de entrega', 'url' => PromiseResource::getUrl('index')];
+        } catch (\Throwable) {
+            // recurso no disponible: se omite.
+        }
+
+        return $out;
     }
 }

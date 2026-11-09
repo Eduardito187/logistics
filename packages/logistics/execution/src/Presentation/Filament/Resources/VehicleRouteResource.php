@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Presentation\Filament\Resources;
 
 use App\Filament\Pages\CustomerProfile;
+use App\Filament\Support\RequestScopedQuery;
 use BackedEnum;
 use DateTimeInterface;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -64,7 +65,14 @@ final class VehicleRouteResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-map-pin';
 
-    protected static ?int $navigationSort = 32;
+    protected static ?int $navigationSort = 14;
+
+    // Fuera del menú: una ruta del chofer pertenece al CHOFER; su hogar es la ficha 360 del chofer (sección
+    // «Gestión»), que abre la lista acotada por `?driver=`. No es un ítem CRUD suelto en Operaciones.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationGroup(): string
     {
@@ -116,6 +124,8 @@ final class VehicleRouteResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Al abrir desde la ficha del chofer, `?driver=<id>` acota a sus rutas.
+            ->modifyQueryUsing(RequestScopedQuery::by('driver', 'driver_id'))
             ->columns([
                 TextColumn::make('route_date')
                     ->label(__('Route date'))

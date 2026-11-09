@@ -35,8 +35,8 @@ final class NodeHub
      *
      * @return array{
      *   node: array{code: string, name: string, type: string, status: string, department: string|null, lat: float, lng: float}|null,
-     *   fleet: array{total: int, vehicles: list<array{plate: string, status: string, label: string}>},
-     *   shipments: array{total: int, active: int},
+     *   fleet: array{total: int, vehicles: list<array{id: string, plate: string, status: string, label: string}>},
+     *   shipments: array{total: int, active: int, recent: list<array{id: string, reference: string, customer: string, status: string}>},
      *   docks: list<array{code: string, name: string, slots: int, active: bool}>,
      *   connections: list<array{other: string, corridor_type: string, direction: string}>,
      * }
@@ -82,7 +82,7 @@ final class NodeHub
     /**
      * Flota con base en el nodo (fleet_vehicles.home_base_node_id): conteo + lista corta.
      *
-     * @return array{total: int, vehicles: list<array{plate: string, status: string, label: string}>}
+     * @return array{total: int, vehicles: list<array{id: string, plate: string, status: string, label: string}>}
      */
     private function fleet(string $nodeId): array
     {
@@ -93,8 +93,9 @@ final class NodeHub
                 ->where('home_base_node_id', $nodeId)
                 ->orderBy('plate')
                 ->limit(12)
-                ->get(['plate', 'status', 'make', 'model'])
+                ->get(['id', 'plate', 'status', 'make', 'model'])
                 ->map(static fn ($r): array => [
+                    'id' => (string) $r->id,
                     'plate' => (string) $r->plate,
                     'status' => (string) $r->status,
                     'label' => trim((string) $r->make.' '.(string) $r->model),
@@ -108,9 +109,10 @@ final class NodeHub
     }
 
     /**
-     * Envíos destinados al nodo (shipments.destination_node_id): total y activos (no terminales).
+     * Envíos destinados al nodo (shipments.destination_node_id): total, activos (no terminales) y una
+     * lista corta reciente (con id para enlazar a la ficha 360 de cada envío; referencia = nº de pedido).
      *
-     * @return array{total: int, active: int}
+     * @return array{total: int, active: int, recent: list<array{id: string, reference: string, customer: string, status: string}>}
      */
     private function shipments(string $nodeId): array
     {
@@ -121,9 +123,22 @@ final class NodeHub
                 ->whereNotIn('status', self::SHIPMENT_TERMINAL)
                 ->count();
 
-            return ['total' => $total, 'active' => $active];
+            $recent = array_values(DB::table('shipments')
+                ->where('destination_node_id', $nodeId)
+                ->orderByDesc('created_at')
+                ->limit(10)
+                ->get(['id', 'external_id', 'customer_name', 'status'])
+                ->map(static fn ($r): array => [
+                    'id' => (string) $r->id,
+                    'reference' => (string) $r->external_id,
+                    'customer' => (string) $r->customer_name,
+                    'status' => (string) $r->status,
+                ])
+                ->all());
+
+            return ['total' => $total, 'active' => $active, 'recent' => $recent];
         } catch (Throwable) {
-            return ['total' => 0, 'active' => 0];
+            return ['total' => 0, 'active' => 0, 'recent' => []];
         }
     }
 

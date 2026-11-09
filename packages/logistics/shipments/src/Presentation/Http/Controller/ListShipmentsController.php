@@ -13,6 +13,8 @@ use Illuminate\Validation\Rule;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Application\ReadModel\Page;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipments;
+use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByCursor;
+use Logistics\Shipments\Application\ReadModel\ShipmentPage;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
@@ -69,9 +71,39 @@ final class ListShipmentsController
             $destinationNodeId = $assignedNode;
         }
 
-        // Paginación opcional y aditiva (E-02): si el cliente la pide, se BAJA el recorte a SQL
-        // (LIMIT/OFFSET + COUNT(*) aparte) vía el query object; si no, se devuelve la colección completa
-        // (comportamiento histórico). Ya no se materializa toda la tabla para trocearla en PHP.
+        // Paginación por CURSOR (keyset) — modo PREFERIDO para los envíos (colección que crece): avanza por
+        // `id > afterId` (UUID v7 ordenable) sin OFFSET, así una página profunda cuesta lo mismo que la
+        // primera. El cursor es un token opaco (no se filtra el modelo de almacenamiento); el id viaja
+        // codificado, nunca como texto visible.
+        if ($request->has('cursor')) {
+            $perPage = ApiPagination::limit($request);
+
+            /** @var ShipmentPage $page */
+            $page = $this->queryBus->ask(new ListShipmentsByCursor(
+                limit: $perPage,
+                afterId: $this->decodeCursor($request->input('cursor')),
+                status: $filters['status'] ?? null,
+                source: $filters['source'] ?? null,
+                destinationNodeId: $destinationNodeId,
+            ));
+
+            $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
+            $hasMore = $page->nextCursor !== null;
+
+            return new JsonResponse([
+                'data' => array_values($items),
+                'meta' => [
+                    'count' => count($items),
+                    'per_page' => $perPage,
+                    'has_more' => $hasMore,
+                    'next_cursor' => $hasMore && $page->nextCursor !== null ? $this->encodeCursor($page->nextCursor) : null,
+                ],
+            ]);
+        }
+
+        // Paginación por OFFSET numerada (?page/?per_page): se CONSERVA porque la puerta app expone páginas
+        // numeradas con `total`/`total_pages` (contrato E-02 que la app ya consume). El COUNT(*) va aparte;
+        // ya no se materializa toda la tabla para trocearla en PHP. Para colecciones grandes, preferir cursor.
         if (ApiPagination::requested($request)) {
             /** @var Page<ShipmentView> $page */
             $page = $this->queryBus->ask(new ListShipments(
@@ -95,5 +127,34 @@ final class ListShipmentsController
         ));
 
         return $this->data(array_map(static fn (ShipmentView $view): array => $view->toArray(), $views));
+    }
+
+    /**
+     * Cursor keyset OPACO: base64 de `id:<uuid>`. No se muestra al usuario ni filtra el almacenamiento;
+     * el cliente solo lo reenvía tal cual para pedir la página siguiente.
+     */
+    private function encodeCursor(string $id): string
+    {
+        return base64_encode('id:'.$id);
+    }
+
+    /**
+     * Decodifica el cursor opaco a su id de envío. Devuelve null para la primera página (cursor ausente,
+     * vacío o malformado): nunca falla, solo arranca desde el principio.
+     */
+    private function decodeCursor(mixed $cursor): ?string
+    {
+        if (!is_string($cursor) || $cursor === '') {
+            return null;
+        }
+
+        $raw = base64_decode($cursor, true);
+        if ($raw === false || !str_starts_with($raw, 'id:')) {
+            return null;
+        }
+
+        $id = substr($raw, 3);
+
+        return $id !== '' ? $id : null;
     }
 }

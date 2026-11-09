@@ -34,16 +34,25 @@ final class StoreUserResource extends Resource
 
     protected static ?string $model = User::class;
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 14;
 
     public static function getNavigationIcon(): string
     {
         return 'heroicon-o-building-storefront';
     }
 
+    // Gestión de cuentas de usuario de tienda (usuario↔nodo-tienda): es gestión de PERSONAS/cuentas, no de
+    // la red. Va con Usuarios en el grupo «Personal».
+    // Fuera del menú: la asignación de tienda es un dato de una persona (usuario de tienda); se gestiona
+    // desde el DIRECTORIO de personas, no como ítem CRUD suelto en el menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationGroup(): string
     {
-        return __('Network');
+        return __('Personnel');
     }
 
     public static function getNavigationLabel(): string

@@ -9,6 +9,7 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Textarea;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
@@ -17,8 +18,11 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Exceptions\Halt;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Outbox\Application\Command\DiscardMessage\DiscardMessageCommand;
@@ -75,7 +79,7 @@ final class OutboxMessageResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 50;
+        return 42;
     }
 
     public static function getNavigationLabel(): string
@@ -154,6 +158,8 @@ final class OutboxMessageResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->deferLoading()
+            ->paginationPageOptions([25, 50, 100])
             ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('event_name')
@@ -200,6 +206,26 @@ final class OutboxMessageResource extends Resource
                     ->toggleable(),
             ])
             ->filters([
+                Filter::make('period')
+                    ->label(__('Date range'))
+                    ->schema([
+                        DatePicker::make('from')->label(__('From'))->native(false)->default(now()->subDays(30)),
+                        DatePicker::make('until')->label(__('To'))->native(false),
+                    ])
+                    ->query(static function (Builder $query, array $data): Builder {
+                        /** @var Builder<OutboxMessageRecord> $query */
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+                        if (is_string($from) && $from !== '') {
+                            $query->where('created_at', '>=', Carbon::parse($from)->startOfDay());
+                        }
+                        if (is_string($until) && $until !== '') {
+                            $query->where('created_at', '<', Carbon::parse($until)->addDay()->startOfDay());
+                        }
+
+                        return $query;
+                    })
+                    ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) ? (string) __('Date range') : null),
                 SelectFilter::make('status')
                     ->label(__('Status'))
                     ->native(false)

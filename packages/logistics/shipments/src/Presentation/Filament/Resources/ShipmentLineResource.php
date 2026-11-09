@@ -19,6 +19,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentLineResource\Pages\CreateShipmentLine;
@@ -38,6 +39,7 @@ use Logistics\Shipments\Presentation\Filament\Resources\ShipmentLineResource\Pag
 final class ShipmentLineResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = ShipmentLineRecord::class;
 
@@ -53,6 +55,16 @@ final class ShipmentLineResource extends Resource
     public static function getNavigationGroup(): string
     {
         return __('Commerce');
+    }
+
+    /**
+     * Fuera de la navegación: las líneas son un DETALLE del pedido/envío, no una tabla de primer nivel.
+     * El recurso sigue existiendo (sus páginas y rutas funcionan, accesibles desde el pedido/envío); solo
+     * no ensucia el menú. Reorganización del admin (Fase 1), sin perder funcionalidad.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
     }
 
     public static function getModelLabel(): string

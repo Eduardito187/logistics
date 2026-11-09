@@ -25,6 +25,19 @@ Broadcast::channel('fleet', static function (User $user): bool {
 });
 
 /**
+ * Canal ACOTADO por NODO base: el fan-out de posiciones de los vehículos de un nodo (un nodo vive en un
+ * solo departamento, coherente con la regla de ruta de un departamento). Permite que un espectador siga
+ * solo su nodo sin recibir el stream global de `fleet`.
+ *
+ * Mismo gating operativo que el panel (Admin/Supervisor): se REUSA el criterio del canal `fleet`, sin
+ * introducir un modelo de permisos por zona nuevo. El afinado por rol de nodo (que un encargado vea solo
+ * su nodo) se podrá sumar aquí cuando exista ese vínculo rol↔nodo, sin cambiar el broadcast.
+ */
+Broadcast::channel('fleet.node.{nodeId}', static function (User $user, string $nodeId): bool {
+    return $user->hasAnyRole(Role::Admin, Role::Supervisor);
+});
+
+/**
  * Canal por VEHÍCULO: seguimiento de una unidad concreta desde la operación.
  *
  * Mismo gating operativo que el panel (Admin/Supervisor). El scoping fino por vehículo asignado a un

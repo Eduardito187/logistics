@@ -30,6 +30,8 @@ use Logistics\Shipments\Application\Query\ListShipmentProducts\ListShipmentProdu
 use Logistics\Shipments\Application\Query\ListShipmentProducts\ListShipmentProductsHandler;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipments;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipmentsHandler;
+use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByCursor;
+use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByCursorHandler;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
 use Logistics\Shipments\Domain\Contract\Geocoder;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
@@ -68,6 +70,7 @@ final class ShipmentsServiceProvider extends ServiceProvider
         GeocodeShipmentAddress::class => GeocodeShipmentAddressHandler::class,
         FindShipment::class => FindShipmentHandler::class,
         ListShipments::class => ListShipmentsHandler::class,
+        ListShipmentsByCursor::class => ListShipmentsByCursorHandler::class,
         ListShipmentProducts::class => ListShipmentProductsHandler::class,
         ListLowConfidenceAddresses::class => ListLowConfidenceAddressesHandler::class,
     ];

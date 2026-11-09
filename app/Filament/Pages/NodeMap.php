@@ -24,9 +24,16 @@ final class NodeMap extends Page
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-map-pin';
 
-    protected static ?int $navigationSort = 6;
+    protected static ?int $navigationSort = 2;
 
     protected string $view = 'filament.pages.node-map';
+
+    // Fuera del menú: los nodos se ven como una CAPA conmutable dentro del cockpit geográfico unificado
+    // (página "Geography" / CoverageMap). La página sigue accesible por URL, pero no es un ítem suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationGroup(): string
     {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Settlement\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\ViewAction;
@@ -30,6 +31,7 @@ use Logistics\Settlement\Presentation\Filament\Resources\SellerSettlementResourc
 use Logistics\Settlement\Presentation\Filament\Resources\SellerSettlementResource\Pages\ViewSellerSettlement;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 use Throwable;
 
 /**
@@ -45,6 +47,7 @@ use Throwable;
 final class SellerSettlementResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = SellerSettlementRecord::class;
 
@@ -71,9 +74,16 @@ final class SellerSettlementResource extends Resource
         return __('Commerce');
     }
 
+    // Fuera del menú: la liquidación DEPENDE del vendedor; su hogar es la ficha 360 del seller
+    // (sección «Gestión del vendedor»), que enlaza a su lista ya filtrada. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationSort(): int
     {
-        return 25;
+        return 54;
     }
 
     public static function getNavigationIcon(): string
@@ -151,6 +161,8 @@ final class SellerSettlementResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?seller=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('seller', 'seller_id'))
             ->columns([
                 TextColumn::make('seller_id')
                     ->label(__('Seller'))
@@ -185,6 +197,13 @@ final class SellerSettlementResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                // Filtro por vendedor: permite abrir la lista acotada a un seller desde su ficha 360
+                // (sección «Gestión del vendedor»), sin mostrar UUIDs (opciones por razón social).
+                SelectFilter::make('seller_id')
+                    ->label(__('Seller'))
+                    ->options(self::sellerOptions())
+                    ->searchable()
+                    ->native(false),
                 SelectFilter::make('status')
                     ->label(__('Status'))
                     ->options(self::statusOptions())

@@ -6,7 +6,6 @@ namespace Logistics\Fleet\Application\ReadModel;
 
 use DateTimeImmutable;
 use Logistics\Fleet\Domain\Model\Helper;
-use Logistics\Fleet\Domain\ValueObject\DocumentExpiry;
 use Logistics\Fleet\Domain\ValueObject\PersonalReference;
 
 /**
@@ -38,7 +37,13 @@ final readonly class HelperView
         public array $references,
     ) {}
 
-    public static function fromDomain(Helper $helper): self
+    /**
+     * Los documentos del ayudante ya NO viven en el agregado (A5): llegan desde `fleet_documents` en forma
+     * primitiva {type, expires_on}. Por defecto vacío para no romper otros llamadores.
+     *
+     * @param list<array{type: string, expires_on: string}> $documents
+     */
+    public static function fromDomain(Helper $helper, array $documents = []): self
     {
         $birthDate = $helper->birthDate();
 
@@ -46,7 +51,7 @@ final readonly class HelperView
             $helper->id()->toString(),
             $helper->name(),
             $helper->phone(),
-            array_values(array_map(static fn (DocumentExpiry $document) => $document->toArray(), $helper->documents())),
+            $documents,
             $helper->isActive(),
             $helper->photoPath(),
             $birthDate?->toString(),

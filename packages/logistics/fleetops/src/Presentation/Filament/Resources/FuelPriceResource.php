@@ -26,6 +26,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\FuelPriceResource\Pages\E
 use Logistics\FleetOps\Presentation\Filament\Resources\FuelPriceResource\Pages\ListFuelPrices;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de precios de combustible por tipo y fecha de vigencia.
@@ -39,6 +40,7 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 final class FuelPriceResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = FuelPriceRecord::class;
 
@@ -51,7 +53,7 @@ final class FuelPriceResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 34;
+        return 60;
     }
 
     public static function getNavigationIcon(): string

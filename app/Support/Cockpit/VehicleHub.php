@@ -53,7 +53,7 @@ final class VehicleHub
      *
      * @return array{
      *   live: array{speed_kph: float|null, moving: bool|null, ignition: bool|null, recorded_at: string|null}|null,
-     *   assignment: array{driver_name: string|null, route: array{status: string, total: int, completed: int, remaining: int, stops: list<array{label: string, eta: string|null, state: string}>}|null},
+     *   assignment: array{driver_name: string|null, driver_id: string|null, route: array{status: string, total: int, completed: int, remaining: int, stops: list<array{label: string, eta: string|null, state: string}>}|null},
      *   cost: array{fuel_cents: int, maintenance_cents: int, expenses_cents: int, total_cents: int, currency: string, kilometers: int, cost_per_km_cents: int|null}|null,
      *   utilization: array{km: int, departures: int, hours: float, last_odometer_km: int|null, last_odometer_read_at: string|null}|null,
      *   compliance: array{expired: int, due_soon: int, upcoming: int},
@@ -108,7 +108,7 @@ final class VehicleHub
     /**
      * Asignación de hoy: ruta vigente (execution) + chofer del día. Ruta null si no hay ninguna abierta.
      *
-     * @return array{driver_name: string|null, route: array{status: string, total: int, completed: int, remaining: int, stops: list<array{label: string, eta: string|null, state: string}>}|null}
+     * @return array{driver_name: string|null, driver_id: string|null, route: array{status: string, total: int, completed: int, remaining: int, stops: list<array{label: string, eta: string|null, state: string}>}|null}
      */
     private function assignment(string $vehicleId): array
     {
@@ -128,8 +128,11 @@ final class VehicleHub
             $route = null;
         }
 
+        $driver = $this->driverOfToday($vehicleId);
+
         return [
-            'driver_name' => $this->driverOfToday($vehicleId),
+            'driver_name' => $driver['name'] ?? null,
+            'driver_id' => $driver['id'] ?? null,
             'route' => $route,
         ];
     }
@@ -175,7 +178,13 @@ final class VehicleHub
      * Chofer de hoy del vehículo (hueco: no hay query único). Se toma de la última salida de fleetops del
      * día y se resuelve a nombre legible desde fleet_drivers. Null si no hay salida registrada hoy.
      */
-    private function driverOfToday(string $vehicleId): ?string
+    /**
+     * Chofer de hoy del vehículo (id + nombre, para enlazar a su ficha 360). Hueco: no hay query único;
+     * se toma de la última salida de fleetops del día y se resuelve el nombre desde fleet_drivers.
+     *
+     * @return array{id: string, name: string}|null
+     */
+    private function driverOfToday(string $vehicleId): ?array
     {
         try {
             $driverId = DB::table('fleetops_departures')
@@ -190,7 +199,7 @@ final class VehicleHub
 
             $name = DB::table('fleet_drivers')->where('id', $driverId)->value('name');
 
-            return is_string($name) && $name !== '' ? $name : null;
+            return is_string($name) && $name !== '' ? ['id' => $driverId, 'name' => $name] : null;
         } catch (Throwable) {
             return null;
         }

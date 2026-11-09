@@ -6,6 +6,7 @@ namespace Logistics\Telemetry\Presentation\Filament\Resources;
 
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\DatePicker;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
@@ -14,13 +15,16 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 use Logistics\Telemetry\Application\Command\AcknowledgeAlert\AcknowledgeAlert;
 use Logistics\Telemetry\Domain\ValueObject\AlertSeverity;
 use Logistics\Telemetry\Domain\ValueObject\AlertType;
@@ -41,6 +45,7 @@ use Logistics\Telemetry\Presentation\Filament\Support\VehiclePlates;
 final class TelemetryAlertResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = AlertRecord::class;
 
@@ -189,6 +194,26 @@ final class TelemetryAlertResource extends Resource
                     ->getStateUsing(static fn (AlertRecord $record): bool => $record->acknowledged_at !== null),
             ])
             ->filters([
+                Filter::make('period')
+                    ->label(__('Date range'))
+                    ->schema([
+                        DatePicker::make('from')->label(__('From'))->native(false)->default(now()->subDays(30)),
+                        DatePicker::make('until')->label(__('To'))->native(false),
+                    ])
+                    ->query(static function (Builder $query, array $data): Builder {
+                        /** @var Builder<AlertRecord> $query */
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+                        if (is_string($from) && $from !== '') {
+                            $query->where('occurred_at', '>=', Carbon::parse($from)->startOfDay());
+                        }
+                        if (is_string($until) && $until !== '') {
+                            $query->where('occurred_at', '<', Carbon::parse($until)->addDay()->startOfDay());
+                        }
+
+                        return $query;
+                    })
+                    ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) ? (string) __('Date range') : null),
                 SelectFilter::make('type')
                     ->label(__('Type'))
                     ->native(false)
@@ -217,6 +242,8 @@ final class TelemetryAlertResource extends Resource
                         },
                     ),
             ])
+            ->deferLoading()
+            ->paginationPageOptions([25, 50, 100])
             ->defaultSort('occurred_at', 'desc')
             ->recordActions([
                 ViewAction::make(),

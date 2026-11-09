@@ -59,7 +59,7 @@ final class LastMileBoard extends Page
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-truck';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 3;
 
     protected string $view = 'logistics-execution::filament.pages.last-mile-board';
 

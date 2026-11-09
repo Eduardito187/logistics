@@ -3639,7 +3639,9 @@ paths:
       description: >-
         Supports optional offset or cursor pagination (E-02). Without any pagination parameter the full
         collection is returned unchanged; with `page`/`per_page` or `cursor` the response is sliced and
-        a `meta` object is added. Cursor pagination is preferred for this growing collection.
+        a `meta` object is added. Cursor pagination is preferred for this growing collection and uses
+        keyset (seek by shipment `id`, a time-ordered UUID v7): `next_cursor` is an opaque token, so a
+        deep page costs the same as the first one instead of scanning and discarding rows.
       parameters:
       - name: status
         in: query

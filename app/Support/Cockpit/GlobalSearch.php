@@ -115,6 +115,43 @@ final class GlobalSearch
                 ])->all();
         });
 
+        // Clientes — por nombre (derivados de los envíos; la clave del cliente es su nombre). El `id` es el
+        // propio nombre, que es lo que consume la ficha 360 del cliente (CustomerProfile::urlFor).
+        $this->source($out, static function () use ($like): array {
+            return DB::table('shipments')
+                ->whereRaw('customer_name ilike ?', [$like])
+                ->groupBy('customer_name')
+                ->orderByRaw('max(created_at) desc')
+                ->limit(self::PER_GROUP)
+                ->get(['customer_name', DB::raw('count(*) as n')])
+                ->map(static fn ($r): array => [
+                    'type' => 'customer', 'id' => (string) $r->customer_name, 'group' => 'Clientes', 'icon' => 'CL',
+                    'title' => (string) $r->customer_name,
+                    'subtitle' => ((int) $r->n).' '.((int) $r->n === 1 ? 'envío' : 'envíos'),
+                ])->all();
+        });
+
+        // Pedidos comerciales (OMS) — por nombre de cliente en ship_to. El título es el cliente (no hay nº
+        // de pedido legible); el id (UUID) viaja aparte para armar el enlace al hub del pedido.
+        $this->source($out, static function () use ($like): array {
+            return DB::table('commerce_orders')
+                ->whereRaw("ship_to->>'customer_name' ilike ?", [$like])
+                ->orderByDesc('created_at')->limit(self::PER_GROUP)
+                ->get(['id', 'status', 'ship_to'])
+                ->map(static function ($r): array {
+                    $shipTo = is_string($r->ship_to) ? json_decode($r->ship_to, true) : [];
+                    $name = is_array($shipTo) && isset($shipTo['customer_name']) && is_string($shipTo['customer_name'])
+                        ? $shipTo['customer_name']
+                        : 'Pedido';
+
+                    return [
+                        'type' => 'order', 'id' => (string) $r->id, 'group' => 'Pedidos', 'icon' => 'PD',
+                        'title' => $name,
+                        'subtitle' => self::statusLabel((string) $r->status),
+                    ];
+                })->all();
+        });
+
         return $out;
     }
 

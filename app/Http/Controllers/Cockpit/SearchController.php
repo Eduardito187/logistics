@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Cockpit;
 
 use App\Enums\Role;
+use App\Filament\Pages\CustomerProfile;
 use App\Models\User;
 use App\Support\Cockpit\GlobalSearch;
+use Commerce\Orders\Presentation\Filament\Resources\OrderResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierResource;
@@ -33,6 +35,7 @@ final class SearchController
         'shipment' => ShipmentResource::class,
         'node' => NodeResource::class,
         'carrier' => CarrierResource::class,
+        'order' => OrderResource::class,
     ];
 
     public function __invoke(Request $request, GlobalSearch $search): JsonResponse
@@ -65,6 +68,15 @@ final class SearchController
     /** Enlace a la pantalla de la entidad (view → edit → index); null si no se puede resolver. */
     private function url(string $type, string $id): ?string
     {
+        // Cliente: no es un Resource; su ficha 360 se arma por nombre (el id del resultado es el nombre).
+        if ($type === 'customer') {
+            try {
+                return CustomerProfile::urlFor($id);
+            } catch (Throwable) {
+                return null;
+            }
+        }
+
         $resource = self::RESOURCES[$type] ?? null;
         if ($resource === null || !class_exists($resource)) {
             return null;

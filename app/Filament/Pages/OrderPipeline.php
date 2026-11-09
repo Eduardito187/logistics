@@ -25,7 +25,7 @@ final class OrderPipeline extends Page
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-view-columns';
 
     // Primero del grupo de comercio (tablero de entrada).
-    protected static ?int $navigationSort = -1;
+    protected static ?int $navigationSort = 1;
 
     protected string $view = 'filament.pages.order-pipeline';
 

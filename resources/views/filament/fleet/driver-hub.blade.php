@@ -89,7 +89,9 @@
 
             <div class="ck-hub__aside">
                 @if($crew && $crew['vehicle_plate'])
-                    <span class="ck-pill ck-pill--agent"><span class="ck-pill__dot"></span>Hoy: {{ $crew['vehicle_plate'] }}</span>
+                    <span class="ck-pill ck-pill--agent"><span class="ck-pill__dot"></span>Hoy:
+                        @if($crew['vehicle_id'])<a href="{{ \Logistics\Fleet\Presentation\Filament\Resources\VehicleResource::getUrl('view', ['record' => $crew['vehicle_id']]) }}" wire:navigate class="ck-link">{{ $crew['vehicle_plate'] }}</a>@else{{ $crew['vehicle_plate'] }}@endif
+                    </span>
                 @else
                     <span class="ck-pill">Sin tripulación hoy</span>
                 @endif
@@ -129,10 +131,23 @@
             <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'personal' }" @click="t = 'personal'">Personal</button>
             <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'license' }" @click="t = 'license'">Licencia y documentos<span class="ck-tab__n">{{ count($docs) }}</span></button>
             <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'activity' }" @click="t = 'activity'">Actividad<span class="ck-tab__n">{{ count($alerts) }}</span></button>
+                <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'notes' }" @click="t = 'notes'">Notas<span class="ck-tab__n">{{ count($this->notes) }}</span></button>
         </div>
 
         {{-- ===== PANEL · RESUMEN ===== --}}
         <div x-show="t === 'summary'">
+
+            @if(count($this->managementLinks()))
+                <div class="ck-card ck-section">
+                    <div class="ck-card__eyebrow">Gestión del chofer</div>
+                    <div class="ck-hub__pills" style="margin-top:.7rem">
+                        @foreach($this->managementLinks() as $m)
+                            <a href="{{ $m['url'] }}" wire:navigate class="ck-pill ck-pill--agent">{{ $m['label'] }} →</a>
+                        @endforeach
+                    </div>
+                    <div class="ck-hub__sub" style="margin-top:.7rem">Estos registros dependen de esta entidad: se gestionan desde su ficha, no desde el menú.</div>
+                </div>
+            @endif
             <div class="ck-grid ck-grid--2 ck-section">
                 <div class="ck-card">
                     <div class="ck-card__eyebrow">Desempeño · últimos 30 días</div>
@@ -161,7 +176,7 @@
                     <div class="ck-card__eyebrow">Tripulación de hoy</div>
                     @if($crew && ($crew['vehicle_plate'] || count($crew['helpers'])))
                         @if($crew['vehicle_plate'])
-                            <div class="ck-card__title">{{ $crew['vehicle_plate'] }}</div>
+                            <div class="ck-card__title">@if($crew['vehicle_id'])<a href="{{ \Logistics\Fleet\Presentation\Filament\Resources\VehicleResource::getUrl('view', ['record' => $crew['vehicle_id']]) }}" wire:navigate class="ck-link">{{ $crew['vehicle_plate'] }}</a>@else{{ $crew['vehicle_plate'] }}@endif</div>
                         @endif
                         @if(count($crew['helpers']))
                             <div class="ck-events" style="margin-top:.8rem">
@@ -286,7 +301,17 @@
                     @endforelse
                 </div>
             </div>
+            <div class="ck-card ck-section">
+                <div class="ck-card__eyebrow">Línea de tiempo</div>
+                <div style="margin-top:.6rem"><x-cockpit.timeline :events="$this->timeline" /></div>
+            </div>
         </div>
+
+
+            {{-- ===== PANEL · NOTAS Y SEGUIMIENTOS ===== --}}
+            <div x-show="t === 'notes'" x-cloak>
+                <x-cockpit.notes :notes="$this->notes" />
+            </div>
 
     </div>
 </x-filament-panels::page>

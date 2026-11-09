@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Logistics\Fleet\Presentation\Filament\Resources;
 
+use App\Filament\Support\TableCsvExport;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
@@ -36,6 +38,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\DriverResource\Pages\ListDri
 use Logistics\Fleet\Presentation\Filament\Resources\DriverResource\Pages\ViewDriver;
 use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 
 /**
@@ -52,6 +55,7 @@ use Logistics\Shared\Presentation\Filament\ImageFallback;
 final class DriverResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = DriverModel::class;
 
@@ -59,9 +63,16 @@ final class DriverResource extends Resource
 
     protected static ?int $navigationSort = 12;
 
+    // Fuera del menú: un chofer es una persona del DIRECTORIO (grupo Personal); se abre desde ahí (y su
+    // ficha 360 DriverHub). No es un ítem CRUD suelto: el menú tiene un solo acceso a personas.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationGroup(): string
     {
-        return __('Fleet');
+        return __('Personnel');
     }
 
     public static function getModelLabel(): string
@@ -272,9 +283,15 @@ final class DriverResource extends Resource
                 TernaryFilter::make('active')
                     ->label(__('Active')),
             ])
+            ->recordUrl(static fn (DriverModel $record): string => self::getUrl('view', ['record' => $record]))
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    TableCsvExport::bulkAction(),
+                ]),
             ])
             ->defaultSort('name');
     }

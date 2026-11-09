@@ -26,7 +26,7 @@ final class ShipmentPipeline extends Page
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-view-columns';
 
     // Primero del grupo de operaciones (tablero de entrada).
-    protected static ?int $navigationSort = -1;
+    protected static ?int $navigationSort = 1;
 
     protected string $view = 'filament.pages.shipment-pipeline';
 

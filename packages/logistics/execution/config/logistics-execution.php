@@ -65,4 +65,14 @@ return [
         // paradas pendientes se reprograman para el día siguiente.
         'minor_delay_minutes' => (int) env('EXECUTION_INCIDENT_MINOR_DELAY_MINUTES', 120),
     ],
+
+    // C7 — Poda de retención de los escaneos en terreno (comando logistics:execution:prune-scan-events).
+    // Retención generosa por defecto (1 año): el escaneo crudo es un hecho histórico que, pasada la
+    // ventana, puede archivarse sin perder la trazabilidad consolidada en entregas/rutas. Dry-run por
+    // defecto en el comando; borrado chunked e idempotente por occurred_at (índice BRIN).
+    'prune' => [
+        'scan_events_retention_days' => (int) env('EXECUTION_SCAN_EVENTS_RETENTION_DAYS', 365),
+        'chunk' => (int) env('EXECUTION_PRUNE_CHUNK', 5000),
+        'pause_ms' => (int) env('EXECUTION_PRUNE_PAUSE_MS', 100),
+    ],
 ];

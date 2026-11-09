@@ -89,6 +89,10 @@
                 @include('filament.cockpit.home-driver', ['h' => $home['data']])
             @elseif ($home && $home['type'] === 'store')
                 @include('filament.cockpit.home-store', ['h' => $home['data']])
+            @elseif ($home && $home['type'] === 'picker')
+                @include('filament.cockpit.home-picker', ['h' => $home['data']])
+            @elseif ($home && $home['type'] === 'carrier')
+                @include('filament.cockpit.home-carrier', ['h' => $home['data']])
             @else
                 <x-cockpit.card class="mt-5">
                     <p class="ck-greeting__sub">
@@ -97,6 +101,15 @@
                 </x-cockpit.card>
             @endif
         @else
+
+            {{-- Indicador de tiempo real: refleja el estado REAL de la conexión WebSocket (Echo/Soketi). En
+                 vivo = verde con latido; si no hay push (Echo no conectó), queda el refresco por polling. --}}
+            <div x-data="{ live: false, init() { const e = window.Echo; const c = e && e.connector && e.connector.pusher ? e.connector.pusher.connection : null; if (!c) return; this.live = c.state === 'connected'; c.bind('state_change', (s) => { this.live = s.current === 'connected'; }); } }"
+                 x-init="init()" style="display:flex;justify-content:flex-end;margin-top:.6rem">
+                <span class="ck-pill" :class="live ? 'ck-pill--positive' : ''" title="Estado de la conexión en vivo">
+                    <span class="ck-pill__dot"></span><span x-text="live ? 'EN VIVO' : 'Sin conexión en vivo'"></span>
+                </span>
+            </div>
 
             {{-- ====================== PULSO DE KPIs ====================== --}}
             <div class="ck-pulse mt-5">
@@ -396,9 +409,20 @@
                     // Si Echo no está (no configurado), queda solo el polling de arriba.
                     if (window.Echo) {
                         let pending = null;
+                        let pendingData = null;
                         const liveRefresh = () => {
-                            if (pending) return;
-                            pending = setTimeout(() => { pending = null; refresh(); }, 1500);
+                            // Mapa al instante (debounce corto para absorber ráfagas de posiciones).
+                            if (!pending) {
+                                pending = setTimeout(() => { pending = null; refresh(); }, 1500);
+                            }
+                            // KPIs/brief en vivo: refresco del componente Livewire (el mapa va en wire:ignore,
+                            // así que no se reinicializa). Debounce más largo para no martillar el servidor.
+                            if (!pendingData) {
+                                pendingData = setTimeout(() => {
+                                    pendingData = null;
+                                    try { $wire.$refresh(); } catch (e) { /* queda el polling de 30s */ }
+                                }, 4000);
+                            }
                         };
                         try {
                             window.Echo.channel('fleet').listen('.vehicle.position', liveRefresh);

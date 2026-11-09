@@ -633,6 +633,8 @@ code, kbd, samp, pre,
 .distrack-cockpit .ck-event__ic { width: .6rem; height: .6rem; border-radius: 999px; background: var(--ck-ink-3); flex: none; }
 .distrack-cockpit .ck-event__ic--red { background: var(--ck-red); }
 .distrack-cockpit .ck-event__ic--amber { background: var(--ck-amber); }
+.distrack-cockpit .ck-event__ic--agent { background: var(--ck-agent); }
+.distrack-cockpit .ck-event__ic--green { background: var(--ck-green); }
 .distrack-cockpit .ck-event__tx { flex: 1; min-width: 0; font-size: .84rem; color: var(--ck-ink); }
 .distrack-cockpit .ck-event__tx small { display: block; color: var(--ck-ink-3); font-size: .72rem; margin-top: .1rem; }
 .distrack-cockpit .ck-event__when { font-family: var(--distrack-font-mono); font-size: .72rem; color: var(--ck-ink-3); white-space: nowrap; }

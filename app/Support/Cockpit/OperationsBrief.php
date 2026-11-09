@@ -137,6 +137,10 @@ final class OperationsBrief
 
     /**
      * Envíos activos (no terminales). Cero si la tabla no existe.
+     *
+     * Lectura en vivo directa sobre `shipments`: para el volumen actual es inmediata y evita mantener una
+     * proyección de reporting aparte. Si en el futuro el volumen lo pide, aquí se reintroduce una
+     * proyección read-side (patrón CQRS) sin cambiar el cockpit.
      */
     private function activeShipments(): int
     {

@@ -7,6 +7,7 @@
 | [adr/](adr) | Decisiones de arquitectura, una por archivo |
 | [opensource-stack.md](opensource-stack.md) | Stack 100% open-source y gratuito (sin Google ni servicios de pago) |
 | [roadmap.md](roadmap.md) | Roadmap vivo: qué está hecho y qué falta para producción |
+| [roadmap-estructura-escalabilidad.md](roadmap-estructura-escalabilidad.md) | Roadmap de consolidación de modelo, admin CRUD→CRM entidad-céntrico y escalabilidad a millones (auditoría de los 35 contextos, por olas) |
 | [../openapi/v1.yaml](../openapi/v1.yaml) | Contrato de la API |
 
 ## ADRs

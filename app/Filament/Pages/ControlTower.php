@@ -6,12 +6,14 @@ namespace App\Filament\Pages;
 
 use App\Enums\Role;
 use App\Models\User;
+use App\Support\Cockpit\CarrierHome;
 use App\Support\Cockpit\CockpitPulse;
 use App\Support\Cockpit\CockpitTrends;
 use App\Support\Cockpit\DriverHome;
 use App\Support\Cockpit\FlaggedRoute;
 use App\Support\Cockpit\OperationsActionService;
 use App\Support\Cockpit\OperationsBrief;
+use App\Support\Cockpit\PickerHome;
 use App\Support\Cockpit\StoreHome;
 use BackedEnum;
 use Filament\Notifications\Notification;
@@ -117,6 +119,16 @@ final class ControlTower extends Page
 
         if (is_string($user->node_id) && $user->node_id !== '') {
             return ['type' => 'store', 'data' => app(StoreHome::class)->overview($user->node_id)];
+        }
+
+        // Preparador y transportista no cuelgan de una entidad (no hay driver_id/node_id): su home se
+        // decide por el rol y muestra la cola global de su función.
+        if ($user->hasAnyRole(Role::Preparador)) {
+            return ['type' => 'picker', 'data' => app(PickerHome::class)->overview()];
+        }
+
+        if ($user->hasAnyRole(Role::Transportista)) {
+            return ['type' => 'carrier', 'data' => app(CarrierHome::class)->overview()];
         }
 
         return null;

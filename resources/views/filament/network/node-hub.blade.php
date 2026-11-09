@@ -33,6 +33,16 @@
             default => ucfirst(strtolower($st)),
         };
         $corridor = static fn (string $c): string => strtoupper(str_replace(['cd', '_'], ['CD', ' '], $c));
+
+        // Estado del envío → etiqueta legible + tono (para la lista de envíos destinados al nodo).
+        $shipStatusMap = [
+            'RECEIVED' => ['Recibido', ''],
+            'PLANNED' => ['Planificado', 'agent'],
+            'IN_EXECUTION' => ['En ejecución', 'warning'],
+            'DELIVERED' => ['Entregado', 'positive'],
+            'FAILED' => ['Fallido', 'danger'],
+            'CANCELLED' => ['Cancelado', ''],
+        ];
     @endphp
 
     <div class="distrack-cockpit" x-data="{ t: 'summary' }">
@@ -85,10 +95,25 @@
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'fleet' }" @click="t = 'fleet'">Flota<span class="ck-tab__n">{{ $fleet['total'] }}</span></button>
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'links' }" @click="t = 'links'">Conexiones<span class="ck-tab__n">{{ count($conns) }}</span></button>
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'docks' }" @click="t = 'docks'">Muelles<span class="ck-tab__n">{{ count($docks) }}</span></button>
+                <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'shipments' }" @click="t = 'shipments'">Envíos<span class="ck-tab__n">{{ $ship['total'] }}</span></button>
+                <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'activity' }" @click="t = 'activity'">Actividad</button>
+                <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'notes' }" @click="t = 'notes'">Notas<span class="ck-tab__n">{{ count($this->notes) }}</span></button>
             </div>
 
             {{-- ===== PANEL · RESUMEN (mapa) ===== --}}
             <div x-show="t === 'summary'">
+
+            @if(count($this->managementLinks()))
+                <div class="ck-card ck-section">
+                    <div class="ck-card__eyebrow">Gestión del nodo</div>
+                    <div class="ck-hub__pills" style="margin-top:.7rem">
+                        @foreach($this->managementLinks() as $m)
+                            <a href="{{ $m['url'] }}" wire:navigate class="ck-pill ck-pill--agent">{{ $m['label'] }} →</a>
+                        @endforeach
+                    </div>
+                    <div class="ck-hub__sub" style="margin-top:.7rem">Estos registros dependen de esta entidad: se gestionan desde su ficha, no desde el menú.</div>
+                </div>
+            @endif
                 <div class="ck-card ck-section">
                     <div class="ck-card__eyebrow">Ubicación</div>
                     <div id="node-hub-map" style="height:380px;width:100%;border-radius:12px;overflow:hidden;margin-top:.6rem;z-index:0"></div>
@@ -104,7 +129,7 @@
                             <div class="ck-event">
                                 <span class="ck-event__ic {{ strtolower($veh['status']) === 'maintenance' ? 'ck-event__ic--amber' : '' }}"></span>
                                 <span class="ck-event__tx">
-                                    {{ $veh['plate'] }}
+                                    <a href="{{ \Logistics\Fleet\Presentation\Filament\Resources\VehicleResource::getUrl('view', ['record' => $veh['id']]) }}" wire:navigate class="ck-link">{{ $veh['plate'] }}</a>
                                     @if($veh['label'])<small>{{ $veh['label'] }}</small>@endif
                                 </span>
                                 <span class="ck-event__when">{{ $vehStatus($veh['status']) }}</span>
@@ -160,6 +185,43 @@
                         @endforelse
                     </div>
                 </div>
+            </div>
+
+            {{-- ===== PANEL · ENVÍOS DESTINADOS (cross-link al hub de cada envío) ===== --}}
+            <div x-show="t === 'shipments'" x-cloak>
+                <div class="ck-card ck-section">
+                    <div class="ck-card__eyebrow">Envíos destinados · {{ $ship['active'] }} activos de {{ number_format($ship['total']) }}</div>
+                    <div class="ck-events" style="margin-top:.6rem">
+                        @forelse($ship['recent'] as $sh)
+                            @php [$shLbl, $shTone] = $shipStatusMap[strtoupper($sh['status'])] ?? [ucfirst(strtolower(str_replace('_', ' ', $sh['status']))), '']; @endphp
+                            <div class="ck-event">
+                                <span class="ck-event__ic"></span>
+                                <span class="ck-event__tx">
+                                    <a href="{{ \Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource::getUrl('view', ['record' => $sh['id']]) }}" wire:navigate class="ck-link">{{ $sh['reference'] }}</a>
+                                    @if($sh['customer'])<small>{{ $sh['customer'] }}</small>@endif
+                                </span>
+                                <span class="ck-pill {{ $shTone ? 'ck-pill--'.$shTone : '' }}">{{ $shLbl }}</span>
+                            </div>
+                        @empty
+                            <div class="ck-empty"><div class="ck-empty__title">Sin envíos destinados</div><div class="ck-empty__hint">Ningún envío tiene a este nodo como destino todavía.</div></div>
+                        @endforelse
+                    </div>
+                    @if($ship['total'] > count($ship['recent']))
+                        <div class="ck-hub__sub" style="margin-top:.8rem">Mostrando {{ count($ship['recent']) }} de {{ number_format($ship['total']) }}.</div>
+                    @endif
+                </div>
+            </div>
+
+            {{-- ===== PANEL · ACTIVIDAD (línea de tiempo) ===== --}}
+            <div x-show="t === 'activity'" x-cloak>
+                <div class="ck-card ck-section">
+                    <div class="ck-card__eyebrow">Línea de tiempo</div>
+                    <div style="margin-top:.6rem"><x-cockpit.timeline :events="$this->timeline" /></div>
+                </div>
+            </div>
+            {{-- ===== PANEL · NOTAS Y SEGUIMIENTOS ===== --}}
+            <div x-show="t === 'notes'" x-cloak>
+                <x-cockpit.notes :notes="$this->notes" />
             </div>
         @else
             <div class="ck-empty ck-section">

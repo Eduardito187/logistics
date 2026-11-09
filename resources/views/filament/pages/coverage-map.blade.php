@@ -75,6 +75,9 @@
     <script>
         const container = document.getElementById('coverage-map');
         let zones = @js($zones);
+        const nodes = @js($nodes);
+        const zonesLabel = @js(__('Coverage Zones'));
+        const nodesLabel = @js(__('Nodes'));
 
         const map = L.map(container).setView([-16.5, -68.15], 11); // La Paz / Bolivia
         // Teselas solo del tileserver self-host (CERO CDN); si falla, el mapa queda sin fondo (sin fallback público).
@@ -104,6 +107,50 @@
             }
         }
         renderZones(zones);
+
+        // Capa de NODOS de la red (marcadores) — conmutable. Cada marcador enlaza a la ficha 360 del nodo.
+        function escapeHtml(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+            }[c]));
+        }
+        function nodeColor(status) {
+            return String(status || '').toLowerCase() === 'active' ? '#16a34a' : '#9a9a9a';
+        }
+        const nodesLayer = L.featureGroup().addTo(map);
+        (nodes || []).forEach((n) => {
+            const lat = Number(n.lat);
+            const lng = Number(n.lng);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                return;
+            }
+            const marker = L.circleMarker([lat, lng], {
+                radius: 7,
+                color: nodeColor(n.status),
+                fillColor: nodeColor(n.status),
+                fillOpacity: 0.85,
+                weight: 2,
+            });
+            const title = n.url
+                ? '<a href="' + escapeHtml(n.url) + '"><strong>' + escapeHtml(n.code) + '</strong></a>'
+                : '<strong>' + escapeHtml(n.code) + '</strong>';
+            marker.bindPopup(
+                title + '<br>' + escapeHtml(n.name) + '<br>' +
+                '<span class="text-xs text-gray-500">' + escapeHtml(n.type) + ' · ' + escapeHtml(n.status) + '</span>'
+            );
+            marker.addTo(nodesLayer);
+        });
+
+        // Control de capas: el usuario conmuta Zonas de cobertura / Nodos sobre el mismo lienzo.
+        L.control.layers(null, {
+            [zonesLabel]: zonesLayer,
+            [nodesLabel]: nodesLayer,
+        }, { collapsed: false }).addTo(map);
+
+        // Si no hay zonas con geometría pero sí nodos, encuadra a los nodos para no quedar en el centro vacío.
+        if (!zonesLayer.getLayers().length && nodesLayer.getLayers().length) {
+            try { map.fitBounds(nodesLayer.getBounds().pad(0.2)); } catch (e) {}
+        }
 
         map.pm.setLang('es');
         map.pm.addControls({

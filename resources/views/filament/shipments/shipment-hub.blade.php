@@ -118,10 +118,24 @@
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'summary' }" @click="t = 'summary'">Resumen</button>
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'products' }" @click="t = 'products'">Productos<span class="ck-tab__n">{{ count($s['lines']) }}</span></button>
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'delivery' }" @click="t = 'delivery'">Entrega</button>
+                <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'activity' }" @click="t = 'activity'">Actividad</button>
+                <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'notes' }" @click="t = 'notes'">Notas<span class="ck-tab__n">{{ count($this->notes) }}</span></button>
             </div>
 
             {{-- ===== PANEL · RESUMEN ===== --}}
             <div x-show="t === 'summary'">
+
+            @if(count($this->managementLinks()))
+                <div class="ck-card ck-section">
+                    <div class="ck-card__eyebrow">Gestión del envío</div>
+                    <div class="ck-hub__pills" style="margin-top:.7rem">
+                        @foreach($this->managementLinks() as $m)
+                            <a href="{{ $m['url'] }}" wire:navigate class="ck-pill ck-pill--agent">{{ $m['label'] }} →</a>
+                        @endforeach
+                    </div>
+                    <div class="ck-hub__sub" style="margin-top:.7rem">Estos registros dependen de esta entidad: se gestionan desde su ficha, no desde el menú.</div>
+                </div>
+            @endif
                 <div class="ck-grid ck-grid--2 ck-section">
                     <div class="ck-card">
                         <div class="ck-card__eyebrow">Dirección de entrega</div>
@@ -137,7 +151,7 @@
                     <div class="ck-card">
                         <div class="ck-card__eyebrow">Entrega y seguimiento</div>
                         <dl class="ck-dl" style="margin-top:.9rem">
-                            <dt>Vehículo asignado</dt><dd>{{ $del && $del['vehicle_plate'] ? $del['vehicle_plate'] : '—' }}</dd>
+                            <dt>Vehículo asignado</dt><dd>@if($del && !empty($del['vehicle_id']))<a href="{{ \Logistics\Fleet\Presentation\Filament\Resources\VehicleResource::getUrl('view', ['record' => $del['vehicle_id']]) }}" wire:navigate class="ck-link">{{ $del['vehicle_plate'] }}</a>@else{{ $del && $del['vehicle_plate'] ? $del['vehicle_plate'] : '—' }}@endif</dd>
                             <dt>Estado de entrega</dt>
                             <dd>
                                 @php [$dsl, $dst] = $del && $del['status'] ? ($deliveryStatusMap[strtoupper($del['status'])] ?? [ucfirst(strtolower($del['status'])), '']) : ['—', '']; @endphp
@@ -215,7 +229,7 @@
                     <div class="ck-card">
                         <div class="ck-card__eyebrow">Detalle de ejecución</div>
                         <dl class="ck-dl" style="margin-top:.9rem">
-                            <dt>Vehículo</dt><dd>{{ $del && $del['vehicle_plate'] ? $del['vehicle_plate'] : '—' }}</dd>
+                            <dt>Vehículo</dt><dd>@if($del && !empty($del['vehicle_id']))<a href="{{ \Logistics\Fleet\Presentation\Filament\Resources\VehicleResource::getUrl('view', ['record' => $del['vehicle_id']]) }}" wire:navigate class="ck-link">{{ $del['vehicle_plate'] }}</a>@else{{ $del && $del['vehicle_plate'] ? $del['vehicle_plate'] : '—' }}@endif</dd>
                             <dt>Estado</dt>
                             <dd>
                                 @php [$dsl2, $dst2] = $del && $del['status'] ? ($deliveryStatusMap[strtoupper($del['status'])] ?? [ucfirst(strtolower($del['status'])), '']) : ['—', '']; @endphp
@@ -225,6 +239,18 @@
                         </dl>
                     </div>
                 </div>
+            </div>
+
+            {{-- ===== PANEL · ACTIVIDAD (línea de tiempo) ===== --}}
+            <div x-show="t === 'activity'" x-cloak>
+                <div class="ck-card ck-section">
+                    <div class="ck-card__eyebrow">Línea de tiempo</div>
+                    <div style="margin-top:.6rem"><x-cockpit.timeline :events="$this->timeline" /></div>
+                </div>
+            </div>
+            {{-- ===== PANEL · NOTAS Y SEGUIMIENTOS ===== --}}
+            <div x-show="t === 'notes'" x-cloak>
+                <x-cockpit.notes :notes="$this->notes" />
             </div>
         @else
             <div class="ck-empty ck-section">

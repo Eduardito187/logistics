@@ -154,18 +154,8 @@ final class AlertExpiringDocumentsHandler implements CommandHandler
             }
         }
 
-        foreach ($helpers as $helper) {
-            foreach ($helper->documentsExpiringWithin($days, $ref) as $document) {
-                $results[] = ExpiringDocumentView::forHelper(
-                    $helper->id()->toString(),
-                    $helper->name(),
-                    $document->type,
-                    $document->expiresOn->format('Y-m-d'),
-                    $document->isExpiredAt($ref),
-                );
-            }
-        }
-
+        // Los documentos del AYUDANTE ya NO se leen del jsonb inline (A5): viven en fleet_documents y se
+        // recogen en el bucle de abajo (owner_type='helper'), junto con los de vehículo y chofer con archivo.
         foreach ($this->documents->all() as $document) {
             if ($document->expiresWithin($days, $ref)) {
                 $ownerType = $document->ownerType()->value;

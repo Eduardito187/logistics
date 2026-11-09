@@ -10,6 +10,7 @@ use Commerce\Orders\Application\Query\GetOrder\GetOrder;
 use Commerce\Orders\Application\ReadModel\OrderView;
 use Commerce\Payments\Application\Query\GetPaymentByOrder\GetPaymentByOrder;
 use Commerce\Payments\Application\ReadModel\PaymentView;
+use Illuminate\Support\Facades\DB;
 use Logistics\Shared\Application\Query\QueryBus;
 use Throwable;
 
@@ -35,6 +36,7 @@ final class OrderHub
      *   order: array<string, mixed>|null,
      *   payment: array{method: string, status: string, amount_cents: int|null, currency: string|null, gateway_ref: string|null}|null,
      *   invoice: array{number: string|null, status: string, total_cents: int, issued_at: string|null}|null,
+     *   shipments: list<array{id: string, reference: string, status: string}>,
      * }
      */
     public function overview(string $orderId): array
@@ -43,6 +45,7 @@ final class OrderHub
             'order' => $this->order($orderId),
             'payment' => $this->payment($orderId),
             'invoice' => $this->invoice($orderId),
+            'shipments' => $this->shipments($orderId),
         ];
     }
 
@@ -154,6 +157,32 @@ final class OrderHub
             ];
         } catch (Throwable) {
             return null;
+        }
+    }
+
+    /**
+     * Envíos nacidos de este pedido (puente OMS→logística, ADR 018): `shipments.order_reference = orderId`.
+     * En multishipping la orden se reparte en varios envíos (uno por destino). Devuelve id (para enlazar a
+     * la ficha 360 del envío) + referencia legible (nº de envío) + estado. Lectura directa tolerante.
+     *
+     * @return list<array{id: string, reference: string, status: string}>
+     */
+    private function shipments(string $orderId): array
+    {
+        try {
+            return array_values(DB::table('shipments')
+                ->where('order_reference', $orderId)
+                ->orderBy('external_id')
+                ->limit(20)
+                ->get(['id', 'external_id', 'status'])
+                ->map(static fn ($r): array => [
+                    'id' => (string) $r->id,
+                    'reference' => (string) $r->external_id,
+                    'status' => (string) $r->status,
+                ])
+                ->all());
+        } catch (Throwable) {
+            return [];
         }
     }
 }

@@ -30,6 +30,7 @@ use Logistics\Access\Presentation\Filament\Resources\IntegrationTokenResource\Pa
 use Logistics\Access\Presentation\Filament\Resources\IntegrationTokenResource\Pages\ViewIntegrationToken;
 use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de tokens de integración (credenciales máquina-a-máquina).
@@ -44,6 +45,7 @@ use Logistics\Shared\Application\Command\CommandBus;
 final class IntegrationTokenResource extends Resource
 {
     use AdminOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = IntegrationTokenRecord::class;
 
@@ -51,7 +53,7 @@ final class IntegrationTokenResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Administration');
+        return __('Integrations');
     }
 
     public static function getNavigationSort(): int

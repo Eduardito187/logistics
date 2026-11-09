@@ -98,7 +98,13 @@
                     <span class="ck-pill">Sin telemetría en vivo</span>
                 @endif
                 @if($asg['driver_name'])
-                    <span class="ck-hub__sub">Chofer hoy: <b style="color:var(--ck-ink)">{{ $asg['driver_name'] }}</b></span>
+                    <span class="ck-hub__sub">Chofer hoy:
+                        @if(!empty($asg['driver_id']))
+                            <a href="{{ \Logistics\Fleet\Presentation\Filament\Resources\DriverResource::getUrl('view', ['record' => $asg['driver_id']]) }}" wire:navigate class="ck-link">{{ $asg['driver_name'] }}</a>
+                        @else
+                            <b style="color:var(--ck-ink)">{{ $asg['driver_name'] }}</b>
+                        @endif
+                    </span>
                 @endif
             </div>
         </div>
@@ -134,10 +140,26 @@
             <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'cost' }" @click="t = 'cost'">Costos</button>
             <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'docs' }" @click="t = 'docs'">Documentos<span class="ck-tab__n">{{ count($docs) }}</span></button>
             <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'activity' }" @click="t = 'activity'">Actividad<span class="ck-tab__n">{{ count($alerts) + count($incidents) }}</span></button>
+                <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'notes' }" @click="t = 'notes'">Notas<span class="ck-tab__n">{{ count($this->notes) }}</span></button>
         </div>
 
         {{-- ===== PANEL · RESUMEN ===== --}}
         <div x-show="t === 'summary'">
+            {{-- Gestión del vehículo: los registros que DEPENDEN del vehículo (mantenimiento, odómetro,
+                 combustible, etc.) viven acá —ya no como ítems sueltos del menú—; cada enlace abre su lista
+                 filtrada a este vehículo. --}}
+            @if(count($this->managementLinks()))
+                <div class="ck-card ck-section">
+                    <div class="ck-card__eyebrow">Gestión del vehículo</div>
+                    <div class="ck-hub__pills" style="margin-top:.7rem">
+                        @foreach($this->managementLinks() as $m)
+                            <a href="{{ $m['url'] }}" wire:navigate class="ck-pill ck-pill--agent">{{ $m['label'] }} →</a>
+                        @endforeach
+                    </div>
+                    <div class="ck-hub__sub" style="margin-top:.7rem">Estos registros dependen del vehículo: se gestionan desde su ficha, no desde el menú.</div>
+                </div>
+            @endif
+
             <div class="ck-grid ck-grid--2 ck-section">
                 <div class="ck-card">
                     <div class="ck-card__eyebrow">Ruta de hoy</div>
@@ -311,8 +333,18 @@
                         @endforelse
                     </div>
                 </div>
+                <div class="ck-card">
+                    <div class="ck-card__eyebrow">Línea de tiempo</div>
+                    <div style="margin-top:.6rem"><x-cockpit.timeline :events="$this->timeline" /></div>
+                </div>
             </div>
         </div>
+
+
+            {{-- ===== PANEL · NOTAS Y SEGUIMIENTOS ===== --}}
+            <div x-show="t === 'notes'" x-cloak>
+                <x-cockpit.notes :notes="$this->notes" />
+            </div>
 
     </div>
 </x-filament-panels::page>

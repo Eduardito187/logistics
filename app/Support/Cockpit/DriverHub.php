@@ -39,7 +39,7 @@ final class DriverHub
      *
      * @return array{
      *   history: array{days_worked: int, total_stops: int, delivered: int, failed: int, rescheduled: int, effectiveness: int|null, vehicles: list<string>, series: array{labels: list<string>, delivered: list<int>}}|null,
-     *   crew: array{vehicle_plate: string|null, helpers: list<string>}|null,
+     *   crew: array{vehicle_plate: string|null, vehicle_id: string|null, helpers: list<string>}|null,
      *   compliance: array{expired: int, due_soon: int, upcoming: int},
      *   documents: list<array{type: string, reference: string|null, expires_on: string, state: string}>,
      *   alerts: list<array{type: string, severity: string, occurred_at: string}>,
@@ -103,9 +103,10 @@ final class DriverHub
     }
 
     /**
-     * Tripulación de hoy: vehículo asignado y ayudantes. Null si no hay tripulación para hoy.
+     * Tripulación de hoy: vehículo asignado (placa + id, para enlazar a su ficha) y ayudantes. Null si no
+     * hay tripulación para hoy.
      *
-     * @return array{vehicle_plate: string|null, helpers: list<string>}|null
+     * @return array{vehicle_plate: string|null, vehicle_id: string|null, helpers: list<string>}|null
      */
     private function crewToday(string $driverId): ?array
     {
@@ -118,6 +119,10 @@ final class DriverHub
             $plate = is_array($view->vehicle) && isset($view->vehicle['plate']) && is_string($view->vehicle['plate'])
                 ? $view->vehicle['plate']
                 : null;
+            // id del vehículo (para el cross-link a su ficha 360); solo si tiene placa legible.
+            $vehicleId = $plate !== null && is_array($view->vehicle) && isset($view->vehicle['id']) && is_string($view->vehicle['id'])
+                ? $view->vehicle['id']
+                : null;
 
             $helpers = [];
             foreach ($view->helpers as $helper) {
@@ -126,7 +131,7 @@ final class DriverHub
                 }
             }
 
-            return ['vehicle_plate' => $plate, 'helpers' => $helpers];
+            return ['vehicle_plate' => $plate, 'vehicle_id' => $vehicleId, 'helpers' => $helpers];
         } catch (Throwable) {
             return null;
         }

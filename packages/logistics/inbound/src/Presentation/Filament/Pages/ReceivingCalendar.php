@@ -24,7 +24,7 @@ final class ReceivingCalendar extends Page
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-calendar';
 
-    protected static ?int $navigationSort = 31;
+    protected static ?int $navigationSort = 42;
 
     protected string $view = 'logistics-inbound::filament.pages.receiving-calendar';
 

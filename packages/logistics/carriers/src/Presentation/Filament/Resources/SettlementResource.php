@@ -19,6 +19,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Logistics\Carriers\Application\Command\ApproveSettlement\ApproveSettlement;
 use Logistics\Carriers\Application\Command\AttachSettlementDocument\AttachSettlementDocument;
 use Logistics\Carriers\Application\Command\DisputeSettlement\DisputeSettlement;
@@ -28,6 +29,7 @@ use Logistics\Carriers\Presentation\Filament\Resources\SettlementResource\Pages\
 use Logistics\Carriers\Presentation\Filament\Resources\SettlementResource\Pages\ViewSettlement;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de liquidaciones de transportistas (P2-CAR-04).
@@ -42,7 +44,15 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class SettlementResource extends Resource
 {
+    // Fuera del menú: la liquidación DEPENDE del transportista; su hogar es la ficha 360 del transportista
+    // (sección «Gestión del transportista»), que enlaza a su lista filtrada. No es un ítem suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = SettlementRecord::class;
 
@@ -114,7 +124,7 @@ final class SettlementResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 24;
+        return 52;
     }
 
     public static function getNavigationIcon(): string
@@ -132,9 +142,24 @@ final class SettlementResource extends Resource
         return __('Settlements');
     }
 
+    // Etiqueta del menú con contexto, para no colisionar con "Seller settlements" (liquidaciones de
+    // vendedores del marketplace, otro contexto): estas son las liquidaciones de TRANSPORTISTAS.
+    public static function getNavigationLabel(): string
+    {
+        return __('Carrier settlements');
+    }
+
     public static function table(Table $table): Table
     {
         return $table
+            // Al entrar desde la ficha del transportista (enlace «Gestión»), `?carrier=<id>` acota la lista
+            // a ese transportista. (No se usa el deep-link tableFilters de Filament porque no aplica el filtro.)
+            ->modifyQueryUsing(static function (Builder $query): Builder {
+                /** @var Builder<SettlementRecord> $query */
+                $carrier = request()->query('carrier');
+
+                return \is_string($carrier) && $carrier !== '' ? $query->where('carrier_id', $carrier) : $query;
+            })
             ->columns([
                 // Nombre real del transportista vía la relación Eloquent (sin N+1 gracias a getEloquentQuery).
                 TextColumn::make('carrier.name')
@@ -167,6 +192,13 @@ final class SettlementResource extends Resource
                     ->formatStateUsing(static fn (string $state): string => __(self::STATUSES[$state] ?? $state)),
             ])
             ->filters([
+                // Filtro por transportista (resuelto a nombre, nunca UUID) — lo usa el enlace desde la ficha
+                // del transportista para abrir sus liquidaciones ya filtradas.
+                SelectFilter::make('carrier_id')
+                    ->label(__('Carrier'))
+                    ->native(false)
+                    ->searchable()
+                    ->options(static fn (): array => DB::table('carriers')->orderBy('name')->pluck('name', 'id')->all()),
                 SelectFilter::make('status')
                     ->label(__('Status'))
                     ->options(self::statusOptions())

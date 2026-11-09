@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
+use App\Filament\Support\TableCsvExport;
 use BackedEnum;
 use Carbon\CarbonInterface;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -83,7 +86,14 @@ final class DeliveryResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-truck';
 
-    protected static ?int $navigationSort = 30;
+    protected static ?int $navigationSort = 12;
+
+    // Fuera del menú: una entrega es la última milla de un ENVÍO; su hogar es la ficha 360 del envío
+    // (sección «Gestión»), lista acotada por `?shipment=`. El día a día se ve en «Tablero de última milla».
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationGroup(): string
     {
@@ -142,6 +152,8 @@ final class DeliveryResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Al abrir desde la ficha del envío, `?shipment=<id>` acota a las entregas de ESE envío.
+            ->modifyQueryUsing(RequestScopedQuery::by('shipment', 'shipment_id'))
             ->columns([
                 TextColumn::make('shipment.external_id')
                     ->label(__('Order'))
@@ -195,6 +207,11 @@ final class DeliveryResource extends Resource
                     ->label(__('Record scan'))
                     ->icon('heroicon-o-qr-code')
                     ->button(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    TableCsvExport::bulkAction(),
+                ]),
             ])
             ->defaultSort('created_at', 'desc');
     }

@@ -36,7 +36,7 @@ final class ShipmentHub
      * @return array{
      *   shipment: array<string, mixed>|null,
      *   tracking: array{status: string, remaining_stops: int, route_position: int|null, eta: string|null, position_is_live: bool|null}|null,
-     *   delivery: array{vehicle_plate: string|null, status: string|null, pod_photo_url: string|null, pod_confirmation: string|null, pod_captured_at: string|null, failure_reason: string|null, fulfillment_mode: string|null}|null,
+     *   delivery: array{vehicle_plate: string|null, vehicle_id: string|null, status: string|null, pod_photo_url: string|null, pod_confirmation: string|null, pod_captured_at: string|null, failure_reason: string|null, fulfillment_mode: string|null}|null,
      *   units: list<array{product_name: string, sku: string, status: string, piece: string|null, image_url: string|null}>,
      * }
      */
@@ -127,7 +127,7 @@ final class ShipmentHub
      * Entrega del envío (vehículo asignado + prueba de entrega), por lectura directa de execution_deliveries
      * (no hay query por envío). Null si todavía no hay una entrega creada.
      *
-     * @return array{vehicle_plate: string|null, status: string|null, pod_photo_url: string|null, pod_confirmation: string|null, pod_captured_at: string|null, failure_reason: string|null, fulfillment_mode: string|null}|null
+     * @return array{vehicle_plate: string|null, vehicle_id: string|null, status: string|null, pod_photo_url: string|null, pod_confirmation: string|null, pod_captured_at: string|null, failure_reason: string|null, fulfillment_mode: string|null}|null
      */
     private function delivery(string $shipmentId): ?array
     {
@@ -143,6 +143,7 @@ final class ShipmentHub
 
             return [
                 'vehicle_plate' => $this->vehiclePlate(is_string($row->vehicle_id) ? $row->vehicle_id : null),
+                'vehicle_id' => is_string($row->vehicle_id) ? $row->vehicle_id : null,
                 'status' => is_string($row->status) ? $row->status : null,
                 'pod_photo_url' => is_string($row->pod_photo_url) && $row->pod_photo_url !== '' ? $row->pod_photo_url : null,
                 'pod_confirmation' => is_string($row->pod_confirmation) && $row->pod_confirmation !== '' ? $row->pod_confirmation : null,

@@ -64,6 +64,7 @@ use Logistics\Execution\Domain\Contract\LabelVerificationGateway;
 use Logistics\Execution\Domain\Contract\NodeReceptionRepository;
 use Logistics\Execution\Domain\Contract\VehicleIncidentRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
+use Logistics\Execution\Infrastructure\Console\PruneScanEventsCommand;
 use Logistics\Execution\Infrastructure\Labels\SodiumLabelVerificationGateway;
 use Logistics\Execution\Infrastructure\Labels\StubLabelVerificationGateway;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryEvidenceRepository;
@@ -259,6 +260,11 @@ final class ExecutionServiceProvider extends ServiceProvider
         $registry = $this->app->make(HandlerRegistry::class);
         foreach (self::HANDLERS as $message => $handler) {
             $registry->register($message, $handler);
+        }
+
+        // Comando de poda de retención de escaneos (C7). No se agenda aquí: la retención es manual/ops.
+        if ($this->app->runningInConsole()) {
+            $this->commands([PruneScanEventsCommand::class]);
         }
     }
 }

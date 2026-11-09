@@ -112,3 +112,10 @@ Schedule::command('logistics:db:maintain --analyze-only')
     ->onOneServer()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Digest diario de operaciones (Fase 5 — reportes): compone el resumen del día (entregas, efectividad,
+// excepciones) y lo envía por correo a administradores y supervisores. A las 07:30, tras las alertas.
+Schedule::command('ops:digest')
+    ->dailyAt('07:30')
+    ->withoutOverlapping()
+    ->runInBackground();

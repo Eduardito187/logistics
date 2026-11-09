@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Commerce\Orders\Presentation\Filament\Resources;
 
+use App\Filament\Support\TableCsvExport;
 use Commerce\Orders\Application\Command\CancelOrder\CancelOrder;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Model\OrderRecord;
 use Commerce\Orders\Presentation\Filament\Resources\OrderResource\Pages\ListOrders;
 use Commerce\Orders\Presentation\Filament\Resources\OrderResource\Pages\ViewOrder;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
@@ -17,8 +20,10 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de órdenes del frente comercial (OMS).
@@ -33,6 +38,7 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 final class OrderResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = OrderRecord::class;
 
@@ -45,7 +51,7 @@ final class OrderResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 30;
+        return 10;
     }
 
     public static function getModelLabel(): string
@@ -120,9 +126,16 @@ final class OrderResource extends Resource
                         'cancelled' => __('Cancelled'),
                     ]),
             ])
+            ->recordUrl(static fn (OrderRecord $record): string => self::getUrl('view', ['record' => $record]))
             ->recordActions([
                 ViewAction::make(),
                 self::cancelAction(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    self::cancelBulkAction(),
+                    TableCsvExport::bulkAction(),
+                ]),
             ])
             ->defaultSort('created_at', 'desc');
     }
@@ -160,6 +173,65 @@ final class OrderResource extends Resource
 
                 Notification::make()
                     ->title(__('Order cancelled'))
+                    ->success()
+                    ->send();
+            });
+    }
+
+    /**
+     * Acción masiva: cancela las órdenes seleccionadas. No escribe el record; despacha un
+     * CancelOrder(source='manual') por orden al bus CQRS (idempotente: una orden ya cancelada se omite).
+     * Tolerante: reporta cuántas se cancelaron y cuántas fallaron.
+     */
+    private static function cancelBulkAction(): BulkAction
+    {
+        return BulkAction::make('cancelBulk')
+            ->label(__('Cancel order'))
+            ->icon('heroicon-o-x-circle')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->modalHeading(__('Cancel order'))
+            ->modalDescription(__('The order will be cancelled. If it was already paid, a refund and return are triggered downstream.'))
+            ->deselectRecordsAfterCompletion()
+            ->accessSelectedRecords()
+            ->schema([
+                Textarea::make('reason')
+                    ->label(__('Reason'))
+                    ->rows(2)
+                    ->maxLength(500),
+            ])
+            ->action(static function (Collection $records, array $data): void {
+                $reason = is_string($data['reason'] ?? null) && $data['reason'] !== ''
+                    ? (string) $data['reason']
+                    : null;
+
+                $bus = app(CommandBus::class);
+                $cancelled = 0;
+                $skipped = 0;
+
+                foreach ($records as $record) {
+                    if (!$record instanceof OrderRecord) {
+                        continue;
+                    }
+
+                    // Las ya canceladas se omiten (idempotencia a nivel UI; el agregado también la protege).
+                    if ($record->status === 'cancelled') {
+                        $skipped++;
+
+                        continue;
+                    }
+
+                    $bus->dispatch(new CancelOrder(
+                        orderId: (string) $record->getKey(),
+                        reason: $reason,
+                        source: 'manual',
+                    ));
+                    $cancelled++;
+                }
+
+                Notification::make()
+                    ->title(__('Orders cancelled'))
+                    ->body(__(':cancelled cancelled, :skipped skipped.', ['cancelled' => $cancelled, 'skipped' => $skipped]))
                     ->success()
                     ->send();
             });
