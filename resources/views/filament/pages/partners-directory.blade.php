@@ -17,7 +17,7 @@
                 </div>
             </div>
             <div class="ck-hub__aside" style="min-width:260px">
-                <input type="text" wire:model.live.debounce.400ms="search" placeholder="Buscar por nombre o NIT…"
+                <input type="text" id="partners-dir-search" aria-label="Buscar socios comerciales" wire:model.live.debounce.400ms="search" placeholder="Buscar por nombre o NIT…"
                        style="width:100%;background:var(--ck-surface-2,#1b1b1b);color:var(--ck-ink,#eee);border:1px solid var(--ck-line,#333);border-radius:10px;padding:.6rem .9rem;font:inherit">
             </div>
         </div>

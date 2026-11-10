@@ -36,7 +36,9 @@ final class CustomerHub
         // frescura operativa. Tolerante: si la caché no está disponible, se computa igual.
         try {
             /** @var array<string, mixed> $result */
-            $result = Cache::remember('cockpit:customer:'.md5($name), 60, fn (): array => $this->compose($name));
+            // sha256 solo para derivar una clave de caché determinista (contexto NO sensible); no es un hash
+            // de credenciales. Se usa sha256 (no md5) para no disparar reglas de hashing débil.
+            $result = Cache::remember('cockpit:customer:'.hash('sha256', $name), 60, fn (): array => $this->compose($name));
 
             return $result;
         } catch (Throwable) {

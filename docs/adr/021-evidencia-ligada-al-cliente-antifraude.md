@@ -71,6 +71,27 @@ Todo el procesamiento (OCR/firma) corre en un sidecar en la red interna; **ningu
 terceros** (consistente con la regla CERO-CDN). Los discos de evidencia (`signature`, `id_document`) son
 **privados**. El evento del outbox lleva solo referencias (ids, hash), no el archivo ni PII pesada.
 
+### 6. Licenciamiento OSS (requisito FIRME del dueño)
+
+Requisito firme del dueño (relayed por la sesión de la app, 2026-11-09): **todo el stack del pipeline
+anti-fraude debe ser open-source y sin costo de licencias — incluidos los PESOS de los modelos de ML.**
+
+Criterio de aceptación: cada dependencia / paquete / modelo del pipeline debe tener licencia permisiva
+(MIT / Apache-2.0 / BSD) **y** pesos redistribuibles para uso comercial, sin cuotas. Lo que no cumpla se
+reemplaza o se deja fuera; el baseline v1 (hash + auditoría + captura + cruce por OCR) cubre v1 **sin ML
+de pesos restrictivos**.
+
+Implicancias concretas sobre la investigación previa:
+
+- **OCR de documento**: PaddleOCR + OpenCV + RapidFuzz → OK (Apache-2.0 / BSD), se mantiene.
+- **Verificación de firma**: los pesos de **SigNet** (entrenados en GPDS) son **non-commercial → NO usar
+  tal cual**. Usar enfoque clásico OpenCV / features con licencia permisiva, o entrenar sobre datos
+  abiertos/propios. El baseline hash + auditoría + captura (sin ML) ya es 100% OSS y cumple para v1.
+- **Face match / liveness**: los pesos de mayor precisión (InsightFace / ArcFace, VGG-Face) son
+  **non-commercial → FUERA** salvo un modelo con licencia comercial abierta y pesos redistribuibles
+  (p. ej. facenet-pytorch MIT, o Facenet512 / SFace + Silent-Face-Anti-Spoofing Apache-2.0). Sigue siendo
+  nice-to-have, no núcleo (ver §4).
+
 ## Qué entrega esta tanda (backend) y qué queda para el sidecar
 
 - **Hecho ahora** (DoD verde): agregado + hash + auditoría + snapshot de cliente, tipos `signature`/

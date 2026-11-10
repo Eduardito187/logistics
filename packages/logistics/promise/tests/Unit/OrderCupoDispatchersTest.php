@@ -56,7 +56,7 @@ function cupoRepo(array $seed): PromiseRepository
         /** @param list<DeliveryPromise> $seed */
         public function __construct(array $seed)
         {
-            foreach ($seed as $promise) {
+            foreach ($seed as $promise) { // NOSONAR: $promise es la variable del foreach (list<DeliveryPromise>), siempre inicializada; falso positivo del data-flow sobre la clase anónima.
                 $this->store[$promise->id()->toString()] = $promise;
             }
         }

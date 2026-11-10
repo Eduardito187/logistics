@@ -317,11 +317,13 @@
 
             {{-- ====================== MAPA DE LA RED EN VIVO ====================== --}}
             <x-cockpit.card class="mt-4" :eyebrow="__('Red en vivo')" :title="__('Flota en movimiento')">
-                <x-slot:head>
+                {{-- Sintaxis de slot con name= (no `<x-slot:head>`): evita que el analizador HTML lo lea como
+                     una etiqueta <head> y pida un <title> (falso positivo). --}}
+                <x-slot name="head">
                     @if ($liveMapUrl)
                         <a href="{{ $liveMapUrl }}" class="ck-link" wire:navigate>{{ __('Abrir seguimiento en vivo') }} →</a>
                     @endif
-                </x-slot:head>
+                </x-slot>
 
                 @if (! empty($map['positions']))
                     <div wire:ignore>

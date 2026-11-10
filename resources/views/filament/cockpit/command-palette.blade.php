@@ -8,11 +8,12 @@
     x-on:dtk-cmd-open.window="openP()"
     x-on:keydown.escape.window="open = false"
 >
-    <div class="dtk-cmd-overlay" x-show="open" x-transition.opacity.duration.150ms style="display:none" @click.self="open = false">
-        <div class="dtk-cmd" @click.stop>
+    <div class="dtk-cmd-overlay" x-show="open" x-transition.opacity.duration.150ms style="display:none" @click.self="open = false" @keydown.escape="open = false">
+        <div class="dtk-cmd" @click.stop @keydown.stop>
             <div class="dtk-cmd__inp">
                 <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
                 <input
+                    id="dtk-cmd-input" aria-label="Buscar en DisTrack"
                     x-ref="input" type="text" autocomplete="off" spellcheck="false"
                     x-model="q"
                     placeholder="Buscar placa, nº de pedido, cliente, chofer, nodo…"

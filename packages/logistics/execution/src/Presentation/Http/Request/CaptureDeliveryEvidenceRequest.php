@@ -30,7 +30,9 @@ final class CaptureDeliveryEvidenceRequest extends FormRequest
         return [
             'shipment_id' => ['required', 'uuid'],
             'kind' => ['required', 'string', 'in:'.implode(',', $kinds)],
-            'photo' => ['required', 'file', 'image', 'max:10240'],
+            // Límite de 8 MB: suficiente para una foto de evidencia de un teléfono y acotado para no admitir
+            // cargas excesivas (defensa ante content-length abusivo).
+            'photo' => ['required', 'file', 'image', 'max:8192'],
             'customer_id' => ['sometimes', 'nullable', 'string', 'max:128'],
             'document_id' => ['sometimes', 'nullable', 'string', 'max:64'],
             'customer_name' => ['sometimes', 'nullable', 'string', 'max:255'],

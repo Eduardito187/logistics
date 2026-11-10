@@ -12,15 +12,15 @@
     <div class="ck-card ck-section">
         <div class="ck-card__eyebrow">Nueva nota o seguimiento</div>
         <div style="margin-top:.7rem;display:flex;flex-direction:column;gap:.6rem">
-            <textarea wire:model="noteBody" rows="2" placeholder="Escribí una nota, un acuerdo o un recordatorio…"
+            <textarea id="ck-note-body" aria-label="Nueva nota o seguimiento" wire:model="noteBody" rows="2" placeholder="Escribí una nota, un acuerdo o un recordatorio…"
                       style="width:100%;background:var(--ck-surface-2,#1b1b1b);color:var(--ck-ink,#eee);border:1px solid var(--ck-line,#333);border-radius:10px;padding:.7rem .9rem;font:inherit;resize:vertical"></textarea>
             <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center">
-                <select wire:model="noteKind"
+                <select id="ck-note-kind" aria-label="Tipo de nota" wire:model="noteKind"
                         style="background:var(--ck-surface-2,#1b1b1b);color:var(--ck-ink,#eee);border:1px solid var(--ck-line,#333);border-radius:10px;padding:.5rem .7rem;font:inherit">
                     <option value="note">Nota</option>
                     <option value="task">Tarea (con vencimiento)</option>
                 </select>
-                <input type="date" wire:model="noteDue"
+                <input type="date" id="ck-note-due" aria-label="Fecha de vencimiento" wire:model="noteDue"
                        style="background:var(--ck-surface-2,#1b1b1b);color:var(--ck-ink,#eee);border:1px solid var(--ck-line,#333);border-radius:10px;padding:.5rem .7rem;font:inherit">
                 <button type="button" wire:click="addNote" wire:loading.attr="disabled"
                         style="background:var(--ck-red,#e30613);color:#fff;border:0;border-radius:10px;padding:.55rem 1.1rem;font:inherit;font-weight:600;cursor:pointer">
