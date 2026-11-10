@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Logistics\Fleet\Presentation\Filament\Resources;
 
+use App\Filament\Support\TableCsvExport;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -27,6 +29,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Logistics\Fleet\Application\Command\ChangeVehicleStatus\ChangeVehicleStatus;
 use Logistics\Fleet\Domain\Exception\FleetException;
 use Logistics\Fleet\Domain\ValueObject\VehicleStatus;
@@ -39,6 +42,7 @@ use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 
 /**
@@ -54,6 +58,7 @@ use Logistics\Shared\Presentation\Filament\ImageFallback;
 final class VehicleResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = VehicleModel::class;
 
@@ -295,6 +300,9 @@ final class VehicleResource extends Resource
                     ->native(false)
                     ->options(self::statusOptions()),
             ])
+            // Click en la fila → ficha 360 del vehículo (el hub ES la entrada, no una tabla cruda). Los
+            // botones de la fila (cambiar estado, editar) siguen disponibles.
+            ->recordUrl(static fn (VehicleModel $record): string => self::getUrl('view', ['record' => $record]))
             ->recordActions([
                 self::changeStatusAction(),
                 ViewAction::make(),
@@ -302,6 +310,8 @@ final class VehicleResource extends Resource
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
+                    self::changeStatusBulkAction(),
+                    TableCsvExport::bulkAction(),
                     DeleteBulkAction::make(),
                 ]),
             ])
@@ -430,6 +440,59 @@ final class VehicleResource extends Resource
                         ->danger()
                         ->send();
                 }
+            });
+    }
+
+    /**
+     * Acción masiva: cambia el estado de los vehículos seleccionados. No escribe el Record directo;
+     * despacha un ChangeVehicleStatus por vehículo por el CommandBus (CQRS, invariantes + outbox).
+     * Tolerante: cuenta éxitos y fallos y reporta el resumen, sin frenar por un vehículo malo.
+     */
+    private static function changeStatusBulkAction(): BulkAction
+    {
+        return BulkAction::make('changeStatusBulk')
+            ->label(__('Change status'))
+            ->icon('heroicon-o-arrow-path')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->modalHeading(__('Change vehicle status'))
+            ->modalSubmitActionLabel(__('Change status'))
+            ->deselectRecordsAfterCompletion()
+            ->accessSelectedRecords()
+            ->schema([
+                Select::make('status')
+                    ->label(__('New status'))
+                    ->required()
+                    ->native(false)
+                    ->options(self::statusOptions()),
+            ])
+            ->action(static function (Collection $records, array $data): void {
+                $status = (string) $data['status'];
+                $bus = app(CommandBus::class);
+                $changed = 0;
+                $failed = 0;
+
+                foreach ($records as $record) {
+                    if (!$record instanceof VehicleModel) {
+                        continue;
+                    }
+
+                    try {
+                        $bus->dispatch(new ChangeVehicleStatus(
+                            vehicleId: (string) $record->getKey(),
+                            status: $status,
+                        ));
+                        $changed++;
+                    } catch (FleetException) {
+                        $failed++;
+                    }
+                }
+
+                $notification = Notification::make()
+                    ->title(__('Vehicle status changed'))
+                    ->body(__(':changed changed, :failed failed.', ['changed' => $changed, 'failed' => $failed]));
+
+                ($failed > 0 ? $notification->warning() : $notification->success())->send();
             });
     }
 

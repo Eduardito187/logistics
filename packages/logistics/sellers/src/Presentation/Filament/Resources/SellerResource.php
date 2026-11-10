@@ -28,6 +28,7 @@ use Logistics\Sellers\Presentation\Filament\Resources\SellerResource\Pages\ListS
 use Logistics\Sellers\Presentation\Filament\Resources\SellerResource\Pages\ViewSeller;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de sellers / proveedores de marketplace.
@@ -43,12 +44,20 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 final class SellerResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = SellerRecord::class;
 
     protected static ?string $recordTitleAttribute = 'legal_name';
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-building-storefront';
+
+    // Fuera del menú: un vendedor es un SOCIO COMERCIAL; se abre desde el directorio «Socios comerciales»
+    // (que une vendedores y transportistas) y su ficha 360 SellerHub. No es un ítem CRUD suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationGroup(): string
     {
@@ -57,7 +66,7 @@ final class SellerResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 10;
+        return 12;
     }
 
     public static function getModelLabel(): string
@@ -170,6 +179,8 @@ final class SellerResource extends Resource
                 /** @var Builder<SellerRecord> $query */
                 return $query->with('settlementTerms');
             })
+            // Click en la fila → ficha 360 del vendedor (hub), no el infolist CRUD.
+            ->recordUrl(static fn (SellerRecord $record): string => self::getUrl('view', ['record' => $record]))
             ->columns([
                 TextColumn::make('legal_name')
                     ->label(__('Legal name'))

@@ -33,12 +33,15 @@ final readonly class UnitTrackingView
         public ?string $productImageUrl = null,
         public ?int $pieceIndex = null,
         public ?int $pieceTotal = null,
+        // Id de la ETIQUETA (ULID del QR) de este bulto, para que la app mapee label_id→unit_id offline al
+        // escanear (el chofer ya carga estos bultos). Null si el bulto aún no tiene etiqueta emitida.
+        public ?string $labelId = null,
     ) {}
 
     /**
      * @param array{sku?: string|null, product_name?: string|null, product_image_url?: string|null, piece_index?: int|null, piece_total?: int|null} $product
      */
-    public static function fromUnit(UnitTracking $unit, ?string $label = null, array $product = []): self
+    public static function fromUnit(UnitTracking $unit, ?string $label = null, array $product = [], ?string $labelId = null): self
     {
         // Producto siempre legible, aunque el mapa de productos venga vacío (unidad no resuelta): SKU a
         // "" y nombre al SKU o, en última instancia, a "Producto". Nunca null/vacío en pantalla.
@@ -61,11 +64,12 @@ final readonly class UnitTrackingView
             $product['product_image_url'] ?? null,
             $product['piece_index'] ?? null,
             $product['piece_total'] ?? null,
+            $labelId,
         );
     }
 
     /**
-     * @return array{id: string, unit_id: string, shipment_id: string, status: string, last_location_id: string|null, last_seen_at: string|null, label: string|null, sku: string, product_name: string, product_image_url: string|null, piece_index: int|null, piece_total: int|null}
+     * @return array{id: string, unit_id: string, shipment_id: string, status: string, last_location_id: string|null, last_seen_at: string|null, label: string|null, sku: string, product_name: string, product_image_url: string|null, piece_index: int|null, piece_total: int|null, label_id: string|null}
      */
     public function toArray(): array
     {
@@ -82,6 +86,7 @@ final readonly class UnitTrackingView
             'product_image_url' => $this->productImageUrl,
             'piece_index' => $this->pieceIndex,
             'piece_total' => $this->pieceTotal,
+            'label_id' => $this->labelId,
         ];
     }
 }

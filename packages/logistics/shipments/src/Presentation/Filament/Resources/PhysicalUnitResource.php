@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -19,6 +20,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource\Pages\CreatePhysicalUnit;
@@ -38,10 +40,18 @@ use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource\Pag
 final class PhysicalUnitResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = PhysicalUnitRecord::class;
 
-    protected static ?int $navigationSort = 14;
+    protected static ?int $navigationSort = 20;
+
+    // Fuera del menú: el paquete DEPENDE del envío; su hogar es la ficha 360 del envío (sección «Gestión
+    // del envío»), que enlaza a su lista ya filtrada por el envío. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     /**
      * Título humano de la unidad física: referencia del pedido + posición "unidad/total" (nunca el UUID crudo).
@@ -131,6 +141,11 @@ final class PhysicalUnitResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?shipment=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('shipment', 'shipment_id'))
+            // Tabla de alto volumen (una fila por unidad de producto): no consultar al pintar; se carga al
+            // interactuar/filtrar (desde la ficha del envío llega ya filtrada por envío).
+            ->deferLoading()
             ->columns([
                 TextColumn::make('shipment.external_id')
                     ->label(__('Order'))

@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace Logistics\Execution\Presentation\Filament\Resources;
 
 use BackedEnum;
+use Filament\Forms\Components\DatePicker;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Logistics\Execution\Domain\ValueObject\ScanType;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\ScanEventRecord;
 use Logistics\Execution\Presentation\Filament\Resources\ScanEventResource\Pages\ListScanEvents;
@@ -52,7 +55,14 @@ final class ScanEventResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-qr-code';
 
-    protected static ?int $navigationSort = 36;
+    protected static ?int $navigationSort = 16;
+
+    // Fuera del menú: un escaneo es un hecho del ENVÍO (vía su entrega); su hogar es la ficha 360 del envío
+    // (sección «Gestión»), que abre la lista acotada por `?shipment=`. No es un ítem CRUD suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationGroup(): string
     {
@@ -93,6 +103,19 @@ final class ScanEventResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Al abrir desde la ficha del envío, `?shipment=<id>` acota a los escaneos de ESE envío (el
+            // escaneo cuelga del envío a través de su entrega: delivery.shipment_id).
+            ->modifyQueryUsing(static function (Builder $query): Builder {
+                /** @var Builder<ScanEventRecord> $query */
+                $shipment = request()->query('shipment');
+                if (!is_string($shipment) || $shipment === '') {
+                    return $query;
+                }
+
+                return $query->whereHas('delivery', static function (Builder $delivery) use ($shipment): void {
+                    $delivery->where('shipment_id', $shipment);
+                });
+            })
             ->columns([
                 TextColumn::make('type')
                     ->label(__('Type'))
@@ -135,7 +158,31 @@ final class ScanEventResource extends Resource
                     ->label(__('Type'))
                     ->native(false)
                     ->options(self::typeOptions()),
+                // Ventana temporal con default "últimos 30 días": acota el dataset por defecto en una tabla
+                // de altísimo volumen (escaneos), para no escanear millones de filas al abrir.
+                Filter::make('period')
+                    ->label(__('Date range'))
+                    ->schema([
+                        DatePicker::make('from')->label(__('From'))->native(false)->default(now()->subDays(30)),
+                        DatePicker::make('until')->label(__('To'))->native(false),
+                    ])
+                    ->query(static function (Builder $query, array $data): Builder {
+                        /** @var Builder<ScanEventRecord> $query */
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+                        if (is_string($from) && $from !== '') {
+                            $query->where('occurred_at', '>=', Carbon::parse($from)->startOfDay());
+                        }
+                        if (is_string($until) && $until !== '') {
+                            $query->where('occurred_at', '<', Carbon::parse($until)->addDay()->startOfDay());
+                        }
+
+                        return $query;
+                    })
+                    ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) ? (string) __('Date range') : null),
             ])
+            ->deferLoading()
+            ->paginationPageOptions([25, 50, 100])
             ->defaultSort('occurred_at', 'desc');
     }
 

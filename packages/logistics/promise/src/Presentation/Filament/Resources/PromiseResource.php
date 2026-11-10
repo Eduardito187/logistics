@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Logistics\Promise\Presentation\Filament\Resources;
 
+use App\Filament\Support\TableCsvExport;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -66,6 +68,13 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class PromiseResource extends Resource
 {
+    // Fuera del menú: depende de la entidad (pedido); su hogar es la ficha 360 de esa entidad
+    // (sección «Gestión»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
 
     protected static ?string $model = PromiseRecord::class;
@@ -80,12 +89,12 @@ final class PromiseResource extends Resource
      */
     public static function getNavigationGroup(): string
     {
-        return __('Operations');
+        return __('Customer experience');
     }
 
     public static function getNavigationSort(): int
     {
-        return 60;
+        return 20;
     }
 
     public static function getNavigationLabel(): string
@@ -327,6 +336,11 @@ final class PromiseResource extends Resource
                 self::reserveAction(),
                 self::confirmAction(),
                 self::expireAction(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    TableCsvExport::bulkAction(),
+                ]),
             ])
             ->defaultSort('slot_date', 'desc');
     }

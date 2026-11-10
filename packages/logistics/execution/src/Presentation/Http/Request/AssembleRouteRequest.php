@@ -20,13 +20,32 @@ final class AssembleRouteRequest extends FormRequest
     }
 
     /**
+     * Normaliza la fecha ANTES de validar: el cliente a veces manda un ISO completo
+     * (2026-11-05T00:00:00-04:00); se recorta a la fecha de calendario (Y-m-d) para que la validación
+     * `date_format:Y-m-d` acepte ambos formatos sin obligar a la app a recortarla.
+     */
+    protected function prepareForValidation(): void
+    {
+        $raw = $this->input('route_date');
+        if (is_string($raw) && $raw !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+            try {
+                $this->merge(['route_date' => (new \DateTimeImmutable($raw))->format('Y-m-d')]);
+            } catch (\Throwable) {
+                // Si no parsea, se deja tal cual y la validación lo rechaza con un mensaje claro.
+            }
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function rules(): array
     {
         return [
             'route_date' => ['required', 'string', 'date_format:Y-m-d'],
-            'stops' => ['required', 'array', 'min:1'],
+            // Paradas OPCIONALES: si no vienen (o llegan vacías), el backend ensambla desde el plan
+            // publicado. Si vienen, se usan tal cual (plural `stops`, como en el OpenAPI).
+            'stops' => ['sometimes', 'nullable', 'array'],
             'stops.*.shipment_id' => ['required', 'string'],
             'stops.*.sequence' => ['required', 'integer', 'min:1'],
             'stops.*.order_reference' => ['sometimes', 'nullable', 'string'],
@@ -44,7 +63,7 @@ final class AssembleRouteRequest extends FormRequest
         $validated = $this->validated();
 
         /** @var list<array<string, mixed>> $rows */
-        $rows = $validated['stops'];
+        $rows = is_array($validated['stops'] ?? null) ? $validated['stops'] : [];
 
         $stops = [];
         foreach ($rows as $row) {

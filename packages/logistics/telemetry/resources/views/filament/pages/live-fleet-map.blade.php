@@ -44,9 +44,9 @@
     </div>
 
     @assets
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        {{-- Helper de teselas con fallback automático al OSM público si el tileserver self-host no responde. --}}
+        <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
+        <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
+        {{-- Teselas solo del tileserver self-host (CERO CDN): sin fallback a un CDN público si no responde. --}}
         <script src="{{ asset('js/dismac-maps.js') }}"></script>
     @endassets
 
@@ -71,7 +71,7 @@
 
         const map = L.map(el).setView([-16.5, -68.15], 11); // Bolivia
         // Teselas con fallback automático: intenta el tileserver self-host (config/maps.php) y, si no
-        // responde, baja al OSM público para que el mapa nunca quede gris. Helper compartido dismac-maps.js.
+        // no responde, el mapa queda sin fondo (CERO CDN, sin fallback público). Helper compartido dismac-maps.js.
         window.DismacMaps.tileLayer(L, {
             url: @js(config('maps.tile_url')),
             fallbackUrl: @js(config('maps.tile_fallback_url')),

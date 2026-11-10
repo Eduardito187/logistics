@@ -19,6 +19,7 @@ use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Access\Presentation\Filament\Resources\PermissionResource\Pages\CreatePermission;
 use Logistics\Access\Presentation\Filament\Resources\PermissionResource\Pages\ListPermissions;
 use Logistics\Access\Presentation\Filament\Resources\PermissionResource\Pages\ViewPermission;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin del catálogo de permisos de RBAC.
@@ -33,6 +34,7 @@ use Logistics\Access\Presentation\Filament\Resources\PermissionResource\Pages\Vi
 final class PermissionResource extends Resource
 {
     use AdminOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = PermissionRecord::class;
 

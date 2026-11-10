@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Fleet\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use BackedEnum;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
@@ -24,6 +25,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\CrewResource\Pages\CreateCre
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource\Pages\ListCrews;
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource\Pages\ViewCrew;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Resource de administración de tripulaciones (chofer + ayudantes + vehículo para una fecha).
@@ -38,7 +40,15 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class CrewResource extends Resource
 {
+    // Fuera del menú: depende de la entidad (vehículo/chofer); su hogar es la ficha 360 de esa entidad
+    // (sección «Gestión»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = CrewModel::class;
 
@@ -164,6 +174,8 @@ final class CrewResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?vehicle=/?driver=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::byAny(['vehicle' => 'vehicle_id', 'driver' => 'driver_id']))
             ->columns([
                 // Nombre legible del chofer vía la relación Eloquent (eager-cargada), no el UUID.
                 TextColumn::make('driver.name')

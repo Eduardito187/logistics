@@ -270,6 +270,11 @@ components:
         label:
           type: [string, 'null']
           description: Etiqueta humana del bulto ("N/M")
+        label_id:
+          type: [string, 'null']
+          description: >-
+            Id (ULID del QR) de la etiqueta de este bulto, para mapear label_id→unit_id offline al escanear.
+            Mismo unit_id que EmittedLabel. null si el bulto aún no tiene etiqueta emitida.
     TruckPosition:
       type: object
       description: Última posición conocida del camión

@@ -40,6 +40,11 @@ function fakePromiseRepository(): PromiseRepository
         {
             return [];
         }
+
+        public function holdingByShipmentRef(string $shipmentRef): array
+        {
+            return [];
+        }
     };
 }
 

@@ -28,6 +28,7 @@ use Logistics\Access\Presentation\Filament\Resources\RoleResource\Pages\ListRole
 use Logistics\Access\Presentation\Filament\Resources\RoleResource\Pages\ViewRole;
 use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de roles de RBAC.
@@ -42,6 +43,7 @@ use Logistics\Shared\Application\Command\CommandBus;
 final class RoleResource extends Resource
 {
     use AdminOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = RoleRecord::class;
 

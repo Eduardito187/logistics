@@ -44,10 +44,14 @@ it('renderiza el listado de etiquetas con filas (vigente y revocada)', function 
     Livewire::test(ListEmittedLabels::class)->assertOk();
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
-it('renderiza la vista de una etiqueta (infolist con payload firmado)', function (): void {
+it('renderiza la vista de una etiqueta con el QR y el Code128 escaneables (SVG inline)', function (): void {
     $record = EmittedLabelRecord::factory()->forOrder('DM-260099002')->create();
 
-    Livewire::test(ViewEmittedLabel::class, ['record' => $record->getKey()])->assertOk();
+    // El infolist incluye la "vista previa escaneable": QR firmado + Code128, renderizados on-premise como
+    // SVG inline (CERO CDN). Debe aparecer al menos un <svg> en el HTML de la página.
+    Livewire::test(ViewEmittedLabel::class, ['record' => $record->getKey()])
+        ->assertOk()
+        ->assertSee('<svg', false);
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
 it('monta las acciones de cabecera del listado (flujos CQRS)', function (): void {

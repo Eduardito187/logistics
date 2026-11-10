@@ -25,6 +25,23 @@ mkdir -p /var/www/html/storage/logs
 mkdir -p /var/www/html/bootstrap/cache
 
 # ------------------------------------------------------------
+# 2a. Autoloader de Composer — sincronizar en DEV (COMPOSER_INSTALL_ON_BOOT=true)
+# ------------------------------------------------------------
+# El monolito modular suma paquetes (packages/<ctx>) con su propio prefijo PSR-4. Al
+# agregar un paquete nuevo, su prefijo NO entra al autoloader del contenedor hasta volver
+# a correr composer; mientras tanto, una ruta que referencia su controller tira
+# "Invalid route action" (la clase no se puede autoload-ear y aborta el grupo entero).
+# En DEV sincronizamos vendor con composer.lock en el arranque del contenedor WEB, para
+# que los paquetes nuevos se carguen solos, sin comandos extra. Tolerante: si falla (p. ej.
+# sin red para una dependencia no cacheada) solo avisa, no tumba el arranque.
+# PROD NO activa esta var (su imagen hornea el autoloader autoritativo en build); queda false.
+if [ "$1" = "php-fpm" ] && [ "${COMPOSER_INSTALL_ON_BOOT:-false}" = "true" ]; then
+    echo "[entrypoint] COMPOSER_INSTALL_ON_BOOT=true → sincronizando dependencias/autoloader (dev)..."
+    composer install --no-interaction --no-scripts --no-progress \
+        || echo "[entrypoint] AVISO: no se pudo sincronizar composer (¿sin red o lock desfasado?)."
+fi
+
+# ------------------------------------------------------------
 # 2b. PHP-FPM — tuning del pool parametrizable por entorno (FPM_*)
 # ------------------------------------------------------------
 # php-fpm NO interpola variables de entorno en directivas numéricas

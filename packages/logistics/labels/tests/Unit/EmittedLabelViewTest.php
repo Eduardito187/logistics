@@ -38,8 +38,20 @@ it('flags a revoked label in its array shape', function (): void {
     expect(array_keys($array))->toBe([
         'order_number', 'label_id', 'key_id', 'sku', 'line_number',
         'qr_content', 'zpl', 'emitted_at', 'revoked', 'revoked_at', 'revoked_reason',
+        'product_name', 'image_url', 'origin', 'destination',
+        'unit_id', 'shipment_id', 'unit', 'piece',
     ])
         ->and($array['revoked'])->toBeTrue()
         ->and($array['revoked_at'])->toBe(1759316400)
-        ->and($array['revoked_reason'])->toBe('reprinted');
+        ->and($array['revoked_reason'])->toBe('reprinted')
+        // Sin enriquecer: producto/destino/bulto en null; el origen lleva el código del payload sin nombre.
+        ->and($array['product_name'])->toBeNull()
+        ->and($array['image_url'])->toBeNull()
+        ->and($array['origin'])->toBe(['code' => $signed->payload->origin, 'name' => null])
+        ->and($array['destination'])->toBe(['type' => null, 'name' => null, 'address' => null])
+        ->and($array['unit_id'])->toBeNull()
+        ->and($array['shipment_id'])->toBeNull()
+        // Índices del bulto desde el payload del QR.
+        ->and($array['unit'])->toBe(['index' => $signed->payload->unit->index, 'total' => $signed->payload->unit->total])
+        ->and($array['piece'])->toBe(['index' => $signed->payload->piece->index, 'total' => $signed->payload->piece->total]);
 });

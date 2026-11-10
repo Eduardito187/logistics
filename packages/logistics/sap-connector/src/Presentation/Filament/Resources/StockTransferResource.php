@@ -64,12 +64,12 @@ final class StockTransferResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Administration');
+        return __('Integrations');
     }
 
     public static function getNavigationSort(): int
     {
-        return 32;
+        return 22;
     }
 
     public static function getNavigationLabel(): string

@@ -23,25 +23,51 @@ use Illuminate\Support\Carbon;
 trait IssuesDeviceTokens
 {
     /**
-     * Crea o actualiza el dispositivo y lo liga al usuario (binding usuario↔dispositivo).
+     * Crea o actualiza el dispositivo, lo liga al usuario (binding usuario↔dispositivo) y aplica la regla
+     * de sesión 1-por-plataforma: desaloja cualquier OTRO dispositivo activo del usuario en el MISMO
+     * bucket (web|app), sin tocar el otro bucket (web y app coexisten). El mismo `fingerprint` es un
+     * reemplazo natural (misma fila), así que no se desaloja a sí mismo.
      *
-     * @param array{fingerprint: string, platform?: string|null, name?: string|null, push_token?: string|null} $input
+     * @param array{fingerprint: string, platform?: string|null, name?: string|null, push_token?: string|null, client_kind?: string|null} $input
      */
     protected function bindDevice(User $user, array $input): Device
     {
+        $bucket = Device::resolveBucket($input['platform'] ?? null, $input['client_kind'] ?? null);
+
         $device = Device::query()->firstOrNew(['fingerprint' => $input['fingerprint']]);
 
         $device->fill([
             'user_id' => $user->getKey(),
             'platform' => $input['platform'] ?? $device->platform,
+            'session_bucket' => $bucket,
             'name' => $input['name'] ?? $device->name,
             'push_token' => $input['push_token'] ?? $device->push_token,
             'last_seen_at' => now(),
             'revoked_at' => null,
+            'revoked_reason' => null,
         ]);
         $device->save();
 
+        $this->supersedeSameBucketSessions($user, $device, $bucket);
+
         return $device;
+    }
+
+    /**
+     * Desaloja las demás sesiones activas del usuario en el mismo bucket (≤1 activa por bucket).
+     */
+    protected function supersedeSameBucketSessions(User $user, Device $current, string $bucket): void
+    {
+        $others = Device::query()
+            ->where('user_id', $user->getKey())
+            ->where('session_bucket', $bucket)
+            ->whereKeyNot($current->getKey())
+            ->whereNull('revoked_at')
+            ->get();
+
+        foreach ($others as $other) {
+            $other->supersede();
+        }
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Shipments\Presentation\Filament\Resources;
 
 use App\Filament\Pages\CustomerProfile;
+use App\Filament\Support\TableCsvExport;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
@@ -55,17 +56,17 @@ final class ShipmentResource extends Resource
 
     public static function getNavigationLabel(): string
     {
-        return __('Received orders');
+        return __('Shipments');
     }
 
     public static function getModelLabel(): string
     {
-        return __('Received order');
+        return __('Shipment');
     }
 
     public static function getPluralModelLabel(): string
     {
-        return __('Received orders');
+        return __('Shipments');
     }
 
     /**
@@ -100,7 +101,7 @@ final class ShipmentResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Commerce');
+        return __('Operations');
     }
 
     /**
@@ -463,13 +464,16 @@ final class ShipmentResource extends Resource
                     ->options(self::statuses())
                     ->native(false),
             ])
+            ->recordUrl(static fn (ShipmentRecord $record): string => self::getUrl('view', ['record' => $record]))
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make(),
                 self::reGeocodeAction(),
             ])
             ->toolbarActions([
-                BulkActionGroup::make([]),
+                BulkActionGroup::make([
+                    TableCsvExport::bulkAction(),
+                ]),
             ])
             ->defaultSort('external_id');
     }

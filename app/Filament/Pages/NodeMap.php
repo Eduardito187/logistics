@@ -6,6 +6,7 @@ namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
  * Mapa de todos los nodos de la red sobre OpenStreetMap (Leaflet).
@@ -17,11 +18,22 @@ use Illuminate\Support\Facades\DB;
  */
 final class NodeMap extends Page
 {
+    // Herramienta de red: solo oficina (administrador/supervisor). Una tienda o un rol de campo no
+    // necesita el mapa global de nodos.
+    use OfficeOnly;
+
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-map-pin';
 
-    protected static ?int $navigationSort = 6;
+    protected static ?int $navigationSort = 2;
 
     protected string $view = 'filament.pages.node-map';
+
+    // Fuera del menú: los nodos se ven como una CAPA conmutable dentro del cockpit geográfico unificado
+    // (página "Geography" / CoverageMap). La página sigue accesible por URL, pero no es un ítem suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationGroup(): string
     {

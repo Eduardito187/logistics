@@ -63,6 +63,42 @@ final readonly class EmittedLabel
         return $this->label->payload->lineNumber;
     }
 
+    /** Código de ORIGEN embebido en el payload del QR (campo `org`); free-form, suele ser un code de nodo. */
+    public function originCode(): string
+    {
+        return $this->label->payload->origin;
+    }
+
+    /** Código de DESTINO embebido en el payload del QR (campo `dst`); free-form (code de nodo o zona). */
+    public function destinationCode(): string
+    {
+        return $this->label->payload->destination;
+    }
+
+    /** Índice de UNIDAD del bulto dentro de su línea (1-based). */
+    public function unitIndex(): int
+    {
+        return $this->label->payload->unit->index;
+    }
+
+    /** Total de unidades de la línea. */
+    public function unitTotal(): int
+    {
+        return $this->label->payload->unit->total;
+    }
+
+    /** Índice de PIEZA del bulto dentro de su unidad (1-based). */
+    public function pieceIndex(): int
+    {
+        return $this->label->payload->piece->index;
+    }
+
+    /** Total de piezas por unidad. */
+    public function pieceTotal(): int
+    {
+        return $this->label->payload->piece->total;
+    }
+
     /** El JSON firmado exacto del QR: lo que se guarda y lo que escanea la app. */
     public function signedJson(): string
     {

@@ -14,6 +14,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de categorías del catálogo (PIM de comercio).
@@ -28,12 +29,20 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 final class CategoryResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = CategoryRecord::class;
 
     protected static ?string $recordTitleAttribute = 'name';
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-tag';
+
+    // Fuera del menú: las categorías son parte del CATÁLOGO; se gestionan desde «Catálogo de productos»
+    // (no como ítem CRUD suelto). El menú de Comercio queda con un solo acceso al catálogo.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationGroup(): string
     {
@@ -42,7 +51,7 @@ final class CategoryResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 30;
+        return 62;
     }
 
     public static function getModelLabel(): string

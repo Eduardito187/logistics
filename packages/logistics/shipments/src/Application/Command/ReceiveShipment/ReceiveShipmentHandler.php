@@ -108,6 +108,7 @@ final class ReceiveShipmentHandler implements CommandHandler
             $lines,
             $command->destinationNodeId,
             $ownership,
+            $command->orderReference,
         );
 
         $this->shipments->save($shipment);

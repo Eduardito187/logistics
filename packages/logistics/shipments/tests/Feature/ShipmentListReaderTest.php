@@ -119,6 +119,39 @@ it('acota el resultado con limit y offset en SQL', function (): void {
         ->and($page[1]->id)->toBe($all[3]->id);
 });
 
+it('pagina por cursor (keyset) sin solapar y termina sin nextCursor', function (): void {
+    $node = Uuid::generate()->value;
+    for ($i = 0; $i < 5; $i++) {
+        ShipmentRecord::factory()->forNode($node)->create();
+    }
+
+    $reader = app(ShipmentListReader::class);
+
+    // Listado completo ordenado por id (UUID v7) como referencia del orden esperado.
+    $all = $reader->list(destinationNodeId: $node);
+    expect($all)->toHaveCount(5);
+
+    // Primera página: trae 2 y el cursor apunta al último id visto.
+    $page1 = $reader->listKeyset(limit: 2, destinationNodeId: $node);
+    expect($page1->items)->toHaveCount(2)
+        ->and($page1->items[0]->id)->toBe($all[0]->id)
+        ->and($page1->items[1]->id)->toBe($all[1]->id)
+        ->and($page1->nextCursor)->toBe($all[1]->id);
+
+    // Segunda página desde el cursor: continúa sin solapar con la primera.
+    $page2 = $reader->listKeyset(limit: 2, afterId: $page1->nextCursor, destinationNodeId: $node);
+    expect($page2->items)->toHaveCount(2)
+        ->and($page2->items[0]->id)->toBe($all[2]->id)
+        ->and($page2->items[1]->id)->toBe($all[3]->id)
+        ->and($page2->nextCursor)->toBe($all[3]->id);
+
+    // Última página: el resto y SIN nextCursor (no hay más).
+    $page3 = $reader->listKeyset(limit: 2, afterId: $page2->nextCursor, destinationNodeId: $node);
+    expect($page3->items)->toHaveCount(1)
+        ->and($page3->items[0]->id)->toBe($all[4]->id)
+        ->and($page3->nextCursor)->toBeNull();
+});
+
 it('filtra las direcciones de confianza baja en SQL', function (): void {
     // Sin coordenada el scorer deja confianza baja (candidata a confirmar).
     $lowId = seedReaderOrder('RD-LOW-'.uniqid(), lat: null, lng: null);

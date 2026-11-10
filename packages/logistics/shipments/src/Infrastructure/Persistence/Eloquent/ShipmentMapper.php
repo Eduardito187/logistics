@@ -47,6 +47,7 @@ final class ShipmentMapper
             'seller_sku_ref' => $ownership['seller_sku_ref'],
             'source' => $shipment->source()->value,
             'external_id' => $shipment->sourceReference()->externalId,
+            'order_reference' => $shipment->orderReference(),
             'customer_name' => $shipment->customer()->name,
             'customer_document_id' => $shipment->customer()->documentId,
             'customer_phone' => $shipment->customer()->phone,
@@ -185,6 +186,8 @@ final class ShipmentMapper
                 $record->owner_party_id,
                 $record->seller_sku_ref,
             ),
+            // Filas viejas sin order_reference caen a su external_id (backfill de la migración).
+            is_string($record->order_reference) ? $record->order_reference : null,
         );
     }
 }

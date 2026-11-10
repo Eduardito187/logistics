@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Providers\Filament;
 
+use App\Enums\Role;
 use App\Filament\Avatars\LocalAvatarProvider;
 use App\Filament\Pages\Auth\RequestPasswordOtp;
 use App\Http\Middleware\SecurityHeaders;
+use App\Models\User;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
 use Filament\Enums\ThemeMode;
+use Filament\Facades\Filament;
 use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -17,6 +20,7 @@ use Filament\Navigation\NavigationGroup;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\Width;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -40,6 +44,17 @@ use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
  */
 final class AdminPanelProvider extends PanelProvider
 {
+    /**
+     * ¿La cuenta autenticada tiene alcance de OFICINA (administrador o supervisor)? Gatea el command
+     * palette y otras superficies globales del backoffice. El administrador tiene acceso a todo.
+     */
+    private static function hasOfficeScope(): bool
+    {
+        $user = Filament::auth()->user();
+
+        return $user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor);
+    }
+
     public function panel(Panel $panel): Panel
     {
         return $panel
@@ -91,6 +106,9 @@ final class AdminPanelProvider extends PanelProvider
             // Panel interno en tema Noche (#141414) por defecto para diferenciarlo de la app de clientes.
             // Se mantiene el toggle de modo claro/oscuro de Filament (no se fuerza), solo cambia el default.
             ->defaultThemeMode(ThemeMode::Dark)
+            // Ancho COMPLETO en TODO el panel (todas las vistas usan toda la pantalla, sin la columna
+            // centrada por defecto). Cada página puede sobreescribirlo con getMaxContentWidth().
+            ->maxContentWidth(Width::Full)
             // Avatar por defecto generado localmente (iniciales en SVG data URI). El proveedor de
             // Filament por defecto sale a ui-avatars.com, que offline o con la CSP del admin cerrada
             // deja la imagen rota en la barra superior. Con este proveedor nunca depende de internet.
@@ -119,17 +137,54 @@ final class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): string => view('filament.distrack-head')->render(),
             )
+            // Tiempo real (Fase 6): Laravel Echo + Pusher contra Soketi self-host, para el push en vivo de
+            // posiciones de flota a la Torre de Control. Solo oficina (quien ve el mapa). Env-gated en el
+            // cliente: si no hay VITE_PUSHER_APP_KEY, no conecta y queda el polling como fallback.
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): string => self::hasOfficeScope() ? view('filament.realtime-echo')->render() : '',
+            )
+            // Command palette global (⌘K) de DisTrack OS: búsqueda transversal de entidades-eje y salto
+            // directo, sin volver al menú. Disparador en el topbar; palette montado una vez al final del
+            // body. Solo alcance de OFICINA (admin/supervisor) — el admin accede a todo; los roles de campo
+            // usan su UI mínima y no lo ven.
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_END,
+                fn (): string => self::hasOfficeScope() ? view('filament.cockpit.search-trigger')->render() : '',
+            )
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): string => self::hasOfficeScope() ? view('filament.cockpit.palette-mount')->render() : '',
+            )
             // Arquitectura de información "operaciones-primero": 5 grupos por modelo mental del operador
             // en vez de un grupo por bounded context (antes 16). El orden sigue el flujo del negocio:
             // Operations (flujo vivo) → Fleet (camiones y personas) → Network (grafo físico) →
-            // Commerce (pedidos y dinero) → Administration (config y gobierno, solo admin).
-            // Cada Resource/Page declara su grupo y orden con getNavigationGroup()/getNavigationSort().
+            // Orden de los grupos (modelo mental del operador, no por bounded context): Comercio (el
+            // negocio) → Clientes y experiencia (voz del cliente) → Operaciones (flujo físico) → Flota →
+            // Red → Configuración (plataforma, al final). Cada Resource/Page declara su grupo y orden con
+            // getNavigationGroup()/getNavigationSort(); dentro de cada grupo el orden va de tableros (sort
+            // bajo) a registros a catálogo/ajustes (sort alto).
+            // IMPORTANTE: la etiqueta de cada NavigationGroup debe COINCIDIR con la cadena que devuelve
+            // getNavigationGroup() de los recursos (que es la traducida vía __()), si no, Filament no asocia
+            // el grupo y pierde el orden. Por eso se traducen aquí con __().
+            // Grupos COLAPSADOS por defecto (CRM, no CRUD): el menú abre compacto —la Torre de control y los
+            // encabezados de grupo— y cada grupo se expande al entrar a él; Filament recuerda el estado. Así
+            // el operador no ve un volcado plano de todos los recursos, sino secciones que abre según su tarea.
             ->navigationGroups([
-                NavigationGroup::make('Operations'),
-                NavigationGroup::make('Fleet'),
-                NavigationGroup::make('Network'),
-                NavigationGroup::make('Commerce'),
-                NavigationGroup::make('Administration'),
+                NavigationGroup::make(__('Commerce'))->collapsed(),
+                NavigationGroup::make(__('Customer experience'))->collapsed(),
+                NavigationGroup::make(__('Operations'))->collapsed(),
+                NavigationGroup::make(__('Fleet'))->collapsed(),
+                // Personal: choferes, ayudantes y usuarios son PERSONAS (con roles distintos); se gestionan
+                // en una sola sección, con un directorio unificado. El dominio sigue separado (Driver/Helper/
+                // User son agregados distintos); lo que se unifica es la experiencia del admin.
+                NavigationGroup::make(__('Personnel'))->collapsed(),
+                NavigationGroup::make(__('Network'))->collapsed(),
+                NavigationGroup::make(__('Administration'))->collapsed(),
+                // Config técnica agrupada aparte para aligerar «Configuración»: integraciones (SAP, tokens,
+                // conectores) y mensajería (plantillas, reglas de cascada, log de notificaciones).
+                NavigationGroup::make(__('Integrations'))->collapsed(),
+                NavigationGroup::make(__('Messaging'))->collapsed(),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             // Resources de cada bounded context: viven en packages/logistics/<ctx>/src/Presentation/Filament
@@ -231,6 +286,10 @@ final class AdminPanelProvider extends PanelProvider
             ->discoverResources(
                 in: base_path('packages/commerce/catalog/src/Presentation/Filament'),
                 for: 'Commerce\Catalog\Presentation\Filament',
+            )
+            ->discoverResources(
+                in: base_path('packages/commerce/orders/src/Presentation/Filament'),
+                for: 'Commerce\Orders\Presentation\Filament',
             )
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([

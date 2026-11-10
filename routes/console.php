@@ -59,11 +59,27 @@ Schedule::command('logistics:fleet:document-alerts')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Expiración de órdenes comerciales impagas (ADR 020): cancela las órdenes Pending cuya ventana por
+// método de pago venció (qr_bcb 6h / card 12h / bank_transfer y cash 24h / default; configurable por
+// env en config/commerce.php), liberando así el cupo reservado. source='cron', reason='unpaid_timeout'.
+Schedule::command('commerce:orders:expire-unpaid')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Expiración de reservas de promesa vencidas: expira las promesas cuya ventana de reserva caducó y
 // libera el cupo que habían tomado en capacity. Corre cada minuto —como el relay del outbox— para que
 // ningún cupo quede retenido por una reserva abandonada por el canal.
 Schedule::command('logistics:promise:expire-reservations')
     ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Foto histórica diaria de los KPIs de la Torre de Control (para la variación ▲/▼ de los mosaicos). A
+// las 23:55 (hora de plataforma), con los conteos del día ya consolidados. Idempotente por métrica+fecha.
+Schedule::command('cockpit:metrics:snapshot')
+    ->dailyAt('23:55')
+    ->onOneServer()
     ->withoutOverlapping()
     ->runInBackground();
 
@@ -94,5 +110,12 @@ Schedule::command('logistics:db:maintain')
 Schedule::command('logistics:db:maintain --analyze-only')
     ->hourly()
     ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Digest diario de operaciones (Fase 5 — reportes): compone el resumen del día (entregas, efectividad,
+// excepciones) y lo envía por correo a administradores y supervisores. A las 07:30, tras las alertas.
+Schedule::command('ops:digest')
+    ->dailyAt('07:30')
     ->withoutOverlapping()
     ->runInBackground();

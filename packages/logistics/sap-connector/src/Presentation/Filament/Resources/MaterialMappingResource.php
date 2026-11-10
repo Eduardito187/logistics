@@ -63,12 +63,12 @@ final class MaterialMappingResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Administration');
+        return __('Integrations');
     }
 
     public static function getNavigationSort(): int
     {
-        return 34;
+        return 24;
     }
 
     public static function getNavigationLabel(): string

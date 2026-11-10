@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource\Pages;
 
+use App\Filament\Concerns\HasSavedViews;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -12,11 +14,15 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
+use Filament\Schemas\Components\Tabs\Tab;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shipments\Application\Command\ReceiveShipment\ReceiveShipment;
 use Logistics\Shipments\Application\Command\ReceiveShipment\ShipmentLineInput;
 use Logistics\Shipments\Application\Ingestion\ImportShipments;
+use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
+use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
 use Throwable;
 
@@ -31,6 +37,8 @@ use Throwable;
  */
 final class ListShipments extends ListRecords
 {
+    use HasSavedViews;
+
     protected static string $resource = ShipmentResource::class;
 
     /**
@@ -51,13 +59,14 @@ final class ListShipments extends ListRecords
     }
 
     /**
-     * @return array<int, Action>
+     * @return array<int, Action|ActionGroup>
      */
     protected function getHeaderActions(): array
     {
         return [
             $this->receiveOrderAction(),
             $this->importSpreadsheetAction(),
+            ...$this->getSavedViewActions(),
         ];
     }
 
@@ -230,6 +239,35 @@ final class ListShipments extends ListRecords
                     ]));
 
                 ($report->failed > 0 ? $notification->warning() : $notification->success())->send();
+            });
+    }
+
+    /**
+     * Segmentos por estado del envío (recibido → planificado → en ejecución → entregado / fallido /
+     * cancelado), con conteo. Hace que la lista se use como un CRM, por "dónde está" cada envío.
+     *
+     * @return array<string, Tab>
+     */
+    public function getTabs(): array
+    {
+        return [
+            'all' => Tab::make(__('All'))->badge(ShipmentRecord::query()->count()),
+            'received' => $this->statusTab('Received', ShipmentStatus::Received->value),
+            'planned' => $this->statusTab('Planned', ShipmentStatus::Planned->value),
+            'in_execution' => $this->statusTab('In execution', ShipmentStatus::InExecution->value),
+            'delivered' => $this->statusTab('Delivered', ShipmentStatus::Delivered->value),
+            'failed' => $this->statusTab('Failed', ShipmentStatus::Failed->value),
+            'cancelled' => $this->statusTab('Cancelled', ShipmentStatus::Cancelled->value),
+        ];
+    }
+
+    private function statusTab(string $labelKey, string $status): Tab
+    {
+        return Tab::make(__($labelKey))
+            ->badge(ShipmentRecord::query()->where('status', $status)->count())
+            ->modifyQueryUsing(static function (Builder $query) use ($status): Builder {
+                /** @var Builder<ShipmentRecord> $query */
+                return $query->where('status', $status);
             });
     }
 }

@@ -48,7 +48,7 @@ final class ReturnResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Operations');
+        return __('Customer experience');
     }
 
     public static function getNavigationLabel(): string
@@ -58,7 +58,7 @@ final class ReturnResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 40;
+        return 30;
     }
 
     public static function getModelLabel(): string
@@ -110,6 +110,8 @@ final class ReturnResource extends Resource
                 /** @var Builder<ReturnRecord> $query */
                 return $query->with('lines');
             })
+            // La fila abre la ficha 360 (hub cockpit) de la devolución, no el infolist CRUD.
+            ->recordUrl(static fn (ReturnRecord $record): string => self::getUrl('view', ['record' => $record]))
             ->columns([
                 TextColumn::make('original_reference')
                     ->label(__('Original reference'))
@@ -255,7 +257,12 @@ final class ReturnResource extends Resource
     /**
      * @return array<string, string>
      */
-    private static function statusOptions(): array
+    /**
+     * Mapa estado => etiqueta (reutilizado por los segmentos del listado, {@see ListReturns::getTabs()}).
+     *
+     * @return array<string, string>
+     */
+    public static function statusOptions(): array
     {
         $options = [];
         foreach (ReturnStatus::cases() as $case) {

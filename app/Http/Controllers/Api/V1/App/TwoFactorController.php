@@ -134,7 +134,7 @@ final class TwoFactorController
         // Un solo uso: consumir el reto apenas se valida.
         Cache::forget($cacheKey);
 
-        /** @var array{fingerprint: string, platform?: string|null, name?: string|null, push_token?: string|null} $deviceInput */
+        /** @var array{fingerprint: string, platform?: string|null, client_kind?: string|null, name?: string|null, push_token?: string|null} $deviceInput */
         $deviceInput = $challenge['device'];
         $device = $this->bindDevice($user, $deviceInput);
 

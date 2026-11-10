@@ -7,6 +7,7 @@ namespace Logistics\Shipments\Domain\Model;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 use Logistics\Shared\Domain\ValueObject\Ownership;
 use Logistics\Shipments\Domain\Event\ShipmentAddressRescored;
+use Logistics\Shipments\Domain\Event\ShipmentCancelled;
 use Logistics\Shipments\Domain\Event\ShipmentDeliverySlotAssigned;
 use Logistics\Shipments\Domain\Event\ShipmentPlanned;
 use Logistics\Shipments\Domain\Event\ShipmentReceived;
@@ -48,7 +49,12 @@ final class Shipment extends AggregateRoot
         private readonly Ownership $ownership,
         private ?DeliverySlot $deliverySlot = null,
         private ?string $destinationNodeId = null,
-    ) {}
+        private ?string $orderReference = null,
+    ) {
+        // En el flujo de un solo destino la orden ES la referencia de origen; multishipping la fija
+        // explícita para agrupar hermanos (ver migración add_order_reference_to_shipments_table).
+        $this->orderReference ??= $sourceReference->externalId;
+    }
 
     /**
      * API de ingreso: valida los datos, arma el envío con sus bultos y graba el evento de recepción.
@@ -65,6 +71,7 @@ final class Shipment extends AggregateRoot
         array $lines,
         ?string $destinationNodeId = null,
         ?Ownership $ownership = null,
+        ?string $orderReference = null,
     ): self {
         if ($sourceReference->source !== $source) {
             throw ShipmentsException::because('la fuente del envío no coincide con la de su referencia de origen');
@@ -98,6 +105,7 @@ final class Shipment extends AggregateRoot
             $ownership,
             null,
             $destinationNodeId,
+            $orderReference,
         );
 
         $shipment->recordEvent(new ShipmentReceived(
@@ -133,6 +141,7 @@ final class Shipment extends AggregateRoot
         ?DeliverySlot $deliverySlot = null,
         ?string $destinationNodeId = null,
         ?Ownership $ownership = null,
+        ?string $orderReference = null,
     ): self {
         return new self(
             $id,
@@ -147,6 +156,7 @@ final class Shipment extends AggregateRoot
             $ownership ?? Ownership::dismacOwned(),
             $deliverySlot,
             $destinationNodeId,
+            $orderReference,
         );
     }
 
@@ -196,6 +206,26 @@ final class Shipment extends AggregateRoot
     }
 
     /**
+     * Anula el envío (ADR 020). Transición válida desde cualquier estado NO terminal
+     * (Received/Planned/InExecution). Es idempotente: si ya está Cancelled, no hace nada ni vuelve a
+     * grabar el hecho (el outbox reentrega at-least-once). Un envío ya Delivered o Failed no se cancela:
+     * son resultados cerrados y la reacción correcta en esos casos es una devolución, no una anulación.
+     */
+    public function cancel(?string $reason = null): void
+    {
+        if ($this->status === ShipmentStatus::Cancelled) {
+            return;
+        }
+
+        if ($this->status === ShipmentStatus::Delivered || $this->status === ShipmentStatus::Failed) {
+            throw ShipmentsException::because("no se puede cancelar un envío {$this->status->value}");
+        }
+
+        $this->status = ShipmentStatus::Cancelled;
+        $this->recordEvent(new ShipmentCancelled($this->id->toString(), $reason));
+    }
+
+    /**
      * Asigna (o reemplaza) la franja de entrega comprometida con el cliente. Solo mientras el envío no
      * salió de recepción: una vez planificado, el día y la ventana ya alimentaron el plan y no se
      * cambian desde aquí.
@@ -238,6 +268,15 @@ final class Shipment extends AggregateRoot
     public function destinationNodeId(): ?string
     {
         return $this->destinationNodeId;
+    }
+
+    /**
+     * Referencia de la ORDEN que originó el envío. Agrupa los envíos hermanos de una orden multishipping
+     * (cada uno a su destino). En un solo destino coincide con la referencia de origen (external_id).
+     */
+    public function orderReference(): string
+    {
+        return $this->orderReference ?? $this->sourceReference->externalId;
     }
 
     /**

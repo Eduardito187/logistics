@@ -12,6 +12,8 @@ use Logistics\Promise\Application\Command\ExpireReservation\ExpireReservation;
 use Logistics\Promise\Application\Command\ExpireReservation\ExpireReservationHandler;
 use Logistics\Promise\Application\Command\QuotePromise\QuotePromise;
 use Logistics\Promise\Application\Command\QuotePromise\QuotePromiseHandler;
+use Logistics\Promise\Application\Command\ReleasePromiseReservation\ReleasePromiseReservation;
+use Logistics\Promise\Application\Command\ReleasePromiseReservation\ReleasePromiseReservationHandler;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlot;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlotHandler;
 use Logistics\Promise\Application\Command\ReserveMunicipalitySlot\ReserveMunicipalitySlot;
@@ -79,6 +81,7 @@ final class PromiseServiceProvider extends ServiceProvider
         ReserveMunicipalitySlot::class => ReserveMunicipalitySlotHandler::class,
         ConfirmPromise::class => ConfirmPromiseHandler::class,
         ExpireReservation::class => ExpireReservationHandler::class,
+        ReleasePromiseReservation::class => ReleasePromiseReservationHandler::class,
         ListAvailableSlots::class => ListAvailableSlotsHandler::class,
         ListMunicipalityPromise::class => ListMunicipalityPromiseHandler::class,
         CalculateDeliveryPromise::class => CalculateDeliveryPromiseHandler::class,

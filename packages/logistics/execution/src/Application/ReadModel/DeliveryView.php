@@ -26,9 +26,16 @@ final readonly class DeliveryView
         public ?string $podPhotoPath,
         public ?string $failureReason,
         public array $scans,
+        // Referencia LEGIBLE del envío para el chofer (NUNCA el UUID): pedido, cliente y dirección.
+        public ?string $orderReference = null,
+        public ?string $customerName = null,
+        public ?string $address = null,
     ) {}
 
-    public static function fromDelivery(Delivery $delivery): self
+    /**
+     * @param array{order_reference: string|null, customer_name: string|null, address: string|null}|null $reference
+     */
+    public static function fromDelivery(Delivery $delivery, ?array $reference = null): self
     {
         $scans = [];
         foreach ($delivery->scans() as $scan) {
@@ -47,7 +54,25 @@ final readonly class DeliveryView
             $proof?->photoPath,
             $delivery->failureReason()?->value,
             $scans,
+            $reference['order_reference'] ?? null,
+            $reference['customer_name'] ?? null,
+            $reference['address'] ?? null,
         );
+    }
+
+    /**
+     * Etiqueta legible SIEMPRE presente para mostrar en lugar del UUID: pedido, si no cliente, si no un
+     * texto neutro. Nunca null ni vacío (regla: el chofer jamás ve un UUID).
+     */
+    public function referenceLabel(): string
+    {
+        foreach ([$this->orderReference, $this->customerName] as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                return trim($candidate);
+            }
+        }
+
+        return 'Envío sin referencia';
     }
 
     /**
@@ -60,6 +85,11 @@ final readonly class DeliveryView
             'shipment_id' => $this->shipmentId,
             'vehicle_id' => $this->vehicleId,
             'status' => $this->status,
+            // Referencia legible del envío (NUNCA UUID): el cliente muestra `reference` / cliente / dirección.
+            'reference' => $this->referenceLabel(),
+            'order_reference' => $this->orderReference,
+            'customer_name' => $this->customerName,
+            'address' => $this->address,
             'pod_confirmation' => $this->podConfirmation,
             'pod_photo_url' => $this->podPhotoUrl,
             'pod_photo_path' => $this->podPhotoPath,

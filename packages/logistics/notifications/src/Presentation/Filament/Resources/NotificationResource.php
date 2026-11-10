@@ -6,6 +6,7 @@ namespace Logistics\Notifications\Presentation\Filament\Resources;
 
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
@@ -13,10 +14,12 @@ use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Notifications\Application\Command\AdvanceCascade\AdvanceCascade;
 use Logistics\Notifications\Application\Command\MarkNotificationSent\MarkNotificationSent;
@@ -51,12 +54,12 @@ final class NotificationResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Administration');
+        return __('Messaging');
     }
 
     public static function getNavigationSort(): int
     {
-        return 40;
+        return 30;
     }
 
     public static function getNavigationLabel(): string
@@ -181,6 +184,8 @@ final class NotificationResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->deferLoading()
+            ->paginationPageOptions([25, 50, 100])
             ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('shipment.external_id')
@@ -237,6 +242,26 @@ final class NotificationResource extends Resource
                     ->sortable(),
             ])
             ->filters([
+                Filter::make('period')
+                    ->label(__('Date range'))
+                    ->schema([
+                        DatePicker::make('from')->label(__('From'))->native(false)->default(now()->subDays(30)),
+                        DatePicker::make('until')->label(__('To'))->native(false),
+                    ])
+                    ->query(static function (Builder $query, array $data): Builder {
+                        /** @var Builder<NotificationRecord> $query */
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+                        if (is_string($from) && $from !== '') {
+                            $query->whereRaw('created_at >= ?', [Carbon::parse($from)->startOfDay()]);
+                        }
+                        if (is_string($until) && $until !== '') {
+                            $query->whereRaw('created_at < ?', [Carbon::parse($until)->addDay()->startOfDay()]);
+                        }
+
+                        return $query;
+                    })
+                    ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) ? (string) __('Date range') : null),
                 SelectFilter::make('message_type')
                     ->label(__('Message type'))
                     ->native(false)
