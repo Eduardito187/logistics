@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Infrastructure\ReadModel;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\ReadModel\ShipmentLineView;
+use Logistics\Shipments\Application\ReadModel\ShipmentPage;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\ValueObject\AddressConfidenceLevel;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
@@ -32,23 +34,8 @@ final class DbShipmentListReader implements ShipmentListReader
         ?int $limit = null,
         ?int $offset = null,
     ): array {
-        $query = ShipmentRecord::query();
-
-        if ($status !== null) {
-            $query->where('status', $status);
-        }
-        if ($source !== null) {
-            $query->where('source', $source);
-        }
-        if ($destinationNodeId !== null) {
-            $query->where('destination_node_id', $destinationNodeId);
-        }
-        if ($lowConfidenceOnly) {
-            $query->where('address_confidence_level', AddressConfidenceLevel::Low->value);
-        }
-
         // Orden estable por id (UUID v7 = orden temporal), igual que el listado histórico.
-        $query->orderBy('id');
+        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly)->orderBy('id');
 
         if ($offset !== null) {
             $query->offset($offset);
@@ -60,19 +47,40 @@ final class DbShipmentListReader implements ShipmentListReader
         /** @var Collection<int, ShipmentRecord> $records */
         $records = $query->get();
 
-        if ($records->isEmpty()) {
-            return [];
+        return $this->toViews($records);
+    }
+
+    public function listKeyset(
+        int $limit,
+        ?string $afterId = null,
+        ?string $status = null,
+        ?string $source = null,
+        ?string $destinationNodeId = null,
+        bool $lowConfidenceOnly = false,
+    ): ShipmentPage {
+        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly);
+
+        // Keyset: avanza por el último id visto en vez de OFFSET. `id > $afterId` se apoya en el índice de
+        // la PK (UUID v7, orden temporal), así la página profunda no escanea-y-descarta.
+        if ($afterId !== null && $afterId !== '') {
+            $query->where('id', '>', $afterId);
         }
 
-        $shipmentIds = $records->map(static fn (ShipmentRecord $record): string => $record->id)->all();
-        $linesByShipment = $this->linesFor($shipmentIds);
+        // Se pide un elemento de más para saber si hay página siguiente, sin COUNT(*) del universo.
+        $pageSize = max(1, $limit);
+        /** @var Collection<int, ShipmentRecord> $records */
+        $records = $query->orderBy('id')->limit($pageSize + 1)->get();
 
-        $views = [];
-        foreach ($records as $record) {
-            $views[] = $this->toView($record, $linesByShipment[$record->id] ?? []);
+        $hasMore = $records->count() > $pageSize;
+        $pageRecords = $hasMore ? $records->take($pageSize) : $records;
+
+        $nextCursor = null;
+        if ($hasMore) {
+            $last = $pageRecords->last();
+            $nextCursor = $last instanceof ShipmentRecord ? $last->id : null;
         }
 
-        return $views;
+        return new ShipmentPage($this->toViews($pageRecords), $nextCursor);
     }
 
     public function count(
@@ -81,6 +89,22 @@ final class DbShipmentListReader implements ShipmentListReader
         ?string $destinationNodeId = null,
         bool $lowConfidenceOnly = false,
     ): int {
+        // COUNT(*) acotado al filtro (no toca la tabla de líneas ni reconstruye agregados).
+        return $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly)->count();
+    }
+
+    /**
+     * Query base con los filtros calientes empujados a SQL (predicados indexables), combinados con AND.
+     * Compartida por list()/count()/listKeyset() para no duplicar la forma del WHERE.
+     *
+     * @return Builder<ShipmentRecord>
+     */
+    private function filtered(
+        ?string $status,
+        ?string $source,
+        ?string $destinationNodeId,
+        bool $lowConfidenceOnly,
+    ): Builder {
         $query = ShipmentRecord::query();
 
         if ($status !== null) {
@@ -96,8 +120,30 @@ final class DbShipmentListReader implements ShipmentListReader
             $query->where('address_confidence_level', AddressConfidenceLevel::Low->value);
         }
 
-        // COUNT(*) acotado al filtro (no toca la tabla de líneas ni reconstruye agregados).
-        return $query->count();
+        return $query;
+    }
+
+    /**
+     * Arma los ShipmentView de un conjunto de filas, cargando sus líneas en UNA sola consulta (sin N+1).
+     *
+     * @param  Collection<int, ShipmentRecord> $records
+     * @return list<ShipmentView>
+     */
+    private function toViews(Collection $records): array
+    {
+        if ($records->isEmpty()) {
+            return [];
+        }
+
+        $shipmentIds = $records->map(static fn (ShipmentRecord $record): string => $record->id)->values()->all();
+        $linesByShipment = $this->linesFor($shipmentIds);
+
+        $views = [];
+        foreach ($records as $record) {
+            $views[] = $this->toView($record, $linesByShipment[$record->id] ?? []);
+        }
+
+        return $views;
     }
 
     /**

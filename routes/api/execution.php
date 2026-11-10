@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Logistics\Execution\Presentation\Http\AssembleDailyRouteController;
+use Logistics\Execution\Presentation\Http\CaptureDeliveryEvidenceController;
+use Logistics\Execution\Presentation\Http\GetDeliveryEvidenceController;
 use Logistics\Execution\Presentation\Http\GetDeliveryStateController;
 use Logistics\Execution\Presentation\Http\GetDriverRouteController;
 use Logistics\Execution\Presentation\Http\GetNodeReceptionController;
@@ -11,6 +13,7 @@ use Logistics\Execution\Presentation\Http\ListVehicleDeliveriesController;
 use Logistics\Execution\Presentation\Http\OpenNodeReceptionController;
 use Logistics\Execution\Presentation\Http\ReceiveUnitAtNodeController;
 use Logistics\Execution\Presentation\Http\ReconcileNodeReceptionController;
+use Logistics\Execution\Presentation\Http\RecordEvidenceValidationController;
 use Logistics\Execution\Presentation\Http\RecordFailedDeliveryController;
 use Logistics\Execution\Presentation\Http\RecordLoadScanController;
 use Logistics\Execution\Presentation\Http\RecordNodeReceptionController;
@@ -105,6 +108,21 @@ return [
             // Subida de fotos de evidencia (devuelve la URL para el POD).
             Route::post('deliveries/photos', UploadDeliveryPhotoController::class)
                 ->name('photos.store');
+
+            // Evidencia anti-fraude LIGADA AL CLIENTE (firma, documento, POD, daño): captura con hash de
+            // integridad + auditoría, y consulta del estado de validación por envío. Idempotente.
+            Route::post('deliveries/evidence', CaptureDeliveryEvidenceController::class)
+                ->name('evidence.capture');
+            Route::get('deliveries/{shipmentId}/evidence', GetDeliveryEvidenceController::class)
+                ->name('evidence.show');
         });
+    },
+
+    // Puerta integrations — el validador anti-fraude asíncrono (worker/sidecar on-premise) escribe el
+    // resultado de validar una evidencia (firma / documento). Credenciales de servicio las aplica el
+    // integrador.
+    'integrations' => static function (): void {
+        Route::post('evidence/{evidenceId}/validation', RecordEvidenceValidationController::class)
+            ->name('execution.evidence.validation.record');
     },
 ];

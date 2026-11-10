@@ -6,10 +6,15 @@ namespace Logistics\Labels\Presentation\Http\Controller;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use Logistics\Labels\Application\Command\EmitOrderLabels\EmitOrderLabels;
 use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
 use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
+use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLines;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
+use Logistics\Labels\Application\Query\ResolveLabelUnit\ResolveLabelUnit;
+use Logistics\Labels\Application\ReadModel\DispatchLinesView;
 use Logistics\Labels\Application\ReadModel\EmittedLabelView;
+use Logistics\Labels\Application\ReadModel\LabelUnitView;
 use Logistics\Labels\Domain\Exception\DuplicateLabelException;
 use Logistics\Labels\Presentation\Http\Request\EmitShipmentLabelsRequest;
 use Logistics\Labels\Presentation\Http\Request\ReprintOrderLabelsRequest;
@@ -39,17 +44,56 @@ final readonly class LabelController
     }
 
     /**
-     * Emite el lote de etiquetas del pedido y devuelve el resultado ya firmado y renderizado.
+     * Líneas de despacho del pedido para la pantalla de etiquetado por producto: cada producto con nombre,
+     * imagen, origen/destino humanos, su envío (para agrupar multishipping), si está autorizada y el estado
+     * de su etiqueta. Envelope: { order_reference, destinations[], data[] }.
+     */
+    public function dispatchLines(string $orderNumber): JsonResponse
+    {
+        $view = $this->queryBus->ask(new GetDispatchLines($orderNumber));
+        assert($view instanceof DispatchLinesView);
+
+        return new JsonResponse($view->toArray());
+    }
+
+    /**
+     * FALLBACK ONLINE: resuelve una etiqueta escaneada (su id/ULID) al bulto físico + envío. El flujo normal
+     * es offline-first (la app mapea label_id→unit_id desde lo que ya cacheó: EmittedLabel / UnitTracking);
+     * este endpoint es solo para una etiqueta que la app no tenga cacheada.
+     */
+    public function resolveUnit(string $labelId): JsonResponse
+    {
+        $view = $this->queryBus->ask(new ResolveLabelUnit($labelId));
+        assert($view instanceof LabelUnitView);
+
+        return new JsonResponse($view->toArray());
+    }
+
+    /**
+     * Emite las etiquetas del pedido y devuelve el resultado ya firmado y renderizado.
+     *
+     * Dos modos sobre el mismo endpoint:
+     *  - LOTE EXPLÍCITO (origen + destino + líneas en el cuerpo): emite ese lote tal cual (EmitShipmentLabels).
+     *  - POR ORDEN (cuerpo vacío, o solo `origin` como escape hatch): el backend deriva origen/destino/líneas
+     *    de los envíos del pedido y del plan publicado, y emite SOLO lo autorizado y aún pending, de forma
+     *    idempotente/parcial. Siempre responde 201 con la colección completa de etiquetas del pedido.
      */
     public function store(EmitShipmentLabelsRequest $request, string $orderNumber): JsonResponse
     {
         try {
-            $this->commandBus->dispatch(new EmitShipmentLabels(
-                orderNumber: $orderNumber,
-                origin: $request->origin(),
-                destination: $request->destination(),
-                lines: $request->orderLines(),
-            ));
+            if ($request->hasExplicitBatch()) {
+                $this->commandBus->dispatch(new EmitShipmentLabels(
+                    orderNumber: $orderNumber,
+                    origin: $request->origin(),
+                    destination: $request->destination(),
+                    lines: $request->orderLines(),
+                ));
+            } else {
+                $this->commandBus->dispatch(new EmitOrderLabels(
+                    orderNumber: $orderNumber,
+                    originOverride: $request->origin() !== '' ? $request->origin() : null,
+                ));
+            }
         } catch (DuplicateLabelException $e) {
             // El `id` de una etiqueta es único por unidad física: reemitir es un conflicto duro (ADR 004).
             return new JsonResponse([

@@ -55,4 +55,17 @@ final class EloquentPromiseRepository implements PromiseRepository
             ->values()
             ->all();
     }
+
+    public function holdingByShipmentRef(string $shipmentRef): array
+    {
+        $records = PromiseRecord::query()
+            ->where('shipment_ref', $shipmentRef)
+            ->whereIn('status', [PromiseStatus::Reserved->value, PromiseStatus::Confirmed->value])
+            ->get();
+
+        return $records
+            ->map(static fn (PromiseRecord $record): PromiseId => PromiseId::fromString($record->id))
+            ->values()
+            ->all();
+    }
 }

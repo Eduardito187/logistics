@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Commerce\Orders\Presentation\Http\Controller\CancelOrderController;
 use Commerce\Orders\Presentation\Http\Controller\CheckoutController;
 use Commerce\Orders\Presentation\Http\Controller\GetOrderController;
 use Commerce\Orders\Presentation\Http\Controller\PlaceOrderController;
@@ -27,6 +28,18 @@ return [
             Route::post('/', PlaceOrderController::class)->name('place');
             // GET /api/v1/channels/orders/{order} — consulta una orden por id (404 si no existe).
             Route::get('{order}', GetOrderController::class)->name('show');
+            // POST /api/v1/channels/orders/{order}/cancel — cancela la orden (source='pos'); 202 acuse,
+            // 404 si no existe. Body opcional { reason?: string }. Escritura asíncrona (outbox).
+            Route::post('{order}/cancel', CancelOrderController::class)->name('cancel');
+        });
+    },
+
+    // Puerta integrations — backend de POS / servicios: cancelar órdenes (source='pos').
+    'integrations' => static function (): void {
+        Route::prefix('orders')->name('orders.')->group(function (): void {
+            // POST /api/v1/integrations/orders/{order}/cancel — cancela la orden (source='pos'); 202 acuse,
+            // 404 si no existe. Body opcional { reason?: string }. Escritura asíncrona (outbox).
+            Route::post('{order}/cancel', CancelOrderController::class)->name('cancel');
         });
     },
 ];

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
@@ -30,6 +31,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\DepartureResource\Pages\L
 use Logistics\FleetOps\Presentation\Filament\Resources\DepartureResource\Pages\ViewDeparture;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de salidas/despachos de la flota propia: qué vehículo salió, con qué carga y odómetro, y cuándo
@@ -44,7 +46,15 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class DepartureResource extends Resource
 {
+    // Fuera del menú: este recurso DEPENDE del vehículo; su hogar es la ficha 360 del vehículo
+    // (sección «Gestión del vehículo»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
     use ResolvesVehiclePlate;
 
     protected static ?string $model = DepartureRecord::class;
@@ -224,6 +234,8 @@ final class DepartureResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?vehicle=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('vehicle', 'vehicle_id'))
             ->defaultSort('departed_at', 'desc')
             ->columns([
                 // Placa legible del vehículo por lectura cruzada a fleet, nunca el UUID.

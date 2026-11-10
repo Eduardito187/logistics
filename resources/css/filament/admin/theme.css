@@ -155,3 +155,558 @@ code, kbd, samp, pre,
 .dark .fi-main {
     background-color: var(--distrack-night);
 }
+
+/* ============================================================================
+   COCKPIT — superficie operativa "andén" (clara y cálida) de la Torre de Control
+   ----------------------------------------------------------------------------
+   Capa de diseño AISLADA: todo vive bajo `.distrack-cockpit`, así el contenido de
+   la torre de control / seguimiento se ve claro y cálido (como los mockups) mientras
+   el RESTO del admin (barra lateral Noche, 61 pantallas CRUD) conserva su tema. La
+   barra lateral oscura de Filament + este lienzo claro = el "riel oscuro + tablero
+   claro" de la referencia. Nada de CDN: tipografías y colores ya auto-hospedados.
+
+   Tokens propios del cockpit (no tocan los de marca). Rojo = marca/alerta de retraso,
+   violeta = "agente"/inteligencia, verde = en plan, ámbar = en riesgo.
+   ========================================================================== */
+.distrack-cockpit {
+    /* Lienzo OSCURO y tarjetas (tema Noche, cohesivo con el shell del admin) */
+    --ck-canvas: #141414;
+    --ck-canvas-2: #1a1a1f;
+    --ck-card: #1f1f26;
+    --ck-card-2: #262630;
+    --ck-line: rgba(255, 255, 255, 0.08);
+    --ck-line-strong: rgba(255, 255, 255, 0.16);
+    --ck-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 18px 40px -20px rgba(0, 0, 0, 0.6);
+    --ck-shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.5), 0 36px 72px -28px rgba(0, 0, 0, 0.72);
+
+    /* Tinta (sobre oscuro) */
+    --ck-ink: #f2f0ec;
+    --ck-ink-2: #b6b2aa;
+    --ck-ink-3: #827e76;
+
+    /* Acentos semánticos (brillo subido para contraste sobre oscuro) */
+    --ck-red: #ff4d57;        /* retraso / alerta */
+    --ck-red-bg: rgba(227, 6, 19, 0.18);
+    --ck-agent: #9b8bff;      /* inteligencia / agente */
+    --ck-agent-2: #b6a9ff;
+    --ck-agent-bg: rgba(139, 123, 240, 0.15);
+    --ck-green: #3ad29a;      /* en plan / a tiempo */
+    --ck-green-bg: rgba(46, 204, 143, 0.15);
+    --ck-amber: #ffc24d;      /* en riesgo */
+    --ck-amber-bg: rgba(255, 176, 0, 0.15);
+    --ck-neutral-bg: rgba(255, 255, 255, 0.07);
+
+    position: relative;
+    min-height: 100%;
+    background: transparent;  /* el lienzo cálido lo pinta el shell (.fi-body); el cockpit solo compone */
+    color: var(--ck-ink);
+    font-family: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Tipografía display de marca para los títulos del cockpit. */
+.distrack-cockpit .ck-display {
+    font-family: var(--distrack-font-display);
+    letter-spacing: 0.01em;
+    line-height: 1.05;
+}
+.distrack-cockpit .ck-mono {
+    font-family: var(--distrack-font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Saludo / encabezado ---- */
+.distrack-cockpit .ck-greeting__eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ck-ink-3);
+}
+.distrack-cockpit .ck-greeting__title {
+    font-family: var(--distrack-font-display);
+    font-size: clamp(1.6rem, 2.4vw, 2.1rem);
+    font-weight: 800;
+    color: var(--ck-ink);
+    line-height: 1.1;
+}
+.distrack-cockpit .ck-greeting__sub {
+    color: var(--ck-ink-2);
+    font-size: 0.92rem;
+}
+
+/* ---- Tarjeta base ---- */
+.distrack-cockpit .ck-card {
+    background: var(--ck-card);
+    border: 1px solid var(--ck-line);
+    border-radius: 18px;
+    box-shadow: var(--ck-shadow);
+    padding: 1.1rem 1.2rem;
+}
+.distrack-cockpit .ck-card--flush { padding: 0; overflow: hidden; }
+.distrack-cockpit .ck-card--raised { box-shadow: var(--ck-shadow-lg); }
+.distrack-cockpit .ck-card__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ck-ink-3);
+}
+.distrack-cockpit .ck-card__title {
+    font-family: var(--distrack-font-display);
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--ck-ink);
+}
+
+/* ---- KPI tile / pulso ---- */
+.distrack-cockpit .ck-pulse {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+@media (min-width: 640px)  { .distrack-cockpit .ck-pulse { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .distrack-cockpit .ck-pulse { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+.distrack-cockpit .ck-stat {
+    background: var(--ck-card);
+    border: 1px solid var(--ck-line);
+    border-radius: 14px;
+    box-shadow: var(--ck-shadow);
+    padding: 0.85rem 0.95rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+.distrack-cockpit .ck-stat__label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ck-ink-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.distrack-cockpit .ck-stat__value {
+    font-family: var(--distrack-font-display);
+    font-size: 1.7rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--ck-ink);
+    font-variant-numeric: tabular-nums;
+}
+.distrack-cockpit .ck-stat__foot { display: flex; align-items: center; gap: 0.35rem; }
+.distrack-cockpit .ck-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: var(--ck-neutral-bg);
+    color: var(--ck-ink-2);
+}
+.distrack-cockpit .ck-delta--up    { background: var(--ck-green-bg); color: var(--ck-green); }
+.distrack-cockpit .ck-delta--down  { background: var(--ck-red-bg); color: var(--ck-red); }
+/* Color del delta por bueno/malo (el tono lo decide la métrica, no la dirección de la flecha). */
+.distrack-cockpit .ck-delta--good  { background: var(--ck-green-bg); color: var(--ck-green); }
+.distrack-cockpit .ck-delta--bad   { background: var(--ck-red-bg); color: var(--ck-red); }
+.distrack-cockpit .ck-delta__since { font-weight: 500; opacity: 0.7; margin-left: 0.1rem; }
+.distrack-cockpit .ck-stat__hint { font-size: 0.72rem; color: var(--ck-ink-3); }
+
+/* Acento por tono del tile (barra superior fina). */
+.distrack-cockpit .ck-stat { border-top: 3px solid var(--ck-line); }
+.distrack-cockpit .ck-stat--warning { border-top-color: var(--ck-amber); }
+.distrack-cockpit .ck-stat--danger  { border-top-color: var(--ck-red); }
+.distrack-cockpit .ck-stat--positive{ border-top-color: var(--ck-green); }
+.distrack-cockpit .ck-stat--agent   { border-top-color: var(--ck-agent); }
+
+/* ---- Pills de estado ---- */
+.distrack-cockpit .ck-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.28rem 0.55rem;
+    border-radius: 999px;
+    background: var(--ck-neutral-bg);
+    color: var(--ck-ink-2);
+    white-space: nowrap;
+}
+.distrack-cockpit .ck-pill__dot { width: 0.42rem; height: 0.42rem; border-radius: 999px; background: currentColor; }
+.distrack-cockpit .ck-pill--positive { background: var(--ck-green-bg); color: var(--ck-green); }
+.distrack-cockpit .ck-pill--warning  { background: var(--ck-amber-bg); color: var(--ck-amber); }
+.distrack-cockpit .ck-pill--danger   { background: var(--ck-red-bg); color: var(--ck-red); }
+.distrack-cockpit .ck-pill--agent    { background: var(--ck-agent-bg); color: var(--ck-agent-2); }
+
+/* ---- Barras de causa (contributing causes) ---- */
+.distrack-cockpit .ck-bar { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 0.6rem; align-items: center; }
+.distrack-cockpit .ck-bar__label { font-size: 0.82rem; color: var(--ck-ink); }
+.distrack-cockpit .ck-bar__count { font-size: 0.8rem; font-weight: 700; color: var(--ck-ink-2); font-variant-numeric: tabular-nums; }
+.distrack-cockpit .ck-bar__track { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--ck-neutral-bg); overflow: hidden; }
+.distrack-cockpit .ck-bar__fill { height: 100%; border-radius: 999px; background: var(--ck-agent); }
+.distrack-cockpit .ck-bar__fill--red { background: var(--ck-red); }
+.distrack-cockpit .ck-bar__fill--amber { background: var(--ck-amber); }
+
+/* ---- Tarjeta de agente (propone → aprobás) ---- */
+.distrack-cockpit .ck-agentcard {
+    background:
+        linear-gradient(180deg, var(--ck-agent-bg) 0%, var(--ck-card) 38%);
+    border: 1px solid var(--ck-line);
+    border-radius: 18px;
+    box-shadow: var(--ck-shadow);
+    padding: 1.1rem 1.2rem;
+}
+.distrack-cockpit .ck-agentcard__eyebrow {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.7rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ck-agent-2);
+}
+.distrack-cockpit .ck-agentcard__headline {
+    font-family: var(--distrack-font-display);
+    font-size: 1.15rem; font-weight: 800; color: var(--ck-ink); line-height: 1.2;
+}
+
+/* ---- Propuesta (fila con aprobar) ---- */
+.distrack-cockpit .ck-proposal {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.6rem 0.2rem; border-top: 1px solid var(--ck-line);
+}
+.distrack-cockpit .ck-proposal__label { font-size: 0.88rem; color: var(--ck-ink); }
+.distrack-cockpit .ck-proposal__meta { font-size: 0.74rem; color: var(--ck-ink-3); }
+
+/* ---- Botones ---- */
+.distrack-cockpit .ck-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+    font-size: 0.82rem; font-weight: 700; line-height: 1;
+    padding: 0.5rem 0.85rem; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent; transition: filter 0.12s ease, background 0.12s ease;
+}
+.distrack-cockpit .ck-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.distrack-cockpit .ck-btn--agent  { background: var(--ck-agent); color: #fff; }
+.distrack-cockpit .ck-btn--agent:hover:not(:disabled) { filter: brightness(1.07); }
+.distrack-cockpit .ck-btn--approve { background: var(--ck-green); color: #fff; }
+.distrack-cockpit .ck-btn--approve:hover:not(:disabled) { filter: brightness(1.07); }
+.distrack-cockpit .ck-btn--ghost { background: var(--ck-card); border-color: var(--ck-line-strong); color: var(--ck-ink); }
+.distrack-cockpit .ck-btn--ghost:hover:not(:disabled) { background: var(--ck-card-2); }
+.distrack-cockpit .ck-btn--brand { background: var(--ck-red); color: #fff; }
+.distrack-cockpit .ck-btn--brand:hover:not(:disabled) { filter: brightness(1.05); }
+
+/* ---- Hero: ruta señalada ---- */
+.distrack-cockpit .ck-hero__route {
+    font-family: var(--distrack-font-display);
+    font-size: 1.4rem; font-weight: 800; color: var(--ck-ink); line-height: 1.1;
+}
+.distrack-cockpit .ck-telemetry {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem;
+}
+@media (min-width: 640px) { .distrack-cockpit .ck-telemetry { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.distrack-cockpit .ck-metric { background: var(--ck-card-2); border: 1px solid var(--ck-line); border-radius: 12px; padding: 0.55rem 0.7rem; }
+.distrack-cockpit .ck-metric__label { font-size: 0.64rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ck-ink-3); }
+.distrack-cockpit .ck-metric__value { font-family: var(--distrack-font-mono); font-size: 1.05rem; font-weight: 500; color: var(--ck-ink); }
+
+/* ---- Timeline de paradas (progreso horizontal) ---- */
+.distrack-cockpit .ck-timeline { display: flex; align-items: flex-start; gap: 0; }
+.distrack-cockpit .ck-stop { position: relative; flex: 1 1 0; min-width: 0; text-align: center; padding-top: 1.1rem; }
+.distrack-cockpit .ck-stop::before {
+    content: ''; position: absolute; top: 0.32rem; left: -50%; width: 100%; height: 2px; background: var(--ck-line-strong);
+}
+.distrack-cockpit .ck-stop:first-child::before { display: none; }
+.distrack-cockpit .ck-stop__dot {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 0.7rem; height: 0.7rem; border-radius: 999px; background: var(--ck-card); border: 2px solid var(--ck-line-strong);
+}
+.distrack-cockpit .ck-stop--done .ck-stop__dot    { background: var(--ck-green); border-color: var(--ck-green); }
+.distrack-cockpit .ck-stop--done::before          { background: var(--ck-green); }
+.distrack-cockpit .ck-stop--current .ck-stop__dot { background: var(--ck-red); border-color: var(--ck-red); box-shadow: 0 0 0 4px var(--ck-red-bg); }
+.distrack-cockpit .ck-stop__label { font-size: 0.72rem; color: var(--ck-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 0.2rem; }
+.distrack-cockpit .ck-stop__eta { font-family: var(--distrack-font-mono); font-size: 0.72rem; color: var(--ck-ink-3); }
+
+/* ---- Lanes del timeline de despacho (conductores) ---- */
+.distrack-cockpit .ck-lane { display: grid; grid-template-columns: 9.5rem 1fr; align-items: center; gap: 0.75rem; padding: 0.4rem 0; border-top: 1px solid var(--ck-line); }
+.distrack-cockpit .ck-lane__track { position: relative; height: 1.5rem; background: var(--ck-neutral-bg); border-radius: 8px; overflow: hidden; }
+.distrack-cockpit .ck-lane__block { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; background: var(--ck-agent); opacity: 0.9; }
+.distrack-cockpit .ck-lane__block--late { background: var(--ck-red); }
+.distrack-cockpit .ck-lane__block--done { background: var(--ck-green); }
+
+/* ---- Mapa embebido ---- */
+.distrack-cockpit .ck-map { height: 260px; width: 100%; border-radius: 14px; overflow: hidden; border: 1px solid var(--ck-line); background: var(--ck-canvas-2); }
+
+/* Enlaces/acciones sutiles */
+.distrack-cockpit .ck-link { color: var(--ck-agent-2); font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+.distrack-cockpit .ck-link:hover { text-decoration: underline; }
+
+/* Divisor */
+.distrack-cockpit .ck-divider { height: 1px; background: var(--ck-line); margin: 0.75rem 0; }
+
+/* El shell del admin (barra lateral, topbar, cuerpo) usa el tema NOCHE nativo de Filament: el cockpit
+   oscuro de arriba es cohesivo con él, así que NO se sobrescribe el shell (evita el choque claro/oscuro). */
+
+/* ---- Fondo del mapa Leaflet sobre tema oscuro: si el tileserver (perfil `geo`) no está, el mapa NO
+       queda gris/blanco, sino un "radar" oscuro texturado donde igual se ven los puntos de la flota.
+       Con teselas, estas quedan ocultas detrás de ellas. ---- */
+.distrack-cockpit .leaflet-container {
+    outline: none;
+    background-color: var(--ck-canvas-2);
+    background-image:
+        repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.02) 0 12px, transparent 12px 24px),
+        radial-gradient(circle at 50% 40%, rgba(155, 139, 255, 0.07) 0%, transparent 60%);
+}
+.distrack-cockpit .leaflet-control-zoom a {
+    background: var(--ck-card) !important;
+    color: var(--ck-ink) !important;
+    border-color: var(--ck-line) !important;
+}
+.distrack-cockpit .leaflet-control-attribution {
+    background: rgba(20, 20, 20, 0.6) !important;
+    color: var(--ck-ink-3) !important;
+}
+.distrack-cockpit .leaflet-control-attribution a { color: var(--ck-ink-2) !important; }
+.distrack-cockpit .ck-map-empty {
+    height: 260px;
+    border-radius: 14px;
+    border: 1px dashed var(--ck-line-strong);
+    background:
+        repeating-linear-gradient(45deg, var(--ck-canvas-2) 0 10px, var(--ck-card-2) 10px 20px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    color: var(--ck-ink-3);
+    text-align: center;
+    padding: 1rem;
+}
+.distrack-cockpit .ck-map-empty__title { font-weight: 700; color: var(--ck-ink-2); font-size: 0.92rem; }
+.distrack-cockpit .ck-map-empty__hint { font-size: 0.78rem; color: var(--ck-ink-3); max-width: 24rem; }
+
+/* Mapas Leaflet del admin en tema Noche: fondo oscuro cuando NO hay teselas (perfil `geo` apagado),
+   en vez del gris por defecto de Leaflet. Aplica a todas las páginas de mapa, no solo al cockpit. */
+.dark .leaflet-container { background-color: #1a1a1f; }
+.dark .leaflet-control-zoom a { background: #1f1f26; color: #f2f0ec; border-color: rgba(255,255,255,.12); }
+.dark .leaflet-control-attribution { background: rgba(20,20,20,.65); color: #9a968d; }
+.dark .leaflet-control-attribution a { color: #b6b2aa; }
+
+/* ============================================================================
+   COCKPIT · KIT EXTENDIDO (DisTrack OS — Fase 1)
+   ----------------------------------------------------------------------------
+   Componentes reutilizables por TODAS las superficies nuevas (hubs 360, pipelines
+   de workflow, homes por rol, gráficos). Todo bajo `.distrack-cockpit`, con los
+   mismos tokens oscuros --ck-*. Cero CDN.
+   ========================================================================== */
+
+/* ---- Hub 360 (cabecera de entidad + pestañas) ---- */
+.distrack-cockpit .ck-hub__head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+.distrack-cockpit .ck-hub__title { font-family:var(--distrack-font-display); font-weight:800; font-size:clamp(1.5rem,3vw,2.1rem); line-height:1.05; color:var(--ck-ink); }
+.distrack-cockpit .ck-hub__sub { color:var(--ck-ink-2); font-size:.9rem; margin-top:.25rem; }
+.distrack-cockpit .ck-hub__sub .ck-mono { color:var(--ck-ink-3); }
+.distrack-cockpit .ck-tabs { display:flex; gap:.35rem; flex-wrap:wrap; margin-top:1.1rem; border-bottom:1px solid var(--ck-line); padding-bottom:.1rem; }
+.distrack-cockpit .ck-tab { font-size:.86rem; font-weight:600; color:var(--ck-ink-3); padding:.5rem .8rem; border-radius:9px 9px 0 0; border:1px solid transparent; border-bottom:none; cursor:pointer; background:transparent; position:relative; top:1px; transition:color .15s, background .15s; }
+.distrack-cockpit .ck-tab:hover { color:var(--ck-ink); }
+.distrack-cockpit .ck-tab.ck-tab--on { color:var(--ck-ink); background:var(--ck-card); border-color:var(--ck-line); }
+.distrack-cockpit .ck-tab.ck-tab--on::after { content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--ck-agent); }
+.distrack-cockpit .ck-tab .ck-tab__n { font-family:var(--distrack-font-mono); font-size:.72rem; margin-left:.3rem; color:var(--ck-ink-3); }
+
+/* ---- Section (bloque titulado dentro de una página) ---- */
+.distrack-cockpit .ck-section { margin-top:1.4rem; }
+.distrack-cockpit .ck-section__head { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:.7rem; }
+.distrack-cockpit .ck-section__title { font-family:var(--distrack-font-display); font-weight:800; font-size:1.1rem; color:var(--ck-ink); letter-spacing:.01em; }
+
+/* ---- Grid helpers ---- */
+.distrack-cockpit .ck-grid { display:grid; gap:14px; }
+.distrack-cockpit .ck-grid--2 { grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+.distrack-cockpit .ck-grid--3 { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+.distrack-cockpit .ck-grid--4 { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); }
+
+/* ---- Pipeline / kanban por estado ---- */
+.distrack-cockpit .ck-pipeline { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(220px,1fr); gap:12px; overflow-x:auto; padding-bottom:6px; }
+@media (max-width:720px){ .distrack-cockpit .ck-pipeline { grid-auto-flow:row; grid-auto-columns:auto; grid-template-columns:1fr; } }
+.distrack-cockpit .ck-col { background:var(--ck-canvas-2); border:1px solid var(--ck-line); border-radius:14px; padding:12px; min-width:0; display:flex; flex-direction:column; }
+.distrack-cockpit .ck-col__head { display:flex; align-items:center; justify-content:space-between; font-family:var(--distrack-font-display); font-weight:800; font-size:.82rem; letter-spacing:.04em; text-transform:uppercase; color:var(--ck-ink-2); margin-bottom:.6rem; }
+.distrack-cockpit .ck-col__head .ck-col__n { font-family:var(--distrack-font-mono); color:var(--ck-ink-3); }
+.distrack-cockpit .ck-col__body { display:flex; flex-direction:column; gap:7px; min-height:8px; }
+.distrack-cockpit .ck-ticket { background:var(--ck-card); border:1px solid var(--ck-line); border-radius:11px; padding:10px 11px; transition:transform .15s, border-color .15s; display:block; width:100%; text-align:left; cursor:pointer; }
+.distrack-cockpit .ck-ticket:hover { transform:translateY(-2px); border-color:var(--ck-line-strong); }
+.distrack-cockpit .ck-ticket__ref { font-family:var(--distrack-font-mono); font-size:.7rem; color:var(--ck-ink-3); }
+.distrack-cockpit .ck-ticket__title { color:var(--ck-ink); font-size:.86rem; margin-top:2px; font-weight:500; }
+.distrack-cockpit .ck-ticket__meta { color:var(--ck-ink-3); font-size:.74rem; margin-top:3px; }
+.distrack-cockpit .ck-ticket--late { border-left:3px solid var(--ck-red); }
+.distrack-cockpit .ck-ticket--warn { border-left:3px solid var(--ck-amber); }
+.distrack-cockpit .ck-ticket--done { border-left:3px solid var(--ck-green); }
+.distrack-cockpit .ck-ticket--agent { border-left:3px solid var(--ck-agent); }
+
+/* ---- Chart (SVG, auto-hospedado) ---- */
+.distrack-cockpit .ck-chart { background:var(--ck-card); border:1px solid var(--ck-line); border-radius:14px; padding:14px 16px; }
+.distrack-cockpit .ck-chart__head { display:flex; align-items:baseline; justify-content:space-between; gap:.5rem; }
+.distrack-cockpit .ck-chart__label { font-size:.66rem; letter-spacing:.07em; text-transform:uppercase; color:var(--ck-ink-3); }
+.distrack-cockpit .ck-chart__big { font-family:var(--distrack-font-display); font-weight:800; font-size:1.5rem; color:var(--ck-ink); }
+.distrack-cockpit .ck-chart__big .u { font-size:.5em; color:var(--ck-ink-3); margin-left:.1em; }
+.distrack-cockpit .ck-chart svg { width:100%; display:block; margin-top:8px; }
+.distrack-cockpit .ck-chart .ck-axis { stroke:var(--ck-line); stroke-width:1; }
+.distrack-cockpit .ck-chart .ck-grid-l { stroke:rgba(255,255,255,.05); stroke-width:1; }
+.distrack-cockpit .ck-chart .ck-line { fill:none; stroke:var(--ck-agent); stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; }
+.distrack-cockpit .ck-chart .ck-line--red { stroke:var(--ck-red); }
+.distrack-cockpit .ck-chart .ck-line--green { stroke:var(--ck-green); }
+.distrack-cockpit .ck-chart .ck-bar { fill:var(--ck-agent); }
+.distrack-cockpit .ck-chart .ck-bar--red { fill:var(--ck-red); }
+.distrack-cockpit .ck-chart .ck-bar--green { fill:var(--ck-green); }
+.distrack-cockpit .ck-chart .ck-bar--amber { fill:var(--ck-amber); }
+.distrack-cockpit .ck-chart text { fill:var(--ck-ink-3); font-family:var(--distrack-font-mono); font-size:9px; }
+.distrack-cockpit .ck-chart .ck-dot { fill:var(--ck-agent); }
+/* sparkline inline */
+.distrack-cockpit .ck-spark { width:100%; height:38px; display:block; }
+
+/* ---- Donut / gauge ---- */
+.distrack-cockpit .ck-donut__track { fill:none; stroke:var(--ck-line); stroke-width:10; }
+.distrack-cockpit .ck-donut__val { fill:none; stroke:var(--ck-agent); stroke-width:10; stroke-linecap:round; transform:rotate(-90deg); transform-origin:center; }
+
+/* ---- kbd + command palette ---- */
+.distrack-cockpit .ck-kbd, .ck-kbd { font-family:var(--distrack-font-mono); font-size:.66rem; border:1px solid var(--ck-line-strong); border-bottom-width:2px; border-radius:5px; padding:.08rem .34rem; color:var(--ck-ink-2); background:rgba(255,255,255,.03); }
+
+/* Command palette (global, montado por render hook) */
+.dtk-cmd-overlay { position:fixed; inset:0; z-index:9999; background:rgba(8,8,10,.62); backdrop-filter:blur(4px); display:flex; align-items:flex-start; justify-content:center; padding:12vh 16px 16px; }
+.dtk-cmd-overlay[hidden] { display:none !important; }
+.dtk-cmd { width:100%; max-width:640px; background:#111116; border:1px solid rgba(255,255,255,.14); border-radius:16px; overflow:hidden; box-shadow:0 40px 80px -30px rgba(0,0,0,.9); font-family:'Barlow',ui-sans-serif,system-ui,sans-serif; }
+.dtk-cmd__inp { display:flex; align-items:center; gap:10px; padding:15px 17px; border-bottom:1px solid rgba(255,255,255,.08); }
+.dtk-cmd__inp svg { color:#827e76; flex:none; }
+.dtk-cmd__inp input { flex:1; background:transparent; border:0; outline:none; color:#f3f1ec; font-size:1.02rem; font-family:'Barlow',sans-serif; min-width:0; }
+.dtk-cmd__inp input::placeholder { color:#6f6b64; }
+.dtk-cmd__results { max-height:52vh; overflow-y:auto; padding:6px; }
+.dtk-cmd__group { font-size:.64rem; letter-spacing:.1em; text-transform:uppercase; color:#6f6b64; padding:8px 10px 4px; }
+.dtk-cmd__item { display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:10px; color:#e9e7e2; text-decoration:none; cursor:pointer; }
+.dtk-cmd__item:hover, .dtk-cmd__item.is-active { background:rgba(139,123,240,.16); }
+.dtk-cmd__item .ki { width:28px; height:28px; border-radius:8px; background:#1f1f26; display:grid; place-items:center; color:#b6a9ff; flex:none; font-family:var(--distrack-font-mono); font-size:.72rem; }
+.dtk-cmd__item .tx { min-width:0; }
+.dtk-cmd__item .tx b { font-weight:600; font-size:.9rem; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dtk-cmd__item .tx small { color:#827e76; font-size:.74rem; font-family:var(--distrack-font-mono); }
+.dtk-cmd__item .go { margin-left:auto; color:#6f6b64; font-size:.66rem; font-family:var(--distrack-font-mono); flex:none; }
+.dtk-cmd__empty { padding:28px 16px; text-align:center; color:#6f6b64; font-size:.86rem; }
+.dtk-cmd__foot { display:flex; gap:14px; padding:10px 14px; border-top:1px solid rgba(255,255,255,.08); color:#6f6b64; font-size:.7rem; }
+.dtk-cmd__foot span { display:inline-flex; align-items:center; gap:5px; }
+
+/* Botón buscador en el topbar que abre el palette */
+.dtk-cmd-trigger { display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); color:#9a968d; border-radius:10px; padding:.42rem .7rem; font-size:.82rem; cursor:pointer; font-family:'Barlow',sans-serif; }
+.dtk-cmd-trigger:hover { border-color:rgba(255,255,255,.2); color:#d7d3cb; }
+.dtk-cmd-trigger .ck-kbd { margin-left:4px; }
+
+/* ---- Empty state ---- */
+.distrack-cockpit .ck-empty { border:1px dashed var(--ck-line-strong); border-radius:14px; padding:2rem 1rem; text-align:center; color:var(--ck-ink-3); }
+.distrack-cockpit .ck-empty__title { font-weight:700; color:var(--ck-ink-2); font-size:.95rem; }
+.distrack-cockpit .ck-empty__hint { font-size:.82rem; margin-top:.3rem; }
+
+/* ---- Botón (wrapper ya existe .ck-btn; variantes de tamaño) ---- */
+.distrack-cockpit .ck-btn--sm { padding:.35rem .6rem; font-size:.76rem; border-radius:8px; }
+.distrack-cockpit .ck-btn--block { width:100%; }
+
+/* ---- data-list (pares etiqueta/valor para hubs) ---- */
+.distrack-cockpit .ck-dl { display:grid; grid-template-columns:auto 1fr; gap:.5rem 1rem; }
+.distrack-cockpit .ck-dl dt { color:var(--ck-ink-3); font-size:.8rem; }
+.distrack-cockpit .ck-dl dd { color:var(--ck-ink); font-size:.86rem; margin:0; text-align:right; font-variant-numeric:tabular-nums; }
+
+/* ===========================================================================
+   HUB 360 — detalle de entidad (DisTrack OS · Fase 2)
+   Piezas que el kit base no cubría: cabecera con foto, grilla de fotos y filas
+   de eventos (alertas / incidentes / documentos). Tokens oscuros heredados.
+   =========================================================================== */
+[x-cloak] { display: none !important; }
+
+.distrack-cockpit .ck-hub__id { display: flex; gap: 1rem; align-items: center; min-width: 0; }
+.distrack-cockpit .ck-hub__photo {
+    width: 76px; height: 76px; border-radius: 14px; object-fit: cover; flex: none;
+    background: var(--ck-neutral-bg); border: 1px solid var(--ck-line);
+}
+.distrack-cockpit .ck-hub__pills { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .55rem; }
+.distrack-cockpit .ck-hub__aside { display: flex; flex-direction: column; gap: .45rem; align-items: flex-end; text-align: right; }
+
+/* Filas de eventos: alertas, incidentes, documentos. */
+.distrack-cockpit .ck-events { display: flex; flex-direction: column; }
+.distrack-cockpit .ck-event { display: flex; align-items: center; gap: .65rem; padding: .6rem 0; border-top: 1px solid var(--ck-line); }
+.distrack-cockpit .ck-event:first-child { border-top: none; }
+.distrack-cockpit .ck-event__ic { width: .6rem; height: .6rem; border-radius: 999px; background: var(--ck-ink-3); flex: none; }
+.distrack-cockpit .ck-event__ic--red { background: var(--ck-red); }
+.distrack-cockpit .ck-event__ic--amber { background: var(--ck-amber); }
+.distrack-cockpit .ck-event__ic--agent { background: var(--ck-agent); }
+.distrack-cockpit .ck-event__ic--green { background: var(--ck-green); }
+.distrack-cockpit .ck-event__tx { flex: 1; min-width: 0; font-size: .84rem; color: var(--ck-ink); }
+.distrack-cockpit .ck-event__tx small { display: block; color: var(--ck-ink-3); font-size: .72rem; margin-top: .1rem; }
+.distrack-cockpit .ck-event__when { font-family: var(--distrack-font-mono); font-size: .72rem; color: var(--ck-ink-3); white-space: nowrap; }
+
+/* Grilla de fotos del vehículo (4 lados). */
+.distrack-cockpit .ck-photos { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.distrack-cockpit .ck-photos figure { margin: 0; }
+.distrack-cockpit .ck-photos img {
+    width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px;
+    background: var(--ck-neutral-bg); border: 1px solid var(--ck-line);
+}
+.distrack-cockpit .ck-photos figcaption { font-size: .72rem; color: var(--ck-ink-3); margin-top: .35rem; text-align: center; }
+
+/* ============================ Gantt de despacho (Fase 3) ============================ */
+.distrack-cockpit .ck-gantt {
+    background: var(--ck-card);
+    border: 1px solid var(--ck-line);
+    border-radius: 14px;
+    overflow: hidden;
+}
+.distrack-cockpit .ck-gantt__row {
+    display: flex;
+    align-items: stretch;
+    border-top: 1px solid var(--ck-line);
+    min-height: 46px;
+}
+.distrack-cockpit .ck-gantt__row--axis { border-top: 0; background: rgba(255, 255, 255, 0.02); min-height: 30px; }
+.distrack-cockpit .ck-gantt__label {
+    flex: 0 0 180px;
+    width: 180px;
+    padding: 6px 12px;
+    border-right: 1px solid var(--ck-line);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+}
+.distrack-cockpit .ck-gantt__label--axis { justify-content: center; font-size: .72rem; color: var(--ck-ink-3); }
+.distrack-cockpit .ck-gantt__plate { font-weight: 700; font-size: .82rem; letter-spacing: .02em; }
+.distrack-cockpit .ck-gantt__driver { font-size: .74rem; color: var(--ck-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.distrack-cockpit .ck-gantt__count { font-size: .68rem; color: var(--ck-ink-3); }
+.distrack-cockpit .ck-gantt__track { position: relative; flex: 1 1 auto; min-width: 0; }
+.distrack-cockpit .ck-gantt__track--axis { height: 30px; }
+.distrack-cockpit .ck-gantt__grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ck-line); }
+.distrack-cockpit .ck-gantt__tick { position: absolute; top: 0; bottom: 0; transform: translateX(-50%); display: flex; align-items: center; }
+.distrack-cockpit .ck-gantt__tick-label { font-size: .68rem; color: var(--ck-ink-3); padding: 0 4px; }
+.distrack-cockpit .ck-gantt__stop {
+    position: absolute;
+    top: 50%;
+    transform: translate(-6px, -50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px 2px 5px;
+    border-radius: 999px;
+    background: var(--ck-agent-bg);
+    border: 1px solid var(--ck-line-strong);
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: default;
+}
+.distrack-cockpit .ck-gantt__stop:hover { z-index: 5; max-width: none; background: var(--ck-card-2); }
+.distrack-cockpit .ck-gantt__dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; background: var(--ck-agent); }
+.distrack-cockpit .ck-gantt__stop-label { font-size: .7rem; color: var(--ck-ink-1, #e8e6e3); overflow: hidden; text-overflow: ellipsis; }
+.distrack-cockpit .ck-gantt__stop--done { background: var(--ck-green-bg); }
+.distrack-cockpit .ck-gantt__stop--done .ck-gantt__dot { background: var(--ck-green); }
+.distrack-cockpit .ck-gantt__stop--late { background: var(--ck-red-bg); }
+.distrack-cockpit .ck-gantt__stop--late .ck-gantt__dot { background: var(--ck-red); }
+.distrack-cockpit .ck-gantt__stop--warn { background: var(--ck-amber-bg); }
+.distrack-cockpit .ck-gantt__stop--warn .ck-gantt__dot { background: var(--ck-amber); }
+
+/* Confirmación de aprobación en dos pasos (Fase 4 — flujos pulidos). */
+.distrack-cockpit .ck-approve__confirm { display: inline-flex; align-items: center; gap: .4rem; }
+.distrack-cockpit .ck-approve__ask { font-size: .76rem; color: var(--ck-ink-2); }

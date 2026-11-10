@@ -39,9 +39,9 @@ final readonly class DriverRouteView
     /**
      * Construye la vista desde el agregado, con el enriquecimiento cross-context opcional.
      *
-     * @param array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>}> $enrichmentByShipment
-     *                                                                                                                                                                                                      mapa id de envío => datos del envío (teléfono, referencia, líneas) para cada parada
-     * @param array<string, mixed>|null                                                                                                                                               $routeGeometry        geometría de la ruta (esquema RouteGeometry) o null
+     * @param array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>, destination?: array{type: string, name: string|null, node_code: string|null}}> $enrichmentByShipment
+     *                                                                                                                                                                                                                                                                                    mapa id de envío => datos del envío (teléfono, referencia, líneas, destino) para cada parada
+     * @param array<string, mixed>|null                                                                                                                                                                                                                             $routeGeometry        geometría de la ruta (esquema RouteGeometry) o null
      */
     public static function fromRoute(
         VehicleRoute $route,
@@ -72,7 +72,7 @@ final readonly class DriverRouteView
     /**
      * Construye la vista de una parada aplicando su enriquecimiento (si lo hay) por id de envío.
      *
-     * @param array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>}> $enrichmentByShipment
+     * @param array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>, destination?: array{type: string, name: string|null, node_code: string|null}}> $enrichmentByShipment
      */
     private static function enrichStop(RouteStop $stop, array $enrichmentByShipment): RouteStopView
     {
@@ -83,6 +83,7 @@ final readonly class DriverRouteView
             $data['customer_phone'] ?? null,
             $data['address_reference'] ?? null,
             $data['items'] ?? [],
+            $data['destination'] ?? null,
         );
     }
 

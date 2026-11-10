@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Presentation\Filament;
 
+use App\Filament\Support\RequestScopedQuery;
 use BackedEnum;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
@@ -40,7 +41,14 @@ final class PlannedStopResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-flag';
 
-    protected static ?int $navigationSort = 12;
+    protected static ?int $navigationSort = 32;
+
+    // Fuera del menú: una parada planificada pertenece al ENVÍO (y a su plan); su hogar es la ficha 360 del
+    // envío (sección «Gestión»), que abre la lista acotada por `?shipment=`. No es un ítem CRUD suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationGroup(): string
     {
@@ -89,6 +97,8 @@ final class PlannedStopResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Al abrir desde la ficha del envío, `?shipment=<id>` acota a las paradas planificadas de ESE envío.
+            ->modifyQueryUsing(RequestScopedQuery::by('shipment', 'shipment_id'))
             ->columns([
                 // Día del plan y placa del camión vía relación con Planning/Fleet (no UUID plan_id).
                 TextColumn::make('plan.plan_date')

@@ -36,6 +36,8 @@ final readonly class BroadcastingLivePositionBroadcaster implements LivePosition
         try {
             $vehicleId = $ping->vehicleId();
             $plate = $this->plates->label($vehicleId);
+            // Nodo base del vehículo (misma lectura en lote que la placa): acota el canal por nodo.
+            $homeBaseNode = $this->plates->homeBaseNode($vehicleId);
             $status = $this->statusOf($ping, $moving);
 
             $payload = [
@@ -61,6 +63,7 @@ final readonly class BroadcastingLivePositionBroadcaster implements LivePosition
                 $payload['lng'],
                 $status,
                 $payload['occurred_at'],
+                $homeBaseNode,
             );
 
             // Difundir tras el commit de la ingesta (si hay transacción); fuera de ella, de inmediato.

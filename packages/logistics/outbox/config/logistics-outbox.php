@@ -5,6 +5,7 @@ use Commerce\Cart\Infrastructure\Dispatch\OrderPlacedCartConverter;
 use Commerce\Invoicing\Infrastructure\Dispatch\OrderPaidInvoiceDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\OrderPaidShipmentDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\PaymentCapturedOrderDispatcher;
+use Commerce\Payments\Infrastructure\Dispatch\OrderCancelledRefundDispatcher;
 use Commerce\Search\Infrastructure\Dispatch\CatalogProductIndexerDispatcher;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
 use Logistics\Inventory\Infrastructure\Dispatch\GoodsReceivedStockDispatcher;
@@ -16,6 +17,9 @@ use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationD
 use Logistics\Outbox\Infrastructure\Dispatch\FanOutMessageDispatcher;
 use Logistics\Outbox\Infrastructure\Dispatch\NullMessageDispatcher;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
+use Logistics\Promise\Infrastructure\Dispatch\OrderCancelledCupoReleaseDispatcher;
+use Logistics\Promise\Infrastructure\Dispatch\OrderPaidCupoConfirmDispatcher;
+use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatcher;
 
 // Configuración del Transactional Outbox (ADR 002). Valores afinables por entorno vía .env.
 return [
@@ -123,6 +127,8 @@ return [
         'payments.failed' => CommerceEventNotificationDispatcher::class,
         'orders.order_paid' => FanOutMessageDispatcher::class,
         'orders.order_placed' => FanOutMessageDispatcher::class,
+        // Cancelación de orden (ADR 020): varios reactores (fulfillment + reembolso) → abanico.
+        'orders.order_cancelled' => FanOutMessageDispatcher::class,
     ],
 
     // Abanico por evento: eventos que disparan reacciones en varios contextos a la vez. El
@@ -144,6 +150,10 @@ return [
             // Fulfillment: crea el envío en logística (ReceiveShipment, idempotente por ('commerce', orderId))
             // y pasa la orden a "fulfilling". Es el puente comercio → última milla.
             OrderPaidShipmentDispatcher::class,
+            // Cupo (promise): confirma el cupo que la orden había reservado antes de pagar, para que el
+            // barrido de vencimiento no lo libere ahora que la orden está pagada (ADR 020). Va después
+            // del fulfillment para que el envío ya exista al conciliar la franja.
+            OrderPaidCupoConfirmDispatcher::class,
             // Facturación: emite el documento fiscal de la orden (IssueInvoiceForOrder).
             OrderPaidInvoiceDispatcher::class,
         ],
@@ -162,6 +172,17 @@ return [
             PaymentCapturedOrderDispatcher::class,
             // Notificaciones: aviso "pago confirmado".
             CommerceEventNotificationDispatcher::class,
+        ],
+
+        // Cancelación de orden (ADR 020): reacciona según la etapa del envío y reembolsa si estaba pagada.
+        'orders.order_cancelled' => [
+            // Fulfillment (shipments): cancela el envío o dispara la devolución según su estado.
+            OrderCancelledFulfillmentDispatcher::class,
+            // Pagos: reembolsa si la orden estaba pagada (idempotente; no-op si no estaba capturada).
+            OrderCancelledRefundDispatcher::class,
+            // Cupo (promise): libera el cupo reservado/confirmado y lo devuelve a capacity, en cualquier
+            // etapa (pre o post pago) y venga de POS / manual / cron de expiración (ADR 020).
+            OrderCancelledCupoReleaseDispatcher::class,
         ],
     ],
 

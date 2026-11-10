@@ -30,6 +30,16 @@ return [
             Route::post('reprint', [LabelController::class, 'reprint'])->name('reprint');
             Route::get('zpl', [LabelController::class, 'zpl'])->name('zpl');
         });
+
+        // Líneas de despacho del pedido (pantalla de etiquetado por producto): producto + origen/destino
+        // humanos + envío (agrupación multishipping) + autorización + estado de etiqueta, por línea.
+        Route::get('orders/{orderNumber}/dispatch-lines', [LabelController::class, 'dispatchLines'])
+            ->name('orders.dispatch-lines');
+
+        // FALLBACK ONLINE: resuelve una etiqueta escaneada (ULID del QR) al bulto físico + envío. El flujo
+        // normal es offline-first (label_id→unit_id ya viene en EmittedLabel y UnitTracking cacheados).
+        Route::get('labels/{labelId}/resolve', [LabelController::class, 'resolveUnit'])
+            ->name('labels.resolve');
     },
 
     // Puerta integrations — procesos internos (worker de planificación: pre-emisión al publicar un plan).

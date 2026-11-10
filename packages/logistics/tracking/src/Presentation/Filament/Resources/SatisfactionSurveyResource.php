@@ -46,12 +46,12 @@ final class SatisfactionSurveyResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Operations');
+        return __('Customer experience');
     }
 
     public static function getNavigationSort(): int
     {
-        return 41;
+        return 40;
     }
 
     public static function getNavigationLabel(): string

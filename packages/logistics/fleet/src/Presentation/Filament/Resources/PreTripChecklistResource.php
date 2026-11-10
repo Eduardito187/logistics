@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Fleet\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use BackedEnum;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
@@ -28,6 +29,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pag
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pages\ListPreTripChecklists;
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pages\ViewPreTripChecklist;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Resource de administración del checklist pre-salida (inspección ejecutada sobre un vehículo).
@@ -40,13 +42,21 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class PreTripChecklistResource extends Resource
 {
+    // Fuera del menú: este recurso DEPENDE del vehículo; su hogar es la ficha 360 del vehículo
+    // (sección «Gestión del vehículo»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = PreTripInspectionModel::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-clipboard-document-check';
 
-    protected static ?int $navigationSort = 18;
+    protected static ?int $navigationSort = 36;
 
     public static function getNavigationGroup(): string
     {
@@ -158,6 +168,8 @@ final class PreTripChecklistResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?vehicle=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('vehicle', 'vehicle_id'))
             ->columns([
                 // Placa legible del vehículo vía la relación Eloquent (eager-cargada), no el UUID.
                 TextColumn::make('vehicle.plate')

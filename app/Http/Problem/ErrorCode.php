@@ -26,6 +26,10 @@ enum ErrorCode: string
     case MissingCredentials = 'missing_credentials';
     case InvalidCredentials = 'invalid_credentials';
     case DeviceRevoked = 'device_revoked';
+    // El dispositivo fue DESALOJADO por una sesión nueva del mismo tipo (1-por-plataforma). Distinto del
+    // token expirado o del equipo revocado por baja: la app debe mostrar "iniciaste sesión en otro
+    // dispositivo" y cerrar.
+    case SessionSuperseded = 'session_superseded';
 
     // 403 — autorización.
     case Forbidden = 'forbidden';
@@ -62,7 +66,7 @@ enum ErrorCode: string
     {
         return match ($this) {
             self::BadRequest, self::InvalidIdempotencyKey => 400,
-            self::Unauthenticated, self::MissingCredentials, self::InvalidCredentials, self::DeviceRevoked => 401,
+            self::Unauthenticated, self::MissingCredentials, self::InvalidCredentials, self::DeviceRevoked, self::SessionSuperseded => 401,
             self::Forbidden, self::InsufficientRole, self::InsufficientScope => 403,
             self::NotFound => 404,
             self::MethodNotAllowed => 405,
@@ -88,6 +92,7 @@ enum ErrorCode: string
             self::MissingCredentials => 'Missing credentials',
             self::InvalidCredentials => 'Invalid credentials',
             self::DeviceRevoked => 'Device revoked',
+            self::SessionSuperseded => 'Session superseded',
             self::Forbidden => 'Forbidden',
             self::InsufficientRole => 'Insufficient role',
             self::InsufficientScope => 'Insufficient scope',

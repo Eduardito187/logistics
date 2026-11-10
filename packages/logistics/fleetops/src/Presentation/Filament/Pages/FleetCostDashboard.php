@@ -110,7 +110,7 @@ final class FleetCostDashboard extends Page
 
     public static function getNavigationSort(): int
     {
-        return 6;
+        return 2;
     }
 
     public static function getNavigationLabel(): string

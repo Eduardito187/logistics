@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,11 @@ use Logistics\Coverage\Domain\ValueObject\GeoAreaId;
 use Logistics\Coverage\Domain\ValueObject\Polygon;
 use Logistics\Coverage\Domain\ValueObject\ZoneId;
 use Logistics\Coverage\Domain\ValueObject\ZoneRules;
+use Logistics\Coverage\Presentation\Filament\Resource\GeoAreaResource;
+use Logistics\Coverage\Presentation\Filament\Resource\ZoneResource;
+use Logistics\Network\Presentation\Filament\Resources\NodeResource;
+use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Throwable;
 
 /**
  * Mapa interactivo de zonas de cobertura sobre OpenStreetMap (Leaflet + Geoman).
@@ -23,9 +29,13 @@ use Logistics\Coverage\Domain\ValueObject\ZoneRules;
  */
 final class CoverageMap extends Page
 {
+    // Herramienta de planificación de red: solo oficina (administrador/supervisor). Una tienda o un rol
+    // de campo no gestiona zonas de cobertura.
+    use OfficeOnly;
+
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-map';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 1;
 
     protected string $view = 'filament.pages.coverage-map';
 
@@ -42,14 +52,39 @@ final class CoverageMap extends Page
         return __('Network');
     }
 
+    // Cockpit geográfico unificado (B13): un solo mapa con CAPAS (zonas de cobertura + nodos de la red)
+    // sobre el mismo lienzo, en vez de "Mapa de coberturas" y "Mapa de nodos" como ítems sueltos del menú.
     public static function getNavigationLabel(): string
     {
-        return __('Coverage map');
+        return __('Geography');
     }
 
     public function getTitle(): string
     {
-        return __('Coverage map');
+        return __('Geography');
+    }
+
+    /**
+     * Accesos «avanzados» a la gestión tabular de las entidades que viven dentro del mapa (zonas y áreas
+     * geográficas): el mapa es el hogar principal, pero el CRUD detallado sigue disponible desde aquí —
+     * mismo patrón que el calendario de despacho con cupos/bloqueos. No ensucia el menú lateral.
+     *
+     * @return array<int, Action>
+     */
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('coverageZones')
+                ->label(__('Coverage Zones'))
+                ->icon('heroicon-o-map')
+                ->color('gray')
+                ->url(ZoneResource::getUrl('index')),
+            Action::make('geographicAreas')
+                ->label(__('Geographic Areas'))
+                ->icon('heroicon-o-globe-americas')
+                ->color('gray')
+                ->url(GeoAreaResource::getUrl('index')),
+        ];
     }
 
     /**
@@ -64,6 +99,9 @@ final class CoverageMap extends Page
             // getViewData se recomputa en cada render de Livewire, así que al cambiar parentAreaId
             // (prop `live`) el dropdown de zonas se re-renderiza filtrado automáticamente.
             'zoneOptions' => $this->zoneOptions(),
+            // Capa de nodos de la red (marcadores): el mapa de nodos se absorbe aquí como una capa
+            // conmutable, para tener un único cockpit geográfico.
+            'nodes' => $this->nodes(),
         ];
     }
 
@@ -171,7 +209,7 @@ final class CoverageMap extends Page
             $this->zoneId = $id->toString();
             Notification::make()->title(__('Coverage zone saved'))->success()->send();
             $this->dispatch('zones-updated', zones: $this->zonesGeoJson());
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Notification::make()
                 ->title(__('Could not save the zone'))
                 ->body($e->getMessage())
@@ -251,6 +289,46 @@ final class CoverageMap extends Page
             ->orderBy('name')
             ->pluck('name', 'id')
             ->all();
+    }
+
+    /**
+     * Nodos de la red como marcadores para la capa de nodos del mapa. Cada uno enlaza a su ficha 360
+     * (NodeResource::view) para no dejar el marcador huérfano. Tolerante: si falta la tabla o la ruta,
+     * devuelve lo que pueda sin romper el mapa.
+     *
+     * @return list<array{code: string, name: string, type: string, status: string, lat: float, lng: float, url: ?string}>
+     */
+    private function nodes(): array
+    {
+        try {
+            return array_values(DB::table('network_nodes')
+                ->select('id', 'code', 'name', 'type', 'lat', 'lng', 'status')
+                ->whereNotNull('lat')
+                ->whereNotNull('lng')
+                ->orderBy('code')
+                ->get()
+                ->map(function ($r): array {
+                    $url = null;
+                    try {
+                        $url = NodeResource::getUrl('view', ['record' => (string) $r->id]);
+                    } catch (Throwable) {
+                        $url = null;
+                    }
+
+                    return [
+                        'code' => (string) $r->code,
+                        'name' => (string) $r->name,
+                        'type' => (string) $r->type,
+                        'status' => (string) $r->status,
+                        'lat' => (float) $r->lat,
+                        'lng' => (float) $r->lng,
+                        'url' => $url,
+                    ];
+                })
+                ->all());
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     /**

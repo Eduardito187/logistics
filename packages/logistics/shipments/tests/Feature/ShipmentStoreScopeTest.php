@@ -75,6 +75,37 @@ it('pagina /app/shipments en SQL: devuelve la página pedida y el total real (no
         ->and($response->json('data.1.id'))->toBe($all[3]);
 });
 
+it('pagina /app/shipments por cursor (keyset): primera página, cursor y segunda sin solapar', function (): void {
+    $node = Uuid::generate()->value;
+    for ($i = 0; $i < 5; $i++) {
+        ShipmentRecord::factory()->forNode($node)->create();
+    }
+    $all = ShipmentRecord::query()->where('destination_node_id', $node)->orderBy('id')->pluck('id')->all();
+
+    $user = User::factory()->create();
+    $user->assignRole(Role::Supervisor);
+    test()->actingAs($user, 'sanctum');
+
+    // Primera página en modo cursor (cursor vacío = arranque): 2 filas + next_cursor opaco.
+    $first = test()->getJson('/api/v1/app/shipments?cursor=&per_page=2&destination_node_id='.$node)
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('meta.per_page', 2)
+        ->assertJsonPath('meta.has_more', true)
+        ->assertJsonPath('data.0.id', $all[0])
+        ->assertJsonPath('data.1.id', $all[1]);
+
+    $cursor = $first->json('meta.next_cursor');
+    expect($cursor)->toBeString();
+
+    // Segunda página desde el cursor: continúa justo después, sin solapar con la primera.
+    test()->getJson('/api/v1/app/shipments?cursor='.urlencode((string) $cursor).'&per_page=2&destination_node_id='.$node)
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.id', $all[2])
+        ->assertJsonPath('data.1.id', $all[3]);
+});
+
 it('acota /app/shipments al nodo de la tienda y oculta los de otro nodo', function (): void {
     $ownNode = Uuid::generate()->value;
     $otherNode = Uuid::generate()->value;

@@ -34,6 +34,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource\Pages\ListD
 use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource\Pages\ViewDocument;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 use Throwable;
 
 /**
@@ -49,12 +50,13 @@ use Throwable;
 final class DocumentResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = FleetDocumentModel::class;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-document-text';
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 64;
 
     public static function getNavigationGroup(): string
     {
@@ -200,6 +202,19 @@ final class DocumentResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Al abrir desde una ficha 360 («Gestión de <entidad>» → ?vehicle/?driver/?helper=<id>), acota los
+            // documentos a ese dueño (owner_type/owner_id). Reemplaza al deep-link ?tableFilters[...], que en
+            // esta versión de Filament no hidrata el filtro desde la URL. Cubre los TRES dueños posibles.
+            ->modifyQueryUsing(static function (Builder $query): Builder {
+                foreach (['vehicle', 'driver', 'helper'] as $type) {
+                    $id = request()->query($type);
+                    if (is_string($id) && $id !== '') {
+                        return $query->whereRaw('owner_type = ? and owner_id = ?', [$type, $id]);
+                    }
+                }
+
+                return $query;
+            })
             ->columns([
                 TextColumn::make('owner_type')
                     ->label(__('Owner type'))

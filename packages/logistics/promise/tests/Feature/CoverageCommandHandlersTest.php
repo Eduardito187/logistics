@@ -13,6 +13,8 @@ use Logistics\Promise\Application\Command\ExpireReservation\ExpireReservation;
 use Logistics\Promise\Application\Command\ExpireReservation\ExpireReservationHandler;
 use Logistics\Promise\Application\Command\QuotePromise\QuotePromise;
 use Logistics\Promise\Application\Command\QuotePromise\QuotePromiseHandler;
+use Logistics\Promise\Application\Command\ReleasePromiseReservation\ReleasePromiseReservation;
+use Logistics\Promise\Application\Command\ReleasePromiseReservation\ReleasePromiseReservationHandler;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlot;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlotHandler;
 use Logistics\Promise\Application\Command\ReservePromise\ReservePromise;
@@ -119,6 +121,17 @@ function cvpRepo(?DeliveryPromise $seed = null): PromiseRepository
             return array_values(array_map(
                 static fn (DeliveryPromise $p): PromiseId => $p->id(),
                 array_values($this->store),
+            ));
+        }
+
+        public function holdingByShipmentRef(string $shipmentRef): array
+        {
+            return array_values(array_map(
+                static fn (DeliveryPromise $p): PromiseId => $p->id(),
+                array_values(array_filter(
+                    $this->store,
+                    static fn (DeliveryPromise $p): bool => $p->shipmentRef() === $shipmentRef && $p->holdsCapacity(),
+                )),
             ));
         }
     };
@@ -359,6 +372,54 @@ it('rechaza expirar una promesa inexistente', function (): void {
 
     expect(fn () => $handler->handle(new ExpireReservation(PromiseId::generate()->toString())))
         ->toThrow(PromiseException::class);
+});
+
+// ---------------------------------------------------------------------------
+// ReleasePromiseReservationHandler (cancelación de la orden — ADR 020)
+// ---------------------------------------------------------------------------
+
+it('libera por cancelación una promesa reservada (pre-pago) y devuelve su cupo', function (): void {
+    $promise = cvpReservedPromise('AM');
+    $reserver = cvpReserver(true);
+    $handler = new ReleasePromiseReservationHandler(cvpRepo($promise), $reserver, cvpRecorder());
+
+    $handler->handle(new ReleasePromiseReservation($promise->id()->toString()));
+
+    expect($promise->status())->toBe(PromiseStatus::Expired)
+        ->and($reserver->released)->toHaveCount(1);
+});
+
+it('libera por cancelación una promesa CONFIRMADA (post-pago) y devuelve su cupo', function (): void {
+    $promise = cvpReservedPromise('AM');
+    $promise->confirm(new DateTimeImmutable('2026-10-20T06:00:00'));
+    $reserver = cvpReserver(true);
+    $handler = new ReleasePromiseReservationHandler(cvpRepo($promise), $reserver, cvpRecorder());
+
+    $handler->handle(new ReleasePromiseReservation($promise->id()->toString()));
+
+    expect($promise->status())->toBe(PromiseStatus::Expired)
+        ->and($reserver->released)->toHaveCount(1);
+});
+
+it('la liberación es no-op sobre una promesa inexistente (orden sin cupo reservado)', function (): void {
+    $reserver = cvpReserver(true);
+    $handler = new ReleasePromiseReservationHandler(cvpRepo(), $reserver, cvpRecorder());
+
+    $handler->handle(new ReleasePromiseReservation(PromiseId::generate()->toString()));
+
+    expect($reserver->released)->toHaveCount(0);
+});
+
+it('no vuelve a liberar cupo si la promesa ya estaba terminal (reentrega del evento)', function (): void {
+    $promise = cvpReservedPromise('AM');
+    $promise->release();
+    $reserver = cvpReserver(true);
+    $handler = new ReleasePromiseReservationHandler(cvpRepo($promise), $reserver, cvpRecorder());
+
+    $handler->handle(new ReleasePromiseReservation($promise->id()->toString()));
+
+    expect($promise->status())->toBe(PromiseStatus::Expired)
+        ->and($reserver->released)->toHaveCount(0);
 });
 
 // ---------------------------------------------------------------------------

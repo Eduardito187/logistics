@@ -53,4 +53,12 @@ final readonly class CacheInvalidatingPromiseRepository implements PromiseReposi
     {
         return $this->inner->reservedExpiredAt($now);
     }
+
+    /**
+     * @return list<PromiseId>
+     */
+    public function holdingByShipmentRef(string $shipmentRef): array
+    {
+        return $this->inner->holdingByShipmentRef($shipmentRef);
+    }
 }

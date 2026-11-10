@@ -32,6 +32,25 @@ final readonly class DriverProfile
     ) {}
 
     /**
+     * Núcleo de datos personales comunes a chofer/ayudante (sin el teléfono primario, la categoría ni la
+     * ciudad de licencia, que son propios del chofer). Se expone como VO compartido para no duplicar la
+     * forma del perfil entre chofer y ayudante.
+     */
+    public function personal(): PersonalProfile
+    {
+        return new PersonalProfile(
+            $this->photoPath,
+            $this->birthDate,
+            $this->nationalId,
+            $this->phoneSecondary,
+            $this->address,
+            $this->emergencyContactName,
+            $this->emergencyContactPhone,
+            $this->references,
+        );
+    }
+
+    /**
      * Forma primitiva para persistencia y eventos (nunca se serializa el objeto de dominio).
      *
      * @return array{

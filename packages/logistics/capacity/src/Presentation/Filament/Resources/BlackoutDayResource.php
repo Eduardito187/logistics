@@ -26,6 +26,7 @@ use Logistics\Capacity\Presentation\Filament\Support\MunicipalityOptions;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\GeoAreaRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin Filament de días bloqueados de despacho (feriados u otros motivos). Un bloqueo es GLOBAL
@@ -41,11 +42,19 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class BlackoutDayResource extends Resource
 {
+    // Fuera del menú: son datos del CALENDARIO de despacho (cupos/bloqueos por día); su hogar es la
+    // página «Calendario de despacho», desde donde se gestionan. No son ítems sueltos del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = DispatchBlackoutDayRecord::class;
 
-    protected static ?int $navigationSort = 21;
+    protected static ?int $navigationSort = 36;
 
     public static function getNavigationIcon(): string
     {

@@ -47,7 +47,7 @@ final class SettingVersionResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-adjustments-horizontal';
 
-    protected static ?int $navigationSort = 52;
+    protected static ?int $navigationSort = 44;
 
     protected static ?string $recordTitleAttribute = 'key';
 

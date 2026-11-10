@@ -19,6 +19,12 @@ enum EvidenceKind: string
     /** Evidencia de daños: foto del bulto dañado para un reclamo o siniestro. */
     case Damage = 'damage';
 
+    /** Firma manuscrita del cliente al recibir (anti-fraude: se liga al cliente y se valida). */
+    case Signature = 'signature';
+
+    /** Foto del documento de identidad del cliente (carnet): número OCR cruzado contra el cliente. */
+    case IdDocument = 'id_document';
+
     /**
      * Resuelve el tipo desde su código; cualquier valor desconocido o vacío cae a prueba de entrega,
      * el caso por defecto de la subida de fotos.

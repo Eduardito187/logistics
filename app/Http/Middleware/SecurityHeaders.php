@@ -92,12 +92,48 @@ final class SecurityHeaders
             $policy['img-src'][] = $tileOrigin;
         }
 
+        // Si el broadcasting en vivo está activo (Soketi vía protocolo Pusher), permite el WebSocket del
+        // cliente en connect-src. Solo se agrega cuando está habilitado, para no relajar la CSP de más.
+        foreach ($this->broadcastConnectOrigins() as $origin) {
+            if (!in_array($origin, $policy['connect-src'], true)) {
+                $policy['connect-src'][] = $origin;
+            }
+        }
+
         $directives = [];
         foreach ($policy as $directive => $sources) {
             $directives[] = $directive.' '.implode(' ', $sources);
         }
 
         return implode('; ', $directives);
+    }
+
+    /**
+     * Orígenes a permitir en connect-src para el WebSocket del cliente (Soketi), SOLO si el broadcasting
+     * en vivo está activo (BROADCAST_CONNECTION=pusher). Devuelve el origen ws(s):// y el http(s)://
+     * equivalentes (pusher-js usa el WebSocket y, según el entorno, una verificación HTTP). Vacío si el
+     * broadcasting está apagado.
+     *
+     * @return list<string>
+     */
+    private function broadcastConnectOrigins(): array
+    {
+        if (config('broadcasting.default') !== 'pusher') {
+            return [];
+        }
+
+        $host = config('broadcasting.client_ws.host');
+        $port = config('broadcasting.client_ws.port');
+        $scheme = config('broadcasting.client_ws.scheme');
+        if (!is_string($host) || $host === '' || !is_int($port)) {
+            return [];
+        }
+
+        $wsScheme = $scheme === 'https' ? 'wss' : 'ws';
+        $httpScheme = $scheme === 'https' ? 'https' : 'http';
+        $authority = $host.':'.$port;
+
+        return [$wsScheme.'://'.$authority, $httpScheme.'://'.$authority];
     }
 
     /**

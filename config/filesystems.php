@@ -137,6 +137,38 @@ return [
             'report' => false,
         ],
 
+        // Firma manuscrita del cliente (evidencia anti-fraude): privado, PII.
+        'signature' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_SIGNATURE_BUCKET', env('AWS_BUCKET')),
+            'root' => env('AWS_SIGNATURE_BUCKET') ? '' : 'signatures',
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        // Foto del documento de identidad del cliente (evidencia anti-fraude): privado, PII sensible.
+        'id_document' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_ID_DOCUMENT_BUCKET', env('AWS_BUCKET')),
+            'root' => env('AWS_ID_DOCUMENT_BUCKET') ? '' : 'id-documents',
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
         // Collage PNG público que acompaña la notificación al cliente (ADR 006).
         'collages' => [
             'driver' => 's3',

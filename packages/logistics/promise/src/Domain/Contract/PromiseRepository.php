@@ -30,4 +30,14 @@ interface PromiseRepository
      * @return list<PromiseId>
      */
     public function reservedExpiredAt(DateTimeImmutable $now): array;
+
+    /**
+     * Promesas que mantienen cupo tomado para una referencia dada (shipment_ref), es decir en estado
+     * Reserved o Confirmed. Las usa el puente comercio→promise (ADR 020): confirmar al pagar la orden
+     * (las Reserved) y liberar al cancelarla (Reserved y Confirmed). La referencia es un primitivo libre
+     * —el id de la orden comercial se guarda ahí—. Lista vacía si no hay ninguna.
+     *
+     * @return list<PromiseId>
+     */
+    public function holdingByShipmentRef(string $shipmentRef): array;
 }

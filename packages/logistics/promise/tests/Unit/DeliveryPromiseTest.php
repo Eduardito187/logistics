@@ -119,6 +119,57 @@ it('refuses to reserve a promise that is not quoted', function (): void {
         ->toThrow(PromiseException::class, 'cotizada');
 });
 
+it('releases a reserved promise (order cancelled pre-payment), moving to Expired', function (): void {
+    $promise = quotePromise();
+    $promise->reserve(ReservationWindow::until(new DateTimeImmutable('2026-10-18 12:00:00')));
+    $promise->releaseEvents();
+
+    expect($promise->holdsCapacity())->toBeTrue();
+
+    $promise->release();
+
+    $events = $promise->releaseEvents();
+    expect($promise->status())->toBe(PromiseStatus::Expired)
+        ->and($promise->holdsCapacity())->toBeFalse()
+        ->and($events)->toHaveCount(1)
+        ->and($events[0])->toBeInstanceOf(PromiseExpired::class);
+});
+
+it('releases a CONFIRMED promise (order cancelled post-payment), moving to Expired', function (): void {
+    $promise = quotePromise();
+    $promise->reserve(ReservationWindow::until(new DateTimeImmutable('2026-10-18 12:00:00')));
+    $promise->confirm(new DateTimeImmutable('2026-10-18 10:00:00'));
+    $promise->releaseEvents();
+
+    expect($promise->holdsCapacity())->toBeTrue();
+
+    $promise->release();
+
+    $events = $promise->releaseEvents();
+    expect($promise->status())->toBe(PromiseStatus::Expired)
+        ->and($promise->holdsCapacity())->toBeFalse()
+        ->and($events)->toHaveCount(1)
+        ->and($events[0])->toBeInstanceOf(PromiseExpired::class);
+});
+
+it('release is idempotent on a terminal promise (no event, no capacity to free)', function (): void {
+    $promise = quotePromise();
+    $promise->reserve(ReservationWindow::until(new DateTimeImmutable('2026-10-18 12:00:00')));
+    $promise->release();
+    $promise->releaseEvents();
+
+    // Reentrega del evento de cancelación: no vuelve a transicionar ni graba evento.
+    $promise->release();
+
+    expect($promise->status())->toBe(PromiseStatus::Expired)
+        ->and($promise->holdsCapacity())->toBeFalse()
+        ->and($promise->releaseEvents())->toBe([]);
+});
+
+it('does not hold capacity while merely quoted', function (): void {
+    expect(quotePromise()->holdsCapacity())->toBeFalse();
+});
+
 it('reconstitutes without recording events', function (): void {
     $slot = DeliverySlot::of(new DateTimeImmutable('2026-10-20'), 'PM');
     $window = ReservationWindow::until(new DateTimeImmutable('2026-10-18 12:00:00'));

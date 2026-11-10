@@ -145,6 +145,37 @@ final class DeliveryPromise extends AggregateRoot
         ));
     }
 
+    /**
+     * Libera el cupo por una CANCELACIÓN de la orden (no por timeout): válida desde Reserved o Confirmed,
+     * porque una orden puede cancelarse en cualquier etapa, incluso ya confirmada/pagada (ADR 020). A
+     * diferencia de `expire()` —que solo aplica al vencimiento de la ventana desde Reserved— esta cubre
+     * también la promesa confirmada. Es idempotente: en estado terminal (Expired/Quoted) no hace nada,
+     * así una reentrega del evento de cancelación no libera el cupo dos veces. Graba PromiseExpired, de
+     * modo que el cupo se libera por el mismo camino que la expiración y no se agrega superficie de evento.
+     */
+    public function release(): void
+    {
+        if ($this->status !== PromiseStatus::Reserved && $this->status !== PromiseStatus::Confirmed) {
+            return;
+        }
+
+        $this->status = PromiseStatus::Expired;
+
+        $this->recordEvent(new PromiseExpired(
+            $this->id->toString(),
+            $this->shipmentRef,
+            $this->zoneId,
+            $this->slot->dateString(),
+            $this->slot->timeSlot,
+        ));
+    }
+
+    /** Indica si la promesa mantiene cupo tomado en capacity (Reserved o Confirmed). */
+    public function holdsCapacity(): bool
+    {
+        return $this->status === PromiseStatus::Reserved || $this->status === PromiseStatus::Confirmed;
+    }
+
     public function id(): PromiseId
     {
         return $this->id;

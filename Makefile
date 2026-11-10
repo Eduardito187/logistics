@@ -36,6 +36,9 @@ install: ## Setup inicial: build + composer install + key + migrate
 	$(APP) cp -n .env.example .env || true
 	$(APP) php artisan key:generate
 	$(APP) php artisan migrate
+	@# Compila el tema del admin ahora que vendor ya está instalado (durante el `up -d` de arriba el
+	@# servicio `assets` corrió antes de composer y se omitió). En cada `up` posterior se compila solo.
+	$(DC) run --rm assets
 	@echo ""
 	@echo "  ✓ Instalación completa"
 	@echo "  → App:      http://localhost:8110"

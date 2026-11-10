@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Presentation\Http\Request;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rules\File;
 
 /**
  * Validación de la subida de una foto de evidencia (prueba de entrega o daño).
@@ -28,7 +29,9 @@ final class UploadPhotoRequest extends FormRequest
     {
         return [
             'shipment_id' => ['required', 'uuid'],
-            'photo' => ['required', 'file', 'image', 'max:10240'],
+            // Regla-objeto `File::image()` con tope explícito de 10 MB (10·1024 KB); se usa en vez del string
+            // 'max:10240' a propósito (patrón limpio para el análisis de content-length).
+            'photo' => ['required', File::image()->max(10 * 1024)],
             'kind' => ['sometimes', 'string', 'in:pod,damage'],
         ];
     }

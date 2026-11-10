@@ -44,12 +44,12 @@ final class MessageTemplateResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Administration');
+        return __('Messaging');
     }
 
     public static function getNavigationSort(): int
     {
-        return 42;
+        return 32;
     }
 
     public static function getNavigationLabel(): string

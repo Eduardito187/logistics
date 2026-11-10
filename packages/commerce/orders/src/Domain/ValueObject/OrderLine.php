@@ -18,9 +18,12 @@ final readonly class OrderLine
         public string $productName,
         public int $unitPriceCents,
         public int $quantity,
+        // Destino de ESTA línea (multishipping): UUID del nodo de retiro (tienda/CD) al que va, o null
+        // para el domicilio de la orden. Permite que una orden se reparta a varios destinos.
+        public ?string $destinationNodeId = null,
     ) {}
 
-    public static function of(string $sku, string $productName, int $unitPriceCents, int $quantity): self
+    public static function of(string $sku, string $productName, int $unitPriceCents, int $quantity, ?string $destinationNodeId = null): self
     {
         $sku = strtoupper(trim($sku));
         if ($sku === '') {
@@ -36,16 +39,23 @@ final readonly class OrderLine
         if ($quantity < 1) {
             throw OrdersException::because('La cantidad de la línea debe ser al menos 1.');
         }
+        $destinationNodeId = $destinationNodeId !== null && trim($destinationNodeId) !== '' ? trim($destinationNodeId) : null;
 
-        return new self($sku, $productName, $unitPriceCents, $quantity);
+        return new self($sku, $productName, $unitPriceCents, $quantity, $destinationNodeId);
     }
 
     /**
-     * @param array{sku: string, product_name: string, unit_price_cents: int, quantity: int} $data
+     * @param array{sku: string, product_name: string, unit_price_cents: int, quantity: int, destination_node_id?: string|null} $data
      */
     public static function fromArray(array $data): self
     {
-        return new self($data['sku'], $data['product_name'], $data['unit_price_cents'], $data['quantity']);
+        return new self(
+            $data['sku'],
+            $data['product_name'],
+            $data['unit_price_cents'],
+            $data['quantity'],
+            isset($data['destination_node_id']) && is_string($data['destination_node_id']) && $data['destination_node_id'] !== '' ? $data['destination_node_id'] : null,
+        );
     }
 
     public function subtotalCents(): int
@@ -54,7 +64,7 @@ final readonly class OrderLine
     }
 
     /**
-     * @return array{sku: string, product_name: string, unit_price_cents: int, quantity: int}
+     * @return array{sku: string, product_name: string, unit_price_cents: int, quantity: int, destination_node_id: string|null}
      */
     public function toArray(): array
     {
@@ -63,6 +73,7 @@ final readonly class OrderLine
             'product_name' => $this->productName,
             'unit_price_cents' => $this->unitPriceCents,
             'quantity' => $this->quantity,
+            'destination_node_id' => $this->destinationNodeId,
         ];
     }
 }

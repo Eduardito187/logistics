@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Network\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Select;
@@ -25,6 +26,7 @@ use Logistics\Network\Presentation\Filament\Resources\LegResource\Pages\ListLegs
 use Logistics\Network\Presentation\Filament\Resources\LegResource\Pages\ViewLeg;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin Filament de tramos/corredores entre nodos.
@@ -40,7 +42,15 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class LegResource extends Resource
 {
+    // Fuera del menú: depende de la entidad (nodo); su hogar es la ficha 360 de esa entidad
+    // (sección «Gestión»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = LegRecord::class;
 
@@ -143,6 +153,8 @@ final class LegResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?node=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::touching('node', ['from_node_id', 'to_node_id']))
             ->columns([
                 TextColumn::make('fromNode.name')
                     ->label(__('From node'))

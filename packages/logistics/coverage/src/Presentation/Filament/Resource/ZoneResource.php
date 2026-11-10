@@ -57,6 +57,13 @@ final class ZoneResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
+    // Fuera del menú: las zonas se gestionan DENTRO del cockpit geográfico (dibujo/edición del polígono en
+    // el mapa). El CRUD tabular sigue accesible desde el botón «Coverage Zones» del mapa. No es ítem suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationGroup(): string
     {
         return __('Network');

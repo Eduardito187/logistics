@@ -10,6 +10,8 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
+use Logistics\Shipments\Application\Command\CancelShipment\CancelShipment;
+use Logistics\Shipments\Application\Command\CancelShipment\CancelShipmentHandler;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddress;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddressHandler;
 use Logistics\Shipments\Application\Command\ReceiveShipment\ReceiveShipment;
@@ -17,6 +19,7 @@ use Logistics\Shipments\Application\Command\ReceiveShipment\ReceiveShipmentHandl
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlot;
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlotHandler;
 use Logistics\Shipments\Application\Contract\MagentoOrderReader;
+use Logistics\Shipments\Application\Contract\ReturnsWarehouseResolver;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentSpreadsheetParser;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipment;
@@ -27,6 +30,8 @@ use Logistics\Shipments\Application\Query\ListShipmentProducts\ListShipmentProdu
 use Logistics\Shipments\Application\Query\ListShipmentProducts\ListShipmentProductsHandler;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipments;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipmentsHandler;
+use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByCursor;
+use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByCursorHandler;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
 use Logistics\Shipments\Domain\Contract\Geocoder;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
@@ -41,6 +46,7 @@ use Logistics\Shipments\Infrastructure\Magento\HttpMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Magento\NullMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\EloquentShipmentRepository;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentListReader;
+use Logistics\Shipments\Infrastructure\ReadModel\NetworkReturnsWarehouseResolver;
 use Logistics\Shipments\Presentation\Console\PullMagentoOrdersCommand;
 use Logistics\Shipments\Presentation\Console\ReceiveManualShipmentCommand;
 
@@ -59,10 +65,12 @@ final class ShipmentsServiceProvider extends ServiceProvider
      */
     private const HANDLERS = [
         ReceiveShipment::class => ReceiveShipmentHandler::class,
+        CancelShipment::class => CancelShipmentHandler::class,
         SetDeliverySlot::class => SetDeliverySlotHandler::class,
         GeocodeShipmentAddress::class => GeocodeShipmentAddressHandler::class,
         FindShipment::class => FindShipmentHandler::class,
         ListShipments::class => ListShipmentsHandler::class,
+        ListShipmentsByCursor::class => ListShipmentsByCursorHandler::class,
         ListShipmentProducts::class => ListShipmentProductsHandler::class,
         ListLowConfidenceAddresses::class => ListLowConfidenceAddressesHandler::class,
     ];
@@ -76,6 +84,13 @@ final class ShipmentsServiceProvider extends ServiceProvider
         // Lado de lectura (CQRS) del listado de envíos: implementación SQL que empuja los filtros a la
         // base y no reconstruye el agregado (ver ShipmentListReader).
         $this->app->bind(ShipmentListReader::class, DbShipmentListReader::class);
+
+        // Resolución del almacén central de retornos (cancelación con logística inversa): lee la red en
+        // solo lectura por el query builder, sin acoplar el dominio de `network`. Es el último recurso de
+        // OrderCancelledFulfillmentDispatcher (tras el nodo destino del envío y el id por env).
+        $this->app->bind(ReturnsWarehouseResolver::class, function ($app): ReturnsWarehouseResolver {
+            return new NetworkReturnsWarehouseResolver($app->make(ConnectionInterface::class));
+        });
 
         // Parser de planillas de carga (SHP-06): detecta el formato por el contenido. Hoy procesa CSV
         // (librería estándar, sin dependencias) y reconoce binarios de Excel para devolver un error

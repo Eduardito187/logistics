@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
+use App\Filament\Support\TableCsvExport;
 use Filament\Actions\Action;
+use Filament\Actions\BulkActionGroup;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -27,6 +30,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\MaintenanceOrderResource\
 use Logistics\FleetOps\Presentation\Filament\Support\VehiclePlates;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de órdenes de mantenimiento de la flota propia.
@@ -39,7 +43,15 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class MaintenanceOrderResource extends Resource
 {
+    // Fuera del menú: este recurso DEPENDE del vehículo; su hogar es la ficha 360 del vehículo
+    // (sección «Gestión del vehículo»), que enlaza a su lista ya filtrada. No es un ítem suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = MaintenanceOrderRecord::class;
 
@@ -150,6 +162,8 @@ final class MaintenanceOrderResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a un vehículo cuando se abre desde su ficha 360 («Gestión del vehículo» → ?vehicle=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('vehicle', 'vehicle_id'))
             ->defaultSort('scheduled_at', 'desc')
             ->columns([
                 TextColumn::make('vehicle_id')
@@ -295,6 +309,11 @@ final class MaintenanceOrderResource extends Resource
                             ->success()
                             ->send();
                     }),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    TableCsvExport::bulkAction(),
+                ]),
             ]);
     }
 

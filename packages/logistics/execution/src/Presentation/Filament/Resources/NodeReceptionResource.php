@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use BackedEnum;
+use Filament\Forms\Components\DatePicker;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Logistics\Execution\Domain\ValueObject\Corridor;
 use Logistics\Execution\Domain\ValueObject\NodeReceptionStatus;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\NodeReceptionRecord;
@@ -35,6 +39,13 @@ use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
  */
 final class NodeReceptionResource extends Resource
 {
+    // Fuera del menú: depende de la entidad (envío); su hogar es la ficha 360 de esa entidad
+    // (sección «Gestión»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use ResolvesUserRoles;
 
     /**
@@ -51,7 +62,7 @@ final class NodeReceptionResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-inbox-arrow-down';
 
-    protected static ?int $navigationSort = 34;
+    protected static ?int $navigationSort = 18;
 
     public static function getNavigationGroup(): string
     {
@@ -92,6 +103,8 @@ final class NodeReceptionResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?shipment=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('shipment', 'shipment_id'))
             ->columns([
                 TextColumn::make('shipment.external_id')
                     ->label(__('Order'))
@@ -148,6 +161,26 @@ final class NodeReceptionResource extends Resource
                     ->sortable(),
             ])
             ->filters([
+                Filter::make('period')
+                    ->label(__('Date range'))
+                    ->schema([
+                        DatePicker::make('from')->label(__('From'))->native(false)->default(now()->subDays(30)),
+                        DatePicker::make('until')->label(__('To'))->native(false),
+                    ])
+                    ->query(static function (Builder $query, array $data): Builder {
+                        /** @var Builder<NodeReceptionRecord> $query */
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+                        if (is_string($from) && $from !== '') {
+                            $query->where('opened_at', '>=', Carbon::parse($from)->startOfDay());
+                        }
+                        if (is_string($until) && $until !== '') {
+                            $query->where('opened_at', '<', Carbon::parse($until)->addDay()->startOfDay());
+                        }
+
+                        return $query;
+                    })
+                    ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) ? (string) __('Date range') : null),
                 SelectFilter::make('corridor')
                     ->label(__('Corridor'))
                     ->native(false)
@@ -157,6 +190,8 @@ final class NodeReceptionResource extends Resource
                     ->native(false)
                     ->options(self::statusOptions()),
             ])
+            ->deferLoading()
+            ->paginationPageOptions([25, 50, 100])
             ->defaultSort('opened_at', 'desc');
     }
 

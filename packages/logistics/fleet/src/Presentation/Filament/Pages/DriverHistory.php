@@ -31,7 +31,7 @@ final class DriverHistory extends Page
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-chart-bar';
 
-    protected static ?int $navigationSort = 8;
+    protected static ?int $navigationSort = 3;
 
     protected string $view = 'logistics-fleet::filament.pages.driver-history';
 
@@ -44,6 +44,11 @@ final class DriverHistory extends Page
 
     public function mount(): void
     {
+        // Deep-link desde el hub 360 del chofer: `?driver=<id>` preselecciona al chofer mirado.
+        $driver = request()->query('driver');
+        if (is_string($driver) && $driver !== '') {
+            $this->driverId = $driver;
+        }
         // Por defecto: del primer día del mes corriente hasta hoy.
         if ($this->from === '') {
             $this->from = date('Y-m-01');
@@ -51,6 +56,14 @@ final class DriverHistory extends Page
         if ($this->to === '') {
             $this->to = date('Y-m-d');
         }
+    }
+
+    // Fuera del menú: el desempeño operativo es una faceta del CHOFER; su hogar es la ficha 360 del chofer
+    // (sección «Gestión»), que abre esta página con `?driver=<id>`. El flujo "Choose driver" sigue
+    // disponible dentro de la página para cambiar de chofer. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
     }
 
     public static function getNavigationGroup(): string

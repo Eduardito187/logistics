@@ -15,13 +15,16 @@ use Commerce\Orders\Application\Command\PlaceOrder\PlaceOrderHandler;
 use Commerce\Orders\Application\Command\PlaceOrderFromCart\PlaceOrderFromCart;
 use Commerce\Orders\Application\Command\PlaceOrderFromCart\PlaceOrderFromCartHandler;
 use Commerce\Orders\Application\Contract\CartSnapshotReader;
+use Commerce\Orders\Application\Contract\PaymentScheduleReader;
 use Commerce\Orders\Application\Query\GetOrder\GetOrder;
 use Commerce\Orders\Application\Query\GetOrder\GetOrderHandler;
 use Commerce\Orders\Application\Query\ListOrders\ListOrders;
 use Commerce\Orders\Application\Query\ListOrders\ListOrdersHandler;
 use Commerce\Orders\Domain\Contract\OrderRepository;
+use Commerce\Orders\Infrastructure\Console\ExpireUnpaidOrdersCommand;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Repository\EloquentOrderRepository;
 use Commerce\Orders\Infrastructure\ReadModel\DbCartSnapshotReader;
+use Commerce\Orders\Infrastructure\ReadModel\DbPaymentScheduleReader;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -51,11 +54,18 @@ final class OrdersServiceProvider extends ServiceProvider
         $this->app->bind(OrderRepository::class, EloquentOrderRepository::class);
         // Lectura cruzada read-only del carrito para el checkout orquestado (carrito → orden).
         $this->app->bind(CartSnapshotReader::class, DbCartSnapshotReader::class);
+        // Lectura cruzada read-only del pago iniciado para la expiración por método (ADR 020).
+        $this->app->bind(PaymentScheduleReader::class, DbPaymentScheduleReader::class);
     }
 
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
+
+        // Comando de expiración de órdenes impagas (programado en el scheduler por el integrador).
+        if ($this->app->runningInConsole()) {
+            $this->commands([ExpireUnpaidOrdersCommand::class]);
+        }
 
         $registry = $this->app->make(HandlerRegistry::class);
         foreach (self::HANDLERS as $message => $handler) {

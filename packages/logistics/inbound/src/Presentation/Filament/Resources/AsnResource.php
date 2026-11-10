@@ -51,6 +51,13 @@ final class AsnResource extends Resource
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-inbox-arrow-down';
 
+    // Fuera del menú: una ASN (aviso de recepción) es el inbound de un VENDEDOR; su hogar es la ficha 360
+    // del vendedor (sección «Gestión»), que abre la lista acotada por `?seller=`. No es un ítem suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationGroup(): string
     {
         return __('Operations');
@@ -63,7 +70,7 @@ final class AsnResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 30;
+        return 40;
     }
 
     public static function getModelLabel(): string
@@ -106,9 +113,13 @@ final class AsnResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Al abrir desde la ficha del vendedor, `?seller=<id>` acota a las ASN (inbound) de ESE vendedor.
             ->modifyQueryUsing(static function (Builder $query): Builder {
                 /** @var Builder<AsnRecord> $query */
-                return $query->with('lines');
+                $query->with('lines');
+                $seller = request()->query('seller');
+
+                return is_string($seller) && $seller !== '' ? $query->where('seller_id', $seller) : $query;
             })
             ->columns([
                 TextColumn::make('seller_id')

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Logistics\Labels\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
@@ -49,6 +51,13 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class EmittedLabelResource extends Resource
 {
+    // Fuera del menú: depende de la entidad (pedido/envío); su hogar es la ficha 360 de esa entidad
+    // (sección «Gestión»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
 
     protected static ?string $model = EmittedLabelRecord::class;
@@ -62,7 +71,7 @@ final class EmittedLabelResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 30;
+        return 40;
     }
 
     public static function getNavigationLabel(): string
@@ -102,6 +111,8 @@ final class EmittedLabelResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?order=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('order', 'order_id'))
             ->columns([
                 TextColumn::make('order_id')
                     ->label(__('Order'))
@@ -149,6 +160,26 @@ final class EmittedLabelResource extends Resource
                     ->sortable(),
             ])
             ->filters([
+                Filter::make('period')
+                    ->label(__('Date range'))
+                    ->schema([
+                        DatePicker::make('from')->label(__('From'))->native(false)->default(now()->subDays(30)),
+                        DatePicker::make('until')->label(__('To'))->native(false),
+                    ])
+                    ->query(static function (Builder $query, array $data): Builder {
+                        /** @var \Illuminate\Database\Eloquent\Builder<EmittedLabelRecord> $query */
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+                        if (is_string($from) && $from !== '') {
+                            $query->where('created_at', '>=', Carbon::parse($from)->startOfDay());
+                        }
+                        if (is_string($until) && $until !== '') {
+                            $query->where('created_at', '<', Carbon::parse($until)->addDay()->startOfDay());
+                        }
+
+                        return $query;
+                    })
+                    ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) ? (string) __('Date range') : null),
                 TernaryFilter::make('revoked')
                     ->label(__('Revocation status'))
                     ->placeholder(__('All labels'))
@@ -212,6 +243,8 @@ final class EmittedLabelResource extends Resource
                     ->modalCancelActionLabel(__('Close'))
                     ->modalContent(fn (EmittedLabelRecord $record): HtmlString => self::orderLabelsModal($record->order_id)),
             ])
+            ->deferLoading()
+            ->paginationPageOptions([25, 50, 100])
             ->defaultSort('created_at', 'desc');
     }
 
@@ -243,6 +276,14 @@ final class EmittedLabelResource extends Resource
                         ->placeholder('—'),
                 ])
                 ->columns(3),
+            Section::make(__('Label preview'))
+                ->description(__('Scannable image of the label — the signed QR and the Code128, rendered on-premise. Scan the QR from the app just like a printed label.'))
+                ->schema([
+                    ViewEntry::make('preview')
+                        ->hiddenLabel()
+                        ->view('filament.labels.label-preview')
+                        ->columnSpanFull(),
+                ]),
             Section::make(__('Signed payload'))
                 ->description(__('Signed QR content and ZPL — for auditing and printing only.'))
                 ->collapsed()
