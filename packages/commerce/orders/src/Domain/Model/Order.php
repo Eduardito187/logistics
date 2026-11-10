@@ -127,19 +127,26 @@ final class Order extends AggregateRoot
     }
 
     /**
-     * Cancela la orden. Solo posible mientras está pendiente de pago.
+     * Cancela la orden. Se permite en cualquier estado no terminal: Pending, Paid o Fulfilling (ADR 020).
+     * Idempotente: si ya está cancelada, no re-graba. `was_paid` (estado previo Paid/Fulfilling) viaja en
+     * el evento para que los reactores cruzados decidan reembolso y logística inversa.
+     *
+     * @param string|null $reason motivo opcional (p. ej. `unpaid_timeout` en la expiración por cron)
+     * @param string      $source origen: `pos`, `manual` (admin), `cron` (expiración), `customer`
      */
-    public function cancel(): void
+    public function cancel(?string $reason = null, string $source = 'manual'): void
     {
         if ($this->status === OrderStatus::Cancelled) {
             return;
         }
-        if ($this->status !== OrderStatus::Pending) {
-            throw OrdersException::because('Solo se puede cancelar una orden pendiente de pago.');
+        if (!in_array($this->status, [OrderStatus::Pending, OrderStatus::Paid, OrderStatus::Fulfilling], true)) {
+            throw OrdersException::because('No se puede cancelar una orden en un estado terminal.');
         }
 
+        $wasPaid = $this->status === OrderStatus::Paid || $this->status === OrderStatus::Fulfilling;
+
         $this->status = OrderStatus::Cancelled;
-        $this->recordEvent(new OrderCancelled($this->id->toString()));
+        $this->recordEvent(new OrderCancelled($this->id->toString(), $wasPaid, $reason, $source));
     }
 
     public function totalCents(): int

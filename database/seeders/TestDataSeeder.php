@@ -89,6 +89,11 @@ final class TestDataSeeder extends Seeder
             $scenario->buildForDate($date, $stage);
         }
 
+        // 2b) Costos de flota (fleetops) del camión del escenario, en los últimos 30 días, para que la
+        //     pantalla "Costos" de la app muestre datos reales (combustible/mantenimiento/gastos/km).
+        //     Idempotente y aditivo.
+        $this->call(FleetOpsCostScenarioSeeder::class);
+
         // 3) Variedad adicional de datos (la crea OTRO agente). Si aún no existe, se omite sin fallar.
         if (class_exists(TestDataVarietySeeder::class)) {
             $this->call(TestDataVarietySeeder::class);

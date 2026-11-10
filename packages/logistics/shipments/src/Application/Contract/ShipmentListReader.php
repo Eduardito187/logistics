@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Application\Contract;
 
+use Logistics\Shipments\Application\ReadModel\ShipmentPage;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 
 /**
@@ -38,6 +39,25 @@ interface ShipmentListReader
         ?int $limit = null,
         ?int $offset = null,
     ): array;
+
+    /**
+     * Lista los envíos que cumplen los filtros con paginación por CURSOR (keyset), el modo PREFERIDO para
+     * una colección que crece: avanza por `id > $afterId` (UUID v7 ordenable) en vez de OFFSET, así una
+     * página profunda cuesta lo mismo que la primera (no escanea-y-descarta). Los filtros son los mismos
+     * que `list()` y se combinan con AND.
+     *
+     * `$afterId` null (o vacío) = primera página. `$limit` es el tamaño de página. Devuelve los envíos de
+     * la página y el `nextCursor` (id del último, o null si no hay más). No calcula `total` a propósito:
+     * contar el universo en cada página derrota el objetivo del keyset.
+     */
+    public function listKeyset(
+        int $limit,
+        ?string $afterId = null,
+        ?string $status = null,
+        ?string $source = null,
+        ?string $destinationNodeId = null,
+        bool $lowConfidenceOnly = false,
+    ): ShipmentPage;
 
     /**
      * Cuenta los envíos que cumplen los MISMOS filtros (sin recorte), para la paginación: `total` del

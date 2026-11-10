@@ -147,6 +147,52 @@ paths:
         '404':
           description: The order has no emitted labels
 
+  /app/orders/{orderNumber}/dispatch-lines:
+    parameters:
+      - $ref: '#/components/parameters/OrderNumber'
+    get:
+      tags: [labels]
+      operationId: getOrderDispatchLines
+      summary: Dispatch lines of an order (per-product labeling screen)
+      description: >
+        Líneas de despacho de la orden para la pantalla de etiquetado por producto: cada producto con
+        nombre + imagen servible, origen y destino humanos (cero uuid), el envío al que pertenece
+        (shipment_id opaco para agrupar + shipment_reference legible), si está AUTORIZADA (plan publicado)
+        y el estado de su etiqueta. Forma n-a-n (destino por línea): hoy una orden es un envío (destino
+        único), pero el contrato soporta el split real producto→destino.
+      responses:
+        '200':
+          description: Dispatch lines with per-line product, origin, destination, authorization and label status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DispatchLinesResponse'
+
+  /app/labels/{labelId}/resolve:
+    parameters:
+      - name: labelId
+        in: path
+        required: true
+        description: Id (ULID) de la etiqueta escaneada
+        schema:
+          type: string
+    get:
+      tags: [labels]
+      operationId: resolveLabelUnit
+      summary: Resolve a scanned label to its physical unit (online fallback)
+      description: >
+        FALLBACK ONLINE: resuelve una etiqueta escaneada (su id/ULID del QR) al bulto físico (unit_id) y su
+        envío. El flujo normal es offline-first: la app mapea label_id→unit_id desde lo que ya cacheó
+        (EmittedLabel para el preparador, UnitTracking para el chofer). Este endpoint es solo para una
+        etiqueta no cacheada.
+      responses:
+        '200':
+          description: Resolution (resolved=false si no se pudo atar al bulto)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabelUnitResolution'
+
 components:
   parameters:
     OrderNumber:
@@ -267,6 +313,194 @@ components:
           type: string
           nullable: true
           description: Motivo de la revocación, o null si está vigente
+        product_name:
+          type: string
+          nullable: true
+          description: >-
+            Nombre humano del producto, resuelto por SKU (líneas del envío / catálogo). null si no se pudo
+            resolver.
+        image_url:
+          type: string
+          nullable: true
+          description: >-
+            URL servible ABSOLUTA de la imagen del producto (resuelta por SKU). null si no hay imagen.
+        origin:
+          type: object
+          required: [code, name]
+          description: Origen de despacho. `code` es el código embebido en el QR; `name` es el nombre de nodo si el código matchea la red.
+          properties:
+            code:
+              type: string
+              description: Código de origen del QR (free-form; suele ser un code de nodo)
+            name:
+              type: string
+              nullable: true
+              description: Nombre humano del nodo de origen si `code` matchea network; si no, null (mostrar name ?? code)
+        destination:
+          type: object
+          required: [type, name, address]
+          description: Destino del envío de la orden (nombres humanos, sin uuid).
+          properties:
+            type:
+              type: string
+              nullable: true
+              enum: [home, store, warehouse]
+              description: >-
+                home = domicilio del cliente; store = tienda/punto de retiro; warehouse = centro de
+                distribución/almacén. null si no se pudo determinar el envío.
+            name:
+              type: string
+              nullable: true
+              description: Nombre del destino (cliente en home; nombre del nodo en store/warehouse)
+            address:
+              type: string
+              nullable: true
+              description: Dirección (solo en home; null en nodo)
+        unit_id:
+          type: string
+          nullable: true
+          description: >-
+            UUID del BULTO FÍSICO (shipment_units) de esta etiqueta, resuelto por correlación. La app mapea
+            label_id→unit_id localmente (offline) para escanear contra el bulto real. Mismo valor que
+            UnitTracking.unit_id. null si no se pudo atar (p. ej. la línea del envío no coincide).
+        shipment_id:
+          type: string
+          nullable: true
+          description: UUID del envío del bulto (opaco), o null
+        unit:
+          type: object
+          required: [index, total]
+          description: Índice de unidad del bulto dentro de su línea
+          properties:
+            index: { type: integer }
+            total: { type: integer }
+        piece:
+          type: object
+          required: [index, total]
+          description: Índice de pieza del bulto dentro de su unidad
+          properties:
+            index: { type: integer }
+            total: { type: integer }
+
+    LabelUnitResolution:
+      type: object
+      description: Resolución de una etiqueta escaneada (ULID) al bulto físico + envío (fallback online).
+      required: [label_id, resolved, unit_id, shipment_id, sku, product_name, line_number, unit, piece]
+      properties:
+        label_id: { type: string }
+        resolved:
+          type: boolean
+          description: true si se pudo atar al bulto
+        unit_id:
+          type: string
+          nullable: true
+          description: UUID del bulto físico, o null si no se resolvió
+        shipment_id: { type: string, nullable: true }
+        sku: { type: string, nullable: true }
+        product_name: { type: string, nullable: true }
+        line_number: { type: integer, nullable: true }
+        unit:
+          type: object
+          nullable: true
+          properties: { index: { type: integer }, total: { type: integer } }
+        piece:
+          type: object
+          nullable: true
+          properties: { index: { type: integer }, total: { type: integer } }
+
+    DispatchLinesResponse:
+      type: object
+      required: [order_reference, destinations, data]
+      properties:
+        order_reference:
+          type: string
+          description: Número/referencia legible del pedido
+        destinations:
+          type: array
+          description: Resumen de grupos por envío/destino (para agrupar en la UI multishipping)
+          items:
+            type: object
+            required: [shipment_reference, destination, line_count]
+            properties:
+              shipment_reference:
+                type: string
+                nullable: true
+              destination:
+                $ref: '#/components/schemas/DispatchDestination'
+              line_count:
+                type: integer
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DispatchLine'
+
+    DispatchLine:
+      type: object
+      required: [sku, product_name, image_url, quantity, pieces_per_unit, line_number, origin, destination, shipment_id, shipment_reference, authorized, authorized_reason, label_status]
+      properties:
+        sku:
+          type: string
+        product_name:
+          type: string
+          nullable: true
+        image_url:
+          type: string
+          nullable: true
+          description: URL servible absoluta de la imagen del producto, o null
+        quantity:
+          type: integer
+        pieces_per_unit:
+          type: integer
+          description: Bultos por unidad; 1 por defecto si no se conoce
+        line_number:
+          type: integer
+          description: Posición 1-based de la línea en la orden
+        origin:
+          type: object
+          required: [code, name]
+          properties:
+            code:
+              type: string
+            name:
+              type: string
+              nullable: true
+              description: Nombre de nodo si `code` matchea network; si no, null (mostrar name ?? code). Vacío en líneas pending.
+        destination:
+          $ref: '#/components/schemas/DispatchDestination'
+        shipment_id:
+          type: string
+          nullable: true
+          description: Clave OPACA de agrupación del envío (no se muestra)
+        shipment_reference:
+          type: string
+          nullable: true
+          description: Referencia legible del envío (mostrable como título del grupo)
+        authorized:
+          type: boolean
+          description: true si el envío está en un plan publicado
+        authorized_reason:
+          type: string
+          nullable: true
+          description: Motivo si authorized=false (p. ej. "sin plan publicado")
+        label_status:
+          type: string
+          enum: [pending, emitted, revoked]
+
+    DispatchDestination:
+      type: object
+      required: [type, name, address]
+      properties:
+        type:
+          type: string
+          nullable: true
+          enum: [home, store, warehouse]
+        name:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+          description: Dirección (solo en home)
 
     PublicKeyBundle:
       type: object

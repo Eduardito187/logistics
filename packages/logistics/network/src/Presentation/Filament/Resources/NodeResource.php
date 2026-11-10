@@ -26,6 +26,7 @@ use Logistics\Network\Presentation\Filament\Resources\NodeResource\Pages\ListNod
 use Logistics\Network\Presentation\Filament\Resources\NodeResource\Pages\ViewNode;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin Filament de nodos de la red (CDs, tiendas, puntos de recojo).
@@ -43,6 +44,7 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 final class NodeResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = NodeRecord::class;
 
@@ -198,6 +200,7 @@ final class NodeResource extends Resource
                     ->native(false)
                     ->options(self::enumOptions(Department::cases())),
             ])
+            ->recordUrl(static fn (NodeRecord $record): string => self::getUrl('view', ['record' => $record]))
             ->recordActions([
                 ViewAction::make(),
                 self::deactivateAction(),

@@ -36,6 +36,8 @@ use Logistics\Capacity\Domain\Exception\CapacityException;
 use Logistics\Capacity\Domain\ValueObject\CapacityRuleset;
 use Logistics\Capacity\Domain\ValueObject\CapacityUnit;
 use Logistics\Capacity\Infrastructure\Settings\SettingsCapacityRulesetProvider;
+use Logistics\Capacity\Presentation\Filament\Resources\BlackoutDayResource;
+use Logistics\Capacity\Presentation\Filament\Resources\CapacityBucketResource;
 use Logistics\Capacity\Presentation\Filament\Support\MunicipalityOptions;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\ZoneRecord;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
@@ -70,7 +72,7 @@ final class DispatchCalendar extends Page
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-calendar-days';
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 34;
 
     protected string $view = 'logistics-capacity::filament.pages.dispatch-calendar';
 
@@ -159,6 +161,17 @@ final class DispatchCalendar extends Page
             $this->blockDayAction(),
             $this->editRulesAction(),
             $this->generateAction(),
+            // Gestión avanzada de los registros crudos (ya no sueltos en el menú): su hogar es este calendario.
+            Action::make('manage_buckets')
+                ->label('Cupos (avanzado)')
+                ->icon('heroicon-o-table-cells')
+                ->color('gray')
+                ->url(static fn (): string => CapacityBucketResource::getUrl('index')),
+            Action::make('manage_blackouts')
+                ->label('Bloqueos (avanzado)')
+                ->icon('heroicon-o-no-symbol')
+                ->color('gray')
+                ->url(static fn (): string => BlackoutDayResource::getUrl('index')),
         ];
     }
 

@@ -7,6 +7,8 @@ namespace Logistics\Execution\Infrastructure\Providers;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRoute;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRouteHandler;
+use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidence;
+use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidenceHandler;
 use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDropshipDelivery;
 use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDropshipDeliveryHandler;
 use Logistics\Execution\Application\Command\ConfirmDropshipDispatch\ConfirmDropshipDispatch;
@@ -17,6 +19,8 @@ use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNode;
 use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNodeHandler;
 use Logistics\Execution\Application\Command\ReconcileNodeReception\ReconcileNodeReception;
 use Logistics\Execution\Application\Command\ReconcileNodeReception\ReconcileNodeReceptionHandler;
+use Logistics\Execution\Application\Command\RecordEvidenceValidation\RecordEvidenceValidation;
+use Logistics\Execution\Application\Command\RecordEvidenceValidation\RecordEvidenceValidationHandler;
 use Logistics\Execution\Application\Command\RecordFailedDelivery\RecordFailedDelivery;
 use Logistics\Execution\Application\Command\RecordFailedDelivery\RecordFailedDeliveryHandler;
 use Logistics\Execution\Application\Command\RecordLoadScan\RecordLoadScan;
@@ -33,11 +37,16 @@ use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIs
 use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIssueHandler;
 use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleIncident;
 use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleIncidentHandler;
+use Logistics\Execution\Application\Contract\DeliveryEvidenceReader;
+use Logistics\Execution\Application\Contract\DeliveryReferenceReader;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
+use Logistics\Execution\Application\Contract\PlannedRouteStopsProvider;
 use Logistics\Execution\Application\Contract\RouteGeometryReader;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitProductReader;
 use Logistics\Execution\Application\Contract\StopEnrichmentReader;
+use Logistics\Execution\Application\Query\GetDeliveryEvidence\GetDeliveryEvidence;
+use Logistics\Execution\Application\Query\GetDeliveryEvidence\GetDeliveryEvidenceHandler;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryState;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryStateHandler;
 use Logistics\Execution\Application\Query\GetDriverRoute\GetDriverRoute;
@@ -48,23 +57,29 @@ use Logistics\Execution\Application\Query\ListDeliveriesByVehicle\ListDeliveries
 use Logistics\Execution\Application\Query\ListDeliveriesByVehicle\ListDeliveriesByVehicleHandler;
 use Logistics\Execution\Application\Query\VerifyLabel\VerifyLabel;
 use Logistics\Execution\Application\Query\VerifyLabel\VerifyLabelHandler;
+use Logistics\Execution\Domain\Contract\DeliveryEvidenceRepository;
 use Logistics\Execution\Domain\Contract\DeliveryIssueRepository;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Contract\LabelVerificationGateway;
 use Logistics\Execution\Domain\Contract\NodeReceptionRepository;
 use Logistics\Execution\Domain\Contract\VehicleIncidentRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
+use Logistics\Execution\Infrastructure\Console\PruneScanEventsCommand;
 use Logistics\Execution\Infrastructure\Labels\SodiumLabelVerificationGateway;
 use Logistics\Execution\Infrastructure\Labels\StubLabelVerificationGateway;
+use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryEvidenceRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryIssueRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentNodeReceptionRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleIncidentRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleRouteRepository;
+use Logistics\Execution\Infrastructure\ReadModel\DbDeliveryReferenceReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbPlannedRouteStopsProvider;
 use Logistics\Execution\Infrastructure\ReadModel\DbRouteGeometryReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentFulfillmentReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitProductReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbStopEnrichmentReader;
+use Logistics\Execution\Infrastructure\ReadModel\EloquentDeliveryEvidenceReader;
 use Logistics\Execution\Infrastructure\Storage\FilesystemEvidenceStorage;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\HandlerRegistry;
@@ -97,6 +112,9 @@ final class ExecutionServiceProvider extends ServiceProvider
         AssembleDailyRoute::class => AssembleDailyRouteHandler::class,
         ReportVehicleIncident::class => ReportVehicleIncidentHandler::class,
         ReportDeliveryIssue::class => ReportDeliveryIssueHandler::class,
+        CaptureDeliveryEvidence::class => CaptureDeliveryEvidenceHandler::class,
+        RecordEvidenceValidation::class => RecordEvidenceValidationHandler::class,
+        GetDeliveryEvidence::class => GetDeliveryEvidenceHandler::class,
         GetDeliveryState::class => GetDeliveryStateHandler::class,
         GetNodeReception::class => GetNodeReceptionHandler::class,
         GetDriverRoute::class => GetDriverRouteHandler::class,
@@ -113,11 +131,22 @@ final class ExecutionServiceProvider extends ServiceProvider
         $this->app->bind(VehicleRouteRepository::class, EloquentVehicleRouteRepository::class);
         $this->app->bind(VehicleIncidentRepository::class, EloquentVehicleIncidentRepository::class);
         $this->app->bind(DeliveryIssueRepository::class, EloquentDeliveryIssueRepository::class);
+        // Evidencia anti-fraude ligada al cliente: repositorio (escritura) y reader (lectura CQRS).
+        $this->app->bind(DeliveryEvidenceRepository::class, EloquentDeliveryEvidenceRepository::class);
+        $this->app->bind(DeliveryEvidenceReader::class, EloquentDeliveryEvidenceReader::class);
 
         // Enriquecedores cross-context de la ruta del chofer (lectura directa, sin acoplar el dominio):
         // teléfono/referencia/líneas desde shipments y la geometría de la ruta desde el plan (planning).
         $this->app->bind(StopEnrichmentReader::class, static function ($app): StopEnrichmentReader {
             return new DbStopEnrichmentReader($app->make('db')->connection());
+        });
+        // Paradas del plan publicado para armar la ruta del día (el backend ensambla; la app no manda paradas).
+        $this->app->bind(PlannedRouteStopsProvider::class, static function ($app): PlannedRouteStopsProvider {
+            return new DbPlannedRouteStopsProvider($app->make('db')->connection());
+        });
+        // Referencia legible del envío (pedido/cliente/dirección) para las entregas del chofer: NUNCA UUID.
+        $this->app->bind(DeliveryReferenceReader::class, static function ($app): DeliveryReferenceReader {
+            return new DbDeliveryReferenceReader($app->make('db')->connection());
         });
         $this->app->bind(RouteGeometryReader::class, static function ($app): RouteGeometryReader {
             // Si el plan existe sin geometría, se le pide a Planificación (su servicio de aplicación) que la
@@ -231,6 +260,11 @@ final class ExecutionServiceProvider extends ServiceProvider
         $registry = $this->app->make(HandlerRegistry::class);
         foreach (self::HANDLERS as $message => $handler) {
             $registry->register($message, $handler);
+        }
+
+        // Comando de poda de retención de escaneos (C7). No se agenda aquí: la retención es manual/ops.
+        if ($this->app->runningInConsole()) {
+            $this->commands([PruneScanEventsCommand::class]);
         }
     }
 }

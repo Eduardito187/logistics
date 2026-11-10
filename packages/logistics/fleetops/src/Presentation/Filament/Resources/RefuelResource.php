@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -21,6 +22,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\RefuelResource\Pages\Crea
 use Logistics\FleetOps\Presentation\Filament\Resources\RefuelResource\Pages\ListRefuels;
 use Logistics\FleetOps\Presentation\Filament\Support\VehiclePlates;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de cargas de combustible de la flota propia.
@@ -33,7 +35,15 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class RefuelResource extends Resource
 {
+    // Fuera del menú: este recurso DEPENDE del vehículo; su hogar es la ficha 360 del vehículo
+    // (sección «Gestión del vehículo»), que enlaza a su lista ya filtrada. No es un ítem suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = RefuelRecord::class;
 
@@ -150,6 +160,8 @@ final class RefuelResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?vehicle=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('vehicle', 'vehicle_id'))
             ->defaultSort('refueled_at', 'desc')
             ->columns([
                 TextColumn::make('vehicle_id')

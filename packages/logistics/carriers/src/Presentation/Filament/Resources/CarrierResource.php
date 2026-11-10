@@ -26,6 +26,7 @@ use Logistics\Carriers\Presentation\Filament\Resources\CarrierResource\Pages\Lis
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierResource\Pages\ViewCarrier;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de transportistas terceros.
@@ -40,10 +41,18 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 final class CarrierResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = CarrierRecord::class;
 
     protected static ?string $recordTitleAttribute = 'name';
+
+    // Fuera del menú: un transportista es un SOCIO COMERCIAL; se abre desde el directorio «Socios
+    // comerciales» (que une vendedores y transportistas) y su ficha 360 CarrierHub. No es un ítem suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationGroup(): string
     {
@@ -52,7 +61,7 @@ final class CarrierResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 20;
+        return 14;
     }
 
     public static function getNavigationIcon(): string
@@ -289,7 +298,9 @@ final class CarrierResource extends Resource
                             ->success()
                             ->send();
                     }),
-            ]);
+            ])
+            // La fila abre la ficha 360 del transportista (hub), no el infolist CRUD.
+            ->recordUrl(static fn (CarrierRecord $record): string => self::getUrl('view', ['record' => $record]));
     }
 
     /**

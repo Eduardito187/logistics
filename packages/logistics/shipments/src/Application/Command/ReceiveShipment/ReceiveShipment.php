@@ -38,5 +38,8 @@ final readonly class ReceiveShipment implements Command
         public string $fulfillmentMode = 'owned',
         public ?string $ownerPartyId = null,
         public ?string $sellerSkuRef = null,
+        // Referencia de la ORDEN original (multishipping): agrupa los envíos hermanos de una orden que
+        // va a varios destinos. Si es null, cae al external_id (flujo de un solo destino, sin cambios).
+        public ?string $orderReference = null,
     ) {}
 }

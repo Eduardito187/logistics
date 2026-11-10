@@ -8,7 +8,6 @@ use Commerce\Orders\Application\Command\MarkOrderFulfilling\MarkOrderFulfilling;
 use Commerce\Orders\Domain\Contract\OrderRepository;
 use Commerce\Orders\Domain\Model\Order;
 use Commerce\Orders\Domain\ValueObject\OrderId;
-use Commerce\Orders\Domain\ValueObject\OrderLine;
 use Logistics\Outbox\Application\Contract\MessageDispatcher;
 use Logistics\Outbox\Domain\OutboxMessage;
 use Logistics\Shared\Application\Command\CommandBus;
@@ -50,35 +49,64 @@ final readonly class OrderPaidShipmentDispatcher implements MessageDispatcher
         }
 
         $shipTo = $order->shipTo();
+        $orderId = $order->id()->toString();
 
-        $this->commandBus->dispatch(new ReceiveShipment(
-            source: self::SHIPMENT_SOURCE,
-            externalId: $order->id()->toString(),
-            customerName: $shipTo->customerName,
-            addressText: $shipTo->addressText,
-            addressReference: $shipTo->reference,
-            lines: $this->shipmentLines($order),
-            customerPhone: $shipTo->phone,
-            customerEmail: $shipTo->email,
-        ));
+        // Multishipping: una orden puede repartirse a varios destinos (unas líneas a domicilio, otras a
+        // retiro en tienda/CD). Se agrupan las líneas por destino y nace UN envío por grupo, todos bajo la
+        // misma orden (orderReference). Si todas las líneas van al mismo destino (caso normal), es un solo
+        // envío con externalId = orderId: comportamiento idéntico al anterior.
+        foreach ($this->groupLinesByDestination($order) as $group) {
+            $this->commandBus->dispatch(new ReceiveShipment(
+                source: self::SHIPMENT_SOURCE,
+                externalId: $group['externalId'],
+                customerName: $shipTo->customerName,
+                addressText: $shipTo->addressText,
+                addressReference: $shipTo->reference,
+                lines: $group['lines'],
+                customerPhone: $shipTo->phone,
+                customerEmail: $shipTo->email,
+                destinationNodeId: $group['destinationNodeId'],
+                orderReference: $orderId,
+            ));
+        }
 
-        $this->commandBus->dispatch(new MarkOrderFulfilling($order->id()->toString()));
+        $this->commandBus->dispatch(new MarkOrderFulfilling($orderId));
     }
 
     /**
-     * @return list<ShipmentLineInput>
+     * Agrupa las líneas de la orden por destino (null = domicilio; UUID = nodo de retiro). El grupo
+     * domicilio conserva externalId = orderId (idempotencia y retrocompatibilidad); cada grupo-nodo lleva
+     * externalId = "{orderId}#n:{nodeId}" (único por envío, hermano de la misma orden).
+     *
+     * @return list<array{externalId: string, destinationNodeId: string|null, lines: list<ShipmentLineInput>}>
      */
-    private function shipmentLines(Order $order): array
+    private function groupLinesByDestination(Order $order): array
     {
-        return array_values(array_map(
-            static fn (OrderLine $line): ShipmentLineInput => new ShipmentLineInput(
+        $orderId = $order->id()->toString();
+
+        /** @var array<string, list<ShipmentLineInput>> $byDestination clave '' = domicilio */
+        $byDestination = [];
+        foreach ($order->lines() as $line) {
+            $key = $line->destinationNodeId ?? '';
+            $byDestination[$key][] = new ShipmentLineInput(
                 sku: $line->sku,
                 productName: $line->productName,
                 quantity: $line->quantity,
                 price: $line->unitPriceCents / 100,
                 currency: $order->currency(),
-            ),
-            $order->lines(),
-        ));
+            );
+        }
+
+        $groups = [];
+        foreach ($byDestination as $destinationNodeId => $lines) {
+            $isHome = $destinationNodeId === '';
+            $groups[] = [
+                'externalId' => $isHome ? $orderId : $orderId.'#n:'.$destinationNodeId,
+                'destinationNodeId' => $isHome ? null : $destinationNodeId,
+                'lines' => $lines,
+            ];
+        }
+
+        return $groups;
     }
 }

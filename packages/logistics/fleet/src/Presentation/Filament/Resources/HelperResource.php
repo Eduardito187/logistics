@@ -32,6 +32,7 @@ use Logistics\Fleet\Presentation\Filament\Resources\HelperResource\Pages\ListHel
 use Logistics\Fleet\Presentation\Filament\Resources\HelperResource\Pages\ViewHelper;
 use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 
 /**
@@ -47,6 +48,7 @@ use Logistics\Shared\Presentation\Filament\ImageFallback;
 final class HelperResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = HelperModel::class;
 
@@ -54,9 +56,16 @@ final class HelperResource extends Resource
 
     protected static ?int $navigationSort = 14;
 
+    // Fuera del menú: un ayudante es una persona del DIRECTORIO (grupo Personal); se abre desde ahí (y su
+    // ficha 360 HelperHub). No es un ítem CRUD suelto: el menú tiene un solo acceso a personas.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationGroup(): string
     {
-        return __('Fleet');
+        return __('Personnel');
     }
 
     public static function getModelLabel(): string
@@ -187,6 +196,8 @@ final class HelperResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Al hacer clic en una fila se abre la ficha 360 (hub cockpit) del ayudante, no el editor.
+            ->recordUrl(static fn (HelperModel $record): string => self::getUrl('view', ['record' => $record->getKey()]))
             ->columns([
                 // Foto cuadrada pequeña (nunca un círculo gigante — ver gotcha 20 de la skill).
                 ImageColumn::make('photo_path')

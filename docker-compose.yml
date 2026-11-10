@@ -38,6 +38,13 @@ x-php: &php
         - vendor:/var/www/html/vendor
     environment:
         APP_ENV: local
+        # DEV: el contenedor web sincroniza vendor/autoloader con composer.lock al arrancar, para que
+        # un paquete nuevo del monolito (packages/<ctx>) se cargue sin correr composer a mano (evita el
+        # "Invalid route action" por clase no autoload-eada). Solo actúa el contenedor php-fpm. Prod no.
+        COMPOSER_INSTALL_ON_BOOT: "true"
+        # DEV turnkey: corre migraciones PENDIENTES al arrancar el web (idempotente; solo las no aplicadas),
+        # así `docker compose up` deja el esquema listo sin pasos manuales. Prod NO (migra en job de deploy).
+        AUTO_MIGRATE: "true"
         DB_CONNECTION: pgsql
         # La app apunta a PgBouncer (transaction pooling, C-3) en vez de a postgres
         # directo: multiplexa miles de conexiones de cliente sobre un pool pequeño de
@@ -58,6 +65,16 @@ x-php: &php
     networks:
         - dismac_lg
     logging: *default-logging
+    # Healthcheck del WEB: php-fpm aceptando en :9000. Señala que el entrypoint terminó (incluido el
+    # composer install de arranque) y la app está lista. Lo usan `assets`, `nginx` y los workers para
+    # arrancar EN ORDEN, así `docker compose up` queda todo funcionando sin pasos manuales. Los workers
+    # traen su propio healthcheck (pgrep), así que esta sonda aplica solo al contenedor web (app).
+    healthcheck:
+        test: ["CMD-SHELL", "nc -z 127.0.0.1 9000 || exit 1"]
+        interval: 15s
+        timeout: 5s
+        retries: 6
+        start_period: 240s
 
 services:
     # -------------------- Aplicación PHP-FPM --------------------
@@ -81,7 +98,12 @@ services:
             - .:/var/www/html:cached
             - ./.docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
         depends_on:
-            - app
+            app:
+                condition: service_healthy
+            # El tema del admin (public/build) se compila en el servicio `assets` ANTES de servir, para
+            # que el panel cargue estilado en el primer request (sin manifiesto Vite, Filament da 500).
+            assets:
+                condition: service_completed_successfully
         networks:
             - dismac_lg
         logging: *default-logging
@@ -439,6 +461,12 @@ services:
             timeout: 5s
             retries: 3
             start_period: 10s
+        # Arranca recién con el WEB healthy: así el `composer install` del entrypoint ya pobló el vendor
+        # compartido y el worker NO entra en crash-loop por un autoloader incompleto. app healthy implica
+        # además que pgbouncer/valkey ya están healthy (el web los esperó).
+        depends_on:
+            app:
+                condition: service_healthy
 
     # -------------------- Scheduler (siempre encendido) --------------------
     scheduler:
@@ -452,6 +480,10 @@ services:
             timeout: 5s
             retries: 3
             start_period: 10s
+        # Igual que el worker: arranca con el WEB healthy (vendor ya listo), sin crash-loop.
+        depends_on:
+            app:
+                condition: service_healthy
 
     # -------------------- Node (Vite + npm, bajo demanda) --------------------
     node:
@@ -469,6 +501,53 @@ services:
         logging: *default-logging
         profiles:
             - node
+
+    # -------------------- Assets (compila el tema del admin en cada `up`) --------------------
+    # Build ONE-SHOT del tema Filament (resources/css/filament/admin/theme.css → public/build) en cada
+    # `docker compose up`, para no tener que correr `npm run build` a mano: el panel queda estilado solo.
+    # nginx DEPENDE de que termine (service_completed_successfully), así el primer request ya tiene el
+    # manifiesto Vite (sin él Filament da 500). Escribe en public/build del host vía el bind mount.
+    #
+    # Monta el volumen `vendor` (lo instala composer en el container `app`) porque el tema hace
+    # `@import 'vendor/filament/...'` y Tailwind escanea `vendor/**` con `@source`: sin vendor, el build
+    # no resuelve. Si vendor aún no está (antes del primer `composer install`), OMITE el build y sale 0
+    # para no bloquear el stack; se compila en el siguiente `up` (o lo fuerza `make install`).
+    # node_modules se persiste en su volumen: `npm ci` corre solo la primera vez (build rápido después).
+    #
+    # Para iteración de tema con recarga en caliente (HMR) en vez de build por `up`, usar el servicio
+    # `node` (perfil `node`): `make npm-dev`.
+    assets:
+        image: node:22-alpine
+        container_name: dismac_lg_assets
+        working_dir: /var/www/html
+        restart: "no"
+        # Arranca recién cuando el WEB está healthy: eso garantiza que el entrypoint ya corrió
+        # `composer install`, así que `vendor/filament` existe y `vite build` resuelve el `@import` del tema.
+        depends_on:
+            app:
+                condition: service_healthy
+        volumes:
+            - .:/var/www/html:cached
+            - vendor:/var/www/html/vendor
+            - node_modules:/var/www/html/node_modules
+        command: >
+            sh -c '
+              set -e;
+              if [ ! -d vendor/filament ]; then
+                echo "[assets] vendor/filament ausente pese a app healthy → omito el build (revisar composer).";
+                exit 0;
+              fi;
+              if [ ! -x node_modules/.bin/vite ]; then
+                echo "[assets] instalando dependencias JS (npm ci)…";
+                npm ci --no-audit --no-fund;
+              fi;
+              echo "[assets] compilando el tema del admin (npm run build)…";
+              npm run build;
+              echo "[assets] ✓ tema compilado en public/build";
+            '
+        networks:
+            - dismac_lg
+        logging: *default-logging
 
     # ============================================================
     # AÑADIDO — frente almacenamiento de objetos (ROADMAP B2): MinIO self-host.

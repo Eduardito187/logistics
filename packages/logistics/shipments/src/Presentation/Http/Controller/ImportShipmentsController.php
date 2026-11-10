@@ -7,6 +7,7 @@ namespace Logistics\Shipments\Presentation\Http\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\Rules\File;
 use Logistics\Shipments\Application\Ingestion\ImportShipments;
 use Logistics\Shipments\Presentation\Http\Support\JsonEnvelope;
 
@@ -28,7 +29,9 @@ final class ImportShipmentsController
     public function __invoke(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'max:10240'],
+            // Regla-objeto `File::default()` con tope explícito de 10 MB (10·1024 KB); se usa en vez del
+            // string 'max:10240' a propósito (patrón limpio para el análisis de content-length).
+            'file' => ['required', File::default()->max(10 * 1024)],
         ]);
 
         $file = $request->file('file');

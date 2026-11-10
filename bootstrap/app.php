@@ -32,6 +32,16 @@ return Application::configure(basePath: dirname(__DIR__))
         // para que X-Request-Id ya esté en el Context y en los logs del resto de la cadena del request.
         $middleware->prepend(RequestId::class);
 
+        // Detrás de un proxy/túnel (nginx, Cloudflare, cloudflared/ngrok para acceso móvil): confiar en
+        // las cabeceras X-Forwarded-* para detectar el HOST y el ESQUEMA (HTTPS) reales. Sin esto, tras un
+        // túnel HTTPS el framework ve "http" y genera assets/redirecciones http → "mixed content" y la
+        // página queda rota. Ingreso único por nginx; en producción se puede acotar `at` a los rangos de
+        // Cloudflare en vez de '*'.
+        $middleware->trustProxies(at: '*', headers: Request::HEADER_X_FORWARDED_FOR
+            | Request::HEADER_X_FORWARDED_HOST
+            | Request::HEADER_X_FORWARDED_PORT
+            | Request::HEADER_X_FORWARDED_PROTO);
+
         $middleware->web(append: [
             AddLinkHeadersForPreloadedAssets::class,
         ]);

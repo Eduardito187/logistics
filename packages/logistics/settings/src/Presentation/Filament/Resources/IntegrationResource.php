@@ -32,11 +32,11 @@ final class IntegrationResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-puzzle-piece';
 
-    protected static ?int $navigationSort = 30;
+    protected static ?int $navigationSort = 20;
 
     public static function getNavigationGroup(): string
     {
-        return __('Administration');
+        return __('Integrations');
     }
 
     public static function getNavigationLabel(): string

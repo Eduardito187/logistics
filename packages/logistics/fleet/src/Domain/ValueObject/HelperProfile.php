@@ -28,6 +28,24 @@ final readonly class HelperProfile
     ) {}
 
     /**
+     * Núcleo de datos personales comunes a chofer/ayudante. En el ayudante el perfil ES exactamente ese
+     * núcleo (no hay datos adicionales); se expone como VO compartido con el chofer para no duplicar la forma.
+     */
+    public function personal(): PersonalProfile
+    {
+        return new PersonalProfile(
+            $this->photoPath,
+            $this->birthDate,
+            $this->nationalId,
+            $this->phoneSecondary,
+            $this->address,
+            $this->emergencyContactName,
+            $this->emergencyContactPhone,
+            $this->references,
+        );
+    }
+
+    /**
      * Forma primitiva para persistencia y eventos (nunca se serializa el objeto de dominio).
      *
      * @return array{
@@ -43,18 +61,7 @@ final readonly class HelperProfile
      */
     public function toArray(): array
     {
-        return [
-            'photo_path' => $this->photoPath,
-            'birth_date' => $this->birthDate?->toString(),
-            'national_id' => $this->nationalId?->value,
-            'phone_secondary' => $this->phoneSecondary?->value,
-            'address' => $this->address,
-            'emergency_contact_name' => $this->emergencyContactName,
-            'emergency_contact_phone' => $this->emergencyContactPhone?->value,
-            'references' => array_values(array_map(
-                static fn (PersonalReference $reference): array => $reference->toArray(),
-                $this->references,
-            )),
-        ];
+        // El perfil del ayudante ES el núcleo personal común: delega para no duplicar la forma primitiva.
+        return $this->personal()->toArray();
     }
 }

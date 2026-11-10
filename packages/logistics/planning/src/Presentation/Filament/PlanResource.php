@@ -77,7 +77,7 @@ final class PlanResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 10;
+        return 30;
     }
 
     public static function getNavigationLabel(): string

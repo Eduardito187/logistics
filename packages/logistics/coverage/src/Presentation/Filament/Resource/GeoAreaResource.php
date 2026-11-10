@@ -52,6 +52,13 @@ final class GeoAreaResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
+    // Fuera del menú: las áreas geográficas (municipios/ciudades) se eligen y gestionan desde el cockpit
+    // geográfico. El CRUD tabular sigue accesible desde el botón «Geographic Areas» del mapa.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationGroup(): string
     {
         return __('Network');

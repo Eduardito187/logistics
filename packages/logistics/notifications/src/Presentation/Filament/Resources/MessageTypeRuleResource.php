@@ -43,12 +43,12 @@ final class MessageTypeRuleResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Administration');
+        return __('Messaging');
     }
 
     public static function getNavigationSort(): int
     {
-        return 44;
+        return 34;
     }
 
     public static function getNavigationLabel(): string

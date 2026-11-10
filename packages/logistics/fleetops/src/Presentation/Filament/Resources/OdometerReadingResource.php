@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -23,6 +24,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource\P
 use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource\Pages\ListOdometerReadings;
 use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource\Pages\ViewOdometerReading;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de lecturas de odómetro por vehículo y fuente.
@@ -35,14 +37,22 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class OdometerReadingResource extends Resource
 {
+    // Fuera del menú: este recurso DEPENDE del vehículo; su hogar es la ficha 360 del vehículo
+    // (sección «Gestión del vehículo»), que enlaza a su lista ya filtrada. No es un ítem suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
     use ResolvesVehiclePlate;
 
     protected static ?string $model = OdometerReadingRecord::class;
 
     protected static ?string $recordTitleAttribute = 'km';
 
-    protected static ?int $navigationSort = 36;
+    protected static ?int $navigationSort = 34;
 
     public static function getNavigationGroup(): string
     {
@@ -150,6 +160,8 @@ final class OdometerReadingResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?vehicle=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('vehicle', 'vehicle_id'))
             ->defaultSort('read_at', 'desc')
             ->columns([
                 // Placa legible del vehículo por lectura cruzada a fleet, nunca el UUID.

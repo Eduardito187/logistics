@@ -73,6 +73,15 @@ return [
         ],
     ],
 
+    // Devoluciones (ADR 020): al cancelar una orden ya cargada o entregada, el reactor
+    // OrderCancelledFulfillmentDispatcher dispara una devolución (returns.InitiateReturn), que exige un
+    // almacén central de retorno. El envío del comercio no trae nodo destino poblado, así que se usa
+    // este valor. Vacío = no se puede resolver el almacén: la devolución se OMITE (no va a dead-letter);
+    // configurarlo para habilitar la logística inversa de cancelaciones.
+    'returns' => [
+        'warehouse_id' => env('SHIPMENTS_RETURNS_WAREHOUSE_ID', ''),
+    ],
+
     // Fuente Magento (SHP-07): lectura de pedidos pendientes para ingresarlos por la API única.
     // Sin base_url configurada, el contexto cae al lector stub (no trae pedidos), para arrancar y
     // desarrollar sin credenciales. Si Magento no entra al piloto, se deja vacío.

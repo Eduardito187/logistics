@@ -49,6 +49,12 @@ final class ProductResource extends Resource
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-cube';
 
+    public static function getNavigationLabel(): string
+    {
+        // "Catálogo de productos" para no confundir con los "Productos" (unidades físicas) del envío.
+        return __('Product catalog');
+    }
+
     public static function getNavigationGroup(): string
     {
         return __('Commerce');
@@ -56,7 +62,8 @@ final class ProductResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 20;
+        // Catálogo: al fondo del grupo Comercio (banda de catálogo/ajustes).
+        return 60;
     }
 
     public static function getModelLabel(): string
@@ -172,6 +179,8 @@ final class ProductResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // La fila abre la ficha 360 (hub) del producto, no un infolist CRUD.
+            ->recordUrl(static fn (ProductRecord $record): string => ProductResource::getUrl('view', ['record' => $record->getKey()]))
             ->columns([
                 // El id (UUID) nunca se muestra: se identifica el producto por su nombre y SKU.
                 TextColumn::make('name')
@@ -205,6 +214,15 @@ final class ProductResource extends Resource
                         'published' => __('Published'),
                         'archived' => __('Archived'),
                     ]),
+            ])
+            // Acceso a la gestión de CATEGORÍAS desde el catálogo: la resource de categorías ya no vive en el
+            // menú (es parte del catálogo), así que su hogar es este acceso. No queda huérfana.
+            ->headerActions([
+                Action::make('manageCategories')
+                    ->label(__('Categories'))
+                    ->icon('heroicon-o-tag')
+                    ->color('gray')
+                    ->url(CategoryResource::getUrl('index')),
             ])
             ->recordActions([
                 ViewAction::make(),

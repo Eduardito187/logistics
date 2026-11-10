@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Cockpit\SearchController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -13,6 +14,10 @@ use Illuminate\Support\Facades\Route;
 | fue eliminada: todo vive en el admin. La raíz y cualquier /app viejo redirigen al panel para no romper
 | marcadores ni enlaces previos.
 */
+
+// Endpoint JSON del command palette (⌘K) del admin: búsqueda transversal por fetch mismo-origen.
+// Sesión web + autenticado; el alcance por rol (oficina = admin/supervisor) lo aplica el controlador.
+Route::middleware(['web', 'auth'])->get('/cockpit/search', SearchController::class)->name('cockpit.search');
 
 Route::get('/', static fn () => redirect('/admin'));
 

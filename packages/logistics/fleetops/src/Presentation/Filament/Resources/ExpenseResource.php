@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -23,6 +24,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\ExpenseResource\Pages\Cre
 use Logistics\FleetOps\Presentation\Filament\Resources\ExpenseResource\Pages\ListExpenses;
 use Logistics\FleetOps\Presentation\Filament\Resources\ExpenseResource\Pages\ViewExpense;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de gastos de flota (que no son combustible ni mantenimiento): peajes, multas, llantas, etc.
@@ -35,7 +37,15 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class ExpenseResource extends Resource
 {
+    // Fuera del menú: este recurso DEPENDE del vehículo; su hogar es la ficha 360 del vehículo
+    // (sección «Gestión del vehículo»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
     use ResolvesVehiclePlate;
 
     protected static ?string $model = ExpenseRecord::class;
@@ -163,6 +173,8 @@ final class ExpenseResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?vehicle=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('vehicle', 'vehicle_id'))
             ->defaultSort('incurred_at', 'desc')
             ->columns([
                 // Placa legible del vehículo por lectura cruzada a fleet, nunca el UUID.

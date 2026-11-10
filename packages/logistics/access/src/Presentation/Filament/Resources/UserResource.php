@@ -29,6 +29,7 @@ use Logistics\Access\Presentation\Filament\Resources\UserResource\Pages\ListUser
 use Logistics\Access\Presentation\Filament\Resources\UserResource\Pages\ViewUser;
 use Logistics\Access\Presentation\Filament\Support\AuditRecorder;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin de usuarios de la plataforma.
@@ -42,14 +43,22 @@ use Logistics\Shared\Application\Command\CommandBus;
 final class UserResource extends Resource
 {
     use AdminOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = UserRecord::class;
 
     protected static ?string $recordTitleAttribute = 'name';
 
+    // Fuera del menú: un usuario es una persona del DIRECTORIO (grupo Personal); se abre desde ahí.
+    // El menú muestra un solo acceso a personas (el Directorio), no cada rol como ítem CRUD suelto.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationGroup(): string
     {
-        return __('Administration');
+        return __('Personnel');
     }
 
     public static function getNavigationSort(): int

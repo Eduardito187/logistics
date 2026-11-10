@@ -5,17 +5,22 @@ declare(strict_types=1);
 namespace Logistics\Access\Presentation\Filament\Resources;
 
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\DatePicker;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Logistics\Access\Infrastructure\Persistence\Eloquent\Model\AuditEntryRecord;
 use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\Access\Presentation\Filament\Resources\AuditLogResource\Pages\ListAuditEntries;
 use Logistics\Access\Presentation\Filament\Resources\AuditLogResource\Pages\ViewAuditEntry;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Bitácora de auditoría de accesos: registro de SOLO LECTURA de las acciones sensibles del módulo de
@@ -30,10 +35,11 @@ use Logistics\Access\Presentation\Filament\Resources\AuditLogResource\Pages\View
 final class AuditLogResource extends Resource
 {
     use AdminOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = AuditEntryRecord::class;
 
-    protected static ?int $navigationSort = 18;
+    protected static ?int $navigationSort = 40;
 
     public static function getNavigationGroup(): string
     {
@@ -186,8 +192,30 @@ final class AuditLogResource extends Resource
                     ->placeholder('—')
                     ->toggleable(),
             ])
+            ->deferLoading()
+            ->paginationPageOptions([25, 50, 100])
             ->defaultSort('occurred_at', 'desc')
             ->filters([
+                Filter::make('period')
+                    ->label(__('Date range'))
+                    ->schema([
+                        DatePicker::make('from')->label(__('From'))->native(false)->default(now()->subDays(30)),
+                        DatePicker::make('until')->label(__('To'))->native(false),
+                    ])
+                    ->query(static function (Builder $query, array $data): Builder {
+                        /** @var Builder<AuditEntryRecord> $query */
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+                        if (is_string($from) && $from !== '') {
+                            $query->where('occurred_at', '>=', Carbon::parse($from)->startOfDay());
+                        }
+                        if (is_string($until) && $until !== '') {
+                            $query->where('occurred_at', '<', Carbon::parse($until)->addDay()->startOfDay());
+                        }
+
+                        return $query;
+                    })
+                    ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) ? (string) __('Date range') : null),
                 SelectFilter::make('action')
                     ->label(__('Action'))
                     ->options(static fn (): array => self::actionOptions())

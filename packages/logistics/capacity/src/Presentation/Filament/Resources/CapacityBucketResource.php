@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Capacity\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
@@ -31,6 +32,7 @@ use Logistics\Coverage\Infrastructure\Persistence\Eloquent\ZoneRecord;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin Filament de cupos de capacidad (capacity buckets): un tope por scope (nodo o zona), fecha,
@@ -50,11 +52,19 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class CapacityBucketResource extends Resource
 {
+    // Fuera del menú: son datos del CALENDARIO de despacho (cupos/bloqueos por día); su hogar es la
+    // página «Calendario de despacho», desde donde se gestionan. No son ítems sueltos del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = CapacityBucketRecord::class;
 
-    protected static ?int $navigationSort = 50;
+    protected static ?int $navigationSort = 38;
 
     public static function getNavigationIcon(): string
     {
@@ -112,6 +122,8 @@ final class CapacityBucketResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?node=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('node', 'node_id'))
             ->columns([
                 // Scope legible: código/nombre del nodo o nombre de la zona (vía relación eager-loaded),
                 // nunca el UUID. El tipo de scope va como descripción secundaria.

@@ -20,6 +20,7 @@ use Logistics\Inventory\Infrastructure\Persistence\Eloquent\Model\InventoryLotRe
 use Logistics\Inventory\Presentation\Filament\Resources\StockOnHandResource\Pages\ListStockOnHand;
 use Logistics\Inventory\Presentation\Filament\Resources\StockOnHandResource\Pages\ViewStockLot;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Cockpit de stock on-hand por almacén, con filtro por DUEÑO (propio de Dismac vs. consignación de seller).
@@ -36,6 +37,7 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 final class StockOnHandResource extends Resource
 {
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     /** @var array<string, string>|null Caché por request de id de almacén → nombre (network_nodes). */
     private static ?array $warehouseNames = null;
@@ -56,7 +58,7 @@ final class StockOnHandResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 60;
+        return 20;
     }
 
     public static function getModelLabel(): string
@@ -182,6 +184,9 @@ final class StockOnHandResource extends Resource
                     ])
                     ->native(false),
             ])
+            // Alto volumen (stock por lote×nodo×producto): no consultar al pintar y acotar la paginación.
+            ->deferLoading()
+            ->paginationPageOptions([25, 50, 100])
             ->recordActions([
                 ViewAction::make(),
             ]);

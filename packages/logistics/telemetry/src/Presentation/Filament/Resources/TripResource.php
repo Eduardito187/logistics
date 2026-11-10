@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Infolists\Components\TextEntry;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 use Logistics\Telemetry\Domain\ValueObject\TripStatus;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\TripRecord;
 use Logistics\Telemetry\Presentation\Filament\Resources\TripResource\Pages\ListTrips;
@@ -34,7 +36,15 @@ use Logistics\Telemetry\Presentation\Filament\Support\VehiclePlates;
  */
 final class TripResource extends Resource
 {
+    // Fuera del menú: depende de la entidad (vehículo); su hogar es la ficha 360 de esa entidad
+    // (sección «Gestión»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
 
     protected static ?string $model = TripRecord::class;
 
@@ -45,7 +55,7 @@ final class TripResource extends Resource
 
     public static function getNavigationSort(): int
     {
-        return 50;
+        return 46;
     }
 
     /**
@@ -145,6 +155,8 @@ final class TripResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?vehicle=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('vehicle', 'vehicle_id'))
             ->columns([
                 TextColumn::make('vehicle_id')
                     ->label(__('Vehicle'))

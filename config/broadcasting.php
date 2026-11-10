@@ -21,6 +21,20 @@ return [
 
     'default' => env('BROADCAST_CONNECTION', env('BROADCAST_DRIVER', 'null')),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Origen del WebSocket del CLIENTE (navegador → Soketi expuesto)
+    |--------------------------------------------------------------------------
+    | El navegador conecta a este host:puerto (p. ej. localhost:6001), distinto del host de red docker
+    | que usa el app (`soketi`). Se usa para agregar el origen a la CSP connect-src del admin
+    | (SecurityHeaders), sin relajar la política más de lo necesario. Coincide con VITE_PUSHER_*.
+    */
+    'client_ws' => [
+        'host' => env('VITE_PUSHER_HOST', 'localhost'),
+        'port' => (int) env('VITE_PUSHER_PORT', 6001),
+        'scheme' => env('VITE_PUSHER_SCHEME', 'http'),
+    ],
+
     'connections' => [
 
         // Protocolo Pusher contra Soketi (self-host, open-source). Host/puerto apuntan al

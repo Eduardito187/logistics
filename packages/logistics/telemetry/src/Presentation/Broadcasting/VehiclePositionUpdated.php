@@ -24,8 +24,11 @@ use Illuminate\Queue\SerializesModels;
  * cliente no tenga que cruzar contextos.
  *
  * Canales:
- *  - `fleet`          : canal del panel de la torre (gated a Admin/Supervisor en routes/channels.php).
- *  - `vehicle.{id}`   : canal por vehículo (seguimiento de una unidad concreta).
+ *  - `fleet`           : canal GLOBAL del panel de la torre (gated a Admin/Supervisor en routes/channels.php).
+ *  - `fleet.node.{id}` : canal ACOTADO por el nodo base del vehículo — un nodo vive en un solo departamento,
+ *                        coherente con la regla de ruta de un departamento; así un espectador de un nodo no
+ *                        recibe el stream global completo. Solo se añade si el nodo base se pudo resolver.
+ *  - `vehicle.{id}`    : canal por vehículo (seguimiento de una unidad concreta).
  *
  * Al difundirse por queue (ShouldBroadcast), el fan-out no bloquea la ingesta ni hace I/O síncrono.
  */
@@ -42,19 +45,28 @@ final class VehiclePositionUpdated implements ShouldBroadcast
         public readonly float $lng,
         public readonly string $status,
         public readonly string $occurredAt,
+        public readonly ?string $homeBaseNodeId = null,
     ) {}
 
     /**
-     * Canales a los que se difunde: el público del panel (`fleet`) y el privado del vehículo.
+     * Canales a los que se difunde: el GLOBAL del panel (`fleet`), el ACOTADO por nodo base (`fleet.node.{id}`,
+     * solo si se resolvió el nodo) y el privado del vehículo.
      *
      * @return list<Channel>
      */
     public function broadcastOn(): array
     {
-        return [
+        $channels = [
             new Channel('fleet'),
-            new PrivateChannel('vehicle.'.$this->vehicleId),
         ];
+
+        if ($this->homeBaseNodeId !== null && $this->homeBaseNodeId !== '') {
+            $channels[] = new PrivateChannel('fleet.node.'.$this->homeBaseNodeId);
+        }
+
+        $channels[] = new PrivateChannel('vehicle.'.$this->vehicleId);
+
+        return $channels;
     }
 
     /**

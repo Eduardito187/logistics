@@ -7,6 +7,7 @@ namespace Commerce\Orders\Infrastructure\Persistence\Eloquent\Model;
 use Commerce\Orders\Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * Modelo Eloquent de la tabla `commerce_orders`. Detalle de infraestructura: nunca cruza a Domain.
@@ -21,6 +22,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property bool                                                                                                   $shipment_requested
  * @property array{customer_name: string, address_text: string, reference: ?string, phone: ?string, email: ?string} $ship_to
  * @property list<array{sku: string, product_name: string, unit_price_cents: int, quantity: int}>                   $lines
+ * @property Carbon|null                                                                                            $created_at
+ * @property Carbon|null                                                                                            $updated_at
  */
 final class OrderRecord extends Model
 {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Presentation\Filament\Resources;
 
+use App\Filament\Support\RequestScopedQuery;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -22,6 +23,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource\Pa
 use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource\Pages\ListVehicleProfiles;
 use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource\Pages\ViewVehicleProfile;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
 
 /**
  * Admin del perfil técnico de cada vehículo (relación 1:1 con el vehículo de fleet, PK `vehicle_id`).
@@ -35,12 +37,20 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class VehicleProfileResource extends Resource
 {
+    // Fuera del menú: este recurso DEPENDE del vehículo; su hogar es la ficha 360 del vehículo
+    // (sección «Gestión del vehículo»), que enlaza a su lista. No es un ítem suelto del menú.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     use OfficeOnly;
+    use PlainNavigationLabel;
     use ResolvesVehiclePlate;
 
     protected static ?string $model = VehicleProfileRecord::class;
 
-    protected static ?int $navigationSort = 38;
+    protected static ?int $navigationSort = 62;
 
     public static function getNavigationGroup(): string
     {
@@ -183,6 +193,8 @@ final class VehicleProfileResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Acota a la entidad padre al abrir desde su ficha 360 (?vehicle=<id>).
+            ->modifyQueryUsing(RequestScopedQuery::by('vehicle', 'vehicle_id'))
             ->columns([
                 // Placa legible del vehículo por lectura cruzada a fleet, nunca el UUID.
                 TextColumn::make('vehicle_id')
