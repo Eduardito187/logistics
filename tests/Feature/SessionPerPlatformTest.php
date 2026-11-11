@@ -141,3 +141,30 @@ it('distingue el 401 de desalojo del de baja normal del dispositivo', function (
     meWith($supToken->plainTextToken)
         ->assertStatus(401)->assertJsonPath('code', 'session_superseded');
 })->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');
+
+// Regresión (2026-11-11): login de OTRO usuario en el mismo teléfono (misma fila Device por fingerprint).
+// El snapshot cacheado de la guarda (TTL 30 s) seguía con user_id del anterior → 401 device_revoked al
+// token recién emitido. Device::saved invalida el snapshot al cambiar user_id/revoked_at/revoked_reason.
+it('otro usuario en el mismo teléfono entra al instante (snapshot cacheado invalidado)', function (): void {
+    makeUser('phone-a@dismac.test');
+    makeUser('phone-b@dismac.test');
+
+    $tokenA = appLogin('phone-a@dismac.test', 'fp-shared', 'android')->json('token');
+    meWith($tokenA)->assertOk(); // calienta la cache con user_id = A
+
+    $tokenB = appLogin('phone-b@dismac.test', 'fp-shared', 'android')->json('token');
+    meWith($tokenB)->assertOk();
+})->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');
+
+it('un teléfono desalojado que vuelve a loguear antes del TTL entra al instante', function (): void {
+    makeUser('back@dismac.test');
+
+    $tokenF = appLogin('back@dismac.test', 'fp-F', 'android')->json('token');
+    meWith($tokenF)->assertOk();
+
+    appLogin('back@dismac.test', 'fp-F2', 'android')->assertOk(); // desaloja F
+    meWith($tokenF)->assertStatus(401)->assertJsonPath('code', 'session_superseded'); // cachea revoked=true
+
+    $tokenF2nd = appLogin('back@dismac.test', 'fp-F', 'android')->json('token');
+    meWith($tokenF2nd)->assertOk();
+})->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');
