@@ -1,4 +1,6 @@
 * text=auto eol=lf
+# Scripts de PowerShell: CRLF en la copia de trabajo (convención de Windows); en git se guardan en LF.
+*.ps1 text eol=crlf
 
 *.blade.php diff=html
 *.css diff=css
