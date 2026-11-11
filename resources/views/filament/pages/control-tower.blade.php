@@ -350,6 +350,8 @@
                 <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
                 <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
                 <script src="{{ asset('js/dismac-maps.js') }}"></script>
+                {{-- Ciclo de vida del polling/mapa/Echo en modo SPA (libera todo al salir). --}}
+                <script src="{{ asset('js/dismac-live.js') }}"></script>
             @endassets
 
             @script
@@ -357,9 +359,13 @@
                 const mapEl = document.getElementById('ct-network-map');
                 if (mapEl && window.L) {
                     const initial = @js($map);
+                    // Sesión "en vivo": al salir con navegación SPA corta polling, debounces, Echo y mapa
+                    // (antes se acumulaban un intervalo, un listener de Echo y un mapa por cada visita).
+                    const live = window.DismacLive.session({ el: mapEl, component: $wire.__instance });
 
                     const map = L.map(mapEl, { zoomControl: true, attributionControl: true })
                         .setView(initial.center, 11);
+                    live.onDispose(() => map.remove());
 
                     // Teselas SOLO del tileserver self-host (sin fallback a CDN público; política no-CDN).
                     window.DismacMaps.tileLayer(L, {
@@ -396,15 +402,14 @@
 
                     draw(initial.positions);
 
-                    const refresh = async () => {
-                        try {
-                            const fresh = await $wire.mapData();
-                            if (fresh && fresh.positions) draw(fresh.positions);
-                        } catch (e) { /* telemetría intermitente: se reintenta al próximo tick/evento */ }
-                    };
+                    // Llamada segura: si la telemetría falla o la página ya se cerró, se ignora y se
+                    // reintenta en el próximo tick/evento (nunca un Uncaught en consola).
+                    const refresh = () => live.call(() => $wire.mapData(), (fresh) => {
+                        if (fresh && fresh.positions) draw(fresh.positions);
+                    });
 
                     // Refresco de respaldo (polling cada 30s): garantiza frescura aunque no haya push.
-                    setInterval(refresh, 30000);
+                    live.every(30000, refresh);
 
                     // Tiempo real (Fase 6): si Laravel Echo está disponible (Soketi), al llegar una posición
                     // nueva por WebSocket se refresca el mapa al instante (debounce para absorber ráfagas).
@@ -414,25 +419,33 @@
                         let pendingData = null;
                         const liveRefresh = () => {
                             // Mapa al instante (debounce corto para absorber ráfagas de posiciones).
+                            if (!live.alive) return;
                             if (!pending) {
-                                pending = setTimeout(() => { pending = null; refresh(); }, 1500);
+                                pending = live.timeout(1500, () => { pending = null; refresh(); });
                             }
                             // KPIs/brief en vivo: refresco del componente Livewire (el mapa va en wire:ignore,
                             // así que no se reinicializa). Debounce más largo para no martillar el servidor.
                             if (!pendingData) {
-                                pendingData = setTimeout(() => {
+                                pendingData = live.timeout(4000, () => {
                                     pendingData = null;
-                                    try { $wire.$refresh(); } catch (e) { /* queda el polling de 30s */ }
-                                }, 4000);
+                                    live.call(() => $wire.$refresh()); // si falla, queda el polling de 30s
+                                });
                             }
                         };
                         try {
-                            window.Echo.channel('fleet').listen('.vehicle.position', liveRefresh);
+                            const channel = window.Echo.channel('fleet');
+                            channel.listen('.vehicle.position', liveRefresh);
+                            // Al salir se quita ESTE listener (si no, cada visita sumaba uno más al canal).
+                            live.onDispose(() => {
+                                if (typeof channel.stopListening === 'function') {
+                                    channel.stopListening('.vehicle.position', liveRefresh);
+                                }
+                            });
                         } catch (e) { /* sin tiempo real: queda el polling */ }
                     }
 
                     // Ajusta el tamaño tras el primer render del layout.
-                    setTimeout(() => map.invalidateSize(), 250);
+                    live.timeout(250, () => map.invalidateSize());
                 }
             </script>
             @endscript

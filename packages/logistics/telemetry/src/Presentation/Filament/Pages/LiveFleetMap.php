@@ -131,15 +131,34 @@ final class LiveFleetMap extends Page
     }
 
     /**
-     * Recorrido (track) del vehículo durante el día de hoy, para dibujarlo al hacer clic en su marcador
-     * o en una fila del panel de excepciones. Se pide al lado de lectura entre el inicio y el fin del día.
+     * Día operativo al que se ancla el drill-down de un vehículo. El navegador manda la fecha (`Y-m-d`) de
+     * la ÚLTIMA posición del camión: así el clic muestra la ruta/paradas/recorrido del día en que realmente
+     * se lo vio, no el del reloj del servidor. Antes se usaba siempre "hoy" y un camión visto ayer (el mapa
+     * lista posiciones de hasta 48 h) quedaba sin ruta ni paradas al hacerle clic. Fecha inválida → hoy.
+     */
+    private function operatingDay(?string $day): DateTimeImmutable
+    {
+        if (is_string($day) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $day) === 1) {
+            $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $day);
+            if ($parsed !== false && $parsed->format('Y-m-d') === $day) {
+                return $parsed;
+            }
+        }
+
+        return new DateTimeImmutable('today');
+    }
+
+    /**
+     * Recorrido (track) GPS del vehículo durante su día operativo (ver operatingDay), para dibujarlo al
+     * hacer clic en su marcador o en una fila del panel de excepciones.
      *
      * @return list<array{lat: float, lng: float, speed_kph: float|null, heading: int|null, recorded_at: string}>
      */
-    public function vehicleTrack(string $vehicleId): array
+    public function vehicleTrack(string $vehicleId, ?string $day = null): array
     {
-        $from = (new DateTimeImmutable('today'))->format(DATE_ATOM);
-        $to = (new DateTimeImmutable('tomorrow'))->format(DATE_ATOM);
+        $start = $this->operatingDay($day);
+        $from = $start->format(DATE_ATOM);
+        $to = $start->modify('+1 day')->format(DATE_ATOM);
 
         /** @var QueryBus $queryBus */
         $queryBus = app(QueryBus::class);
@@ -155,17 +174,17 @@ final class LiveFleetMap extends Page
     }
 
     /**
-     * Ruta PLANIFICADA del vehículo para hoy, como polilínea PEGADA A CALLES (geometría del plan, ya
+     * Ruta PLANIFICADA del vehículo para su día operativo, como polilínea PEGADA A CALLES (geometría del plan, ya
      * calculada por el motor de rutas en el servidor). Se dibuja al hacer clic en el camión: así la ruta se
      * ve realista sobre las calles, sin depender de que el navegador pueda matchear el GPS contra OSRM.
      * Lectura directa del read-side de planning (tolerante: [] si no hay plan o geometría).
      *
      * @return list<array{lat: float, lng: float}>
      */
-    public function vehicleRoute(string $vehicleId): array
+    public function vehicleRoute(string $vehicleId, ?string $day = null): array
     {
         try {
-            $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+            $today = $this->operatingDay($day)->format('Y-m-d');
             /** @var object{route_geometry: string|null}|null $plan */
             $plan = DB::table('planning_plans')
                 ->where('vehicle_id', $vehicleId)
@@ -197,16 +216,16 @@ final class LiveFleetMap extends Page
     }
 
     /**
-     * Paradas de hoy del vehículo (los pedidos a entregar), con su posición, nº de pedido y cliente y si
+     * Paradas del día operativo del vehículo (los pedidos a entregar), con su posición, nº de pedido y cliente y si
      * ya fueron ENTREGADAS. Se dibujan numeradas sobre el mapa para ver DÓNDE reparte, no solo la línea de
      * la ruta. Lectura directa del read-side de ejecución (tolerante: [] si no hay ruta hoy).
      *
      * @return list<array{sequence: int, order: string, customer: string, lat: float, lng: float, done: bool}>
      */
-    public function vehicleStops(string $vehicleId): array
+    public function vehicleStops(string $vehicleId, ?string $day = null): array
     {
         try {
-            $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+            $today = $this->operatingDay($day)->format('Y-m-d');
             $routeId = DB::table('execution_driver_routes')
                 ->where('vehicle_id', $vehicleId)
                 ->whereDate('route_date', $today)

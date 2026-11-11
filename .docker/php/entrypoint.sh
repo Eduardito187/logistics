@@ -9,9 +9,20 @@ set -e
 # ------------------------------------------------------------
 # 1. Esperar a PostgreSQL
 # ------------------------------------------------------------
+# DB_WAIT_TIMEOUT (segundos): tope de espera. 0 = esperar indefinidamente (default, comportamiento de dev).
+# En despliegues (staging) se fija un tope para que una credencial mala FALLE claro en vez de colgar el
+# deploy hasta el timeout del job.
+# El tope se mide en TIEMPO REAL ($SECONDS), no en intentos: con credenciales malas PgBouncer puede dejar
+# un intento colgado mucho tiempo (espera su propia auth contra Postgres), y contar intentos convertía
+# "180" en horas. Además cada intento se corta a 10 s con `timeout`.
 if [ -n "$DB_HOST" ]; then
     echo "[entrypoint] Esperando PostgreSQL en ${DB_HOST}:${DB_PORT:-5432}..."
-    until php -r "try { new PDO('pgsql:host=${DB_HOST};port=${DB_PORT:-5432};dbname=${DB_DATABASE:-logistics}', '${DB_USERNAME:-logistics}', '${DB_PASSWORD:-logistics}'); exit(0); } catch (\Throwable \$e) { exit(1); }" > /dev/null 2>&1; do
+    wait_start=$SECONDS
+    until timeout 10 php -r "try { new PDO('pgsql:host=${DB_HOST};port=${DB_PORT:-5432};dbname=${DB_DATABASE:-logistics}', '${DB_USERNAME:-logistics}', '${DB_PASSWORD:-logistics}'); exit(0); } catch (\Throwable \$e) { exit(1); }" > /dev/null 2>&1; do
+        if [[ "${DB_WAIT_TIMEOUT:-0}" -gt 0 && $((SECONDS - wait_start)) -ge "${DB_WAIT_TIMEOUT}" ]]; then
+            echo "[entrypoint] ERROR: PostgreSQL no aceptó la conexión en ${DB_WAIT_TIMEOUT}s (¿host caído o credenciales incorrectas?)." >&2
+            exit 1
+        fi
         sleep 1
     done
     echo "[entrypoint] PostgreSQL listo."

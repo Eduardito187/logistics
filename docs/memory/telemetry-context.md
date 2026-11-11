@@ -47,3 +47,9 @@ de 20 pings/trip + posición viva para vehículos existentes de fleet).
 **DoD VERDE (2026-10-14):** PHPStan 8 limpio (módulo y repo global 0), Pint limpio (1917 files), Pest del módulo
 **49 passed/112 aserciones** (Unit+Feature), Filament resuelve, verificación en vivo end-to-end (ingesta→posición→trip→
 alertas speeding+geofence_violation, outbox). Ver [[project-architecture]], [[routing-geo-rule]], [[admin-ui-maps]], [[no-destructive-db-ops]].
+
+**LiveFleetMap — drill-down anclado al día del camión (2026-11-11).** `vehicleRoute/vehicleStops/vehicleTrack`
+aceptan `?string $day` (Y-m-d validado, fallback hoy); el JS manda la fecha de la ÚLTIMA posición del camión
+(`dayOf`). Antes filtraban "hoy" y un camión visto ayer (el mapa lista posiciones de 48 h) quedaba sin
+ruta/paradas al clic. El camión enfocado no se re-pinta crudo en cada polling (`focusedOnRoute`). Polling y
+mapa se liberan al navegar vía `dismac-live.js` ([[filament-v4-component-gotchas]] #10).

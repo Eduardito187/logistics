@@ -82,6 +82,9 @@ final class FleetCostDashboard extends Page
     /** Vida del caché de las proyecciones de odómetro (segundos); el atraso se mide en días, 5 min sobra. */
     private const STALE_ODOMETER_TTL_SECONDS = 300;
 
+    /** Clave de caché de la proyección "última lectura por vehículo" (se invalida al registrar una lectura). */
+    public const LAST_READS_CACHE_KEY = 'fleet-cost:odometer-last-reads';
+
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-heart';
 
     protected string $view = 'fleetops.filament.pages.fleet-cost-dashboard';
@@ -309,8 +312,12 @@ final class FleetCostDashboard extends Page
             ->color('warning')
             ->modalHeading(__('Schedule maintenance order'))
             ->modalSubmitActionLabel(__('Schedule'))
+            // fillForm() reemplaza los ->default() del schema (Filament solo aplica defaults si el form se
+            // llena sin estado), así que los defaults se repiten aquí junto al vehículo precargado.
             ->fillForm(static fn (array $arguments): array => [
-                'vehicle_id' => is_string($arguments['vehicle_id'] ?? null) ? $arguments['vehicle_id'] : null,
+                'vehicle_id' => self::vehicleArgument($arguments),
+                'type' => MaintenanceType::Preventive->value,
+                'scheduled_at' => now()->toDateTimeString(),
             ])
             ->schema([
                 Select::make('vehicle_id')
@@ -371,8 +378,11 @@ final class FleetCostDashboard extends Page
             ->icon('heroicon-o-arrow-trending-up')
             ->modalHeading(__('Record odometer reading'))
             ->modalSubmitActionLabel(__('Record reading'))
+            // fillForm() reemplaza los ->default() del schema: se repite aquí el default de la fecha de
+            // lectura (si no, el modal abría con "Read at" vacío y fallaba la validación).
             ->fillForm(static fn (array $arguments): array => [
-                'vehicle_id' => is_string($arguments['vehicle_id'] ?? null) ? $arguments['vehicle_id'] : null,
+                'vehicle_id' => self::vehicleArgument($arguments),
+                'read_at' => now()->toDateTimeString(),
             ])
             ->schema([
                 Select::make('vehicle_id')
@@ -405,6 +415,10 @@ final class FleetCostDashboard extends Page
                     readAt: (string) $data['read_at'],
                     note: self::nullableString($data['note'] ?? null),
                 ));
+
+                // La lista de odómetros atrasados sale de una proyección cacheada: se invalida para que el
+                // vehículo recién leído deje de figurar como atrasado en el próximo render (no a los 5 min).
+                Cache::forget(self::LAST_READS_CACHE_KEY);
 
                 Notification::make()
                     ->title(__('Odometer recorded'))
@@ -592,7 +606,7 @@ final class FleetCostDashboard extends Page
             // Última lectura por vehículo (id → fecha ISO), para medir la antigüedad.
             /** @var array<string, string> $lastReads */
             $lastReads = Cache::remember(
-                'fleet-cost:odometer-last-reads',
+                self::LAST_READS_CACHE_KEY,
                 self::STALE_ODOMETER_TTL_SECONDS,
                 static fn (): array => DB::table('fleetops_odometer_readings')
                     ->selectRaw('vehicle_id, MAX(read_at) as last_read_at')
@@ -715,6 +729,19 @@ final class FleetCostDashboard extends Page
         }
 
         return $options;
+    }
+
+    /**
+     * Vehículo precargado desde una fila de excepción (argumento de `mountAction`), solo si es un vehículo
+     * conocido; cualquier otro valor se descarta y el usuario lo elige en el select buscable.
+     *
+     * @param array<string, mixed> $arguments
+     */
+    private static function vehicleArgument(array $arguments): ?string
+    {
+        $vehicleId = $arguments['vehicle_id'] ?? null;
+
+        return is_string($vehicleId) && VehiclePlates::label($vehicleId) !== null ? $vehicleId : null;
     }
 
     /**

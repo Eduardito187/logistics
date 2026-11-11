@@ -6,6 +6,12 @@
 # custom de pg_dump comprimido con gzip). Hace DROP + CREATE de la base destino y
 # verifica el resultado (conteo de tablas, versión de PostGIS y una fila sonda).
 #
+# Bundles `.tar` (de `php artisan backup:create` / BACKUP_MODE=artisan): se delega en
+# `php artisan backup:verify` (no destructivo) y luego `php artisan backup:restore`,
+# que restaura por SWAP (la base anterior queda como `<db>_prev_<ts>`, sin DROP). Es
+# el camino recomendado: verifica contra el manifest antes de tocar nada. La ruta del
+# .tar debe ser visible DENTRO del contenedor app (p. ej. storage/app/backups/...).
+#
 # DESTRUCTIVO: borra por completo la base destino antes de restaurar. Por eso exige
 # confirmación salvo que se pase --yes (o CONFIRM=yes), y se niega a correr sobre
 # la base de PRODUCCIÓN a menos que ALLOW_PROD=yes esté explícito.
@@ -26,6 +32,7 @@
 # Uso:
 #   scripts/restore-db.sh ./backups/logistics-20261013-030000.dump.gz
 #   scripts/restore-db.sh --yes backups/ultimo.dump.gz
+#   scripts/restore-db.sh storage/app/backups/logistics-20261111-030000.tar
 #
 # Código de salida 0 = restauración verificada.
 # ============================================================
@@ -59,8 +66,26 @@ for arg in "$@"; do
         *)  BACKUP_FILE="$arg" ;;
     esac
 done
-[[ -n "$BACKUP_FILE" ]] || die "falta el archivo de respaldo. Uso: $0 [--yes] <archivo.dump.gz>"
+[[ -n "$BACKUP_FILE" ]] || die "falta el archivo de respaldo. Uso: $0 [--yes] <archivo.dump.gz | bundle.tar>"
 [[ -f "$BACKUP_FILE" ]] || die "no existe el archivo: $BACKUP_FILE"
+
+# -------------------- Bundle .tar → comandos artisan --------------------
+if [[ "$BACKUP_FILE" == *.tar ]]; then
+    APP_SERVICE="${APP_SERVICE:-app}"
+    command -v docker >/dev/null 2>&1 || die "docker no está instalado"
+    log "bundle .tar: backup:verify (no destructivo) antes de restaurar"
+    docker compose exec -T "$APP_SERVICE" php artisan backup:verify "$BACKUP_FILE"         || die "backup:verify falló: el bundle no coincide con su manifest; NO se restaura"
+    force=()
+    [[ "$CONFIRM" == "yes" ]] && force=(--force)
+    log "backup:restore (swap seguro; la base anterior queda como <db>_prev_<ts>)"
+    # Sin --yes, backup:restore pide confirmación: se le da TTY si lo hay.
+    tty_flag="-T"
+    [[ "$CONFIRM" != "yes" && -t 0 ]] && tty_flag=""
+    # shellcheck disable=SC2086
+    docker compose exec $tty_flag "$APP_SERVICE" php artisan backup:restore "$BACKUP_FILE" "${force[@]}"         || die "backup:restore falló"
+    log "listo."
+    exit 0
+fi
 
 # -------------------- Ejecutores por modo --------------------
 # pg_run_stdin: corre un binario de Postgres leyendo de STDIN (para pg_restore <).

@@ -1,0 +1,87 @@
+name: Staging deploy
+
+# Despliegue automático de STAGING en el servidor de Oracle Cloud (self-hosted runner de este repo).
+#
+# Disparo: todo push a `staging`, que es exactamente lo que ocurre al mergear un PR hacia staging
+# (por branch-policy.yml solo entran PRs desde `dev` o `hotfix/*`). `workflow_dispatch` permite
+# redesplegar a mano desde la pestaña Actions sin un commit nuevo.
+#
+# Los tests NO se corren acá: ya los corre ci.yml (Pint + PHPStan 8 + Pest con gate de cobertura) en
+# el PR y en el push. Este job construye, despliega y verifica. Guía: docs/deploy-staging.md.
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+# Un push nuevo a staging cancela el deploy en curso: siempre gana el último commit. Es seguro porque
+# el deploy es idempotente (la corrida siguiente deja el estado completo).
+concurrency:
+  group: staging-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build + deploy (logistics-staging)
+    # Candado: SOLO despliega desde la rama staging. `workflow_dispatch` se puede lanzar eligiendo
+    # cualquier rama en la UI (y correría la versión del workflow/scripts de ESA rama); con este `if`
+    # el job se omite salvo que el ref sea exactamente staging.
+    if: github.ref == 'refs/heads/staging'
+    runs-on: [self-hosted, docker]
+    timeout-minutes: 60
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_APP_URL }}
+    env:
+      ENV_FILE: ${{ runner.temp }}/logistics-staging.env
+      STAGING_PROJECT: logistics-staging
+      STAGING_IMAGE_TAG: staging
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@v4
+        with:
+          ref: staging
+          # Runner persistente: limpia restos de corridas anteriores antes de traer el código.
+          clean: true
+
+      - name: Generar env de staging desde secrets
+        env:
+          APP_KEY: ${{ secrets.STAGING_APP_KEY }}
+          DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          STAGING_ENV_EXTRA: ${{ secrets.STAGING_ENV_EXTRA }}
+          APP_URL: ${{ vars.STAGING_APP_URL }}
+          STAGING_HTTP_PORT: ${{ vars.STAGING_HTTP_PORT }}
+        run: bash scripts/staging/render-env.sh "$ENV_FILE"
+
+      - name: Build, migrar, desplegar y smoke test
+        run: bash scripts/staging/deploy.sh "$ENV_FILE"
+
+      - name: Resumen
+        if: success()
+        run: |
+          {
+            echo "### Staging desplegado"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+            echo "- Proyecto compose: \`$STAGING_PROJECT\`"
+            echo "- Puerto publicado: \`${{ vars.STAGING_HTTP_PORT || '8110' }}\`"
+            echo ""
+            echo '```'
+            docker compose -p "$STAGING_PROJECT" ps --format 'table {{.Service}}\t{{.Status}}\t{{.Ports}}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Runner NO efímero (disco de 45 GB): se borra el env con secretos, las imágenes colgadas, la caché
+      # de build vieja (se conserva la de la última semana para builds rápidos) y el workspace.
+      # Corre SIEMPRE (también si el deploy falló o se canceló). Los contenedores no montan nada del
+      # workspace, así que borrarlo no afecta a staging.
+      - name: Limpieza
+        if: always()
+        run: |
+          rm -f "$ENV_FILE"
+          docker image prune -f
+          docker builder prune -f --filter until=168h
+          df -h / | tail -1 | awk '{print "Disco tras limpieza: " $4 " libres (" $5 " usado)"}'
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +

@@ -266,9 +266,14 @@ services:
     # OFF-SITE: en producción el volumen `backups` debe sincronizarse a un destino
     # off-site (S3/MinIO ya está en el stack). El README documenta el `mc mirror`/`aws s3
     # sync`. En dev queda solo en el volumen local.
+    #
+    # DESACTIVADO POR DEFECTO (decisión del dueño): NO arranca con `docker compose up`. El respaldo que se
+    # usa es el MANUAL y completo de la base (`php artisan backup:create`, ver docs/backup-restore.md).
+    # Si algún día se quiere el automático, levantarlo a mano: `docker compose --profile backup up -d pg-backup`.
     pg-backup:
         image: postgis/postgis:17-3.5-alpine
         container_name: dismac_lg_pg_backup
+        profiles: ["backup"]
         restart: unless-stopped
         environment:
             PGHOST: postgres
@@ -281,12 +286,28 @@ services:
             # Días de retención de los dumps (se podan los más viejos). 7–30 recomendado.
             BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
             BACKUP_DIR: /backups
+            # Hora local de Bolivia: el nombre del archivo, los logs y el horario del cron
+            # (BACKUP_CRON) usan la misma hora que el resto del stack (sin TZ era UTC).
+            TZ: America/La_Paz
+            # El healthcheck marca unhealthy si el último backup VALIDADO supera estas horas.
+            BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-26}
         entrypoint: ["/usr/local/bin/backup-entrypoint.sh"]
         volumes:
             - backups:/backups
             - ./.docker/backups/backup.sh:/usr/local/bin/backup.sh:ro
             - ./.docker/backups/restore.sh:/usr/local/bin/restore.sh:ro
             - ./.docker/backups/backup-entrypoint.sh:/usr/local/bin/backup-entrypoint.sh:ro
+            - ./.docker/backups/healthcheck.sh:/usr/local/bin/healthcheck.sh:ro
+        # Sano = hay un `last-success` (escrito solo tras un dump validado) de menos de
+        # BACKUP_MAX_AGE_HOURS. Un backup programado que falla deja el servicio unhealthy
+        # en `docker compose ps` en vez de fallar en silencio. Se invoca con `sh` para no
+        # depender del bit de ejecución (NTFS no lo tiene).
+        healthcheck:
+            test: ["CMD", "sh", "/usr/local/bin/healthcheck.sh"]
+            interval: 5m
+            timeout: 10s
+            retries: 1
+            start_period: 2m
         depends_on:
             postgres:
                 condition: service_healthy

@@ -1,212 +1,242 @@
 # Respaldo y restauración de la base — logistics
 
-Runbook operativo para respaldar y restaurar **PostgreSQL 17 + PostGIS**. Cubre los dos scripts
-del repo, la prueba periódica de restauración y el schedule sugerido.
+Runbook del **mecanismo oficial** de backup: los comandos artisan `backup:create`, `backup:verify` y
+`backup:restore`. Son **manuales** (no hay scheduler ni cron de backups en la app) y respaldan la base
+**PostgreSQL 17 + PostGIS completa**.
 
-- Respaldo: `scripts/backup-db.sh`
-- Restauración: `scripts/restore-db.sh`
+> El backup automático (servicio `pg-backup`) está **desactivado**; opcional:
+> `docker compose --profile backup up -d pg-backup`, ver `.docker/backups/README.md`.
 
-Complementa `docs/deploy.md` (topología y retención de objetos en S3) y `docs/security.md` (los
-respaldos contienen PII y se tratan como dato sensible). Todo corre en contenedores; nunca se usa
-el PostgreSQL del host (los scripts se ejecutan **desde el host**, contra el contenedor o contra
-la DB gestionada).
-
-> Resumen en una línea: `backup-db.sh` deja un `.dump.gz` (formato custom de pg_dump, apto para
-> PostGIS) con checksum y rotación; `restore-db.sh` lo restaura con DROP/CREATE y **verifica**
-> tablas y PostGIS. Probamos el respaldo restaurándolo, no asumiéndolo.
+Los respaldos contienen PII: se tratan como dato sensible (ver `docs/security.md` y §7).
 
 ---
 
-## 1. Por qué formato custom + gzip
+## 1. Qué incluye y qué NO
 
-- `pg_dump --format=custom` (no plano) permite `pg_restore` selectivo y en paralelo, reordena
-  dependencias y trae las extensiones (PostGIS) en el orden correcto.
-- pg_dump escribe **sin** compresión interna (`--compress=0`) y la compresión la hace **gzip**
-  por fuera, dejando un `.dump.gz` estándar: se valida con `gzip -t` y se destapa con `gunzip`.
-- `--no-owner --no-privileges`: el restore recrea objetos bajo el rol que restaura, sin depender
-  de los roles del origen. Esto hace portable el respaldo entre entornos (dev ↔ staging ↔ prod).
+**Incluye: la base de datos completa, estructura + datos**, de todos los schemas de usuario:
+
+- tablas, tablas particionadas y sus particiones, con **todas sus filas**;
+- índices, constraints (PK, FK, UNIQUE, CHECK, EXCLUDE), secuencias **con su valor actual**;
+- vistas, vistas materializadas, funciones/procedimientos, triggers;
+- extensiones (`postgis`, `pg_trgm`, …) y las filas de usuario de sus tablas de configuración
+  (p. ej. `spatial_ref_sys`).
+
+**NO incluye:**
+
+- **archivos subidos** (POD, evidencias, documentos y fotos de flota, discos `local`/`public`/S3);
+- **volúmenes** de Docker, **contenedores** ni **imágenes**;
+- roles/usuarios de Postgres (son globales del servidor, no de la base) y ajustes
+  `ALTER DATABASE … SET` (se **registran** en el manifest en `database.settings` para reaplicarlos a mano).
+
+Dueño/permisos: el dump es `--no-owner --no-privileges`; al restaurar, todo queda a nombre del usuario
+que restaura. Es portable entre entornos (dev ↔ staging ↔ prod).
 
 ---
 
-## 2. Modos de ejecución
+## 2. Comandos (contrato)
 
-Ambos scripts toman la conexión de variables de entorno y funcionan en dos modos:
+Todos corren dentro del contenedor de la app (`docker compose exec -T app php artisan …`). En Git Bash
+(Windows) anteponer `MSYS_NO_PATHCONV=1` si se pasan rutas tipo `/tmp/...`.
 
-| Modo | Cuándo | Cómo conecta |
+| Comando | Qué hace | ¿Toca la base viva? |
 | --- | --- | --- |
-| `container` (default) | Desarrollo / staging con docker-compose | `docker exec` al contenedor `dismac_lg_postgres` (puerto interno 5432) |
-| `direct` | Producción con DB gestionada | `pg_dump`/`pg_restore`/`psql` del host contra `DB_HOST:DB_PORT` |
+| `backup:create {--path=} {--connection=} {--host=} {--port=}` | Genera el bundle `.tar` (dump + manifest) | No (solo lee) |
+| `backup:verify {bundle} {--connection=} {--host=} {--port=}` | Restaura en una base scratch y compara contra el manifest | No |
+| `backup:restore {bundle} {--force} {--connection=} {--host=} {--port=}` | Restore seguro por swap | Sí (la anterior queda para rollback) |
+| `db:backup {--path=} {--connection=} {--host=} {--port=}` | Compatibilidad: `.dump` + `<archivo>.manifest.json` al lado | No |
+| `db:restore {file} {--force} {--connection=} {--host=} {--port=}` | Compatibilidad: mismo camino seguro que `backup:restore` | Sí (idem) |
 
-Variables de conexión (defaults de desarrollo entre paréntesis):
-
-```dotenv
-BACKUP_MODE=container            # container | direct
-PG_CONTAINER=dismac_lg_postgres  # solo modo container
-DB_HOST=127.0.0.1                # solo modo direct (en container es interno)
-DB_PORT=5432
-DB_DATABASE=logistics
-DB_USERNAME=logistics
-DB_PASSWORD=logistics
-```
-
-`PGPASSWORD` viaja como variable de entorno hacia el binario, **nunca** en la línea de comandos
-(no queda en `ps` ni en el historial de shell).
-
----
-
-## 3. Respaldo — `backup-db.sh`
+Todos terminan con **exit ≠ 0** ante cualquier error o diferencia.
 
 ```bash
-# Desarrollo / staging (modo container)
-scripts/backup-db.sh
-
-# Producción (DB gestionada, modo direct). El env se exporta desde el gestor de secretos.
-BACKUP_MODE=direct \
-DB_HOST=db.prod.interno DB_PORT=5432 \
-DB_DATABASE=logistics DB_USERNAME=logistics DB_PASSWORD=*** \
-BACKUP_DIR=/var/backups/logistics \
-scripts/backup-db.sh
+docker compose exec -T app php artisan backup:create
+docker compose exec -T app php artisan backup:verify storage/app/backups/logistics-20261111-030000.tar
+docker compose exec -T app php artisan backup:restore storage/app/backups/logistics-20261111-030000.tar
 ```
 
-Variables de respaldo:
+### Conexión: directo a Postgres, nunca por PgBouncer
 
-| Variable | Default | Para qué |
+PgBouncer en transaction pooling no soporta snapshots exportados ni el DDL de sesión del swap. Orden
+de resolución del host/puerto:
+
+1. `--host` / `--port` del comando;
+2. `DB_DIRECT_HOST` / `DB_DIRECT_PORT` (los mismos de la conexión `pgsql_direct`);
+3. el host/puerto de la conexión; si parece PgBouncer (puerto `6432` o host `*bouncer*`), se
+   **descubre** el Postgres real con `inet_server_addr()` y se avisa por consola para fijar `DB_DIRECT_*`.
+
+Usuario, clave y base salen de la conexión (`--connection`, por defecto la default). La clave viaja en
+`PGPASSWORD` (entorno del proceso), nunca en la línea de comandos.
+
+### Versión del cliente
+
+`pg_dump`/`pg_restore` deben tener major **>=** al del servidor; si no, el comando falla con un error
+claro antes de hacer nada (un cliente viejo no entiende el catálogo nuevo). La imagen de la app trae
+cliente 18 contra servidor 17.
+
+---
+
+## 3. `backup:create` — el bundle
+
+Salida por defecto: `<BACKUP_PATH>/logistics-<YYYYmmdd-HHMMSS>.tar` (`BACKUP_PATH` por defecto
+`storage/app/backups`). Es un `.tar` sin comprimir (el dump ya va comprimido) con dos miembros:
+
+| Miembro | Contenido |
+| --- | --- |
+| `database.dump` | `pg_dump --format=custom --compress=9 --no-owner --no-privileges` de la base completa |
+| `manifest.json` | Descripción verificable del dump (abajo) |
+
+Cómo garantiza que el manifest describe **exactamente** lo que entró al dump: abre una transacción
+`REPEATABLE READ READ ONLY`, exporta su snapshot (`pg_export_snapshot()`), lee el inventario, corre
+`pg_dump --snapshot=<ese snapshot>` y cuenta filas en esa misma transacción. Aunque haya escrituras
+concurrentes, dump y conteos ven los mismos datos.
+
+El bundle se escribe como `<archivo>.tmp` y se renombra al final: si algo falla, se borra el parcial
+y nunca queda un archivo a medias con el nombre final.
+
+### `manifest.json` (formato 1)
+
+```json
+{
+  "format": 1,
+  "kind": "postgresql-database",
+  "scope": "Base PostgreSQL completa (estructura + datos). NO incluye archivos subidos, …",
+  "created_at": "2026-11-11T10:06:18-04:00",
+  "app_env": "local",
+  "git_commit": "3ba13fa…",                 // null si no se pudo obtener
+  "database": {
+    "name": "logistics",
+    "server_version": "17.11", "server_version_num": 170011,
+    "pg_dump_version": "pg_dump (PostgreSQL) 18.6",
+    "file": "database.dump", "size": 860127, "sha256": "35aff5…",
+    "settings": [],                          // ALTER DATABASE … SET (no van en el dump)
+    "inventory": {
+      "schemas": ["public"],
+      "tables": ["public.users", …],         // tablas hoja (incluye particiones)
+      "partitioned_tables": ["public.…"],
+      "indexes": […], "constraints": […], "views": […], "materialized_views": […],
+      "functions": ["public.fn(args)", …], "triggers": ["public.tabla.trigger", …],
+      "sequences": {"public.users_id_seq": 8, "public.jobs_id_seq": null},
+      "extensions": {"postgis": "3.5.7", "pg_trgm": "1.6", "plpgsql": "1.0"}
+    },
+    "row_counts": {"public.users": 8, …},    // count(*) EXACTO por tabla
+    "summary": {"tables": 120, "indexes": 511, …, "row_total": 16656}
+  }
+}
+```
+
+Criterios (idénticos en create, verify y restore):
+
+- **Schemas de usuario** = todos menos `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`.
+- Se **excluyen** del inventario los objetos miembros de una extensión (los recrea `CREATE EXTENSION`).
+  Las tablas de configuración de extensión (`extconfig`, p. ej. `spatial_ref_sys`) sí entran en
+  `row_counts`, porque pg_dump respalda sus filas de usuario.
+- **Particionadas:** se cuentan las **hojas** (particiones, `relkind 'r'`) y **no** el padre
+  (`relkind 'p'`), para no duplicar filas.
+- **Secuencias:** se leen justo antes del dump; como no son transaccionales, al verificar se exige que el
+  valor restaurado sea **>=** al del manifest (una escritura concurrente solo puede adelantarlas; quedar
+  atrás significaría claves duplicadas).
+- **Extensiones:** se comparan por nombre (la versión puede variar si el servidor destino trae otra).
+- Constraints `NOT NULL` catalogados (PG18+) se excluyen, para comparar entre majors.
+
+---
+
+## 4. `backup:verify` — prueba no destructiva
+
+1. Extrae el bundle y valida el **sha256** del dump contra el manifest.
+2. Crea una base **scratch** `<db>_verify_<YYYYmmdd_HHMMSS>` en el mismo servidor con
+   `TEMPLATE template0` (vacía: sin las extensiones que la imagen de PostGIS mete en `template1`).
+3. `pg_restore --exit-on-error` (sin `--clean`) en la scratch.
+4. Compara contra el manifest: tablas del TOC del dump, inventario de estructura completo y conteo de
+   filas por tabla. Imprime una tabla `Item | Expected | Actual` con cada diferencia.
+5. **Dropea la scratch siempre** (también si falló). El drop tiene un guard duro: solo acepta nombres
+   `*_verify_<ts>` / `*_restore_<ts>`; jamás la base viva ni una `_prev_`.
+
+Exit 0 solo si todo coincide. Un manifest alterado o un dump corrupto hacen fallar la verificación.
+
+---
+
+## 5. `backup:restore` — restore seguro por swap
+
+**Antes:** `php artisan down` y frenar workers/scheduler (si la app escribe tras el swap, la verificación
+final lo detecta como diferencia). Pide confirmación (`--force` la salta); en `APP_ENV=production` exige
+`--force`.
+
+1. Extrae el bundle, valida sha256 y la versión del cliente.
+2. Restaura en una base **nueva** `<db>_restore_<ts>` (`TEMPLATE template0`, sin `--clean`).
+3. Verifica estructura + conteos contra el manifest. Si algo no coincide: **aborta**, dropea la scratch y
+   la base viva **no se tocó**.
+4. Swap, conectado a la base de mantenimiento `postgres` (no se puede renombrar la base a la que uno
+   está conectado): `ALTER DATABASE <db> ALLOW_CONNECTIONS false`, `pg_terminate_backend` de las sesiones
+   de ambas bases, `<db>` → `<db>_prev_<ts>`, `<db>_restore_<ts>` → `<db>`. Si el segundo rename falla,
+   deshace el primero. Si `<db>` no existía, solo renombra la nueva.
+5. Verificación final: el nombre `<db>` apunta a la base restaurada (mismo oid) y su inventario + conteos
+   coinciden con el manifest.
+
+La base anterior queda como `<db>_prev_<ts>` con `ALLOW_CONNECTIONS false`. El comando imprime cómo
+volver atrás y cómo borrarla; desde `psql` en la base `postgres`:
+
+```sql
+-- Volver atrás (si dice que la base está en uso: SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'logistics';)
+ALTER DATABASE "logistics" RENAME TO "logistics_discarded";
+ALTER DATABASE "logistics_prev_20261111_100752" WITH ALLOW_CONNECTIONS true;
+ALTER DATABASE "logistics_prev_20261111_100752" RENAME TO "logistics";
+
+-- Borrar la anterior cuando ya no haga falta
+DROP DATABASE "logistics_prev_20261111_100752";
+```
+
+> Por qué no `pg_restore --clean`: sobre una base creada por la imagen `postgis/postgis` existen
+> `postgis_topology` y `postgis_tiger_geocoder` (dependen de `postgis`); el `DROP EXTENSION IF EXISTS
+> postgis` del `--clean` falla y, con `--single-transaction`, **no se importaba nada**. Restaurar en una
+> base nueva desde `template0` elimina el problema de raíz y además deja la base viva intacta hasta que
+> la nueva está verificada.
+
+Requisitos del usuario de restore: `CREATEDB`, ser dueño (o superusuario) de la base viva para
+renombrarla/terminar sesiones, y poder crear las extensiones del dump (PostGIS requiere superusuario o
+un rol con permiso según el proveedor).
+
+Espacio: durante el restore conviven la base viva, la nueva y el bundle extraído; prever ~2x el tamaño
+de la base libre en el servidor.
+
+---
+
+## 6. Compatibilidad: `db:backup` / `db:restore`
+
+- `db:backup` escribe `backup-<db>-<ts>.dump` (en `BACKUP_PATH`) y `<archivo>.manifest.json` al lado, con
+  el mismo manifest formato 1 y el mismo snapshot. Directo a Postgres.
+- `db:restore <archivo>.dump` usa el **mismo camino seguro** (scratch + verificación + swap). Si existe
+  `<archivo>.manifest.json`, verifica sha256, estructura y conteos; si no (dump viejo), verificación
+  **estructural**: toda tabla del TOC del dump debe existir en la base restaurada.
+
+---
+
+## 7. Configuración (`config/backup.php`)
+
+| Env | Default | Para qué |
 | --- | --- | --- |
-| `BACKUP_DIR` | `./backups` | Carpeta destino. En prod, fuera del repo (p. ej. `/var/backups/logistics`) |
-| `BACKUP_RETENTION_DAYS` | `14` | Borra respaldos más viejos que N días |
-| `BACKUP_RETENTION_MIN` | `7` | Conserva siempre al menos N respaldos, pase lo que pase |
-| `GZIP_LEVEL` | `6` | Nivel de compresión gzip (1..9) |
+| `BACKUP_PATH` | `storage/app/backups` | Directorio por defecto de bundles y dumps |
+| `DB_DIRECT_HOST` / `DB_DIRECT_PORT` | — | Postgres real (sin PgBouncer); recomendado fijarlos |
+| `BACKUP_MAINTENANCE_DATABASE` | `postgres` | Base desde la que se hace CREATE/DROP/RENAME DATABASE |
+| `BACKUP_TIMEOUT` | `7200` | Timeout (s) de pg_dump / pg_restore / tar |
 
-Salida por corrida:
+Guarda y acceso: `storage/app/backups` no se versiona. En producción guardar los bundles fuera del
+servidor de base, en almacenamiento **cifrado en reposo**, con acceso restringido a operaciones; para
+copia fuera de sitio, cifrarlos (`age`/`gpg` o cifrado del bucket).
 
-- `BACKUP_DIR/logistics-YYYYmmdd-HHMMSS.dump.gz`
-- `...dump.gz.sha256` (checksum para verificar integridad antes de restaurar)
-
-Garantías:
-
-- Escribe primero un `.partial` y solo lo renombra al final: **nunca** deja un respaldo a medias.
-- Valida `gzip -t` y que el archivo no esté vacío antes de dar OK.
-- Si `pg_dump` falla, sale con código ≠ 0 y **no** rota nada.
-
-> Si se usa `BACKUP_DIR` dentro del repo, agregar esa carpeta a `.gitignore`: los respaldos
-> contienen PII y jamás deben entrar al control de versiones. En producción debe vivir fuera del
-> repo y en almacenamiento cifrado.
-
-### Cifrado y acceso
-
-Los respaldos replican el PII de la base (direcciones, contactos). En producción:
-
-- Guardarlos en volumen/bucket **cifrado en reposo**; restringir acceso al rol de operaciones.
-- Para copia fuera de sitio, subirlos cifrados (p. ej. `age`/`gpg` o cifrado del bucket) a un
-  destino distinto del de producción.
+> Los scripts `scripts/backup-db.sh` / `scripts/restore-db.sh` son anteriores a este mecanismo; el
+> oficial son los comandos artisan de este documento.
 
 ---
 
-## 4. Restauración — `restore-db.sh`
+## 8. Prueba de restauración y recuperación ante desastre
 
-**DESTRUCTIVO:** hace DROP + CREATE de la base destino antes de restaurar.
-
-```bash
-# Interactivo (pide escribir el nombre de la base para confirmar)
-scripts/restore-db.sh ./backups/logistics-20261013-030000.dump.gz
-
-# No interactivo (automatización / pruebas)
-CONFIRM=yes scripts/restore-db.sh ./backups/logistics-20261013-030000.dump.gz
-# o
-scripts/restore-db.sh --yes ./backups/logistics-20261013-030000.dump.gz
-```
-
-Variables propias de la restauración:
-
-| Variable | Default | Para qué |
-| --- | --- | --- |
-| `PG_MAINTENANCE_DB` | `postgres` | Base desde la que se corre el DROP/CREATE |
-| `RESTORE_JOBS` | `2` | Paralelismo previsto de pg_restore (restaura single-stream desde pipe) |
-| `CONFIRM` / `--yes` | `no` | Salta la confirmación interactiva |
-| `ALLOW_PROD` | `no` | Permite restaurar cuando db/host/env huelen a producción |
-
-Salvaguardas:
-
-- Verifica el `.sha256` del respaldo (si existe) y `gzip -t` **antes** de tocar la base.
-- Corta conexiones activas antes del DROP.
-- Se **niega** a correr si `DB_DATABASE`/`DB_HOST`/`APP_ENV` contienen `prod`/`production`, salvo
-  `ALLOW_PROD=yes` explícito.
-- `pg_restore --exit-on-error`: aborta ante el primer fallo real, no deja una base a medias en
-  silencio.
-
-### Verificación automática
-
-Al terminar, el script comprueba y reporta:
-
-1. Que haya **tablas** en el esquema `public` (> 0).
-2. La **versión de PostGIS** instalada (avisa si no está, por si el origen no la usaba).
-
-Ejemplo real de una restauración de prueba sobre este repo:
-
-```
-[restore-db] tablas en 'public': 67
-[restore-db] PostGIS presente: 3.5.7
-[restore-db] restauración verificada.
-```
-
----
-
-## 5. Prueba de restauración (DR drill)
-
-Un respaldo no probado no es un respaldo. **Mensualmente** (y tras cualquier cambio en estos
-scripts) se restaura el último respaldo a una base **desechable** y se verifica, sin tocar la
-base real:
-
-```bash
-# Restaurar el último respaldo a una base aparte (no 'logistics' ni 'logistics_test')
-F=$(ls -t ./backups/*.dump.gz | head -1)
-DB_DATABASE=logistics_restore_test CONFIRM=yes scripts/restore-db.sh "$F"
-
-# (opcional) comprobaciones extra sobre la base restaurada, luego limpiarla
-docker compose exec -T postgres psql -U logistics -d postgres \
-  -c 'DROP DATABASE IF EXISTS logistics_restore_test;'
-```
-
-La prueba pasa si: el checksum valida, `pg_restore` termina sin error, hay tablas y PostGIS
-aparece. Se registra fecha, tamaño del respaldo y resultado. Si falla, es incidente: se revisa el
-respaldo y el procedimiento antes de confiar en él.
-
-> Nunca usar como destino de prueba `logistics` (desarrollo) ni `logistics_test` (lo vigila
-> `TestDatabaseIsolationTest`). Usar un nombre dedicado y borrarlo al final.
-
----
-
-## 6. Schedule sugerido
-
-| Qué | Cuándo | Cómo |
-| --- | --- | --- |
-| Respaldo completo | Diario, madrugada (03:00 America/La_Paz) | cron del host / sidecar que corre `backup-db.sh` en modo `direct` |
-| Copia fuera de sitio | Diario, tras el respaldo | Subir el `.dump.gz` cifrado a un bucket en otra región/cuenta |
-| Rotación | En cada respaldo | La hace `backup-db.sh` (retención 14 días, mínimo 7) |
-| Prueba de restauración | Mensual | `restore-db.sh` a base desechable + verificación (§5) |
-| Repaso de retención/catálogo | Trimestral | Revisar `docs/security.md` §5 con Negocio/Legal |
-
-Ejemplo de entrada cron en el host de producción (no en un contenedor efímero):
-
-```cron
-# Respaldo diario de logistics a las 03:00 (hora Bolivia)
-0 3 * * *  BACKUP_MODE=direct BACKUP_DIR=/var/backups/logistics \
-           DB_HOST=db.prod.interno DB_DATABASE=logistics DB_USERNAME=logistics \
-           DB_PASSWORD="$(cat /run/secrets/pg_password)" \
-           /opt/logistics/scripts/backup-db.sh >> /var/log/logistics-backup.log 2>&1
-```
-
-> El scheduler de Laravel (`schedule:work`) corre **dentro** del contenedor de workers y es
-> efímero; el respaldo de base se agenda en el **host**/orquestador para que sobreviva a
-> redeploys y no dependa de la app. Antes de un deploy con migraciones, tomar un respaldo manual
-> (`backup-db.sh`) como punto de retorno.
-
----
-
-## 7. Recuperación ante desastre (resumen)
-
-1. Aprovisionar un PostgreSQL 17 + PostGIS limpio.
-2. Traer el último `.dump.gz` bueno (y su `.sha256`) desde la copia fuera de sitio.
-3. `BACKUP_MODE=direct ALLOW_PROD=yes DB_*=... scripts/restore-db.sh --yes <archivo>`.
-4. Confirmar la verificación (tablas + PostGIS) y hacer un smoke test de la app contra la base.
-5. Repuntar la app a la base restaurada y reanudar los workers/colas.
+- **Prueba periódica** (y tras tocar este código): `backup:create` + `backup:verify`. Es no destructiva y
+  prueba el ciclo real dump → restore → comparación.
+- **Desastre:**
+  1. Aprovisionar PostgreSQL 17 + PostGIS (la base `logistics` puede existir vacía o no existir).
+  2. Traer el último bundle bueno.
+  3. `php artisan backup:verify <bundle> --host=<pg> --port=5432`.
+  4. `php artisan backup:restore <bundle> --host=<pg> --port=5432 --force`.
+  5. Recrear roles/ajustes de base si hacían falta (ver `database.settings` del manifest), restaurar
+     los archivos subidos desde su propio respaldo (S3/volumen; no son parte de este backup) y hacer un
+     smoke test de la app.

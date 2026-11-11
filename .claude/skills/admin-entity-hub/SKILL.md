@@ -90,6 +90,35 @@ public function managementLinks(): array
 - `getNavigationGroup(): string { return __('Operations'); }` en cada Resource.
 - Instaladores (`filament:install`) reescriben `bootstrap/providers.php` → revisar y restaurar el orden.
 
+## Gotchas de Blade / Alpine / Livewire en el admin (vistos en producción de dev, 2026-11-11)
+
+1. **`@js(...)` dentro de atributos de un componente `<x-...>` NO se compila.** Blade deja el texto literal
+   y al clic Alpine tira `SyntaxError: Invalid or unexpected token` (livewire.js) → el botón "no hace nada".
+   ```blade
+   {{-- MAL --}}  <x-filament::button wire:click="mountAction('recordOdometer', { vehicle_id: @js($row['vehicle_id']) })">
+   {{-- BIEN --}} <x-filament::button wire:click="mountAction('recordOdometer', {{ \Illuminate\Support\Js::from(['vehicle_id' => $row['vehicle_id']]) }})">
+   ```
+   Barrido: `php artisan view:cache` y grep de `@js(`, `@json(`, `@entangle(` en `storage/framework/views`.
+2. **`->fillForm(fn ($arguments) => [...])` borra los `->default()` del schema.** Si precargás un campo por
+   argumento (vehículo de la fila), incluí también los defaults (fechas = ahora, tipo por defecto) en ese
+   array, o los requeridos quedan null y la validación falla.
+3. **Acción que escribe + lista cacheada:** tras despachar el Command, `Cache::forget(<CLAVE>)` de la
+   proyección que alimenta la lista (con la clave como constante pública), o la fila no cambia hasta el TTL.
+4. **Panel en SPA (`->spa()`): todo `@script` con `setInterval`, mapa Leaflet o listeners debe liberarse al
+   navegar.** Si no, `$wire.x()` del componente destruido devuelve `undefined` → `Uncaught TypeError:
+   reading 'then'` cada tick y se acumulan intervalos/mapas. Usar `public/js/dismac-live.js`:
+   ```js
+   const live = window.DismacLive.session({ el, component: $wire.__instance });
+   live.onDispose(() => map.remove());
+   live.every(10000, () => live.call(() => $wire.positions(), (fresh) => { positions = fresh || []; render(); }));
+   ```
+   Cargarlo en `@assets` (`<script src="{{ asset('js/dismac-live.js') }}"></script>`). Componentes Alpine
+   puros: `destroy()` con `clearInterval`, y no duplicar `x-init="init()"` (Alpine ya llama `init()`).
+5. **Verificar sin navegador:** renderizar con `Livewire::actingAs($admin)->test(Page::class)`, extraer
+   `effects.scripts` y pasarlo por `docker run --rm -i node:22-alpine node --check` envuelto como lo evalúa
+   Livewire (`async function(__self, scope){ with(scope){ (async()=>{ … })() } }`). Igual pedirle al dueño
+   el clic real y la consola limpia.
+
 ## Qué NO tucar (falsos positivos — dejar visible con justificación)
 
 - Una pantalla sin **entidad-padre limpia** (su FK no referencia una entidad del admin). Ej.: "Stock

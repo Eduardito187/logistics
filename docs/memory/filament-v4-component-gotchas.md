@@ -46,3 +46,21 @@ Usar `grep -rn -- "->native(false)" ...`. (Esto hizo creer que 95 selects eran n
 ya tenían `->native(false)`.)
 
 Al agregar texto visible nuevo (p.ej. nuevas claves) recordar i18n: `__()` en inglés + par en `lang/es.json` ([[admin-ui-maps]]). Verificar siempre sin ejecutar tests ([[no-ejecutar-tests]]): PHPStan 8 + Pint + autoload check + `view:clear`. Render del admin: sweep por el HTTP kernel sobre `getPages()`+`getResources()::getUrl('index')` autenticado como admin, con el script temporal DENTRO del repo (el container no ve el scratchpad del host). Ver [[admin-ops-first-redesign]].
+
+**8. `@js(...)` dentro de atributos de un componente `<x-...>` NO se compila (2026-11-11).** En
+`<x-filament::button wire:click="mountAction('x', { id: @js($row['id']) })">` Blade deja el texto literal
+`@js(...)` → al clic Alpine lanza `SyntaxError: Invalid or unexpected token` (livewire.js) y el botón no hace
+nada. Usar `{{ \Illuminate\Support\Js::from([...]) }}` (sí se compila en atributos). Detectar: `view:cache` y
+grep de `@js(`/`@json(`/`@entangle(` en `storage/framework/views`. Caso: "Record reading"/"Schedule order"
+en `resources/views/fleetops/filament/pages/fleet-cost-dashboard.blade.php`.
+
+**9. `->fillForm(fn ($arguments) => [...])` BORRA los `->default()` del schema.** Filament solo aplica
+defaults si el form se llena sin estado → campos requeridos (fecha) quedan null y la validación falla.
+Incluir los defaults dentro del array de `fillForm`.
+
+**10. Panel en SPA (`->spa()`): todo `setInterval`/mapa/listener de un `@script` debe liberarse al navegar.**
+Si no, el intervalo sigue contra el componente destruido → `$wire.metodo()` devuelve `undefined` →
+`Uncaught TypeError: reading 'then'` cada tick, y se ACUMULAN intervalos/mapas por visita. Usar el helper
+`public/js/dismac-live.js` (`DismacLive.session({el, component: $wire.__instance})` → `call`, `every`,
+`timeout`, `onDispose(() => map.remove())`), ya aplicado en live-fleet-map, control-tower y la campana.
+Pendiente menor: otras 6 vistas Leaflet sin polling no hacen `map.remove()`.
