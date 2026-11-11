@@ -98,7 +98,11 @@ abstract class ConfigurationSection
     {
         $value = $data[$field] ?? null;
 
-        return is_string($value) ? trim($value) : (is_int($value) ? (string) $value : '');
+        if (is_int($value)) {
+            return (string) $value;
+        }
+
+        return is_string($value) ? trim($value) : '';
     }
 
     /**

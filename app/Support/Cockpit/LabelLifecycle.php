@@ -225,19 +225,15 @@ final class LabelLifecycle
      */
     private function truckAssignment(?string $shipmentId): ?array
     {
-        if ($shipmentId === null) {
-            return null;
-        }
-
         try {
-            $row = DB::table('planning_plan_stops as ps')
+            $row = $shipmentId === null ? null : DB::table('planning_plan_stops as ps')
                 ->join('planning_plans as p', 'p.id', '=', 'ps.plan_id')
                 ->leftJoin('fleet_vehicles as v', 'v.id', '=', 'p.vehicle_id')
                 ->where('ps.shipment_id', $shipmentId)
                 ->orderByDesc('ps.created_at')
                 ->first(['ps.created_at', 'v.plate']);
         } catch (Throwable) {
-            return null;
+            $row = null;
         }
 
         if ($row === null) {
