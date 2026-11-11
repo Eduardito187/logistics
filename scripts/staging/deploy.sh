@@ -123,6 +123,15 @@ if grep -Eq 'localhost|127\.0\.0\.1' <<< "$tiles"; then
     echo "::error::MAP_TILE_URL apunta a localhost: el mapa quedaría sin fondo para cualquier usuario remoto. Quitá MAP_TILE_URL de STAGING_ENV_EXTRA (usa el default OSM) o poné la URL pública del tileserver."
     false
 fi
+
+# Firma de etiquetas QR: sin LABELS_SIGNING_KEY válida, emitir etiquetas da 500 a todos los roles (pasó).
+# El comando resuelve el firmante real y solo imprime la clave PÚBLICA (nunca la privada).
+if ! labels_keys="$(dc exec -T app php artisan logistics:labels:public-keys 2>&1)" || ! grep -Eq '^[0-9]+:[A-Za-z0-9+/=]{40,}$' <<< "$labels_keys"; then
+    echo "$labels_keys"
+    echo "::error::La firma de etiquetas no está configurada (LABELS_SIGNING_KEY). render-env.sh la genera y persiste en el servidor; revisá STAGING_STATE_DIR o definila en STAGING_ENV_EXTRA."
+    false
+fi
+echo "Etiquetas: firma OK (clave pública activa $(grep -Eo '^[0-9]+:' <<< "$labels_keys" | tail -1 | tr -d ':'))."
 endstep
 
 trap - ERR

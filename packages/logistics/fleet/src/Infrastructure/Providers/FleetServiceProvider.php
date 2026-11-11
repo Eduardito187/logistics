@@ -64,6 +64,9 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentVehic
 use Logistics\Fleet\Infrastructure\Settings\SettingsDocumentExpiryPolicy;
 use Logistics\Fleet\Infrastructure\Settings\SettingsShiftRulesPolicy;
 use Logistics\Fleet\Presentation\Console\AlertExpiringDocumentsCommand;
+use Logistics\Fleet\Presentation\Filament\Configuration\CrewShiftsSection;
+use Logistics\Fleet\Presentation\Filament\Configuration\DocumentAlertsSection;
+use Logistics\Settings\Presentation\Filament\Configuration\ConfigurationRegistry;
 use Logistics\Shared\Application\HandlerRegistry;
 use Logistics\Shared\Application\Query\QueryBus;
 
@@ -155,6 +158,11 @@ final class FleetServiceProvider extends ServiceProvider
         foreach (self::HANDLERS as $message => $handler) {
             $registry->register($message, $handler);
         }
+
+        // Secciones de la pantalla «Configuración» (estilo Magento) que aporta el contexto Flota.
+        $configuration = $this->app->make(ConfigurationRegistry::class);
+        $configuration->register(DocumentAlertsSection::class);
+        $configuration->register(CrewShiftsSection::class);
 
         // Barrido programado de documentos por vencer / vencidos (lo agenda routes/console.php).
         if ($this->app->runningInConsole()) {

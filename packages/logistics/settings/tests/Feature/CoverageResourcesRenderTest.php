@@ -8,6 +8,7 @@ use Filament\Facades\Filament;
 use Livewire\Livewire;
 use Logistics\Settings\Application\Command\SetSetting\SetSettingCommand;
 use Logistics\Settings\Infrastructure\Persistence\Eloquent\SettingVersionRecord;
+use Logistics\Settings\Presentation\Filament\Pages\Configuration;
 use Logistics\Settings\Presentation\Filament\Resources\IntegrationResource\Pages\ManageIntegrations;
 use Logistics\Settings\Presentation\Filament\Resources\SettingVersionResource\Pages\CreateSettingVersion;
 use Logistics\Settings\Presentation\Filament\Resources\SettingVersionResource\Pages\ListSettingVersions;
@@ -52,6 +53,6 @@ it('renderiza la vista de una versión de configuración', function (): void {
     Livewire::test(ViewSettingVersion::class, ['record' => $record->getKey()])->assertOk();
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
-it('renderiza el panel de gestión de integraciones', function (): void {
-    Livewire::test(ManageIntegrations::class)->assertOk();
+it('la ruta vieja de integraciones redirige a Configuración › Integrations', function (): void {
+    Livewire::test(ManageIntegrations::class)->assertRedirect(Configuration::sectionUrl('integrations-routing'));
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');

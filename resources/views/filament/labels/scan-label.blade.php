@@ -74,8 +74,6 @@
                         <dl class="dtk-scan__kv">
                             <dt>{{ __('Product') }}</dt><dd x-text="result.product_name || result.sku || '—'"></dd>
                             <dt>SKU</dt><dd x-text="result.sku || '—'"></dd>
-                            <dt>{{ __('Unit') }}</dt><dd x-text="(result.unit_index ?? '—') + ' / ' + (result.unit_total ?? '—')"></dd>
-                            <dt>{{ __('Piece') }}</dt><dd x-text="(result.piece_index ?? '—') + ' / ' + (result.piece_total ?? '—')"></dd>
                             <dt>{{ __('Label code') }}</dt><dd style="word-break:break-all" x-text="result.label_id"></dd>
                         </dl>
                     </div>

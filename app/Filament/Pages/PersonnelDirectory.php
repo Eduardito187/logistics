@@ -198,9 +198,14 @@ final class PersonnelDirectory extends Page
             $rows = $q->orderBy('name')->limit(200)->get(['id', 'name', 'email']);
             $roles = $this->userRoles(array_values($rows->pluck('id')->map(static fn ($id): int => (int) $id)->all()));
 
+            $iamIds = $this->iamUserIdsByEmail(array_values($rows->pluck('email')->map(static fn ($e): string => strtolower((string) $e))->all()));
+
             $out = [];
             foreach ($rows as $r) {
                 $role = $roles[(int) $r->id] ?? null;
+                // La cuenta del backoffice (users, id numérico) NO es la cuenta IAM (access_users, UUID): se enlaza
+                // a la ficha IAM solo si existe una con el mismo email; si no, al listado (nunca /users/{numérico}).
+                $iamId = $iamIds[strtolower((string) $r->email)] ?? null;
                 $out[] = [
                     'name' => (string) $r->name,
                     'type' => $role !== null ? 'Usuario · '.$this->roleLabel($role) : 'Usuario',
@@ -208,13 +213,47 @@ final class PersonnelDirectory extends Page
                     'document' => null,
                     'contact' => $this->str($r->email),
                     'active' => true,
-                    'url' => $this->url(UserResource::class, (string) $r->id),
+                    'url' => $iamId !== null ? $this->url(UserResource::class, $iamId) : $this->indexUrl(UserResource::class),
                 ];
             }
 
             return $out;
         } catch (Throwable) {
             return [];
+        }
+    }
+
+    /**
+     * Id IAM (UUID de access_users) por email en minúsculas, acotado a los emails de la página.
+     *
+     * @param  list<string>          $emails
+     * @return array<string, string>
+     */
+    private function iamUserIdsByEmail(array $emails): array
+    {
+        if ($emails === []) {
+            return [];
+        }
+
+        try {
+            $out = [];
+            foreach (DB::table('access_users')->whereIn(DB::raw('lower(email)'), $emails)->get(['id', 'email']) as $r) {
+                $out[strtolower((string) $r->email)] = (string) $r->id;
+            }
+
+            return $out;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /** @param class-string<\Filament\Resources\Resource> $resource */
+    private function indexUrl(string $resource): ?string
+    {
+        try {
+            return $resource::getUrl('index');
+        } catch (Throwable) {
+            return null;
         }
     }
 
