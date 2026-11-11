@@ -65,3 +65,6 @@ Relacionado: [[project-rules]], [[testing-coverage-filament-gotchas]], [[distrac
 → nginx-unprivileged. El dueño pidió "fix all": también se arreglaron las ~35 de mantenibilidad con recetas
 mecánicas (excepción dedicada que extiende RuntimeException, extraer métodos ≤3 returns, constantes con
 prefijo único en tests Pest, `[[ ]]`, `case *)`, `local`). Recetas en la skill `ci-quality-gates`.
+
+**No usar `pest --parallel` (2026-11-11):** las bases `logistics_test_test_1..4` (creadas 2026-10-20) no
+tienen PostGIS → 1.030 fallas falsas `type "geography" does not exist`. Correr serial: `./vendor/bin/pest`.

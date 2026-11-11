@@ -35,10 +35,14 @@ jobs:
       name: staging
       url: ${{ vars.STAGING_APP_URL }}
     env:
-      ENV_FILE: ${{ runner.temp }}/logistics-staging.env
       STAGING_PROJECT: logistics-staging
       STAGING_IMAGE_TAG: staging
     steps:
+      # El contexto `runner` NO está disponible en el `env` a nivel de job (GitHub invalida el workflow
+      # entero y lo marca fallido en cada push). La ruta del env se arma acá, con $RUNNER_TEMP.
+      - name: Preparar rutas
+        run: echo "ENV_FILE=$RUNNER_TEMP/logistics-staging.env" >> "$GITHUB_ENV"
+
       - name: Checkout staging
         uses: actions/checkout@v4
         with:
