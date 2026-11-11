@@ -36,6 +36,7 @@ use Logistics\Inbound\Presentation\Filament\Pages\InboundBoard;
 use Logistics\Inbound\Presentation\Filament\Pages\ReceivingCalendar;
 use Logistics\Labels\Presentation\Filament\Pages\LabelFormatSettings;
 use Logistics\Labels\Presentation\Filament\Pages\ScanLabelPage;
+use Logistics\Settings\Presentation\Filament\Pages\Configuration;
 use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
 
 /**
@@ -333,6 +334,8 @@ final class AdminPanelProvider extends PanelProvider
                 DriverHistory::class,
                 // Ajuste del formato (simbología) de las etiquetas: QR, Zebra o ambos (contexto Labels).
                 LabelFormatSettings::class,
+                // Configuración centralizada estilo Magento (pestañas → secciones → fieldsets, un «Save Config»).
+                Configuration::class,
                 // Escáner web de etiquetas (cámara + BarcodeDetector): lee QR o Zebra, resuelve el bulto.
                 ScanLabelPage::class,
             ])

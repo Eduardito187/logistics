@@ -18,6 +18,11 @@ use Logistics\Settings\Infrastructure\Cache\CachingGetSettingHandler;
 use Logistics\Settings\Infrastructure\Integration\IntegrationRuntimeOverrides;
 use Logistics\Settings\Infrastructure\Persistence\Eloquent\EloquentSettingsRepository;
 use Logistics\Settings\Presentation\Console\GetSettingCommand;
+use Logistics\Settings\Presentation\Filament\Configuration\ConfigurationRegistry;
+use Logistics\Settings\Presentation\Filament\Configuration\Integrations\PushNotificationsSection;
+use Logistics\Settings\Presentation\Filament\Configuration\Integrations\RoutingSection;
+use Logistics\Settings\Presentation\Filament\Configuration\Integrations\SapSection;
+use Logistics\Settings\Presentation\Filament\Configuration\Integrations\StorageSection;
 use Logistics\Shared\Application\HandlerRegistry;
 use Throwable;
 
@@ -32,6 +37,9 @@ final class SettingsServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Catálogo de secciones de la pantalla «Configuración» (estilo Magento): cada contexto registra las suyas.
+        $this->app->singleton(ConfigurationRegistry::class);
+
         // Repositorio de configuración envuelto por el decorador que invalida el cache del valor vigente
         // (frente escala): persiste igual que el Eloquent y, al publicar una versión nueva, olvida el valor
         // cacheado de esa clave. No cachea lecturas (el cálculo de la versión siguiente lee de la base).
@@ -63,6 +71,12 @@ final class SettingsServiceProvider extends ServiceProvider
         $registry->register(SetSettingCommand::class, SetSettingHandler::class);
         $registry->register(GetSettingQuery::class, CachingGetSettingHandler::class);
         $registry->register(GetSettingHistoryQuery::class, GetSettingHistoryHandler::class);
+
+        $configuration = $this->app->make(ConfigurationRegistry::class);
+        $configuration->register(RoutingSection::class);
+        $configuration->register(SapSection::class);
+        $configuration->register(StorageSection::class);
+        $configuration->register(PushNotificationsSection::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([GetSettingCommand::class]);
