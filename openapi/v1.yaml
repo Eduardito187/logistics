@@ -3042,6 +3042,33 @@ paths:
                 $ref: '#/components/schemas/LabelUnitResolution'
       security:
       - appBearer: []
+  /app/printers:
+    get:
+      tags:
+      - labels
+      operationId: listAppPrinters
+      summary: Network printers available to the user (registered centrally per site)
+      description: |
+        Impresoras de red ACTIVAS registradas en el admin, para "Impresoras de tu sede". Existe porque el
+        teléfono no puede descubrirlas cuando WiFi y cable están en redes separadas. Alcance server-side:
+        supervisor/admin ven todas; el resto, las de su nodo asignado + las compartidas (sin nodo).
+        Cambiar la IP en el admin se refleja aquí en la próxima consulta.
+      responses:
+        '200':
+          description: Printers available to the authenticated user (may be empty)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NetworkPrinter'
+      security:
+      - appBearer: []
   /app/outbox/messages:
     get:
       tags:
@@ -12994,6 +13021,31 @@ components:
           type: object
           nullable: true
           properties: { index: { type: integer }, total: { type: integer } }
+    NetworkPrinter:
+      type: object
+      description: |
+        Impresora de red registrada centralmente (admin → Configuración → Impresoras de red). La app la
+        ofrece en "Impresoras de tu sede" y le imprime directo por TCP (host:port, RAW 9100 en Zebra).
+      required:
+      - id
+      - name
+      - model
+      - host
+      - port
+      - language
+      - node_id
+      - node_name
+      - location
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: Zebra Andén 2 }
+        model: { type: string, nullable: true, example: ZT411 }
+        host: { type: string, description: IP o hostname alcanzable desde la red de la sede, example: 192.168.2.50 }
+        port: { type: integer, minimum: 1, maximum: 65535, example: 9100 }
+        language: { type: string, enum: [zpl, other] }
+        node_id: { type: string, format: uuid, nullable: true, description: Nodo de red (sede); null = compartida }
+        node_name: { type: string, nullable: true, description: Nombre legible de la sede }
+        location: { type: string, nullable: true, example: Andén 2 }
     EnqueueStockTransferRequest:
       type: object
       required:
