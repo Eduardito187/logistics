@@ -6,6 +6,8 @@ use Commerce\Orders\Presentation\Http\Controller\CancelOrderController;
 use Commerce\Orders\Presentation\Http\Controller\CheckoutController;
 use Commerce\Orders\Presentation\Http\Controller\GetOrderController;
 use Commerce\Orders\Presentation\Http\Controller\PlaceOrderController;
+use Commerce\Orders\Presentation\Http\Controller\RecordInitialPaymentController;
+use Commerce\Orders\Presentation\Http\Controller\SignOrderContractController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -40,6 +42,12 @@ return [
             // POST /api/v1/integrations/orders/{order}/cancel — cancela la orden (source='pos'); 202 acuse,
             // 404 si no existe. Body opcional { reason?: string }. Escritura asíncrona (outbox).
             Route::post('{order}/cancel', CancelOrderController::class)->name('cancel');
+
+            // Señales de CRÉDITO/minicuotas (POS/sistema de crédito). Body opcional { reference?: string }.
+            // 202 acuse, 404 si no existe, 422 si la regla no aplica. Al cumplirse las condiciones del plan
+            // la orden pasa a procesando (emite OrderPaid → crea envío → tracking «procesando»).
+            Route::post('{order}/contract-signed', SignOrderContractController::class)->name('contract-signed');
+            Route::post('{order}/initial-paid', RecordInitialPaymentController::class)->name('initial-paid');
         });
     },
 ];

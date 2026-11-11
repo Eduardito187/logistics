@@ -29,6 +29,12 @@ final class ViewOrder extends ViewRecord
     // Vista propia (cockpit); conserva el chrome de página Filament (cabecera + acción Cancelar).
     protected string $view = 'filament.orders.order-hub';
 
+    // Oculta el <h1> de Filament: el hero del cockpit (blade) ya muestra el título; así no se ve duplicado.
+    public function getHeading(): string
+    {
+        return '';
+    }
+
     // Título por el cliente (instantánea de ship_to), no un genérico ni el UUID (consistencia con los hubs).
     public function getTitle(): string
     {

@@ -52,6 +52,7 @@ final readonly class PlaceOrderFromCartHandler implements CommandHandler
             email: $command->email,
             currency: $snapshot['currency'],
             cartId: $command->cartId,
+            financing: $command->financing,
         ));
     }
 }

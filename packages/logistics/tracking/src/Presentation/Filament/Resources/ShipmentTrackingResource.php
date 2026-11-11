@@ -30,7 +30,7 @@ use Illuminate\Support\Carbon;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
-use Logistics\Tracking\Application\Command\OpenTracking\OpenTracking;
+use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentToTracking;
 use Logistics\Tracking\Application\Command\PlaceShipmentOnRoute\PlaceShipmentOnRoute;
 use Logistics\Tracking\Application\Command\ProjectExecutionEvent\ProjectExecutionEvent;
 use Logistics\Tracking\Application\Command\UpdateTruckPosition\UpdateTruckPosition;
@@ -396,8 +396,16 @@ final class ShipmentTrackingResource extends Resource
                     ->required(),
             ])
             ->action(static function (array $data): void {
-                app(CommandBus::class)->dispatch(new OpenTracking(
-                    shipmentId: (string) $data['shipment_id'],
+                $shipmentId = (string) $data['shipment_id'];
+                $record = ShipmentRecord::query()->find($shipmentId);
+                // El seguimiento se identifica por la orden; el external_id del envío lleva el id de orden
+                // (orderId, o orderId#n:nodeId en retiro). Se liga el envío al seguimiento de su pedido.
+                $external = $record instanceof ShipmentRecord ? (string) $record->external_id : $shipmentId;
+                $orderReference = explode('#n:', $external)[0];
+
+                app(CommandBus::class)->dispatch(new BindShipmentToTracking(
+                    orderReference: $orderReference,
+                    shipmentId: $shipmentId,
                     remainingStops: (int) $data['remaining_stops'],
                 ));
 
@@ -592,9 +600,9 @@ final class ShipmentTrackingResource extends Resource
     private static function executionEventOptions(): array
     {
         return [
-            'execution.shipment_prepared' => __('Prepared'),
-            'execution.shipment_loaded' => __('On the way'),
-            'execution.shipment_arriving' => __('Arriving'),
+            'execution.shipment_prepared' => __('In progress'),
+            'execution.shipment_loaded' => __('Loaded'),
+            'execution.shipment_departed' => __('On the way'),
             'execution.shipment_delivered' => __('Delivered'),
             'execution.delivery_failed' => __('Failed'),
         ];
@@ -648,12 +656,16 @@ final class ShipmentTrackingResource extends Resource
     private static function statusLabel(string $state): string
     {
         return match ($state) {
-            VisibleStatus::Registered->value => __('Registered'),
-            VisibleStatus::Prepared->value => __('Prepared'),
+            VisibleStatus::Pending->value => __('Pending'),
+            VisibleStatus::Processing->value => __('Processing'),
+            VisibleStatus::InProgress->value => __('In progress'),
+            VisibleStatus::Loaded->value => __('Loaded'),
             VisibleStatus::OnTheWay->value => __('On the way'),
-            VisibleStatus::Arriving->value => __('Arriving'),
             VisibleStatus::Delivered->value => __('Delivered'),
             VisibleStatus::Failed->value => __('Failed'),
+            VisibleStatus::Rescheduled->value => __('Rescheduled'),
+            VisibleStatus::Cancelled->value => __('Cancelled'),
+            VisibleStatus::Returned->value => __('Returned'),
             default => $state,
         };
     }
@@ -665,9 +677,12 @@ final class ShipmentTrackingResource extends Resource
     {
         return match ($state) {
             VisibleStatus::Delivered->value => 'success',
-            VisibleStatus::Failed->value => 'danger',
-            VisibleStatus::OnTheWay->value, VisibleStatus::Arriving->value => 'info',
-            VisibleStatus::Prepared->value => 'warning',
+            VisibleStatus::Failed->value, VisibleStatus::Cancelled->value => 'danger',
+            VisibleStatus::OnTheWay->value => 'info',
+            VisibleStatus::Loaded->value => 'primary',
+            VisibleStatus::InProgress->value, VisibleStatus::Processing->value => 'warning',
+            VisibleStatus::Rescheduled->value => 'warning',
+            VisibleStatus::Returned->value => 'gray',
             default => 'gray',
         };
     }

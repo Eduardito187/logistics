@@ -53,11 +53,16 @@ final readonly class PublicTrackingView
     private static function buildStopsMessage(VisibleStatus $status, int $remainingStops): string
     {
         return match ($status) {
+            VisibleStatus::Pending => 'Recibimos tu pedido. Estamos esperando la confirmación del pago.',
+            VisibleStatus::Processing => 'Pago confirmado. Estamos preparando tu pedido.',
+            VisibleStatus::InProgress => 'Tu pedido está en preparación y pronto saldrá en ruta.',
+            VisibleStatus::Loaded => 'Tu pedido ya está cargado en el camión.',
+            VisibleStatus::OnTheWay => self::onTheWayMessage($remainingStops),
             VisibleStatus::Delivered => 'Tu pedido fue entregado.',
             VisibleStatus::Failed => 'No pudimos entregar tu pedido. Nos pondremos en contacto contigo.',
-            VisibleStatus::Registered => 'Recibimos tu pedido y lo estamos preparando.',
-            VisibleStatus::Prepared => 'Tu pedido está listo y pronto saldrá en ruta.',
-            VisibleStatus::OnTheWay, VisibleStatus::Arriving => self::onTheWayMessage($remainingStops),
+            VisibleStatus::Rescheduled => 'Tu entrega fue reprogramada. Te avisaremos la nueva fecha.',
+            VisibleStatus::Cancelled => 'Tu pedido fue anulado.',
+            VisibleStatus::Returned => 'Registramos la devolución de tu pedido.',
         };
     }
 

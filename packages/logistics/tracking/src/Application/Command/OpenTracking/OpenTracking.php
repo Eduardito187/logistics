@@ -7,15 +7,15 @@ namespace Logistics\Tracking\Application\Command\OpenTracking;
 use Logistics\Shared\Application\Command\Command;
 
 /**
- * Abre el seguimiento de un envío. Normalmente lo dispara la recepción del envío (shipments); el
- * token público lo genera el handler, no el llamador.
+ * Abre el seguimiento de un PEDIDO: lo dispara la creación de la orden (`orders.order_placed`), antes de
+ * que exista el envío. El estado inicial es «pendiente» y el token público lo genera el handler.
  *
- * Idempotente por shipmentId: reabrir el seguimiento de un envío ya seguido no crea otro.
+ * Idempotente por `orderReference`: reabrir el seguimiento de una orden ya seguida no crea otro.
  */
 final readonly class OpenTracking implements Command
 {
     public function __construct(
-        public string $shipmentId,
+        public string $orderReference,
         public int $remainingStops = 0,
     ) {}
 }

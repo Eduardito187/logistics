@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Commerce\Orders\Domain\Model;
 
 use Commerce\Orders\Domain\Event\OrderCancelled;
+use Commerce\Orders\Domain\Event\OrderContractSigned;
 use Commerce\Orders\Domain\Event\OrderFulfillmentStarted;
+use Commerce\Orders\Domain\Event\OrderInitialPaid;
 use Commerce\Orders\Domain\Event\OrderPaid;
 use Commerce\Orders\Domain\Event\OrderPlaced;
 use Commerce\Orders\Domain\Exception\OrdersException;
+use Commerce\Orders\Domain\ValueObject\FinancingPlan;
 use Commerce\Orders\Domain\ValueObject\OrderId;
 use Commerce\Orders\Domain\ValueObject\OrderLine;
 use Commerce\Orders\Domain\ValueObject\OrderStatus;
@@ -37,10 +40,14 @@ final class Order extends AggregateRoot
         private readonly ShippingAddress $shipTo,
         private readonly array $lines,
         private bool $shipmentRequested,
+        private readonly FinancingPlan $financing,
+        private bool $contractSigned,
+        private bool $initialPaid,
     ) {}
 
     /**
-     * Crea una orden en checkout (estado pendiente de pago). Requiere al menos una línea.
+     * Crea una orden en checkout (estado pendiente de pago). Requiere al menos una línea. El
+     * financiamiento (contado por defecto) determina qué habilita el paso a procesando.
      *
      * @param list<OrderLine> $lines
      */
@@ -51,12 +58,13 @@ final class Order extends AggregateRoot
         array $lines,
         string $currency = 'BOB',
         ?string $cartId = null,
+        FinancingPlan $financing = FinancingPlan::Cash,
     ): self {
         if ($lines === []) {
             throw OrdersException::because('No se puede crear una orden sin líneas.');
         }
 
-        $order = new self($id, $customerId, OrderStatus::Pending, $currency, $shipTo, $lines, false);
+        $order = new self($id, $customerId, OrderStatus::Pending, $currency, $shipTo, $lines, false, $financing, false, false);
         $order->recordEvent(new OrderPlaced(
             $id->toString(),
             $customerId?->value,
@@ -82,27 +90,108 @@ final class Order extends AggregateRoot
         ShippingAddress $shipTo,
         array $lines,
         bool $shipmentRequested,
+        FinancingPlan $financing = FinancingPlan::Cash,
+        bool $contractSigned = false,
+        bool $initialPaid = false,
     ): self {
-        return new self($id, $customerId, $status, $currency, $shipTo, $lines, $shipmentRequested);
+        return new self($id, $customerId, $status, $currency, $shipTo, $lines, $shipmentRequested, $financing, $contractSigned, $initialPaid);
     }
 
     /**
-     * Confirma el pago. Idempotente: si ya está pagada o en fulfillment, no re-graba. No se puede pagar
-     * una orden cancelada.
+     * Confirma el pago (CONTADO). Idempotente: si ya está pagada o en fulfillment, no re-graba. No se puede
+     * pagar una orden cancelada. En órdenes a CRÉDITO es no-op: no se cobran en full y su paso a procesando
+     * lo gobiernan la firma del contrato y el pago del inicial (ver signContract/recordInitialPayment).
      */
     public function markPaid(string $gatewayRef): void
     {
-        if ($this->status === OrderStatus::Paid || $this->status === OrderStatus::Fulfilling) {
-            return;
-        }
         if ($this->status === OrderStatus::Cancelled) {
             throw OrdersException::because('No se puede pagar una orden cancelada.');
+        }
+        if ($this->financing->isCredit()) {
+            return;
+        }
+
+        $this->promote($gatewayRef);
+    }
+
+    /**
+     * Reporta la FIRMA DEL CONTRATO de crédito (hecho del POS/sistema de crédito). Solo aplica a órdenes a
+     * crédito. Idempotente. Tras firmar, promueve a procesando si ya se cumplen las condiciones del plan.
+     */
+    public function signContract(?string $reference = null): void
+    {
+        $this->guardCreditAction();
+        if ($this->contractSigned) {
+            return;
+        }
+
+        $this->contractSigned = true;
+        $this->recordEvent(new OrderContractSigned($this->id->toString(), $reference));
+
+        $this->promoteIfReady($reference);
+    }
+
+    /**
+     * Reporta el PAGO DE LA CUOTA INICIAL (hecho del POS/sistema de crédito). Solo aplica a crédito con
+     * inicial. Idempotente. Tras registrarlo, promueve a procesando si ya se cumplen las condiciones.
+     */
+    public function recordInitialPayment(?string $reference = null): void
+    {
+        $this->guardCreditAction();
+        if (!$this->financing->requiresInitial()) {
+            throw OrdersException::because('Esta orden de crédito no lleva cuota inicial.');
+        }
+        if ($this->initialPaid) {
+            return;
+        }
+
+        $this->initialPaid = true;
+        $this->recordEvent(new OrderInitialPaid($this->id->toString(), $reference));
+
+        $this->promoteIfReady($reference);
+    }
+
+    /** Las acciones de crédito solo aplican a órdenes a crédito y no cerradas. */
+    private function guardCreditAction(): void
+    {
+        if ($this->status === OrderStatus::Cancelled) {
+            throw OrdersException::because('No se puede operar el crédito de una orden cancelada.');
+        }
+        if (!$this->financing->isCredit()) {
+            throw OrdersException::because('Esta orden no es a crédito.');
+        }
+    }
+
+    /**
+     * Promueve a procesando si la orden está pendiente y se cumplen las condiciones del financiamiento:
+     * crédito sin inicial → contrato firmado; crédito con inicial → contrato firmado Y inicial pagado.
+     */
+    private function promoteIfReady(?string $reference): void
+    {
+        if ($this->status !== OrderStatus::Pending) {
+            return;
+        }
+
+        $ready = $this->financing->requiresInitial()
+            ? $this->contractSigned && $this->initialPaid
+            : $this->contractSigned;
+
+        if ($ready) {
+            $this->promote($reference ?? 'credit');
+        }
+    }
+
+    /** Pasa la orden a Paid y emite OrderPaid (el hecho que dispara el fulfillment). Idempotente. */
+    private function promote(string $ref): void
+    {
+        if ($this->status === OrderStatus::Paid || $this->status === OrderStatus::Fulfilling) {
+            return;
         }
 
         $this->status = OrderStatus::Paid;
         $this->recordEvent(new OrderPaid(
             $this->id->toString(),
-            $gatewayRef,
+            $ref,
             $this->totalCents(),
             $this->currency,
         ));
@@ -195,5 +284,20 @@ final class Order extends AggregateRoot
     public function shipmentRequested(): bool
     {
         return $this->shipmentRequested;
+    }
+
+    public function financing(): FinancingPlan
+    {
+        return $this->financing;
+    }
+
+    public function contractSigned(): bool
+    {
+        return $this->contractSigned;
+    }
+
+    public function initialPaid(): bool
+    {
+        return $this->initialPaid;
     }
 }

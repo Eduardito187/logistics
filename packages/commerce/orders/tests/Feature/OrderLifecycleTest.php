@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Commerce\Orders\Application\Command\MarkOrderPaid\MarkOrderPaid;
 use Commerce\Orders\Application\Command\PlaceOrder\PlaceOrder;
+use Commerce\Orders\Application\Command\RecordInitialPayment\RecordInitialPayment;
+use Commerce\Orders\Application\Command\SignOrderContract\SignOrderContract;
 use Commerce\Orders\Application\Query\GetOrder\GetOrder;
 use Commerce\Orders\Application\Query\ListOrders\ListOrders;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Model\OrderRecord;
@@ -60,5 +62,40 @@ it('MarkOrderPaid es idempotente a nivel de comando', function (): void {
     $this->commands->dispatch(new MarkOrderPaid($orderId, 'REF'));
     $this->commands->dispatch(new MarkOrderPaid($orderId, 'REF'));
 
+    expect($this->queries->ask(new GetOrder($orderId))->status)->toBe('paid');
+});
+
+it('crédito con inicial: pasa a procesando solo con contrato + inicial (end-to-end)', function (): void {
+    $this->commands->dispatch(new PlaceOrder(
+        customerName: 'Rosa',
+        addressText: 'Calle 2',
+        lines: [['sku' => 'SKU-Y', 'product_name' => 'Y', 'unit_price_cents' => 500000, 'quantity' => 1]],
+        financing: 'credit_with_initial',
+    ));
+    $orderId = $this->queries->ask(new ListOrders('pending'))[0]->id;
+
+    // Solo contrato: sigue pendiente.
+    $this->commands->dispatch(new SignOrderContract($orderId, 'C-1'));
+    expect(OrderRecord::query()->where('id', $orderId)->value('status'))->toBe('pending');
+
+    // + inicial: pasa a pagada (procesando).
+    $this->commands->dispatch(new RecordInitialPayment($orderId, 'I-1'));
+    expect(OrderRecord::query()->where('id', $orderId)->value('status'))->toBe('paid');
+    expect((bool) OrderRecord::query()->where('id', $orderId)->value('contract_signed'))->toBeTrue();
+    expect((bool) OrderRecord::query()->where('id', $orderId)->value('initial_paid'))->toBeTrue();
+});
+
+it('crédito sin inicial: pasa a procesando solo con la firma del contrato (end-to-end)', function (): void {
+    $this->commands->dispatch(new PlaceOrder(
+        customerName: 'Beto',
+        addressText: 'Calle 3',
+        lines: [['sku' => 'SKU-Z', 'product_name' => 'Z', 'unit_price_cents' => 200000, 'quantity' => 1]],
+        financing: 'credit_without_initial',
+    ));
+    $orderId = $this->queries->ask(new ListOrders('pending'))[0]->id;
+
+    $this->commands->dispatch(new SignOrderContract($orderId, 'C-9'));
+
+    expect(OrderRecord::query()->where('id', $orderId)->value('status'))->toBe('paid');
     expect($this->queries->ask(new GetOrder($orderId))->status)->toBe('paid');
 });

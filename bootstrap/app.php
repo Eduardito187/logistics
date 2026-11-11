@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequestId;
 use App\Http\Problem\ProblemExceptionRenderer;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -44,10 +45,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->web(append: [
             AddLinkHeadersForPreloadedAssets::class,
+            // App Vue+Inertia (superficie cliente/campo), separada del admin Filament.
+            HandleInertiaRequests::class,
         ]);
 
-        // Invitado en una ruta web protegida → al login del panel admin (único frontend).
-        $middleware->redirectGuestsTo(static fn (): string => route('filament.admin.auth.login'));
+        // Invitado en una ruta web protegida: si es la app Vue+Inertia (/app) → su propio login de chofer;
+        // si no, al login del panel admin Filament.
+        $middleware->redirectGuestsTo(static fn (Request $request): string => $request->is('app', 'app/*')
+            ? '/app/login'
+            : route('filament.admin.auth.login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

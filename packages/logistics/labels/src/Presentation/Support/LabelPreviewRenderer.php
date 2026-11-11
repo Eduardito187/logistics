@@ -35,7 +35,15 @@ final class LabelPreviewRenderer
                 new SvgImageBackEnd,
             ));
 
-            return $this->inlineSvg($writer->writeString($content));
+            // El SVG de Bacon trae ancho/alto FIJOS (p. ej. 220px) + viewBox: metido en una caja menor se
+            // DESBORDA (se corre a la derecha y pisa la línea de separación). Se fuerzan a 100% para que
+            // escale exacto al contenedor, centrado y sin desbordar (el viewBox conserva la proporción).
+            $svg = $this->inlineSvg($writer->writeString($content));
+            $svg = preg_replace('/(<svg\b[^>]*?)\s(?:width|height)="\d+(?:\.\d+)?"/', '$1', $svg, 2);
+
+            return is_string($svg)
+                ? (string) preg_replace('/<svg\b/', '<svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet"', $svg, 1)
+                : '';
         } catch (Throwable) {
             return '';
         }

@@ -20,6 +20,9 @@ use Illuminate\Support\Carbon;
  * @property string                                                                                                 $status
  * @property string                                                                                                 $currency
  * @property bool                                                                                                   $shipment_requested
+ * @property string                                                                                                 $financing
+ * @property bool                                                                                                   $contract_signed
+ * @property bool                                                                                                   $initial_paid
  * @property array{customer_name: string, address_text: string, reference: ?string, phone: ?string, email: ?string} $ship_to
  * @property list<array{sku: string, product_name: string, unit_price_cents: int, quantity: int}>                   $lines
  * @property Carbon|null                                                                                            $created_at
@@ -45,6 +48,8 @@ final class OrderRecord extends Model
         'ship_to' => 'array',
         'lines' => 'array',
         'shipment_requested' => 'boolean',
+        'contract_signed' => 'boolean',
+        'initial_paid' => 'boolean',
     ];
 
     protected static function newFactory(): OrderFactory

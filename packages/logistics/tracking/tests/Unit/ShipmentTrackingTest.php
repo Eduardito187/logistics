@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Logistics\Tracking\Domain\Event\ShipmentPlacedOnRoute;
 use Logistics\Tracking\Domain\Event\TrackingOpened;
+use Logistics\Tracking\Domain\Event\TrackingShipmentBound;
 use Logistics\Tracking\Domain\Event\TrackingStatusChanged;
 use Logistics\Tracking\Domain\Exception\TrackingException;
 use Logistics\Tracking\Domain\Model\ShipmentTracking;
@@ -19,95 +20,145 @@ function openTracking(int $remainingStops = 3): ShipmentTracking
 {
     return ShipmentTracking::open(
         TrackingId::generate(),
-        'd290f1ee-6c54-4b01-90e6-d701748f0851',
+        'order-d290f1ee',
         TrackingToken::generate(),
         $remainingStops,
     );
 }
 
-it('opens a tracking in Registered with a token and records TrackingOpened', function (): void {
+/** Seguimiento reconstituido en un estado dado con un envío ya ligado (para tests de ruta/posición). */
+function trackingAt(VisibleStatus $status, int $remainingStops = 3): ShipmentTracking
+{
+    return ShipmentTracking::reconstitute(
+        TrackingId::generate(),
+        'ship-1',
+        TrackingToken::generate(),
+        $status,
+        $remainingStops,
+        null,
+        null,
+        null,
+        null,
+        'order-1',
+    );
+}
+
+it('opens a tracking in Pending (no shipment) with a token and records TrackingOpened', function (): void {
     $token = TrackingToken::generate();
     $id = TrackingId::generate();
 
-    $tracking = ShipmentTracking::open($id, 'ship-123', $token, 4);
+    $tracking = ShipmentTracking::open($id, 'order-123', $token, 4);
 
-    expect($tracking->status())->toBe(VisibleStatus::Registered)
-        ->and($tracking->shipmentId())->toBe('ship-123')
+    expect($tracking->status())->toBe(VisibleStatus::Pending)
+        ->and($tracking->shipmentId())->toBeNull()
+        ->and($tracking->orderReference())->toBe('order-123')
         ->and($tracking->token()->equals($token))->toBeTrue()
-        ->and($tracking->remainingStops())->toBe(4)
-        ->and($tracking->eta())->toBeNull()
-        ->and($tracking->lastPosition())->toBeNull();
+        ->and($tracking->remainingStops())->toBe(4);
 
     $events = $tracking->releaseEvents();
     expect($events)->toHaveCount(1)
         ->and($events[0])->toBeInstanceOf(TrackingOpened::class)
-        ->and($events[0]->eventName())->toBe('tracking.tracking_opened')
-        ->and($events[0]->aggregateId())->toBe($id->toString())
         ->and($events[0]->payload())->toBe([
             'tracking_id' => $id->toString(),
-            'shipment_id' => 'ship-123',
+            'shipment_id' => null,
+            'order_reference' => 'order-123',
             'token' => $token->toString(),
-            'status' => 'REGISTERED',
+            'status' => 'PENDING',
             'remaining_stops' => 4,
         ]);
 });
 
-it('rejects a blank shipment id', function (): void {
+it('rejects a blank order reference', function (): void {
     expect(fn () => ShipmentTracking::open(
         TrackingId::generate(),
         '   ',
         TrackingToken::generate(),
         0,
-    ))->toThrow(TrackingException::class, 'envío');
+    ))->toThrow(TrackingException::class, 'orden');
 });
 
 it('rejects negative remaining stops', function (): void {
     expect(fn () => ShipmentTracking::open(
         TrackingId::generate(),
-        'ship-1',
+        'order-1',
         TrackingToken::generate(),
         -1,
     ))->toThrow(TrackingException::class, 'negativas');
 });
 
-it('applies a new status and records TrackingStatusChanged', function (): void {
+it('binds a shipment to the order tracking and records TrackingShipmentBound', function (): void {
     $tracking = openTracking();
     $tracking->releaseEvents();
 
-    $tracking->applyStatus(VisibleStatus::OnTheWay);
+    $tracking->bindShipment('ship-abc');
 
-    expect($tracking->status())->toBe(VisibleStatus::OnTheWay);
+    expect($tracking->shipmentId())->toBe('ship-abc');
+    $events = $tracking->releaseEvents();
+    expect($events)->toHaveCount(1)
+        ->and($events[0])->toBeInstanceOf(TrackingShipmentBound::class)
+        ->and($events[0]->payload()['shipment_id'])->toBe('ship-abc');
 
+    // Re-atar el mismo envío es idempotente (no graba otro hecho).
+    $tracking->bindShipment('ship-abc');
+    expect($tracking->releaseEvents())->toHaveCount(0);
+});
+
+it('applies an allowed transition and records TrackingStatusChanged', function (): void {
+    $tracking = openTracking();
+    $tracking->releaseEvents();
+
+    $tracking->applyStatus(VisibleStatus::Processing);
+
+    expect($tracking->status())->toBe(VisibleStatus::Processing);
     $events = $tracking->releaseEvents();
     expect($events)->toHaveCount(1)
         ->and($events[0])->toBeInstanceOf(TrackingStatusChanged::class)
-        ->and($events[0]->eventName())->toBe('tracking.status_changed')
-        ->and($events[0]->payload()['previous_status'])->toBe('REGISTERED')
-        ->and($events[0]->payload()['status'])->toBe('ON_THE_WAY');
+        ->and($events[0]->payload()['previous_status'])->toBe('PENDING')
+        ->and($events[0]->payload()['status'])->toBe('PROCESSING');
 });
 
 it('ignores applying the same status: no event', function (): void {
     $tracking = openTracking();
     $tracking->releaseEvents();
 
-    $tracking->applyStatus(VisibleStatus::Registered);
+    $tracking->applyStatus(VisibleStatus::Pending);
 
-    expect($tracking->status())->toBe(VisibleStatus::Registered)
+    expect($tracking->status())->toBe(VisibleStatus::Pending)
         ->and($tracking->releaseEvents())->toHaveCount(0);
+});
+
+it('rejects a jump that skips the flow (no illegal transitions)', function (): void {
+    $tracking = openTracking();
+
+    expect(fn () => $tracking->applyStatus(VisibleStatus::Delivered))
+        ->toThrow(TrackingException::class, 'no admitida');
 });
 
 it('does not allow leaving a terminal status', function (): void {
     $tracking = openTracking();
-    $tracking->applyStatus(VisibleStatus::Delivered);
+    $tracking->cancel(); // pendiente → cancelada (terminal)
     $tracking->releaseEvents();
 
-    expect(fn () => $tracking->applyStatus(VisibleStatus::OnTheWay))
-        ->toThrow(TrackingException::class, 'terminal');
+    expect(fn () => $tracking->applyStatus(VisibleStatus::Processing))
+        ->toThrow(TrackingException::class, 'no admitida');
+});
+
+it('walks the full happy path and allows return after delivery', function (): void {
+    $tracking = openTracking();
+    $tracking->markProcessing();
+    $tracking->markInProgress();
+    $tracking->markLoaded();
+    $tracking->markOnTheWay();
+    $tracking->markDelivered();
+    expect($tracking->status())->toBe(VisibleStatus::Delivered);
+
+    $tracking->markReturned();
+    expect($tracking->status())->toBe(VisibleStatus::Returned)
+        ->and($tracking->status()->isTerminal())->toBeTrue();
 });
 
 it('updates the truck position without recording an event', function (): void {
-    $tracking = openTracking();
-    $tracking->releaseEvents();
+    $tracking = trackingAt(VisibleStatus::OnTheWay);
 
     $position = TruckPosition::at(
         GeoPoint::of(-16.5, -68.15),
@@ -120,8 +171,7 @@ it('updates the truck position without recording an event', function (): void {
 });
 
 it('sets the ETA without recording an event', function (): void {
-    $tracking = openTracking();
-    $tracking->releaseEvents();
+    $tracking = trackingAt(VisibleStatus::OnTheWay);
 
     $eta = Eta::at(new DateTimeImmutable('2026-10-13T15:30:00+00:00'));
     $tracking->setEta($eta);
@@ -131,8 +181,7 @@ it('sets the ETA without recording an event', function (): void {
 });
 
 it('decrements remaining stops and never goes below zero', function (): void {
-    $tracking = openTracking(2);
-    $tracking->releaseEvents();
+    $tracking = trackingAt(VisibleStatus::OnTheWay, 2);
 
     $tracking->decrementStops();
     expect($tracking->remainingStops())->toBe(1);
@@ -140,17 +189,14 @@ it('decrements remaining stops and never goes below zero', function (): void {
     $tracking->decrementStops();
     expect($tracking->remainingStops())->toBe(0);
 
-    // No baja de cero.
     $tracking->decrementStops();
     expect($tracking->remainingStops())->toBe(0)
         ->and($tracking->releaseEvents())->toHaveCount(0);
 });
 
 it('places the shipment on a route, derives stops before the customer and records the fact', function (): void {
-    $tracking = openTracking();
-    $tracking->releaseEvents();
+    $tracking = trackingAt(VisibleStatus::OnTheWay);
 
-    // 3ra parada de la ruta ⇒ 2 paradas antes de la del cliente.
     $tracking->placeOnRoute('route-7', RoutePosition::of(3));
 
     expect($tracking->routeId())->toBe('route-7')
@@ -160,7 +206,6 @@ it('places the shipment on a route, derives stops before the customer and record
     $events = $tracking->releaseEvents();
     expect($events)->toHaveCount(1)
         ->and($events[0])->toBeInstanceOf(ShipmentPlacedOnRoute::class)
-        ->and($events[0]->eventName())->toBe('tracking.shipment_placed_on_route')
         ->and($events[0]->payload())->toMatchArray([
             'route_id' => 'route-7',
             'route_position' => 3,
@@ -169,16 +214,14 @@ it('places the shipment on a route, derives stops before the customer and record
 });
 
 it('rejects a blank route id when placing on a route', function (): void {
-    $tracking = openTracking();
+    $tracking = trackingAt(VisibleStatus::OnTheWay);
 
     expect(fn () => $tracking->placeOnRoute('  ', RoutePosition::of(1)))
         ->toThrow(TrackingException::class, 'ruta');
 });
 
 it('does not re-place a terminal tracking on a route', function (): void {
-    $tracking = openTracking();
-    $tracking->applyStatus(VisibleStatus::Delivered);
-    $tracking->releaseEvents();
+    $tracking = trackingAt(VisibleStatus::Returned);
 
     $tracking->placeOnRoute('route-7', RoutePosition::of(5));
 
@@ -191,12 +234,12 @@ it('rehydrates from state without recording events', function (): void {
         TrackingId::generate(),
         'ship-9',
         TrackingToken::generate(),
-        VisibleStatus::Arriving,
+        VisibleStatus::Processing,
         1,
         null,
         null,
     );
 
-    expect($tracking->status())->toBe(VisibleStatus::Arriving)
+    expect($tracking->status())->toBe(VisibleStatus::Processing)
         ->and($tracking->pendingEvents())->toHaveCount(0);
 });

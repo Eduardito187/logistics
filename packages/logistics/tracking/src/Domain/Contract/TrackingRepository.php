@@ -28,6 +28,20 @@ interface TrackingRepository
     public function findByShipmentId(string $shipmentId): ?ShipmentTracking;
 
     /**
+     * Seguimiento abierto por `orderReference` (al crear la orden, antes de que exista el envío). Sirve al
+     * puente pago→tracking y a la emisión de etiquetas, que llegan indexados por la orden.
+     */
+    public function findByOrderReference(string $orderReference): ?ShipmentTracking;
+
+    /**
+     * TODOS los seguimientos de un pedido (multishipping: un pedido puede tener varios envíos hermanos,
+     * cada uno con su propio seguimiento). Ordenados por creación. Vacío si no hay ninguno.
+     *
+     * @return list<ShipmentTracking>
+     */
+    public function findAllByOrderReference(string $orderReference): array;
+
+    /**
      * Seguimientos de la MISMA ruta cuya posición es posterior a la dada y que todavía no son
      * terminales: son los que quedan una parada más cerca cuando la parada en esa posición se completa.
      * Sirve para avanzar en cascada stops_remaining de los envíos de atrás cuando uno de adelante se

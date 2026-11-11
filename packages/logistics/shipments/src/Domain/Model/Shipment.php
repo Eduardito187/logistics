@@ -11,6 +11,7 @@ use Logistics\Shipments\Domain\Event\ShipmentCancelled;
 use Logistics\Shipments\Domain\Event\ShipmentDeliverySlotAssigned;
 use Logistics\Shipments\Domain\Event\ShipmentPlanned;
 use Logistics\Shipments\Domain\Event\ShipmentReceived;
+use Logistics\Shipments\Domain\Event\ShipmentRescheduled;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
 use Logistics\Shipments\Domain\ValueObject\Address;
 use Logistics\Shipments\Domain\ValueObject\AddressConfidence;
@@ -249,6 +250,31 @@ final class Shipment extends AggregateRoot
             $slot->date,
             $slot->windowStart,
             $slot->windowEnd,
+        ));
+    }
+
+    /**
+     * REPROGRAMA la entrega: cambia la franja comprometida en cualquier etapa posterior a recepción, SIEMPRE
+     * que el envío no esté cerrado (entregado/fallido/cancelado). Graba ShipmentRescheduled, que el
+     * seguimiento proyecta como «reprogramada». Idempotente: si la franja es la misma, no graba un hecho.
+     */
+    public function reschedule(DeliverySlot $slot, ?string $reason = null): void
+    {
+        if ($this->status === ShipmentStatus::Delivered || $this->status === ShipmentStatus::Failed || $this->status === ShipmentStatus::Cancelled) {
+            throw ShipmentsException::because('no se puede reprogramar un envío entregado, fallido o cancelado');
+        }
+
+        if ($this->deliverySlot !== null && $this->deliverySlot->equals($slot)) {
+            return;
+        }
+
+        $this->deliverySlot = $slot;
+        $this->recordEvent(new ShipmentRescheduled(
+            $this->id->toString(),
+            $slot->date,
+            $slot->windowStart,
+            $slot->windowEnd,
+            $reason,
         ));
     }
 

@@ -20,5 +20,6 @@ final readonly class PlaceOrderFromCart implements Command
         public ?string $addressReference = null,
         public ?string $phone = null,
         public ?string $email = null,
+        public string $financing = 'cash',
     ) {}
 }

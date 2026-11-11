@@ -43,5 +43,9 @@
         <env name="SPEC_SOURCE" value="local"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="LABELS_SIGNING_KEY" value=""/>
+        <!-- Teselas self-host en tests (CERO-CDN): aísla el override dev del .env (OSM público) para
+             que la CSP de los tests siga sin tiles de CDN. force: gana sobre el .env como la DB. -->
+        <server name="MAP_TILE_URL" value="http://localhost:8082/styles/osm-bright/{z}/{x}/{y}.png" force="true"/>
+        <env name="MAP_TILE_URL" value="http://localhost:8082/styles/osm-bright/{z}/{x}/{y}.png" force="true"/>
     </php>
 </phpunit>

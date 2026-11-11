@@ -8,6 +8,8 @@ use BackedEnum;
 use DateTimeImmutable;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
@@ -73,10 +75,22 @@ final class LiveFleetMap extends Page
      */
     public function positions(): array
     {
-        return array_map(
+        // Solo posiciones RECIENTES (últimas 48 h): una flota "en vivo" no debe mostrar ni encuadrar el
+        // mapa sobre un vehículo visto hace días (posición en vivo stale de una siembra vieja).
+        $cutoff = new DateTimeImmutable('-48 hours');
+
+        $rows = array_map(
             static fn (VehicleLiveView $view): array => $view->toArray(),
             $this->livePositions(),
         );
+
+        return array_values(array_filter($rows, static function (array $row) use ($cutoff): bool {
+            try {
+                return new DateTimeImmutable($row['recorded_at']) >= $cutoff;
+            } catch (\Throwable) {
+                return true;
+            }
+        }));
     }
 
     /**
@@ -138,6 +152,96 @@ final class LiveFleetMap extends Page
         }
 
         return array_map(static fn (PingView $ping): array => $ping->toArray(), $pings);
+    }
+
+    /**
+     * Ruta PLANIFICADA del vehículo para hoy, como polilínea PEGADA A CALLES (geometría del plan, ya
+     * calculada por el motor de rutas en el servidor). Se dibuja al hacer clic en el camión: así la ruta se
+     * ve realista sobre las calles, sin depender de que el navegador pueda matchear el GPS contra OSRM.
+     * Lectura directa del read-side de planning (tolerante: [] si no hay plan o geometría).
+     *
+     * @return list<array{lat: float, lng: float}>
+     */
+    public function vehicleRoute(string $vehicleId): array
+    {
+        try {
+            $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+            /** @var object{route_geometry: string|null}|null $plan */
+            $plan = DB::table('planning_plans')
+                ->where('vehicle_id', $vehicleId)
+                ->whereDate('plan_date', $today)
+                ->orderByDesc('updated_at')
+                ->first(['route_geometry']);
+
+            $raw = is_object($plan) && is_string($plan->route_geometry ?? null) ? $plan->route_geometry : null;
+            if ($raw === null || $raw === '') {
+                return [];
+            }
+
+            /** @var array{coordinates?: list<array{0: float, 1: float}>}|null $geo */
+            $geo = json_decode($raw, true);
+            $coords = is_array($geo) && isset($geo['coordinates']) && is_array($geo['coordinates']) ? $geo['coordinates'] : [];
+
+            $out = [];
+            foreach ($coords as $c) {
+                // GeoJSON viene [lng, lat]; Leaflet quiere [lat, lng].
+                if (is_array($c) && isset($c[0], $c[1]) && is_numeric($c[0]) && is_numeric($c[1])) {
+                    $out[] = ['lat' => (float) $c[1], 'lng' => (float) $c[0]];
+                }
+            }
+
+            return $out;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Paradas de hoy del vehículo (los pedidos a entregar), con su posición, nº de pedido y cliente y si
+     * ya fueron ENTREGADAS. Se dibujan numeradas sobre el mapa para ver DÓNDE reparte, no solo la línea de
+     * la ruta. Lectura directa del read-side de ejecución (tolerante: [] si no hay ruta hoy).
+     *
+     * @return list<array{sequence: int, order: string, customer: string, lat: float, lng: float, done: bool}>
+     */
+    public function vehicleStops(string $vehicleId): array
+    {
+        try {
+            $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+            $routeId = DB::table('execution_driver_routes')
+                ->where('vehicle_id', $vehicleId)
+                ->whereDate('route_date', $today)
+                ->orderByDesc('updated_at')
+                ->value('id');
+
+            if (!is_string($routeId) || $routeId === '') {
+                return [];
+            }
+
+            /** @var Collection<int, \stdClass> $rows */
+            $rows = DB::table('execution_driver_route_stops')
+                ->where('route_id', $routeId)
+                ->whereNotNull('lat')
+                ->whereNotNull('lng')
+                ->orderBy('sequence')
+                ->get(['sequence', 'order_reference', 'customer_name', 'lat', 'lng', 'status', 'settled_at']);
+
+            $out = [];
+            foreach ($rows as $r) {
+                $out[] = [
+                    'sequence' => (int) ($r->sequence ?? 0),
+                    'order' => is_string($r->order_reference ?? null) ? $r->order_reference : '',
+                    'customer' => is_string($r->customer_name ?? null) ? $r->customer_name : '',
+                    'lat' => (float) $r->lat,
+                    'lng' => (float) $r->lng,
+                    // Entregada = estado COMPLETED o con hora de cierre.
+                    'done' => ($r->status ?? null) === 'COMPLETED' || ($r->settled_at ?? null) !== null,
+                ];
+            }
+
+            return $out;
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

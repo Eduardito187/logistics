@@ -34,6 +34,8 @@ use Logistics\Fleet\Presentation\Filament\Pages\DriverHistory;
 use Logistics\FleetOps\Presentation\Filament\Pages\FleetCostDashboard;
 use Logistics\Inbound\Presentation\Filament\Pages\InboundBoard;
 use Logistics\Inbound\Presentation\Filament\Pages\ReceivingCalendar;
+use Logistics\Labels\Presentation\Filament\Pages\LabelFormatSettings;
+use Logistics\Labels\Presentation\Filament\Pages\ScanLabelPage;
 use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
 
 /**
@@ -106,9 +108,12 @@ final class AdminPanelProvider extends PanelProvider
             // Panel interno en tema Noche (#141414) por defecto para diferenciarlo de la app de clientes.
             // Se mantiene el toggle de modo claro/oscuro de Filament (no se fuerza), solo cambia el default.
             ->defaultThemeMode(ThemeMode::Dark)
-            // Ancho COMPLETO en TODO el panel (todas las vistas usan toda la pantalla, sin la columna
+            // Ancho COMPLETO en el panel entero (todas las vistas usan toda la pantalla, sin la columna
             // centrada por defecto). Cada página puede sobreescribirlo con getMaxContentWidth().
             ->maxContentWidth(Width::Full)
+            // Un SOLO buscador global: el command palette ⌘K (más abajo, render hook). Se APAGA el buscador
+            // propio de Filament para no tener dos inputs de búsqueda en el header.
+            ->globalSearch(false)
             // Avatar por defecto generado localmente (iniciales en SVG data URI). El proveedor de
             // Filament por defecto sale a ui-avatars.com, que offline o con la CSP del admin cerrada
             // deja la imagen rota en la barra superior. Con este proveedor nunca depende de internet.
@@ -148,9 +153,25 @@ final class AdminPanelProvider extends PanelProvider
             // directo, sin volver al menú. Disparador en el topbar; palette montado una vez al final del
             // body. Solo alcance de OFICINA (admin/supervisor) — el admin accede a todo; los roles de campo
             // usan su UI mínima y no lo ven.
+            // ORDEN del header (izquierda → derecha, dentro del clúster derecho `.fi-topbar-end`):
+            //   buscador · escanear · notificaciones · PERFIL (al final, a la derecha del todo).
+            // Se inyectan en GLOBAL_SEARCH_BEFORE (DENTRO de `.fi-topbar-end`, ANTES del menú de usuario), no
+            // en TOPBAR_END (que queda FUERA, a la derecha del perfil). El orden de registro = orden visual.
+            // 1) Buscador (command palette ⌘K): el más a la izquierda del grupo.
             ->renderHook(
-                PanelsRenderHook::TOPBAR_END,
+                PanelsRenderHook::GLOBAL_SEARCH_BEFORE,
                 fn (): string => self::hasOfficeScope() ? view('filament.cockpit.search-trigger')->render() : '',
+            )
+            // 2) Escanear etiquetas (cámara): acceso directo al escáner desde el header, fácil de hallar.
+            ->renderHook(
+                PanelsRenderHook::GLOBAL_SEARCH_BEFORE,
+                fn (): string => self::hasOfficeScope() ? view('filament.cockpit.scan-trigger')->render() : '',
+            )
+            // 3) Notificaciones (campana): alertas de telemetría + documentos por vencer, unificadas y
+            // accionables. Reemplaza "Alertas" como ítem suelto del menú. Queda pegada al perfil, a su izquierda.
+            ->renderHook(
+                PanelsRenderHook::GLOBAL_SEARCH_BEFORE,
+                fn (): string => self::hasOfficeScope() ? view('filament.cockpit.notifications')->render() : '',
             )
             ->renderHook(
                 PanelsRenderHook::BODY_END,
@@ -310,6 +331,10 @@ final class AdminPanelProvider extends PanelProvider
                 FleetCostDashboard::class,
                 // Historial operativo del chofer (desempeño cuantificable) del contexto Fleet.
                 DriverHistory::class,
+                // Ajuste del formato (simbología) de las etiquetas: QR, Zebra o ambos (contexto Labels).
+                LabelFormatSettings::class,
+                // Escáner web de etiquetas (cámara + BarcodeDetector): lee QR o Zebra, resuelve el bulto.
+                ScanLabelPage::class,
             ])
             // Los widgets del tablero (p. ej. PlatformStatsWidget, validado por rol) se descubren
             // desde app/Filament/Widgets.
