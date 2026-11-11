@@ -4,100 +4,86 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Support\Database\PostgresBackup;
+use App\Support\Database\BackupBundle;
+use App\Support\Database\BackupException;
+use App\Support\Database\DatabaseBackupService;
+use DateTimeImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Throwable;
 
 /**
- * Backup COMPLETO de la base PostgreSQL (esquema + datos) a un archivo custom comprimido, restaurable con
- * `db:restore`. No toca la base: solo lee. Pensado para correr dentro del contenedor:
+ * Backup COMPLETO de la base PostgreSQL (estructura + datos) a un `.dump` (pg_dump custom) más un
+ * `<archivo>.manifest.json` al lado con el inventario de estructura y el conteo exacto de filas (mismo
+ * snapshot que el dump). Comando de compatibilidad: el formato recomendado es el bundle de `backup:create`.
+ * Solo lee la base. Va DIRECTO a Postgres (DB_DIRECT_HOST/PORT o --host/--port), no por PgBouncer.
  *
  *   docker compose exec -T app php artisan db:backup
  *   docker compose exec -T app php artisan db:backup --path=/var/www/html/storage/app/backups/manual.dump
- *   docker compose exec -T app php artisan db:backup --host=postgres --port=5432   # directo al Postgres real
- *
- * Requiere `pg_dump` (paquete postgresql-client) en la imagen. Si falta, avisa claro y termina con error.
  */
 final class DatabaseBackupCommand extends Command
 {
-    protected $signature = 'db:backup
-        {--path= : Ruta del archivo de salida; por defecto storage/app/backups/backup-<base>-<timestamp>.dump}
-        {--connection= : Conexión a respaldar; por defecto la conexión por defecto}
-        {--host= : Host de Postgres (override; útil para saltar PgBouncer y apuntar al Postgres real)}
-        {--port= : Puerto de Postgres (override)}';
+    use BackupCommandSupport;
 
-    protected $description = 'Genera un backup completo (esquema + datos) de la base PostgreSQL a un archivo restaurable.';
+    protected $signature = 'db:backup
+        {--path= : Ruta del archivo de salida; por defecto <BACKUP_PATH>/backup-<base>-<timestamp>.dump}
+        {--connection= : Conexión a respaldar; por defecto la conexión por defecto}
+        {--host= : Host de Postgres (override; por defecto DB_DIRECT_HOST)}
+        {--port= : Puerto de Postgres (override; por defecto DB_DIRECT_PORT)}';
+
+    protected $description = 'Genera un backup completo (estructura + datos) de la base PostgreSQL a un .dump con manifest al lado.';
 
     public function handle(): int
     {
-        $connection = $this->stringOption('connection') ?? (string) config('database.default');
-        $host = $this->stringOption('host');
-        $port = $this->stringOption('port');
+        $at = new DateTimeImmutable;
+        $file = null;
+        $tmp = null;
 
         try {
-            $backup = PostgresBackup::forConnection($connection);
+            $service = $this->backupService();
+            $file = $this->resolvePath($service->endpoint()->database, $at);
+            $tmp = $file.'.tmp';
+            File::ensureDirectoryExists(dirname($file));
+
+            $versions = $service->assertClientVersions();
+            $this->info("Respaldando la base en {$file} …");
+
+            @unlink($tmp);
+            $database = $service->dump($tmp, $versions);
+            $database['file'] = basename($file);
+            if (!rename($tmp, $file)) {
+                throw new BackupException("No se pudo renombrar {$tmp} a {$file}.");
+            }
+            BackupBundle::writeManifest($file.'.manifest.json', BackupBundle::manifest($database, $at, DatabaseBackupService::gitCommit()));
         } catch (Throwable $e) {
-            $this->error($e->getMessage());
+            if ($tmp !== null) {
+                @unlink($tmp);
+            }
+            $this->error('Backup FALLIDO: '.$e->getMessage());
 
             return self::FAILURE;
         }
 
-        $file = $this->resolvePath($backup->target($host, $port)['database']);
-        File::ensureDirectoryExists(dirname($file));
-
-        $this->info("Respaldando la base en {$file} …");
-
-        try {
-            $result = $backup->run($backup->dumpCommand($file, $host, $port), $host, $port);
-        } catch (Throwable $e) {
-            $this->error('No se pudo ejecutar pg_dump: '.$e->getMessage());
-            $this->line('¿Está instalado postgresql-client (pg_dump) en el contenedor?');
-
-            return self::FAILURE;
-        }
-
-        if (!$result->successful()) {
-            $this->error('pg_dump terminó con error:');
-            $this->line(trim($result->errorOutput()) !== '' ? $result->errorOutput() : $result->output());
-
-            return self::FAILURE;
-        }
-
-        $size = is_file($file) ? (int) filesize($file) : 0;
-        $this->info('Backup completo. '.$this->humanSize($size).' → '.$file);
+        /** @var array<string, int> $summary */
+        $summary = $database['summary'];
+        $this->printSummary($summary);
+        $this->info('Backup completo. '.$this->humanSize((int) filesize($file)).' → '.$file);
+        $this->line('Manifest: '.$file.'.manifest.json');
 
         return self::SUCCESS;
     }
 
-    /** Ruta de salida: la del option, o una con timestamp bajo storage/app/backups. */
-    private function resolvePath(string $database): string
+    /** Ruta de salida: la del option, o una con timestamp bajo BACKUP_PATH. */
+    private function resolvePath(string $database, DateTimeImmutable $at): string
     {
         $path = $this->stringOption('path');
         if ($path !== null) {
             return $path;
         }
 
-        $name = ($database !== '' ? $database : 'database').'-'.date('Ymd-His');
+        $directory = config('backup.path');
+        $name = ($database !== '' ? $database : 'database').'-'.$at->format('Ymd-His');
 
-        return storage_path('app/backups/backup-'.$name.'.dump');
-    }
-
-    private function stringOption(string $key): ?string
-    {
-        $value = $this->option($key);
-
-        return is_string($value) && trim($value) !== '' ? trim($value) : null;
-    }
-
-    private function humanSize(int $bytes): string
-    {
-        if ($bytes <= 0) {
-            return '0 B';
-        }
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        $power = min((int) floor(log($bytes, 1024)), count($units) - 1);
-
-        return round($bytes / (1024 ** $power), 2).' '.$units[$power];
+        return rtrim(is_string($directory) ? $directory : storage_path('app/backups'), '/\\').'/backup-'.$name.'.dump';
     }
 }

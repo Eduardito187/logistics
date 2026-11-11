@@ -43,6 +43,13 @@ Generar las claves de firma de etiquetas (van al `.env`, nunca al repo):
 make artisan c="logistics:labels:keygen"
 ```
 
+### Correr en Windows (Docker Desktop, sin perder datos)
+
+Para mover el proyecto del filesystem de WSL a una carpeta de Windows (NTFS) conservando todos los datos y
+con el rendimiento afinado (OPcache + VirtioFS + volúmenes nombrados para `vendor`/`node_modules`), ver el
+runbook **[docs/migracion-windows.md](docs/migracion-windows.md)** y el script
+`scripts/windows/migrate.ps1`. El override de perf es `.docker/compose/docker-compose.windows.yml`.
+
 ## Comandos frecuentes
 
 ```bash
@@ -132,6 +139,19 @@ conciencia; hoy no están agendados).
 | `make migrate` / `make seed` / `make fresh` | Migraciones / seeders / recrear la base de desarrollo. |
 | `make shell` / `make tinker` / `make db-shell` / `make valkey-shell` | Shell del container / Tinker / psql / redis-cli. |
 | `make reload` / `make logs` / `make status` | Recargar código en workers / ver logs / estado de containers. |
+
+## Deploy de staging (automático)
+
+Cada merge a `staging` se despliega solo en el servidor de Oracle Cloud (self-hosted runner) con
+[.github/workflows/staging-deploy.yml](.github/workflows/staging-deploy.yml): build en Docker,
+migraciones, `docker compose -p logistics-staging up -d --build --remove-orphans` y smoke test. Los PR
+hacia `staging` solo se construyen ([staging-pr-check.yml](.github/workflows/staging-pr-check.yml)).
+
+- **Secrets obligatorios:** `STAGING_APP_KEY`, `STAGING_DB_PASSWORD`. Opcional: `STAGING_ENV_EXTRA`.
+- **Puerto:** `8110` (variable `STAGING_HTTP_PORT`); hay que abrirlo en la Security List de Oracle Cloud.
+- **Logs:** `docker compose -p logistics-staging logs -f`
+
+Guía completa: [docs/deploy-staging.md](docs/deploy-staging.md).
 
 ## Estructura
 

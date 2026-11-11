@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6c3e1293-8377-4d93-8fed-2b1879d36abb
-  modified: 2026-10-13T22:52:03.734Z
+  modified: 2026-11-10T12:12:13.382Z
 ---
 
 Todo corre en Docker; **nunca usar el PHP del host**.
@@ -20,7 +20,11 @@ Puertos locales: API/Admin http://localhost:8110 · Mailpit :8055 · PostgreSQL 
 
 Claves de firma de etiquetas: `make artisan c="logistics:labels:keygen"` (van al `.env`, nunca al repo).
 
-Para commits/PR con acentos o ñ y para CI en esta máquina Windows+WSL (no hay gh CLI): usar la skill `github-pr-flow`. Para crear/extender un package: skill `logistics-package`. Ver [[project-rules]].
+Skills del proyecto en `.claude/skills/` (VERIFICADO 2026-11-10 — nombres previos `github-pr-flow`/
+`logistics-package` NO existían; corregido): `bounded-context` (crear/extender un package DDD+CQRS),
+`ci-quality-gates` (pasar los gates de CI del PR en un lote: SonarCloud/composer audit/PHPStan/Pint/Pest —
+ver [[ci-quality-gates-playbook]]), `admin-entity-hub` (consolidar admin CRUD→CRM: hubs 360, tucar
+recursos al padre filtrados, sin huérfanos ni UUIDs — ver [[admin-crm-phases]]). Ver [[project-rules]].
 
 **Admin / dev (añadido 2026-10-13):**
 - Login dev del admin: `ehhuallata@dismac.com.bo` / `Dismac*2026`. Necesita rol Admin (ver [[admin-ui-maps]]); tras `migrate:fresh --seed` re-asignarlo con `assignRole(\App\Enums\Role::Admin)`.

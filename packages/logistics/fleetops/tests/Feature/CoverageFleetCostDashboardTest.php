@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Js;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Logistics\FleetOps\Application\Command\RecordOdometer\RecordOdometer;
@@ -226,6 +227,78 @@ it('ejecuta la acción de agendar mantenimiento (comando CQRS)', function (): vo
         scheduledAt: '2026-10-20 08:00:00',
         note: null,
     ));
+
+    expect(DB::table('fleetops_maintenance_orders')->where('vehicle_id', $vehicleId)->count())->toBe(1);
+});
+
+/**
+ * Regresión del bug "Record reading no hace nada": el botón por fila usaba `@js(...)` dentro del atributo
+ * `wire:click` de un componente `<x-filament::button>`; Blade no compila directivas dentro de tags de
+ * componente, el `@js(...)` llegaba literal al navegador y Alpine tiraba "SyntaxError: Invalid or
+ * unexpected token". Además fillForm() pisaba los defaults del schema (fecha de lectura vacía).
+ */
+it('renderiza los botones por fila con una expresión JS válida (sin @js literal)', function (): void {
+    $vehicleId = fleetopsDashboardVehicle('DASH-060');
+
+    $html = html_entity_decode(Livewire::test(FleetCostDashboard::class)->html(), ENT_QUOTES);
+
+    expect($html)
+        ->not->toContain('@js(')
+        ->toContain("mountAction('recordOdometer', ".Js::from(['vehicle_id' => $vehicleId]).')');
+});
+
+it('registra una lectura desde la fila de odómetros atrasados y la fila deja de estar atrasada', function (): void {
+    $vehicleId = fleetopsDashboardVehicle('DASH-070');
+
+    $component = Livewire::test(FleetCostDashboard::class);
+
+    // Proyección "odómetros atrasados" tal como la ve la vista (placas de las filas).
+    $stalePlates = static fn (): array => array_column(
+        (new ReflectionMethod(FleetCostDashboard::class, 'staleOdometerRows'))->invoke($component->instance()),
+        'vehicle',
+    );
+
+    expect($stalePlates())->toContain('DASH-070');
+
+    $component
+        ->mountAction('recordOdometer', ['vehicle_id' => $vehicleId])
+        ->assertActionMounted('recordOdometer')
+        // Vehículo de la fila precargado y la fecha de lectura con su default (no vacía).
+        ->assertActionDataSet(static fn (array $state): bool => $state['vehicle_id'] === $vehicleId
+            && filled($state['read_at'] ?? null))
+        // En el modal se ve la placa, nunca el UUID.
+        ->assertMountedActionModalSee('DASH-070');
+
+    // Envío: el helper de tests de Filament no hidrata el form de esta acción (fillForm/callAction dejan
+    // `km` en null → "required"; ver el test de arriba "no es driveable"). Se ejecuta el CUERPO REAL de la
+    // acción con los datos que mandaría el modal: cubre el despacho de RecordOdometer y el Cache::forget.
+    $component->instance()->recordOdometerAction()->call(['data' => [
+        'vehicle_id' => $vehicleId,
+        'km' => 4_321,
+        'read_at' => now()->toDateTimeString(),
+        'note' => 'Desde fila atrasada',
+    ]]);
+
+    $reading = DB::table('fleetops_odometer_readings')->where('vehicle_id', $vehicleId)->first();
+
+    expect($reading)->not->toBeNull()
+        ->and((int) $reading->km)->toBe(4_321)
+        ->and($reading->source)->toBe(OdometerSource::Manual->value)
+        ->and($stalePlates())->not->toContain('DASH-070');
+});
+
+it('agenda mantenimiento desde la fila con el vehículo precargado y los defaults del form', function (): void {
+    $vehicleId = fleetopsDashboardVehicle('DASH-080');
+
+    Livewire::test(FleetCostDashboard::class)
+        ->mountAction('scheduleMaintenance', ['vehicle_id' => $vehicleId])
+        ->assertActionDataSet(static fn (array $state): bool => $state['vehicle_id'] === $vehicleId
+            && $state['type'] === MaintenanceType::Preventive->value
+            && filled($state['scheduled_at'] ?? null))
+        ->fillForm(['workshop' => 'Taller Central'])
+        ->callMountedAction()
+        ->assertHasNoActionErrors()
+        ->assertNotified(__('Maintenance scheduled'));
 
     expect(DB::table('fleetops_maintenance_orders')->where('vehicle_id', $vehicleId)->count())->toBe(1);
 });

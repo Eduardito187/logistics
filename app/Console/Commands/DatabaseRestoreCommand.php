@@ -4,31 +4,33 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Support\Database\PostgresBackup;
+use App\Support\Database\BackupBundle;
+use App\Support\Database\BackupException;
 use Illuminate\Console\Command;
-use Throwable;
 
 /**
- * Importa POR COMPLETO un backup de `db:backup` sobre la base PostgreSQL, REEMPLAZANDO su contenido
- * (`pg_restore --clean --if-exists`, en una sola transacción). Operación DESTRUCTIVA: pide confirmación
- * explícita (saltable con --force para automatización) y bloquea en producción salvo --force.
+ * Importa POR COMPLETO un `.dump` de `db:backup` sobre la base PostgreSQL con el MISMO camino seguro que
+ * `backup:restore`: restaura en una base nueva (`<db>_restore_<ts>`, TEMPLATE template0, sin `--clean`),
+ * verifica y recién entonces hace el swap (la anterior queda como `<db>_prev_<ts>`).
+ *
+ * Verificación: si existe `<archivo>.manifest.json` (db:backup lo escribe), compara estructura + conteo de
+ * filas; si no (dump viejo), verificación ESTRUCTURAL: toda tabla del TOC del dump debe existir.
  *
  *   docker compose exec -T app php artisan db:restore storage/app/backups/backup-....dump
  *   docker compose exec -T app php artisan db:restore backup.dump --force   # sin preguntar (CI/scripts)
- *
- * Requiere `pg_restore` (postgresql-client) en la imagen. El guard de base de desarrollo/prod lo da el
- * operador: por eso en producción exige --force a propósito.
  */
 final class DatabaseRestoreCommand extends Command
 {
+    use BackupCommandSupport;
+
     protected $signature = 'db:restore
         {file : Ruta del archivo de backup (.dump) a importar}
         {--connection= : Conexión destino; por defecto la conexión por defecto}
-        {--host= : Host de Postgres (override; útil para saltar PgBouncer)}
-        {--port= : Puerto de Postgres (override)}
+        {--host= : Host de Postgres (override; por defecto DB_DIRECT_HOST)}
+        {--port= : Puerto de Postgres (override; por defecto DB_DIRECT_PORT)}
         {--force : No pedir confirmación (y permitir la restauración en producción)}';
 
-    protected $description = 'Importa por completo un backup (.dump) sobre la base PostgreSQL, reemplazando su contenido.';
+    protected $description = 'Importa por completo un backup (.dump) de forma segura (base nueva + verificación + swap).';
 
     public function handle(): int
     {
@@ -39,62 +41,22 @@ final class DatabaseRestoreCommand extends Command
             return self::FAILURE;
         }
 
-        $connection = $this->stringOption('connection') ?? (string) config('database.default');
-        $host = $this->stringOption('host');
-        $port = $this->stringOption('port');
-        $force = (bool) $this->option('force');
+        // El directorio de trabajo que pasa restoreDump no hace falta acá: el dump ya está en disco.
+        return $this->restoreDump(function () use ($file): array {
+            $manifestPath = $file.'.manifest.json';
+            if (!is_file($manifestPath)) {
+                $this->warn('Sin manifest al lado del dump: se hará verificación estructural (tablas del TOC), sin conteo de filas.');
 
-        try {
-            $backup = PostgresBackup::forConnection($connection);
-        } catch (Throwable $e) {
-            $this->error($e->getMessage());
+                return [$file, null];
+            }
 
-            return self::FAILURE;
-        }
+            $database = BackupBundle::readManifest($manifestPath)['database'];
+            /** @var array<string, mixed> $database */
+            if (is_string($database['sha256'] ?? null) && hash_file('sha256', $file) !== $database['sha256']) {
+                throw new BackupException('El sha256 del dump no coincide con su manifest: archivo corrupto.');
+            }
 
-        $database = $backup->target($host, $port)['database'];
-
-        // Guard de producción: solo con --force (evita pisar la base viva por accidente).
-        if (app()->environment('production') && !$force) {
-            $this->error('Restauración en PRODUCCIÓN bloqueada. Volvé a correr con --force si es intencional.');
-
-            return self::FAILURE;
-        }
-
-        // Confirmación: la restauración REEMPLAZA todo el contenido de la base destino.
-        if (!$force && !$this->confirm("Esto REEMPLAZARÁ por completo la base '{$database}'. ¿Continuar?", false)) {
-            $this->info('Cancelado. No se tocó la base.');
-
-            return self::SUCCESS;
-        }
-
-        $this->info("Importando {$file} sobre la base '{$database}' …");
-
-        try {
-            $result = $backup->run($backup->restoreCommand($file, $host, $port), $host, $port);
-        } catch (Throwable $e) {
-            $this->error('No se pudo ejecutar pg_restore: '.$e->getMessage());
-            $this->line('¿Está instalado postgresql-client (pg_restore) en el contenedor?');
-
-            return self::FAILURE;
-        }
-
-        if (!$result->successful()) {
-            $this->error('pg_restore terminó con error:');
-            $this->line(trim($result->errorOutput()) !== '' ? $result->errorOutput() : $result->output());
-
-            return self::FAILURE;
-        }
-
-        $this->info("Restauración completa sobre la base '{$database}'.");
-
-        return self::SUCCESS;
-    }
-
-    private function stringOption(string $key): ?string
-    {
-        $value = $this->option($key);
-
-        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+            return [$file, $database];
+        }, $file, (bool) $this->option('force'));
     }
 }

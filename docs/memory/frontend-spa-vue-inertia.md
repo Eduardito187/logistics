@@ -5,8 +5,47 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 59988cd8-42b3-4864-9323-6ddaa2471766
-  modified: 2026-10-14T00:11:20.130Z
+  modified: 2026-11-11T03:04:32.220Z
 ---
+
+**ESTADO ACTUAL (2026-11-10) — IMPORTANTE, revierte lo de abajo:** la SPA Vue+Inertia descrita en este memo
+(2026-10-13) fue **ELIMINADA** en su momento (se consolidó todo en Filament, ver [[cockpit-control-tower]]
+"superficie=Filament, SPA eliminada"). El dueño decidió **reintroducirla como HÍBRIDO** (admin interno =
+Filament intocable; app orientada al CLIENTE/campo = Vue+Inertia, por olas). **Ola 1 HECHA y verificada en
+navegador:** fundación desde CERO + primera superficie **«Seguí tu pedido»** (rastreo PÚBLICO por token, SIN
+auth, SIN PII) en `/app/track/{token}`.
+- Fundación nueva: `composer require inertiajs/inertia-laravel tightenco/ziggy`; npm `vue@^3.5
+  @inertiajs/vue3@^2 @vitejs/plugin-vue@^6`. Archivos: `app/Http/Middleware/HandleInertiaRequests.php`
+  (rootView 'app', registrado en `bootstrap/app.php` web append), `resources/views/app.blade.php`,
+  `resources/js/app.js` (resolve Pages glob eager, SIN Ziggy — URLs van como props), `resources/css/app.css`
+  (`@import 'tailwindcss'`), `vite.config.js` input **aditivo** `resources/js/app.js` + plugin `vue()`.
+  Controller `app/Http/Controllers/App/TrackController.php` → `Inertia::render('Track/Show'|'Track/NotFound')`
+  reusando las queries públicas existentes (`GetPublicTracking`/`GetPublicUnits`, read models sin PII).
+  Páginas `resources/js/Pages/Track/{Show,NotFound}.vue`. Ruta pública en `routes/web.php` ANTES del catch-all
+  `/app/{any?}`→admin. Build verde (bundle app-*.js ~268kB) **sin romper el tema Filament** (726kB).
+- **GOTCHA corregido:** npm/vite ya NO corren en el host — corren en el container **`assets`** (node:22):
+  `docker compose run --rm --no-deps assets sh -c "npm install ..."` / `npm run build`. (El "npm en HOST" de
+  más abajo es OBSOLETO.)
+- **Ola 2 HECHA (2026-11-10, verificada en navegador): app de CAMPO del chofer.** Login propio de chofer
+  (`DriverAuthController` show/login/logout, sesión web estándar, solo cuentas con `driver_id`; el
+  `redirectGuestsTo` en bootstrap/app.php ahora es path-aware: `/app*`→`/app/login`, resto→Filament).
+  `DriverRouteController` = «Mi ruta de hoy» (paradas de `execution_driver_routes`+`_stops` del chofer, con
+  cliente/dirección/estado + geometría del plan). `DriverDeliveryController@confirm` = **prueba de entrega
+  REAL** por `RecordProofOfDelivery` vía CommandBus (resuelve primer bulto de `shipment_units`, flash
+  success/error). Páginas `Pages/Driver/{Login,Today}.vue`. Rutas en grupo `auth`. VERIFICADO: login →
+  7 paradas; confirmar entrega movió el contador 2→3 entregadas, flash "Entrega confirmada."
+- **Ola 3 HECHA (2026-11-10, verificada): portal del cliente = landing público `/app`.** `HomeController`
+  → `Pages/Home.vue`: marca + input de código/enlace de seguimiento → navega a `/app/track/{token}`. HONESTO:
+  un portal con login e historial por cliente requiere CUENTAS de cliente (no existen; el tracking es por
+  token sin PII) — fuera de alcance; esta ola entrega la cara pública + la entrada al tracking.
+- Patrón de verificación de /app (sin 2FA): Playwright en el container playwright, login chofer
+  `chofer@dismac.test/password123`; para write con `window.prompt` usar `page.on('dialog', d=>d.accept('...'))`.
+- DoD: build verde + PHPStan 8 + Pint + render real en navegador (login no aplica al tracking público; para
+  páginas con auth, OJO que el admin tiene 2FA — usar `admin@dismac.test` que NO tiene 2FA enrolado).
+
+---
+
+(Histórico — la SPA de abajo fue eliminada y la fundación se rehízo de cero arriba.)
 
 Decisión 2026-10-13 (ver `docs/adr/009-app-web-vue-inertia.md`, enmienda ADR 005): el frontend NO se
 migra "blade a Vue" (el admin es Filament: 36 Resources, no blades). **Híbrido**: Filament (/admin) se

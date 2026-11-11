@@ -6,11 +6,17 @@ use App\Support\Database\PostgresBackup;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-// Backup/restore COMPLETO de PostgreSQL (db:backup / db:restore). Nada se ejecuta de verdad: el Process de
-// Laravel está fakeado, así que verificamos la CONSTRUCCIÓN de los comandos y el control de errores/guards.
+// Construcción PURA de los comandos de backup/restore y guards de los comandos (sin tocar ninguna base:
+// el Process de Laravel está fakeado y los casos cortan antes de cualquier conexión). El ciclo real
+// (pg_dump/pg_restore contra Postgres) está en BackupBundleIntegrationTest.
+
+// Literales compartidos por los tests de este archivo (prefijo único: los tests de Pest viven en el scope global).
+const BACKUP_CMD_TEST_DUMP = '/tmp/in.dump';
+const BACKUP_CMD_TEST_DIR = 'app/backups/';
 
 beforeEach(function (): void {
-    // Conexión pgsql determinista para no depender del entorno.
+    config()->set('backup.direct_host', null);
+    config()->set('backup.direct_port', null);
     config()->set('database.connections.pg_backup_test', [
         'driver' => 'pgsql',
         'host' => 'pg-host',
@@ -28,70 +34,80 @@ it('rechaza conexiones que no son PostgreSQL', function (): void {
         ->toThrow(RuntimeException::class);
 });
 
-it('construye el comando pg_dump de backup completo (custom, comprimido, con endpoint)', function (): void {
-    $cmd = PostgresBackup::forConnection('pg_backup_test')->dumpCommand('/tmp/out.dump');
+it('construye el comando pg_dump de backup completo (custom, comprimido, snapshot, con endpoint)', function (): void {
+    $backup = PostgresBackup::forConnection('pg_backup_test');
+    $cmd = $backup->dumpCommand('/tmp/out.dump', $backup->endpoint(), '00000003-0000001B-1');
 
     expect($cmd[0])->toBe('pg_dump')
         ->and($cmd)->toContain('--format=custom')
         ->and($cmd)->toContain('--compress=9')
         ->and($cmd)->toContain('--no-owner')
+        ->and($cmd)->toContain('--snapshot=00000003-0000001B-1')
         ->and($cmd)->toContain('--host=pg-host')
         ->and($cmd)->toContain('--port=5999')
         ->and($cmd)->toContain('--username=usr')
         ->and($cmd)->toContain('--dbname=mi_base')
-        ->and($cmd)->toContain('--file=/tmp/out.dump');
+        ->and($cmd)->toContain('--file=/tmp/out.dump')
+        ->and(implode(' ', $cmd))->not->toContain('s3cret');
 });
 
-it('permite override de host/puerto para saltar PgBouncer', function (): void {
-    $cmd = PostgresBackup::forConnection('pg_backup_test')->dumpCommand('/tmp/out.dump', 'postgres-real', '5432');
+it('va DIRECTO a Postgres por defecto (DB_DIRECT_HOST/PORT) y los overrides del comando ganan', function (): void {
+    config()->set('backup.direct_host', 'postgres');
+    config()->set('backup.direct_port', '5432');
+    $backup = PostgresBackup::forConnection('pg_backup_test');
 
-    expect($cmd)->toContain('--host=postgres-real')
-        ->and($cmd)->toContain('--port=5432');
+    $default = $backup->endpoint();
+    $override = $backup->endpoint('otro-pg', '6543');
+
+    expect([$default->host, $default->port, $default->direct])->toBe(['postgres', '5432', true])
+        ->and([$override->host, $override->port])->toBe(['otro-pg', '6543'])
+        ->and($backup->target()['host'])->toBe('postgres');
 });
 
-it('construye el comando pg_restore de import completo (clean, if-exists, transacción única)', function (): void {
-    $cmd = PostgresBackup::forConnection('pg_backup_test')->restoreCommand('/tmp/in.dump');
+it('sin DB_DIRECT_* marca como no-directo un endpoint PgBouncer (se descubrirá el Postgres real)', function (): void {
+    config()->set('database.connections.pg_backup_test.host', 'pgbouncer');
+    config()->set('database.connections.pg_backup_test.port', '6432');
+
+    $endpoint = PostgresBackup::forConnection('pg_backup_test')->endpoint();
+
+    expect($endpoint->direct)->toBeFalse()
+        ->and($endpoint->looksLikePooler())->toBeTrue();
+});
+
+it('el restore va a una base NUEVA: sin --clean, con --exit-on-error', function (): void {
+    $backup = PostgresBackup::forConnection('pg_backup_test');
+    $cmd = $backup->restoreCommand(BACKUP_CMD_TEST_DUMP, $backup->endpoint()->withDatabase('mi_base_restore_20261111_100000'));
 
     expect($cmd[0])->toBe('pg_restore')
-        ->and($cmd)->toContain('--clean')
-        ->and($cmd)->toContain('--if-exists')
-        ->and($cmd)->toContain('--single-transaction')
-        ->and($cmd)->toContain('--dbname=mi_base')
-        ->and($cmd)->toContain('/tmp/in.dump');
+        ->and($cmd)->not->toContain('--clean')
+        ->and($cmd)->not->toContain('--single-transaction')
+        ->and($cmd)->toContain('--exit-on-error')
+        ->and($cmd)->toContain('--dbname=mi_base_restore_20261111_100000')
+        ->and($cmd)->toContain(BACKUP_CMD_TEST_DUMP);
 });
 
-it('db:backup ejecuta pg_dump y termina ok', function (): void {
+it('inyecta PGPASSWORD por entorno, nunca en la línea de comandos', function (): void {
     Process::fake();
+    $backup = PostgresBackup::forConnection('pg_backup_test');
 
-    $this->artisan('db:backup', ['--connection' => 'pg_backup_test', '--path' => storage_path('app/backups/test.dump')])
-        ->assertSuccessful();
+    $backup->run($backup->listCommand(BACKUP_CMD_TEST_DUMP), $backup->endpoint());
 
     Process::assertRan(function ($process): bool {
-        $cmd = $process->command;
-
-        return is_array($cmd) && $cmd[0] === 'pg_dump' && in_array('--dbname=mi_base', $cmd, true);
-    });
-});
-
-it('db:backup inyecta PGPASSWORD por entorno, nunca en la línea de comandos', function (): void {
-    Process::fake();
-
-    $this->artisan('db:backup', ['--connection' => 'pg_backup_test'])->assertSuccessful();
-
-    Process::assertRan(function ($process): bool {
-        // La clave va en el entorno del proceso, no como argumento visible.
-        $env = $process->environment;
         $cmd = is_array($process->command) ? implode(' ', $process->command) : (string) $process->command;
 
-        return ($env['PGPASSWORD'] ?? null) === 's3cret' && !str_contains($cmd, 's3cret');
+        return ($process->environment['PGPASSWORD'] ?? null) === 's3cret' && !str_contains($cmd, 's3cret');
     });
 });
 
-it('db:backup falla con gracia si pg_dump termina en error', function (): void {
-    Process::fake(['*' => Process::result(output: '', errorOutput: 'pg_dump: fatal', exitCode: 1)]);
+it('db:backup falla con gracia si no puede conectarse al servidor', function (): void {
+    Process::fake();
+    config()->set('database.connections.pg_backup_test.host', '127.0.0.1');
+    config()->set('database.connections.pg_backup_test.port', '1');
 
-    $this->artisan('db:backup', ['--connection' => 'pg_backup_test'])
+    $this->artisan('db:backup', ['--connection' => 'pg_backup_test', '--path' => storage_path(BACKUP_CMD_TEST_DIR.Str::random(8).'.dump')])
         ->assertFailed();
+
+    Process::assertNothingRan();
 });
 
 it('db:restore exige archivo existente', function (): void {
@@ -103,23 +119,18 @@ it('db:restore exige archivo existente', function (): void {
     Process::assertNothingRan();
 });
 
-it('db:restore con --force ejecuta pg_restore sin preguntar', function (): void {
+it('backup:verify y backup:restore exigen un bundle existente', function (): void {
     Process::fake();
-    $file = storage_path('app/backups/'.Str::random(8).'.dump');
-    @mkdir(dirname($file), 0775, true);
-    file_put_contents($file, 'x');
 
-    $this->artisan('db:restore', ['file' => $file, '--connection' => 'pg_backup_test', '--force' => true])
-        ->assertSuccessful();
+    $this->artisan('backup:verify', ['bundle' => '/no/existe.tar'])->assertFailed();
+    $this->artisan('backup:restore', ['bundle' => '/no/existe.tar', '--force' => true])->assertFailed();
 
-    Process::assertRan(fn ($process): bool => is_array($process->command) && $process->command[0] === 'pg_restore');
-
-    @unlink($file);
+    Process::assertNothingRan();
 });
 
-it('db:restore cancela sin --force cuando el operador dice que no', function (): void {
+it('db:restore cancela sin --force cuando el operador dice que no (sin tocar nada)', function (): void {
     Process::fake();
-    $file = storage_path('app/backups/'.Str::random(8).'.dump');
+    $file = storage_path(BACKUP_CMD_TEST_DIR.Str::random(8).'.dump');
     @mkdir(dirname($file), 0775, true);
     file_put_contents($file, 'x');
 
@@ -130,4 +141,22 @@ it('db:restore cancela sin --force cuando el operador dice que no', function ():
     Process::assertNothingRan();
 
     @unlink($file);
+});
+
+it('backup:restore en producción sin --force se bloquea antes de tocar nada', function (): void {
+    Process::fake();
+    app()->detectEnvironment(fn (): string => 'production');
+    $file = storage_path(BACKUP_CMD_TEST_DIR.Str::random(8).'.tar');
+    @mkdir(dirname($file), 0775, true);
+    file_put_contents($file, 'x');
+
+    try {
+        $this->artisan('backup:restore', ['bundle' => $file, '--connection' => 'pg_backup_test'])
+            ->assertFailed();
+    } finally {
+        app()->detectEnvironment(fn (): string => 'testing');
+        @unlink($file);
+    }
+
+    Process::assertNothingRan();
 });
