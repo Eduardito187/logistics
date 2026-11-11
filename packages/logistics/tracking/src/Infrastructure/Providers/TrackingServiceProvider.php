@@ -7,6 +7,10 @@ namespace Logistics\Tracking\Infrastructure\Providers;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
+use Logistics\Tracking\Application\Command\AdvanceTracking\AdvanceTracking;
+use Logistics\Tracking\Application\Command\AdvanceTracking\AdvanceTrackingHandler;
+use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentToTracking;
+use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentToTrackingHandler;
 use Logistics\Tracking\Application\Command\OpenTracking\OpenTracking;
 use Logistics\Tracking\Application\Command\OpenTracking\OpenTrackingHandler;
 use Logistics\Tracking\Application\Command\PlaceShipmentOnRoute\PlaceShipmentOnRoute;
@@ -68,6 +72,8 @@ final class TrackingServiceProvider extends ServiceProvider
         // El bus los resuelve del contenedor, así reciben sus dependencias inyectadas.
         $registry = $this->app->make(HandlerRegistry::class);
         $registry->register(OpenTracking::class, OpenTrackingHandler::class);
+        $registry->register(BindShipmentToTracking::class, BindShipmentToTrackingHandler::class);
+        $registry->register(AdvanceTracking::class, AdvanceTrackingHandler::class);
         $registry->register(ProjectExecutionEvent::class, ProjectExecutionEventHandler::class);
         $registry->register(ProjectUnitExecutionEvent::class, ProjectUnitExecutionEventHandler::class);
         $registry->register(PlaceShipmentOnRoute::class, PlaceShipmentOnRouteHandler::class);

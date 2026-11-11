@@ -10,6 +10,7 @@ use Logistics\Execution\Domain\Event\DropshipDelivered;
 use Logistics\Execution\Domain\Event\DropshipDispatchConfirmed;
 use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
+use Logistics\Execution\Domain\Event\ShipmentDeparted;
 use Logistics\Execution\Domain\Event\ShipmentLoaded;
 use Logistics\Execution\Domain\Event\ShipmentPrepared;
 use Logistics\Execution\Domain\Event\ShipmentUnloaded;
@@ -203,6 +204,28 @@ final class Delivery extends AggregateRoot
                 $occurredAt,
             ));
         }
+    }
+
+    /**
+     * El camión SALIÓ: el chofer inició la ruta. Transición Loaded → InTransit; graba ShipmentDeparted
+     * (separa «cargada» de «en camino»). Idempotente: si la entrega ya salió o está resuelta, no hace nada.
+     */
+    public function markDeparted(DateTimeImmutable $occurredAt): void
+    {
+        $this->guardOwnScansAllowed();
+
+        // Ya en tránsito o resuelta: la salida ya ocurrió (o no aplica). Idempotente, sin reemitir.
+        if ($this->status !== DeliveryStatus::Loaded) {
+            return;
+        }
+
+        $this->status = DeliveryStatus::InTransit;
+        $this->recordEvent(new ShipmentDeparted(
+            $this->id->toString(),
+            $this->shipmentId,
+            $this->vehicleId,
+            $occurredAt,
+        ));
     }
 
     /**

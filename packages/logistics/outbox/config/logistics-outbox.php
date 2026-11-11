@@ -20,6 +20,14 @@ use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher
 use Logistics\Promise\Infrastructure\Dispatch\OrderCancelledCupoReleaseDispatcher;
 use Logistics\Promise\Infrastructure\Dispatch\OrderPaidCupoConfirmDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatcher;
+use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
+use Logistics\Tracking\Infrastructure\Outbox\CancelOnOrderCancelled;
+use Logistics\Tracking\Infrastructure\Outbox\InProgressOnLabelsEmitted;
+use Logistics\Tracking\Infrastructure\Outbox\OpenTrackingOnOrderPlaced;
+use Logistics\Tracking\Infrastructure\Outbox\ProcessingOnOrderPaid;
+use Logistics\Tracking\Infrastructure\Outbox\ProjectExecutionTracking;
+use Logistics\Tracking\Infrastructure\Outbox\RescheduledOnReschedule;
+use Logistics\Tracking\Infrastructure\Outbox\ReturnedOnReturnInitiated;
 
 // Configuración del Transactional Outbox (ADR 002). Valores afinables por entorno vía .env.
 return [
@@ -129,6 +137,19 @@ return [
         'orders.order_placed' => FanOutMessageDispatcher::class,
         // Cancelación de orden (ADR 020): varios reactores (fulfillment + reembolso) → abanico.
         'orders.order_cancelled' => FanOutMessageDispatcher::class,
+
+        // SEGUIMIENTO (ciclo de vida del pedido de cara al cliente): los hechos por envío avanzan el estado
+        // visible. Van por ABANICO junto al aviso al cliente (el nombre exacto gana a 'execution.'/'shipments.'
+        // por longest-prefix; la notificación se preserva incluyéndola en el fanout).
+        'execution.shipment_loaded' => FanOutMessageDispatcher::class,
+        'execution.shipment_departed' => FanOutMessageDispatcher::class,
+        'execution.shipment_delivered' => FanOutMessageDispatcher::class,
+        'execution.delivery_failed' => FanOutMessageDispatcher::class,
+        'shipments.shipment_received' => FanOutMessageDispatcher::class,
+        'shipments.shipment_rescheduled' => FanOutMessageDispatcher::class,
+        // Un solo reactor cada uno (no necesitan abanico): etiqueta generada → «en curso»; devolución → «devuelta».
+        'labels.labels_emitted' => InProgressOnLabelsEmitted::class,
+        'returns.return_initiated' => ReturnedOnReturnInitiated::class,
     ],
 
     // Abanico por evento: eventos que disparan reacciones en varios contextos a la vez. El
@@ -156,14 +177,18 @@ return [
             OrderPaidCupoConfirmDispatcher::class,
             // Facturación: emite el documento fiscal de la orden (IssueInvoiceForOrder).
             OrderPaidInvoiceDispatcher::class,
+            // Seguimiento: el pedido pasa a «procesando» (pago confirmado).
+            ProcessingOnOrderPaid::class,
         ],
 
-        // Checkout: al crear la orden desde un carrito, dos reactores idempotentes:
+        // Checkout: al crear la orden desde un carrito, reactores idempotentes:
         'orders.order_placed' => [
             // Carrito: lo marca como convertido (MarkCartConverted) por el cart_id del evento.
             OrderPlacedCartConverter::class,
             // Notificaciones: avisa al cliente "pedido recibido, esperando el pago".
             CommerceEventNotificationDispatcher::class,
+            // Seguimiento: abre el timeline del pedido en «pendiente».
+            OpenTrackingOnOrderPlaced::class,
         ],
 
         // Pago capturado: puente a la orden + aviso al cliente, ambos idempotentes:
@@ -183,6 +208,39 @@ return [
             // Cupo (promise): libera el cupo reservado/confirmado y lo devuelve a capacity, en cualquier
             // etapa (pre o post pago) y venga de POS / manual / cron de expiración (ADR 020).
             OrderCancelledCupoReleaseDispatcher::class,
+            // Seguimiento: el pedido pasa a «cancelada» (tolerante: no aplica si ya estaba entregado).
+            CancelOnOrderCancelled::class,
+        ],
+
+        // Envío creado: aviso al cliente + liga el envío al seguimiento de su pedido (reconcilia multishipping).
+        'shipments.shipment_received' => [
+            DomainEventNotificationDispatcher::class,
+            BindShipmentOnReceived::class,
+        ],
+
+        // Reprogramación de entrega: aviso al cliente + seguimiento → «reprogramada» (por envío).
+        'shipments.shipment_rescheduled' => [
+            DomainEventNotificationDispatcher::class,
+            RescheduledOnReschedule::class,
+        ],
+
+        // Hechos de ejecución por envío: aviso al cliente + avance del seguimiento (cargada/en camino/
+        // entregado/fallida). ProjectExecutionTracking mapea el tipo a estado visible y aplica tolerante.
+        'execution.shipment_loaded' => [
+            DomainEventNotificationDispatcher::class,
+            ProjectExecutionTracking::class,
+        ],
+        'execution.shipment_departed' => [
+            DomainEventNotificationDispatcher::class,
+            ProjectExecutionTracking::class,
+        ],
+        'execution.shipment_delivered' => [
+            DomainEventNotificationDispatcher::class,
+            ProjectExecutionTracking::class,
+        ],
+        'execution.delivery_failed' => [
+            DomainEventNotificationDispatcher::class,
+            ProjectExecutionTracking::class,
         ],
     ],
 

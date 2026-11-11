@@ -7,8 +7,11 @@ namespace Logistics\Labels\Presentation\Filament\Resources;
 use App\Filament\Support\RequestScopedQuery;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
+use Filament\Actions\BulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Components\ViewEntry;
 use Filament\Resources\Pages\PageRegistration;
@@ -23,7 +26,10 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
 use Logistics\Labels\Application\ReadModel\EmittedLabelView;
@@ -190,6 +196,17 @@ final class EmittedLabelResource extends Resource
                         false: fn (Builder $query): Builder => $query->whereNull('revoked_at'),
                         blank: fn (Builder $query): Builder => $query,
                     ),
+                // Filtra por si la etiqueta YA se imprimió (bitácora de ciclo de vida): impresas vs pendientes.
+                TernaryFilter::make('printed')
+                    ->label(__('Print status'))
+                    ->placeholder(__('All labels'))
+                    ->trueLabel(__('Printed only'))
+                    ->falseLabel(__('Pending (not printed)'))
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query->whereIn('label_id', self::printedLabelIds()),
+                        false: fn (Builder $query): Builder => $query->whereNotIn('label_id', self::printedLabelIds()),
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
                 SelectFilter::make('key_id')
                     ->label(__('Signing key'))
                     ->native(false)
@@ -232,20 +249,80 @@ final class EmittedLabelResource extends Resource
             ])
             ->recordActions([
                 ViewAction::make(),
+                // Imprimir ESTA etiqueta (hoja imprimible, normal o de pegatinas) — registra quién imprimió.
+                ActionGroup::make([
+                    Action::make('printNormal')
+                        ->label(__('Normal printer'))
+                        ->icon('heroicon-o-printer')
+                        ->url(fn (EmittedLabelRecord $record): string => route('cockpit.labels.print', ['ids' => $record->label_id, 'printer' => 'normal']), shouldOpenInNewTab: true),
+                    Action::make('printSticker')
+                        ->label(__('Sticker printer'))
+                        ->icon('heroicon-o-tag')
+                        ->url(fn (EmittedLabelRecord $record): string => route('cockpit.labels.print', ['ids' => $record->label_id, 'printer' => 'sticker']), shouldOpenInNewTab: true),
+                ])
+                    ->label(__('Print'))
+                    ->icon('heroicon-o-printer')
+                    ->button()
+                    ->visible(fn (EmittedLabelRecord $record): bool => !$record->is_revoked),
                 // Flujo de lectura: obtener TODAS las etiquetas del pedido de esta fila y su ZPL vigente
                 // concatenado, listo para reimprimir en la Zebra. Se resuelve por el QueryBus (CQRS),
                 // nunca leyendo el Record directo.
                 Action::make('orderLabels')
                     ->label(__('Order labels & ZPL'))
-                    ->icon('heroicon-o-printer')
+                    ->icon('heroicon-o-document-text')
                     ->modalHeading(fn (EmittedLabelRecord $record): string => __('Labels for order ').$record->order_id)
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel(__('Close'))
                     ->modalContent(fn (EmittedLabelRecord $record): HtmlString => self::orderLabelsModal($record->order_id)),
             ])
+            ->toolbarActions([
+                // IMPRIMIR VARIAS de golpe: junta las etiquetas vigentes seleccionadas en una sola hoja
+                // imprimible (normal o de pegatinas) y registra la impresión de cada una.
+                BulkAction::make('printSelected')
+                    ->label(__('Print selected'))
+                    ->icon('heroicon-o-printer')
+                    ->schema([
+                        Select::make('printer')
+                            ->label(__('Printer'))
+                            ->native(false)
+                            ->options(['normal' => __('Normal printer'), 'sticker' => __('Sticker printer')])
+                            ->default('normal')
+                            ->required(),
+                    ])
+                    ->action(function (Collection $records, array $data): RedirectResponse {
+                        $ids = $records->reject(fn (EmittedLabelRecord $r): bool => $r->is_revoked)
+                            ->pluck('label_id')->map(fn (mixed $v): string => (string) $v)->all();
+
+                        return redirect()->to(route('cockpit.labels.print', [
+                            'ids' => implode(',', $ids),
+                            'printer' => ($data['printer'] ?? 'normal') === 'sticker' ? 'sticker' : 'normal',
+                        ]));
+                    })
+                    ->deselectRecordsAfterCompletion(),
+            ])
             ->deferLoading()
             ->paginationPageOptions([25, 50, 100])
             ->defaultSort('created_at', 'desc');
+    }
+
+    /**
+     * label_ids que YA tienen un evento de impresión en la bitácora (para el filtro «impresa/pendiente»).
+     * Tolerante: lista vacía si la tabla no existe todavía.
+     *
+     * @return array<int, string>
+     */
+    private static function printedLabelIds(): array
+    {
+        try {
+            return DB::table('label_events')
+                ->where('event', 'printed')
+                ->distinct()
+                ->pluck('label_id')
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     public static function infolist(Schema $schema): Schema
@@ -277,11 +354,20 @@ final class EmittedLabelResource extends Resource
                 ])
                 ->columns(3),
             Section::make(__('Label preview'))
-                ->description(__('Scannable image of the label — the signed QR and the Code128, rendered on-premise. Scan the QR from the app just like a printed label.'))
+                ->description(__('Scannable image of the label, rendered on-premise with the configured symbology (QR, Zebra, or both). The unique label code is always shown below.'))
                 ->schema([
                     ViewEntry::make('preview')
                         ->hiddenLabel()
                         ->view('filament.labels.label-preview')
+                        ->columnSpanFull(),
+                ]),
+            // Control total del ciclo de vida: quién generó/imprimió/revocó y cada escaneo (etapa + actor + hora).
+            Section::make(__('Lifecycle'))
+                ->description(__('Full audit trail: who generated, printed, scanned (by stage) and revoked this label, and when.'))
+                ->schema([
+                    ViewEntry::make('lifecycle')
+                        ->hiddenLabel()
+                        ->view('filament.labels.label-lifecycle')
                         ->columnSpanFull(),
                 ]),
             Section::make(__('Signed payload'))

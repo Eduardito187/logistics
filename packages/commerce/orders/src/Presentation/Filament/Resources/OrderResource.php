@@ -6,6 +6,7 @@ namespace Commerce\Orders\Presentation\Filament\Resources;
 
 use App\Filament\Support\TableCsvExport;
 use Commerce\Orders\Application\Command\CancelOrder\CancelOrder;
+use Commerce\Orders\Domain\ValueObject\FinancingPlan;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Model\OrderRecord;
 use Commerce\Orders\Presentation\Filament\Resources\OrderResource\Pages\ListOrders;
 use Commerce\Orders\Presentation\Filament\Resources\OrderResource\Pages\ViewOrder;
@@ -79,6 +80,26 @@ final class OrderResource extends Resource
     }
 
     /**
+     * Estado legible del crédito (solo órdenes a crédito): firma de contrato y pago del inicial. En las
+     * de contado no aplica (devuelve cadena vacía → placeholder «—»).
+     */
+    private static function creditState(OrderRecord $record): string
+    {
+        $financing = FinancingPlan::from($record->financing);
+        if (!$financing->isCredit()) {
+            return '';
+        }
+
+        $contract = $record->contract_signed ? '✓' : '✗';
+        $parts = [__('Contract').' '.$contract];
+        if ($financing->requiresInitial()) {
+            $parts[] = __('Down payment').' '.($record->initial_paid ? '✓' : '✗');
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    /**
      * Total de la orden en centavos, sumado de las líneas (no hay columna persistida).
      */
     private static function totalCents(OrderRecord $record): int
@@ -106,6 +127,15 @@ final class OrderResource extends Resource
                     ->color(static fn (string $state): string => self::statusColor($state))
                     ->formatStateUsing(static fn (string $state): string => __(ucfirst($state)))
                     ->sortable(),
+                TextColumn::make('financing')
+                    ->label(__('Financing'))
+                    ->badge()
+                    ->color(static fn (OrderRecord $record): string => FinancingPlan::from($record->financing)->isCredit() ? 'warning' : 'gray')
+                    ->formatStateUsing(static fn (OrderRecord $record): string => __(FinancingPlan::from($record->financing)->label())),
+                TextColumn::make('credit_state')
+                    ->label(__('Credit'))
+                    ->state(static fn (OrderRecord $record): string => self::creditState($record))
+                    ->placeholder('—'),
                 TextColumn::make('total')
                     ->label(__('Total'))
                     ->state(static fn (OrderRecord $record): string => number_format(self::totalCents($record) / 100, 2).' '.$record->currency)
@@ -124,6 +154,14 @@ final class OrderResource extends Resource
                         'paid' => __('Paid'),
                         'fulfilling' => __('Fulfilling'),
                         'cancelled' => __('Cancelled'),
+                    ]),
+                SelectFilter::make('financing')
+                    ->label(__('Financing'))
+                    ->native(false)
+                    ->options([
+                        'cash' => __('Cash'),
+                        'credit_with_initial' => __('Credit (with down payment)'),
+                        'credit_without_initial' => __('Credit (no down payment)'),
                     ]),
             ])
             ->recordUrl(static fn (OrderRecord $record): string => self::getUrl('view', ['record' => $record]))

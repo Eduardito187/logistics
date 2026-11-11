@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Logistics\FleetOps\Presentation\Http\Request;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Logistics\FleetOps\Domain\ValueObject\OdometerSource;
 
 /**
  * Validación de entrada para registrar una lectura de odómetro de un vehículo.
@@ -27,7 +29,8 @@ final class RecordOdometerRequest extends FormRequest
         return [
             'vehicle_id' => ['required', 'string', 'uuid'],
             'km' => ['required', 'integer', 'min:0'],
-            'source' => ['required', 'string', 'in:manual,telemetry,refuel,maintenance,departure'],
+            // Fuentes válidas derivadas del enum (incluye `arrival`): nunca se desincroniza con el dominio.
+            'source' => ['required', 'string', Rule::in(array_map(static fn (OdometerSource $s): string => $s->value, OdometerSource::cases()))],
             'read_at' => ['required', 'string', 'date'],
             'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ];

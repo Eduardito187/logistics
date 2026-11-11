@@ -7,6 +7,7 @@ namespace Logistics\Tracking\Domain\Model;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 use Logistics\Tracking\Domain\Event\ShipmentPlacedOnRoute;
 use Logistics\Tracking\Domain\Event\TrackingOpened;
+use Logistics\Tracking\Domain\Event\TrackingShipmentBound;
 use Logistics\Tracking\Domain\Event\TrackingStatusChanged;
 use Logistics\Tracking\Domain\Exception\TrackingException;
 use Logistics\Tracking\Domain\ValueObject\Eta;
@@ -17,18 +18,21 @@ use Logistics\Tracking\Domain\ValueObject\TruckPosition;
 use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
 
 /**
- * Agregado raíz del contexto de seguimiento: el estado visible de un envío para el cliente.
+ * Agregado raíz del contexto de seguimiento: el estado visible del PEDIDO para el cliente, como un ciclo
+ * de vida único (pendiente → procesando → en curso → cargada → en camino → entregado, con
+ * cancelación/reprogramación/devolución).
  *
- * Es principalmente un read model (una proyección de los eventos de execution), pero se modela como
- * agregado propio para poder evolucionar sus reglas: no deja retroceder desde un estado terminal, no
- * graba eventos redundantes y nunca guarda datos personales. Referencia al envío por id string
- * (shipmentId), nunca importando el agregado de otro contexto.
+ * Nace al crear la orden (por `orderReference`, estado pendiente, aún sin envío); cuando el pago crea el
+ * envío se le liga su `shipmentId` (`bindShipment`). Es principalmente una proyección, pero se modela como
+ * agregado para GOBERNAR LAS REGLAS: `applyStatus()` solo deja transiciones admitidas (ver
+ * {@see VisibleStatus::canTransitionTo()}) — nada de saltos — y nunca guarda datos personales. Referencia a
+ * orden/envío por id string, nunca importando el agregado de otro contexto.
  */
 final class ShipmentTracking extends AggregateRoot
 {
     private function __construct(
         private readonly TrackingId $id,
-        private readonly string $shipmentId,
+        private ?string $shipmentId,
         private readonly TrackingToken $token,
         private VisibleStatus $status,
         private int $remainingStops,
@@ -36,21 +40,22 @@ final class ShipmentTracking extends AggregateRoot
         private ?TruckPosition $lastPosition,
         private ?string $routeId,
         private ?RoutePosition $routePosition,
+        private readonly ?string $orderReference = null,
     ) {}
 
     /**
-     * Abre el seguimiento de un envío: estado inicial Registered, token público recién generado y
-     * graba el hecho TrackingOpened.
+     * Abre el seguimiento de un PEDIDO: estado inicial Pending, aún sin envío ligado (shipmentId null),
+     * token público recién generado. Graba TrackingOpened. Se identifica por `orderReference`.
      */
     public static function open(
         TrackingId $id,
-        string $shipmentId,
+        string $orderReference,
         TrackingToken $token,
-        int $remainingStops,
+        int $remainingStops = 0,
     ): self {
-        $shipmentId = trim($shipmentId);
-        if ($shipmentId === '') {
-            throw TrackingException::because('el id del envío no puede estar vacío');
+        $orderReference = trim($orderReference);
+        if ($orderReference === '') {
+            throw TrackingException::because('la referencia de la orden no puede estar vacía');
         }
         if ($remainingStops < 0) {
             throw TrackingException::because("las paradas restantes no pueden ser negativas: {$remainingStops}");
@@ -58,22 +63,24 @@ final class ShipmentTracking extends AggregateRoot
 
         $tracking = new self(
             $id,
-            $shipmentId,
+            null,
             $token,
-            VisibleStatus::Registered,
+            VisibleStatus::Pending,
             $remainingStops,
             null,
             null,
             null,
             null,
+            $orderReference,
         );
 
         $tracking->recordEvent(new TrackingOpened(
             $id->toString(),
-            $shipmentId,
+            null,
             $token->toString(),
-            VisibleStatus::Registered->value,
+            VisibleStatus::Pending->value,
             $remainingStops,
+            $orderReference,
         ));
 
         return $tracking;
@@ -84,7 +91,7 @@ final class ShipmentTracking extends AggregateRoot
      */
     public static function reconstitute(
         TrackingId $id,
-        string $shipmentId,
+        ?string $shipmentId,
         TrackingToken $token,
         VisibleStatus $status,
         int $remainingStops,
@@ -92,6 +99,7 @@ final class ShipmentTracking extends AggregateRoot
         ?TruckPosition $lastPosition,
         ?string $routeId = null,
         ?RoutePosition $routePosition = null,
+        ?string $orderReference = null,
     ): self {
         return new self(
             $id,
@@ -103,21 +111,59 @@ final class ShipmentTracking extends AggregateRoot
             $lastPosition,
             $routeId,
             $routePosition,
+            $orderReference,
         );
     }
 
     /**
-     * Aplica un nuevo estado visible. Idempotente: si no cambia, no graba evento. No permite retroceder
-     * desde un estado terminal (entregado/fallido).
+     * Liga el envío real (su id interno) al seguimiento del pedido cuando el pago lo crea. Idempotente:
+     * reatar el mismo envío no hace nada; graba TrackingShipmentBound la primera vez.
+     */
+    public function bindShipment(string $shipmentId): void
+    {
+        $shipmentId = trim($shipmentId);
+        if ($shipmentId === '') {
+            throw TrackingException::because('el id del envío a ligar no puede estar vacío');
+        }
+        if ($this->shipmentId === $shipmentId) {
+            return;
+        }
+        if ($this->shipmentId !== null) {
+            throw TrackingException::because(
+                "el seguimiento {$this->id->toString()} ya está ligado a otro envío; no se puede reasignar",
+            );
+        }
+
+        $this->shipmentId = $shipmentId;
+
+        $this->recordEvent(new TrackingShipmentBound(
+            $this->id->toString(),
+            $shipmentId,
+            $this->orderReference,
+        ));
+    }
+
+    /**
+     * ¿Es seguro aplicar este estado? True si es el mismo (idempotente) o una transición admitida. Lo usan
+     * los reactores de la proyección para SALTEAR (no romper) un evento tardío/duplicado del outbox.
+     */
+    public function canApply(VisibleStatus $status): bool
+    {
+        return $this->status === $status || $this->status->canTransitionTo($status);
+    }
+
+    /**
+     * Aplica un nuevo estado visible respetando la máquina de estados. Idempotente: si no cambia, no graba
+     * evento. Rechaza con excepción cualquier transición NO admitida (regla dura: sin saltos en el flujo).
      */
     public function applyStatus(VisibleStatus $status): void
     {
         if ($this->status === $status) {
             return;
         }
-        if ($this->status->isTerminal()) {
+        if (!$this->status->canTransitionTo($status)) {
             throw TrackingException::because(
-                "el seguimiento ya está en estado terminal {$this->status->value}; no puede pasar a {$status->value}",
+                "transición no admitida: {$this->status->value} → {$status->value}",
             );
         }
 
@@ -129,7 +175,62 @@ final class ShipmentTracking extends AggregateRoot
             $this->shipmentId,
             $previous->value,
             $status->value,
+            $this->orderReference,
         ));
+    }
+
+    /** Pago confirmado: pendiente → procesando. */
+    public function markProcessing(): void
+    {
+        $this->applyStatus(VisibleStatus::Processing);
+    }
+
+    /** Etiqueta generada: procesando → en curso. */
+    public function markInProgress(): void
+    {
+        $this->applyStatus(VisibleStatus::InProgress);
+    }
+
+    /** Cargada en el camión. */
+    public function markLoaded(): void
+    {
+        $this->applyStatus(VisibleStatus::Loaded);
+    }
+
+    /** El camión salió: en camino. */
+    public function markOnTheWay(): void
+    {
+        $this->applyStatus(VisibleStatus::OnTheWay);
+    }
+
+    /** Entregada al cliente. */
+    public function markDelivered(): void
+    {
+        $this->applyStatus(VisibleStatus::Delivered);
+    }
+
+    /** Intento de entrega fallido. */
+    public function markFailed(): void
+    {
+        $this->applyStatus(VisibleStatus::Failed);
+    }
+
+    /** Anulada (sin pago, o anulada tras el pago antes de entregar). */
+    public function cancel(): void
+    {
+        $this->applyStatus(VisibleStatus::Cancelled);
+    }
+
+    /** Reprogramada: cambió la fecha/lugar de entrega (tras el pago, antes de entregar). */
+    public function reschedule(): void
+    {
+        $this->applyStatus(VisibleStatus::Rescheduled);
+    }
+
+    /** Devuelta por el cliente tras la entrega. */
+    public function markReturned(): void
+    {
+        $this->applyStatus(VisibleStatus::Returned);
     }
 
     /**
@@ -180,6 +281,9 @@ final class ShipmentTracking extends AggregateRoot
         if ($routeId === '') {
             throw TrackingException::because('el id de la ruta no puede estar vacío');
         }
+        if ($this->shipmentId === null) {
+            throw TrackingException::because('no se puede ubicar en ruta un seguimiento sin envío ligado');
+        }
 
         $this->routeId = $routeId;
         $this->routePosition = $position;
@@ -213,9 +317,14 @@ final class ShipmentTracking extends AggregateRoot
         return $this->id;
     }
 
-    public function shipmentId(): string
+    public function shipmentId(): ?string
     {
         return $this->shipmentId;
+    }
+
+    public function orderReference(): ?string
+    {
+        return $this->orderReference;
     }
 
     public function token(): TrackingToken

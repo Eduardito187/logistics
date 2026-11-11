@@ -25,5 +25,8 @@ final readonly class PlaceOrder implements Command
         public ?string $email = null,
         public string $currency = 'BOB',
         public ?string $cartId = null,
+        // Financiamiento: 'cash' (default), 'credit_with_initial' o 'credit_without_initial'. Lo fija el
+        // canal/POS; define qué habilita el paso a procesando (pago, o contrato [+ inicial]).
+        public string $financing = 'cash',
     ) {}
 }

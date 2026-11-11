@@ -39,7 +39,7 @@ final class ListShipmentTrackings extends ListRecords
     }
 
     /**
-     * Segmentos por estado visible del seguimiento: en curso (registrado/preparado/en camino/llegando),
+     * Segmentos por estado visible del seguimiento: en curso (todo lo que avanza hacia la entrega),
      * entregados y fallidos, con conteo.
      *
      * @return array<string, Tab>
@@ -47,10 +47,12 @@ final class ListShipmentTrackings extends ListRecords
     public function getTabs(): array
     {
         $inProgress = [
-            VisibleStatus::Registered->value,
-            VisibleStatus::Prepared->value,
+            VisibleStatus::Pending->value,
+            VisibleStatus::Processing->value,
+            VisibleStatus::InProgress->value,
+            VisibleStatus::Loaded->value,
             VisibleStatus::OnTheWay->value,
-            VisibleStatus::Arriving->value,
+            VisibleStatus::Rescheduled->value,
         ];
 
         return [

@@ -14,6 +14,10 @@ use Commerce\Orders\Application\Command\PlaceOrder\PlaceOrder;
 use Commerce\Orders\Application\Command\PlaceOrder\PlaceOrderHandler;
 use Commerce\Orders\Application\Command\PlaceOrderFromCart\PlaceOrderFromCart;
 use Commerce\Orders\Application\Command\PlaceOrderFromCart\PlaceOrderFromCartHandler;
+use Commerce\Orders\Application\Command\RecordInitialPayment\RecordInitialPayment;
+use Commerce\Orders\Application\Command\RecordInitialPayment\RecordInitialPaymentHandler;
+use Commerce\Orders\Application\Command\SignOrderContract\SignOrderContract;
+use Commerce\Orders\Application\Command\SignOrderContract\SignOrderContractHandler;
 use Commerce\Orders\Application\Contract\CartSnapshotReader;
 use Commerce\Orders\Application\Contract\PaymentScheduleReader;
 use Commerce\Orders\Application\Query\GetOrder\GetOrder;
@@ -45,6 +49,8 @@ final class OrdersServiceProvider extends ServiceProvider
         MarkOrderPaid::class => MarkOrderPaidHandler::class,
         MarkOrderFulfilling::class => MarkOrderFulfillingHandler::class,
         CancelOrder::class => CancelOrderHandler::class,
+        SignOrderContract::class => SignOrderContractHandler::class,
+        RecordInitialPayment::class => RecordInitialPaymentHandler::class,
         GetOrder::class => GetOrderHandler::class,
         ListOrders::class => ListOrdersHandler::class,
     ];

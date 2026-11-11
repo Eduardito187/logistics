@@ -23,8 +23,12 @@
                     {{ __('Idle') }}
                 </span>
                 <span class="inline-flex items-center gap-2">
+                    <span style="display:inline-block;width:18px;border-top:3px solid #111827;"></span>
+                    {{ __('Traveled') }}
+                </span>
+                <span class="inline-flex items-center gap-2">
                     <span style="display:inline-block;width:18px;border-top:3px solid #E2231A;"></span>
-                    {{ __('Selected vehicle track') }}
+                    {{ __('Remaining') }}
                 </span>
             </div>
         </div>
@@ -48,12 +52,18 @@
         <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
         {{-- Teselas solo del tileserver self-host (CERO CDN): sin fallback a un CDN público si no responde. --}}
         <script src="{{ asset('js/dismac-maps.js') }}"></script>
+        {{-- Ciclo de vida del polling/mapa en modo SPA: libera intervalo y Leaflet al salir (dismac-live.js). --}}
+        <script src="{{ asset('js/dismac-live.js') }}"></script>
     @endassets
 
     @script
     <script>
         const el = document.getElementById('live-fleet-map');
         const panel = document.getElementById('fleet-exceptions');
+        // Sesión "en vivo": al salir con navegación SPA (o al destruirse el componente) corta el polling,
+        // los temporizadores y el mapa. Sin esto el intervalo seguía vivo con un $wire muerto y reventaba
+        // "Cannot read properties of undefined (reading 'then')" cada 10 s, acumulando mapas por visita.
+        const live = window.DismacLive.session({ el, component: $wire.__instance });
         // Datos iniciales (primitivos) inyectados por el servidor para el primer pintado.
         let positions = @js($positions);
         let exceptions = @js($exceptions);
@@ -78,11 +88,19 @@
             attribution: @js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
             maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
         }).addTo(map);
+        // Al salir de la página se destruye el mapa (listeners de window, teselas y capas).
+        live.onDispose(() => map.remove());
 
         // Capa de marcadores de vehículos (se vacía y se vuelve a llenar en cada refresco).
         const fleetLayer = L.layerGroup().addTo(map);
         // Capa del recorrido del vehículo seleccionado (se reemplaza en cada clic).
         const trackLayer = L.layerGroup().addTo(map);
+        // Capa de las PARADAS (pedidos a entregar) del vehículo seleccionado.
+        const stopsLayer = L.layerGroup().addTo(map);
+        // El mapa se centra en la flota la PRIMERA vez que hay posiciones (no en cada polling, para no saltar).
+        let fitted = false;
+        // Marcadores de la flota por vehículo (para ocultar el del vehículo enfocado y mostrarlo SOBRE la ruta).
+        const markersById = {};
 
         // Icono circular coloreado según el estado de movimiento del vehículo.
         const vehicleIcon = (moving) => L.divIcon({
@@ -156,6 +174,8 @@
             fetch(url)
                 .then((r) => (r.ok ? r.json() : Promise.reject(new Error('match http ' + r.status))))
                 .then((data) => {
+                    // La página pudo cerrarse mientras OSRM respondía: no tocar un mapa ya liberado.
+                    if (!live.alive) return;
                     if (!data || data.code !== 'Ok' || !Array.isArray(data.matchings) || !data.matchings.length) {
                         throw new Error('match sin geometría');
                     }
@@ -172,22 +192,118 @@
                     const line = L.polyline(snapped, { color: '#E2231A', weight: 4, opacity: 0.9 }).addTo(trackLayer);
                     try { map.fitBounds(line.getBounds().pad(0.2)); } catch (e) {}
                 })
-                .catch(() => raw());
+                .catch(() => { if (live.alive) raw(); });
         };
 
-        // Drill-down: centra el mapa en la unidad (si hay posición) y dibuja su recorrido del día.
+        // Índice del vértice de la ruta MÁS CERCANO a un punto (para ubicar el avance del camión sobre la ruta).
+        const nearestIndex = (latlngs, point) => {
+            let best = 0;
+            let bestD = Infinity;
+            for (let i = 0; i < latlngs.length; i++) {
+                const dLat = latlngs[i][0] - point[0];
+                const dLng = latlngs[i][1] - point[1];
+                const d = dLat * dLat + dLng * dLng;
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            return best;
+        };
+
+        // Dibuja la RUTA (geometría del plan, ya pegada a calles). La parte RECORRIDA (hasta donde va el
+        // camión) va en NEGRO; la que falta, en ROJO. El camión se dibuja SOBRE la ruta en ese punto de avance.
+        const drawRoute = (points, truck) => {
+            trackLayer.clearLayers();
+            const latlngs = (points || []).map((p) => [p.lat, p.lng]);
+            if (latlngs.length < 2) {
+                if (latlngs.length === 1) map.setView(latlngs[0], Math.max(map.getZoom(), 14));
+                return;
+            }
+            // Punto de avance = vértice de la ruta más cercano a la posición del camión (lo "pega" a la ruta).
+            const k = (truck && truck.length === 2) ? nearestIndex(latlngs, truck) : latlngs.length - 1;
+            const traveled = latlngs.slice(0, k + 1);
+            const remaining = latlngs.slice(k);
+            if (traveled.length >= 2) {
+                L.polyline(traveled, { color: '#111827', weight: 5, opacity: 0.95 }).addTo(trackLayer); // recorrido = negro
+            }
+            if (remaining.length >= 2) {
+                L.polyline(remaining, { color: '#E2231A', weight: 4, opacity: 0.9 }).addTo(trackLayer); // por recorrer = rojo
+            }
+            // Camión SOBRE la ruta, en el punto de avance (no en la posición GPS cruda fuera de la calle).
+            L.marker(latlngs[k], { icon: vehicleIcon(true) }).addTo(trackLayer);
+            try { map.fitBounds(L.latLngBounds(latlngs).pad(0.2)); } catch (e) {}
+        };
+
+        // Marcador numerado de una PARADA (pedido): círculo con el nº de orden de reparto. Verde = entregada,
+        // rojo = pendiente.
+        const stopIcon = (seq, done) => L.divIcon({
+            className: 'fleet-stop-marker',
+            html: '<div style="background:' + (done ? '#16a34a' : '#E2231A') + ';color:#fff;width:22px;height:22px;'
+                + 'border-radius:9999px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);'
+                + 'font:700 12px/22px system-ui,sans-serif;text-align:center">' + esc(String(seq)) + '</div>',
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+        });
+
+        const labelDelivered = @js(__('Delivered'));
+        const labelPending = @js(__('Pending'));
+
+        // Dibuja las PARADAS (pedidos a entregar) del vehículo: un pin numerado por parada, con popup del
+        // pedido y el cliente, y el estado (entregada/pendiente).
+        const drawStops = (stops) => {
+            stopsLayer.clearLayers();
+            (stops || []).forEach((s) => {
+                if (s.lat == null || s.lng == null) return;
+                L.marker([s.lat, s.lng], { icon: stopIcon(s.sequence, s.done), zIndexOffset: 1000 })
+                    .bindPopup('<strong>#' + esc(String(s.sequence)) + ' · ' + esc(s.order || '—') + '</strong><br>'
+                        + esc(s.customer || '—') + '<br>'
+                        + esc(s.done ? labelDelivered : labelPending))
+                    .addTo(stopsLayer);
+            });
+        };
+
+        // Drill-down: dibuja la RUTA del día pegada a calles (geometría del plan), con el tramo recorrido en
+        // negro y el camión sobre la ruta, MÁS las paradas de sus pedidos (numeradas). Oculta el marcador GPS
+        // crudo de ese vehículo (quedaba fuera de la calle). Si no hay plan hoy, cae al recorrido GPS crudo.
+        // Vehículo enfocado cuya ruta se está mostrando: el polling NO vuelve a pintar su punto GPS crudo
+        // (ya se ve SOBRE la ruta; si no, aparecía duplicado fuera de la calle cada 10 s).
+        let focusedOnRoute = null;
+
+        // Día operativo (Y-m-d) de la ÚLTIMA posición conocida del vehículo: el drill-down se ancla a ese día
+        // y no al reloj del servidor (un camión visto ayer mostraba el mapa vacío al clic). El ISO viene con
+        // el offset local (-04:00), así que los 10 primeros caracteres son la fecha local correcta.
+        const dayOf = (vehicleId) => {
+            const p = (positions || []).find((x) => x.vehicle_id === vehicleId);
+            return p && typeof p.recorded_at === 'string' ? p.recorded_at.slice(0, 10) : null;
+        };
+
         const focusVehicle = (vehicleId, lat, lng) => {
-            if (lat != null && lng != null) {
-                map.setView([lat, lng], Math.max(map.getZoom(), 14));
-            }
-            if (vehicleId) {
-                $wire.vehicleTrack(vehicleId).then((pings) => drawTrack(pings || []));
-            }
+            if (!vehicleId) return;
+            const day = dayOf(vehicleId);
+            // Devuelve a la flota el punto del vehículo enfocado ANTES (estaba oculto bajo su ruta).
+            const prev = focusedOnRoute;
+            if (prev && prev !== vehicleId && markersById[prev]) fleetLayer.addLayer(markersById[prev]);
+            focusedOnRoute = null;
+            trackLayer.clearLayers();
+            stopsLayer.clearLayers();
+            live.call(() => $wire.vehicleRoute(vehicleId, day), (route) => {
+                if (route && route.length >= 2) {
+                    focusedOnRoute = vehicleId;
+                    drawRoute(route, (lat != null && lng != null) ? [lat, lng] : null);
+                    // Oculta el punto GPS fuera de ruta: el camión ya se ve SOBRE la ruta (lo pinta drawRoute).
+                    if (markersById[vehicleId]) { fleetLayer.removeLayer(markersById[vehicleId]); }
+                } else {
+                    if (lat != null && lng != null) map.setView([lat, lng], Math.max(map.getZoom(), 14));
+                    live.call(() => $wire.vehicleTrack(vehicleId, day), (pings) => drawTrack(pings || []));
+                }
+            });
+            // Paradas de los pedidos (independiente de la ruta): numeradas, verde=entregada, rojo=pendiente.
+            live.call(() => $wire.vehicleStops(vehicleId, day), (stops) => drawStops(stops || []));
         };
 
         // Repinta todos los marcadores de la flota a partir de las posiciones actuales.
         const render = () => {
             fleetLayer.clearLayers();
+            const pts = [];
+            Object.keys(markersById).forEach((id) => delete markersById[id]);
             (positions || []).forEach((p) => {
                 const marker = L.marker([p.lat, p.lng], { icon: vehicleIcon(p.moving) })
                     .bindPopup('<strong>' + esc(plate(p.vehicle_id)) + '</strong><br>'
@@ -195,9 +311,20 @@
                         + esc(labelSpeed) + ': ' + esc(p.speed_kph != null ? p.speed_kph + ' km/h' : '—') + '<br>'
                         + esc(labelRecordedAt) + ': ' + esc(p.recorded_at))
                     .addTo(fleetLayer);
-                // Clic en el camión → su recorrido del día, pedido al lado de lectura CQRS.
+                // Clic en el camión → su ruta del día (recorrido en negro, por recorrer en rojo, camión sobre la ruta).
                 marker.on('click', () => focusVehicle(p.vehicle_id, p.lat, p.lng));
+                markersById[p.vehicle_id] = marker;
+                // El enfocado ya está dibujado SOBRE su ruta: no repetir su punto GPS crudo.
+                if (p.vehicle_id === focusedOnRoute) fleetLayer.removeLayer(marker);
+                if (p.lat != null && p.lng != null) pts.push([p.lat, p.lng]);
             });
+            // Encuadra la flota la primera vez (así no quedás en el centro de Bolivia con los camiones fuera de vista).
+            if (!fitted && pts.length) {
+                try {
+                    fitted = true;
+                    pts.length === 1 ? map.setView(pts[0], 13) : map.fitBounds(L.latLngBounds(pts).pad(0.25));
+                } catch (e) {}
+            }
         };
 
         // Repinta el panel de excepciones (alertas sin reconocer + vehículos inactivos).
@@ -261,10 +388,10 @@
             panel.querySelectorAll('[data-ack]').forEach((btn) => {
                 btn.addEventListener('click', () => {
                     btn.disabled = true;
-                    $wire.acknowledge(btn.getAttribute('data-ack')).then((fresh) => {
+                    live.call(() => $wire.acknowledge(btn.getAttribute('data-ack')), (fresh) => {
                         exceptions = fresh || { alerts: [], idle: [] };
                         renderExceptions();
-                    });
+                    }, () => { btn.disabled = false; }); // si falla la red, se puede reintentar
                 });
             });
             panel.querySelectorAll('[data-focus-alert]').forEach((btn) => {
@@ -285,19 +412,20 @@
         renderExceptions();
 
         // El contenedor puede estar oculto al crearse; recalcular tamaño cuando ya es visible.
-        setTimeout(() => map.invalidateSize(), 300);
+        live.timeout(300, () => map.invalidateSize());
 
         // Polling: cada 10 s se vuelven a pedir posiciones y excepciones al servidor y se repinta todo.
-        setInterval(() => {
-            $wire.positions().then((fresh) => {
+        // Lo gestiona la sesión: se corta al salir de la página, no se solapa y no corre con la pestaña oculta.
+        live.every(10000, () => Promise.all([
+            live.call(() => $wire.positions(), (fresh) => {
                 positions = fresh || [];
                 render();
-            });
-            $wire.exceptions().then((fresh) => {
+            }),
+            live.call(() => $wire.exceptions(), (fresh) => {
                 exceptions = fresh || { alerts: [], idle: [] };
                 renderExceptions();
-            });
-        }, 10000);
+            }),
+        ]));
     </script>
     @endscript
 </x-filament-panels::page>

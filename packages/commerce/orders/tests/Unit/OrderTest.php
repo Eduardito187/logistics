@@ -8,10 +8,30 @@ use Commerce\Orders\Domain\Event\OrderPaid;
 use Commerce\Orders\Domain\Event\OrderPlaced;
 use Commerce\Orders\Domain\Exception\OrdersException;
 use Commerce\Orders\Domain\Model\Order;
+use Commerce\Orders\Domain\ValueObject\FinancingPlan;
 use Commerce\Orders\Domain\ValueObject\OrderId;
 use Commerce\Orders\Domain\ValueObject\OrderLine;
 use Commerce\Orders\Domain\ValueObject\OrderStatus;
 use Commerce\Orders\Domain\ValueObject\ShippingAddress;
+
+function ordersCreditOrder(FinancingPlan $plan): Order
+{
+    return Order::place(
+        OrderId::generate(),
+        null,
+        ShippingAddress::of('Ana Pérez', 'Av. Siempre Viva 123'),
+        [OrderLine::of('SKU-TV-55', 'Televisor', 450000, 1)],
+        'BOB',
+        null,
+        $plan,
+    );
+}
+
+/** @return list<string> nombres de eventos grabados */
+function ordersEventNames(Order $order): array
+{
+    return array_map(static fn ($e): string => $e->eventName(), $order->releaseEvents());
+}
 
 function ordersPlaceOrder(): Order
 {
@@ -88,4 +108,86 @@ it('no se puede pagar una orden cancelada; cancelar solo si está pendiente', fu
     expect($order->releaseEvents()[0])->toBeInstanceOf(OrderCancelled::class);
 
     expect(fn () => $order->markPaid('X'))->toThrow(OrdersException::class);
+});
+
+it('contado: markPaid promueve a pagada y emite OrderPaid', function (): void {
+    $order = ordersPlaceOrder(); // default = contado
+    $order->releaseEvents();
+
+    $order->markPaid('gw-ref-1');
+
+    expect($order->status())->toBe(OrderStatus::Paid)
+        ->and(ordersEventNames($order))->toBe(['orders.order_paid']);
+});
+
+it('crédito: markPaid es no-op (no se cobra en full)', function (): void {
+    $order = ordersCreditOrder(FinancingPlan::CreditWithoutInitial);
+    $order->releaseEvents();
+
+    $order->markPaid('gw-ref-x');
+
+    expect($order->status())->toBe(OrderStatus::Pending)
+        ->and($order->releaseEvents())->toBe([]);
+});
+
+it('crédito sin inicial: la firma del contrato promueve a procesando', function (): void {
+    $order = ordersCreditOrder(FinancingPlan::CreditWithoutInitial);
+    $order->releaseEvents();
+
+    $order->signContract('contract-42');
+
+    expect($order->status())->toBe(OrderStatus::Paid)
+        ->and(ordersEventNames($order))->toBe(['orders.order_contract_signed', 'orders.order_paid']);
+});
+
+it('crédito con inicial: solo contrato NO promueve; recién con el inicial pasa a procesando', function (): void {
+    $order = ordersCreditOrder(FinancingPlan::CreditWithInitial);
+    $order->releaseEvents();
+
+    $order->signContract('contract-7');
+    expect($order->status())->toBe(OrderStatus::Pending)
+        ->and(ordersEventNames($order))->toBe(['orders.order_contract_signed']);
+
+    $order->recordInitialPayment('init-7');
+    expect($order->status())->toBe(OrderStatus::Paid)
+        ->and(ordersEventNames($order))->toBe(['orders.order_initial_paid', 'orders.order_paid']);
+});
+
+it('crédito con inicial: el orden de las señales no importa (inicial primero)', function (): void {
+    $order = ordersCreditOrder(FinancingPlan::CreditWithInitial);
+    $order->releaseEvents();
+
+    $order->recordInitialPayment('init-1');
+    expect($order->status())->toBe(OrderStatus::Pending);
+
+    $order->signContract('contract-1');
+    expect($order->status())->toBe(OrderStatus::Paid);
+});
+
+it('rechaza firmar contrato en una orden de contado', function (): void {
+    $order = ordersPlaceOrder();
+    expect(fn () => $order->signContract())->toThrow(OrdersException::class, 'crédito');
+});
+
+it('rechaza registrar inicial en un crédito sin inicial', function (): void {
+    $order = ordersCreditOrder(FinancingPlan::CreditWithoutInitial);
+    expect(fn () => $order->recordInitialPayment())->toThrow(OrdersException::class, 'inicial');
+});
+
+it('la firma del contrato es idempotente', function (): void {
+    $order = ordersCreditOrder(FinancingPlan::CreditWithInitial);
+    $order->releaseEvents();
+
+    $order->signContract();
+    $order->releaseEvents();
+    $order->signContract(); // segunda vez: no graba otro hecho
+
+    expect($order->releaseEvents())->toBe([]);
+});
+
+it('rechaza operar el crédito de una orden cancelada', function (): void {
+    $order = ordersCreditOrder(FinancingPlan::CreditWithoutInitial);
+    $order->cancel('cliente anuló');
+
+    expect(fn () => $order->signContract())->toThrow(OrdersException::class, 'cancelada');
 });

@@ -23,10 +23,11 @@ Env en `.env.example` (copiar al `.env` real):
 
 - `NOMINATIM_URL=http://nominatim:8080` — el geocoder lo alcanza por la red interna; shipments le
   agrega la ruta `/search`. Lo llama el worker del outbox, no el navegador.
-- `MAP_TILE_URL=http://localhost:8082/styles/osm-bright/{z}/{x}/{y}.png` — la pide el **navegador**,
-  por eso usa el puerto del host. Si se deja **vacía**, las vistas caen al tile público de OSM
-  (`https://{s}.tile.openstreetmap.org/...`, **solo demo**: respeta la política de uso de OSM y no
-  sirve para producción).
+- `MAP_TILE_URL` — la pide el **navegador**. **Default (sin configurar): teselas públicas de OSM**
+  (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`), que funcionan en cualquier entorno. Para usar el
+  tileserver self-host: en dev local `http://localhost:8082/styles/osm-bright/{z}/{x}/{y}.png`; en un
+  servidor, su URL **pública** (nunca `localhost`: desde el navegador es la PC de quien mira — el deploy
+  de staging falla a propósito si la detecta).
 
 > **Importante:** tanto el import de Nominatim como la generación del mbtiles son **pesados**
 > (descarga de ~400 MB de OSM y bastante CPU/RAM/tiempo) y **no corren automáticamente**. Hay que

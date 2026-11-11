@@ -20,7 +20,7 @@ final readonly class ShipmentTrackingView
      */
     public function __construct(
         public string $id,
-        public string $shipmentId,
+        public ?string $shipmentId,
         public string $token,
         public string $status,
         public int $remainingStops,
@@ -54,7 +54,7 @@ final readonly class ShipmentTrackingView
     }
 
     /**
-     * @return array{id: string, shipment_id: string, shipment_external_id: string|null, token: string, status: string, remaining_stops: int, route_position: int|null, eta: string|null, last_position: array{lat: float, lng: float, reported_at: string}|null, position_is_live: bool|null}
+     * @return array{id: string, shipment_id: string|null, shipment_external_id: string|null, token: string, status: string, remaining_stops: int, route_position: int|null, eta: string|null, last_position: array{lat: float, lng: float, reported_at: string}|null, position_is_live: bool|null}
      */
     public function toArray(): array
     {

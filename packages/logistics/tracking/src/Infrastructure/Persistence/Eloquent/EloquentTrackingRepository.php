@@ -56,6 +56,26 @@ final class EloquentTrackingRepository implements TrackingRepository
         return $record === null ? null : $this->mapper->toDomain($record);
     }
 
+    public function findByOrderReference(string $orderReference): ?ShipmentTracking
+    {
+        $record = TrackingRecord::query()
+            ->where('order_reference', $orderReference)
+            ->orderBy('created_at')
+            ->first();
+
+        return $record === null ? null : $this->mapper->toDomain($record);
+    }
+
+    public function findAllByOrderReference(string $orderReference): array
+    {
+        return TrackingRecord::query()
+            ->where('order_reference', $orderReference)
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (TrackingRecord $record): ShipmentTracking => $this->mapper->toDomain($record))
+            ->all();
+    }
+
     public function stopsAheadOnRoute(string $routeId, int $position): array
     {
         $terminal = array_map(

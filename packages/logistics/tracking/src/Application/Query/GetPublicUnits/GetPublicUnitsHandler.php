@@ -49,7 +49,13 @@ final class GetPublicUnitsHandler implements QueryHandler
             return null;
         }
 
-        $units = $this->units->listByShipmentId($tracking->shipmentId());
+        $shipmentId = $tracking->shipmentId();
+        if ($shipmentId === null) {
+            // Pedido todavía sin envío ligado (pendiente/procesando): aún no hay productos que mostrar.
+            return [];
+        }
+
+        $units = $this->units->listByShipmentId($shipmentId);
         if ($units === []) {
             return [];
         }

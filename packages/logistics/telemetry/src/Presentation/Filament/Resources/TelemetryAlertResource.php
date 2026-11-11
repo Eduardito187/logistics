@@ -49,6 +49,13 @@ final class TelemetryAlertResource extends Resource
 
     protected static ?string $model = AlertRecord::class;
 
+    // Fuera del menú: las alertas viven ahora en el CENTRO DE NOTIFICACIONES del header (campana), global y
+    // accionable (reconocer). El detalle completo sigue alcanzable por URL y desde el mapa de flota en vivo.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationGroup(): string
     {
         return __('Fleet');

@@ -9757,6 +9757,94 @@ paths:
       security:
       - serviceCredential: []
 
+  /integrations/orders/{order}/contract-signed:
+    post:
+      tags:
+      - orders
+      operationId: signOrderContract
+      summary: Report the credit contract signature (credit/installment orders)
+      description: >-
+        Señal del POS/sistema de crédito: el contrato de la orden a crédito fue firmado. Al cumplirse las
+        condiciones del plan (crédito sin inicial → solo contrato; con inicial → contrato + inicial) la orden
+        pasa a procesando (emite OrderPaid → crea el envío → tracking «procesando»). Idempotente.
+      parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceCreditSignalRequest'
+      responses:
+        '202':
+          description: Signal accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '404':
+          description: No order found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+
+  /integrations/orders/{order}/initial-paid:
+    post:
+      tags:
+      - orders
+      operationId: recordOrderInitialPayment
+      summary: Report the down-payment of a credit order (credit with down payment)
+      description: >-
+        Señal del POS/sistema de crédito: se cobró la cuota inicial de una orden de crédito con inicial.
+        Junto a la firma del contrato habilita el paso a procesando. Idempotente. 422 si la orden no es a
+        crédito o no lleva inicial.
+      parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceCreditSignalRequest'
+      responses:
+        '202':
+          description: Signal accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommerceAck'
+        '404':
+          description: No order found for the given identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - serviceCredential: []
+
 components:
   securitySchemes:
     appBearer:
@@ -11141,6 +11229,7 @@ components:
           - refuel
           - maintenance
           - departure
+          - arrival
         read_at:
           type: string
           format: date-time
@@ -11486,6 +11575,7 @@ components:
           - refuel
           - maintenance
           - departure
+          - arrival
         read_at:
           type: string
           format: date-time
@@ -15965,14 +16055,21 @@ components:
           description: Id de la clave pública con la que se firmó (campo "k" del QR)
     VisibleStatus:
       type: string
-      description: Estado visible del envío (vocabulario propio del contexto de seguimiento)
+      description: >-
+        Estado visible del pedido de cara al cliente (ciclo de vida del seguimiento). Flujo:
+        PENDING → PROCESSING → IN_PROGRESS → LOADED → ON_THE_WAY → DELIVERED; con CANCELLED,
+        RESCHEDULED (reprogramada), FAILED (intento fallido) y RETURNED (devuelta).
       enum:
-      - REGISTERED
-      - PREPARED
+      - PENDING
+      - PROCESSING
+      - IN_PROGRESS
+      - LOADED
       - ON_THE_WAY
-      - ARRIVING
       - DELIVERED
       - FAILED
+      - RESCHEDULED
+      - CANCELLED
+      - RETURNED
     UnitStatus:
       type: string
       description: Estado visible de un bulto (unidad física) dentro del seguimiento
@@ -16913,6 +17010,13 @@ components:
           minLength: 3
           maxLength: 3
           description: ISO 4217 code; defaults to BOB when omitted.
+        financing:
+          type: string
+          enum: [cash, credit_with_initial, credit_without_initial]
+          default: cash
+          description: >-
+            Forma de financiamiento. Determina qué habilita el paso a procesando: contado = pago capturado;
+            crédito sin inicial = firma de contrato; crédito con inicial = firma de contrato + pago del inicial.
         ship_to:
           $ref: '#/components/schemas/CommerceShipTo'
         lines:
@@ -16920,6 +17024,14 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/CommerceOrderLine'
+    CommerceCreditSignalRequest:
+      type: object
+      description: Señal de crédito (firma de contrato / pago de inicial) reportada por el POS/sistema de crédito.
+      properties:
+        reference:
+          type: [string, 'null']
+          maxLength: 120
+          description: Referencia externa opcional del POS/sistema de crédito (nro. de contrato, comprobante).
     CommerceCheckoutAccepted:
       type: object
       required: [accepted]

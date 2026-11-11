@@ -51,11 +51,13 @@
                                         @endif
                                     </td>
                                     <td class="py-2 pr-4 text-right">
+                                        {{-- Ojo: dentro de un tag <x-...> Blade NO compila directivas como @js (llegaban
+                                             literales al navegador → SyntaxError en Alpine). Se usa {{ Js::from(...) }}. --}}
                                         <x-filament::button
                                             size="xs"
                                             color="warning"
                                             icon="heroicon-o-wrench-screwdriver"
-                                            wire:click="mountAction('scheduleMaintenance', { vehicle_id: @js($row['vehicle_id']) })"
+                                            wire:click="mountAction('scheduleMaintenance', {{ \Illuminate\Support\Js::from(['vehicle_id' => $row['vehicle_id']]) }})"
                                         >
                                             {{ __('Schedule order') }}
                                         </x-filament::button>
@@ -169,7 +171,7 @@
                                         <x-filament::button
                                             size="xs"
                                             icon="heroicon-o-arrow-trending-up"
-                                            wire:click="mountAction('recordOdometer', { vehicle_id: @js($row['vehicle_id']) })"
+                                            wire:click="mountAction('recordOdometer', {{ \Illuminate\Support\Js::from(['vehicle_id' => $row['vehicle_id']]) }})"
                                         >
                                             {{ __('Record reading') }}
                                         </x-filament::button>

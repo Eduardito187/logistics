@@ -29,6 +29,7 @@ final class PlaceOrderRequest extends FormRequest
         return [
             'customer_id' => ['nullable', 'uuid'],
             'currency' => ['nullable', 'string', 'size:3'],
+            'financing' => ['nullable', 'string', 'in:cash,credit_with_initial,credit_without_initial'],
             'ship_to' => ['required', 'array'],
             'ship_to.customer_name' => ['required', 'string', 'max:255'],
             'ship_to.address_text' => ['required', 'string', 'max:1000'],
@@ -48,7 +49,7 @@ final class PlaceOrderRequest extends FormRequest
      */
     public function toCommand(): PlaceOrder
     {
-        /** @var array{customer_id?: string|null, currency?: string|null, ship_to: array{customer_name: string, address_text: string, reference?: string|null, phone?: string|null, email?: string|null}, lines: list<array{sku: string, product_name: string, unit_price_cents: int|string, quantity: int|string}>} $data */
+        /** @var array{customer_id?: string|null, currency?: string|null, financing?: string|null, ship_to: array{customer_name: string, address_text: string, reference?: string|null, phone?: string|null, email?: string|null}, lines: list<array{sku: string, product_name: string, unit_price_cents: int|string, quantity: int|string}>} $data */
         $data = $this->validated();
 
         $shipTo = $data['ship_to'];
@@ -82,6 +83,9 @@ final class PlaceOrderRequest extends FormRequest
             currency: isset($data['currency']) && $data['currency'] !== ''
                 ? (string) $data['currency']
                 : 'BOB',
+            financing: isset($data['financing']) && $data['financing'] !== ''
+                ? (string) $data['financing']
+                : 'cash',
         );
     }
 }

@@ -58,7 +58,7 @@ it('phrases the stops message for the customer in Spanish', function (): void {
 
     expect($onRoute(VisibleStatus::OnTheWay, 3)->stopsMessage)->toBe('Tu pedido está a 3 paradas.')
         ->and($onRoute(VisibleStatus::OnTheWay, 1)->stopsMessage)->toBe('Tu pedido está a 1 parada.')
-        ->and($onRoute(VisibleStatus::Arriving, 0)->stopsMessage)->toBe('Tu pedido es la próxima parada.')
+        ->and($onRoute(VisibleStatus::OnTheWay, 0)->stopsMessage)->toBe('Tu pedido es la próxima parada.')
         ->and($onRoute(VisibleStatus::Delivered, 0)->stopsMessage)->toBe('Tu pedido fue entregado.');
 });
 
@@ -85,7 +85,7 @@ it('serializes null eta and position when absent', function (): void {
         TrackingId::generate(),
         'ship-7',
         TrackingToken::generate(),
-        VisibleStatus::Registered,
+        VisibleStatus::Pending,
         0,
         null,
         null,
@@ -96,12 +96,12 @@ it('serializes null eta and position when absent', function (): void {
     expect($view->eta)->toBeNull()
         ->and($view->lastPosition)->toBeNull()
         ->and($view->toArray())->toBe([
-            'status' => 'REGISTERED',
+            'status' => 'PENDING',
             'remaining_stops' => 0,
             'route_position' => null,
             'eta' => null,
             'last_position' => null,
             'position_is_live' => null,
-            'stops_message' => 'Recibimos tu pedido y lo estamos preparando.',
+            'stops_message' => 'Recibimos tu pedido. Estamos esperando la confirmación del pago.',
         ]);
 });

@@ -29,15 +29,16 @@ final class EloquentLabelUnitResolver implements LabelUnitResolver
     {
         $unresolved = new LabelUnitView($labelId, false, null, null, null, null, null, null, null, null, null);
 
-        // 1) Etiqueta emitida + su payload firmado.
+        // 1) Etiqueta emitida + su payload firmado (y si está anulada, para que la app rechace el Code128).
         try {
-            $row = DB::table('labels_emitted')->where('label_id', $labelId)->first(['signed_json']);
+            $row = DB::table('labels_emitted')->where('label_id', $labelId)->first(['signed_json', 'revoked_at']);
         } catch (Throwable) {
             return $unresolved;
         }
         if ($row === null || !is_string($row->signed_json) || $row->signed_json === '') {
             return $unresolved;
         }
+        $revoked = ($row->revoked_at ?? null) !== null;
 
         try {
             $payload = SignedLabel::fromQrContent($row->signed_json)->payload;
@@ -65,6 +66,8 @@ final class EloquentLabelUnitResolver implements LabelUnitResolver
             unitTotal: $unitTotal,
             pieceIndex: $pieceIndex,
             pieceTotal: $pieceTotal,
+            revoked: $revoked,
+            orderNumber: $orderNumber,
         );
 
         // 2) Envío de la orden.

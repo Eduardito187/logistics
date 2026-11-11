@@ -12,6 +12,7 @@ use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
 use Livewire\Attributes\Computed;
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource;
+use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource;
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource;
 use Logistics\Fleet\Presentation\Filament\Resources\VehicleResource;
 use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
@@ -121,6 +122,8 @@ final class ViewVehicle extends ViewRecord
             ['Checklists pre-salida', PreTripChecklistResource::class, true],
             ['Ficha técnica', VehicleProfileResource::class, true],
             ['Tripulaciones', CrewResource::class, true],
+            // Documentos del vehículo (SOAT, inspección): su hogar es esta ficha (acotados por ?vehicle=).
+            ['Documentos', DocumentResource::class, true],
         ];
 
         $out = [];
