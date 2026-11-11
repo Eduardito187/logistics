@@ -121,7 +121,7 @@ final class PrinterResource extends Resource
             TextInput::make('host')
                 ->label(__('Host'))
                 ->helperText(__('IP address or hostname reachable from the site network.'))
-                ->placeholder('192.168.2.50')
+                ->placeholder('zebra-dock2.local')
                 ->required()
                 ->maxLength(255)
                 ->rule(static fn (): \Closure => static function (string $attribute, mixed $value, \Closure $fail): void {

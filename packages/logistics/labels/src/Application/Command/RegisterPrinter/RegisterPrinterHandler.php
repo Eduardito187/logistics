@@ -6,6 +6,7 @@ namespace Logistics\Labels\Application\Command\RegisterPrinter;
 
 use Logistics\Labels\Domain\Contract\PrinterRepository;
 use Logistics\Labels\Domain\Model\Printer;
+use Logistics\Labels\Domain\ValueObject\PrinterDetails;
 use Logistics\Labels\Domain\ValueObject\PrinterEndpoint;
 use Logistics\Labels\Domain\ValueObject\PrinterId;
 use Logistics\Labels\Domain\ValueObject\PrinterLanguage;
@@ -28,14 +29,16 @@ final readonly class RegisterPrinterHandler implements CommandHandler
         assert($command instanceof RegisterPrinter);
 
         $this->printers->save(Printer::register(
-            id: PrinterId::fromString($command->printerId),
-            name: $command->name,
-            model: $command->model,
-            endpoint: PrinterEndpoint::of($command->host, $command->port),
-            language: PrinterLanguage::from($command->language),
-            nodeId: $command->nodeId,
-            location: $command->location,
-            active: $command->active,
+            PrinterId::fromString($command->printerId),
+            new PrinterDetails(
+                name: $command->name,
+                model: $command->model,
+                endpoint: PrinterEndpoint::of($command->host, $command->port),
+                language: PrinterLanguage::from($command->language),
+                nodeId: $command->nodeId,
+                location: $command->location,
+            ),
+            $command->active,
         ));
     }
 }

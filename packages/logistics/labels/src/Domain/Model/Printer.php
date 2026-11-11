@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Labels\Domain\Model;
 
-use Logistics\Labels\Domain\Exception\InvalidPrinterException;
+use Logistics\Labels\Domain\ValueObject\PrinterDetails;
 use Logistics\Labels\Domain\ValueObject\PrinterEndpoint;
 use Logistics\Labels\Domain\ValueObject\PrinterId;
 use Logistics\Labels\Domain\ValueObject\PrinterLanguage;
@@ -14,78 +14,36 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * Impresora de red registrada centralmente para una sede (nodo de red).
  *
  * Existe porque el teléfono no siempre puede descubrirla (WiFi y cable en redes distintas): se registra una
- * vez con su host/puerto y la app la ofrece. `nodeId` es una referencia opaca al nodo de Network (null =
- * compartida, visible para todas las sedes). Una impresora inactiva no se ofrece a la app.
+ * vez con su host/puerto y la app la ofrece. Los datos editables viven en {@see PrinterDetails} (VO que
+ * valida y normaliza). Una impresora inactiva no se ofrece a la app.
  */
 final class Printer extends AggregateRoot
 {
     private function __construct(
         private readonly PrinterId $id,
-        private string $name,
-        private ?string $model,
-        private PrinterEndpoint $endpoint,
-        private PrinterLanguage $language,
-        private ?string $nodeId,
-        private ?string $location,
+        private PrinterDetails $details,
         private bool $active,
     ) {}
 
-    public static function register(
-        PrinterId $id,
-        string $name,
-        ?string $model,
-        PrinterEndpoint $endpoint,
-        PrinterLanguage $language,
-        ?string $nodeId,
-        ?string $location,
-        bool $active = true,
-    ): self {
-        return new self(
-            $id,
-            self::requireName($name),
-            self::optional($model),
-            $endpoint,
-            $language,
-            self::optional($nodeId),
-            self::optional($location),
-            $active,
-        );
+    public static function register(PrinterId $id, PrinterDetails $details, bool $active = true): self
+    {
+        return new self($id, $details, $active);
     }
 
     /**
-     * Rehidrata desde persistencia sin re-validar reglas de alta.
+     * Rehidrata desde persistencia.
      */
-    public static function reconstitute(
-        PrinterId $id,
-        string $name,
-        ?string $model,
-        PrinterEndpoint $endpoint,
-        PrinterLanguage $language,
-        ?string $nodeId,
-        ?string $location,
-        bool $active,
-    ): self {
-        return new self($id, $name, $model, $endpoint, $language, $nodeId, $location, $active);
+    public static function reconstitute(PrinterId $id, PrinterDetails $details, bool $active): self
+    {
+        return new self($id, $details, $active);
     }
 
     /**
      * Reemplaza los datos editables (alta/baja/edición del admin: cambiar la IP se refleja en la app).
      */
-    public function update(
-        string $name,
-        ?string $model,
-        PrinterEndpoint $endpoint,
-        PrinterLanguage $language,
-        ?string $nodeId,
-        ?string $location,
-        bool $active,
-    ): void {
-        $this->name = self::requireName($name);
-        $this->model = self::optional($model);
-        $this->endpoint = $endpoint;
-        $this->language = $language;
-        $this->nodeId = self::optional($nodeId);
-        $this->location = self::optional($location);
+    public function update(PrinterDetails $details, bool $active): void
+    {
+        $this->details = $details;
         $this->active = $active;
     }
 
@@ -94,59 +52,43 @@ final class Printer extends AggregateRoot
         return $this->id;
     }
 
+    public function details(): PrinterDetails
+    {
+        return $this->details;
+    }
+
     public function name(): string
     {
-        return $this->name;
+        return $this->details->name;
     }
 
     public function model(): ?string
     {
-        return $this->model;
+        return $this->details->model;
     }
 
     public function endpoint(): PrinterEndpoint
     {
-        return $this->endpoint;
+        return $this->details->endpoint;
     }
 
     public function language(): PrinterLanguage
     {
-        return $this->language;
+        return $this->details->language;
     }
 
     public function nodeId(): ?string
     {
-        return $this->nodeId;
+        return $this->details->nodeId;
     }
 
     public function location(): ?string
     {
-        return $this->location;
+        return $this->details->location;
     }
 
     public function isActive(): bool
     {
         return $this->active;
-    }
-
-    private static function requireName(string $name): string
-    {
-        $name = trim($name);
-        if ($name === '') {
-            throw InvalidPrinterException::emptyName();
-        }
-
-        return $name;
-    }
-
-    private static function optional(?string $value): ?string
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        $value = trim($value);
-
-        return $value === '' ? null : $value;
     }
 }

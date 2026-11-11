@@ -6,6 +6,7 @@ namespace Logistics\Labels\Infrastructure\Persistence\Eloquent;
 
 use Logistics\Labels\Domain\Contract\PrinterRepository;
 use Logistics\Labels\Domain\Model\Printer;
+use Logistics\Labels\Domain\ValueObject\PrinterDetails;
 use Logistics\Labels\Domain\ValueObject\PrinterEndpoint;
 use Logistics\Labels\Domain\ValueObject\PrinterId;
 use Logistics\Labels\Domain\ValueObject\PrinterLanguage;
@@ -24,14 +25,16 @@ final class EloquentPrinterRepository implements PrinterRepository
         }
 
         return Printer::reconstitute(
-            id: PrinterId::fromString($record->id),
-            name: $record->name,
-            model: $record->model,
-            endpoint: PrinterEndpoint::of($record->host, $record->port),
-            language: PrinterLanguage::tryFrom($record->language) ?? PrinterLanguage::Other,
-            nodeId: $record->node_id,
-            location: $record->location,
-            active: $record->active,
+            PrinterId::fromString($record->id),
+            new PrinterDetails(
+                name: $record->name,
+                model: $record->model,
+                endpoint: PrinterEndpoint::of($record->host, $record->port),
+                language: PrinterLanguage::tryFrom($record->language) ?? PrinterLanguage::Other,
+                nodeId: $record->node_id,
+                location: $record->location,
+            ),
+            $record->active,
         );
     }
 

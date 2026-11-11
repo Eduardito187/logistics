@@ -26,15 +26,23 @@ use Logistics\Shared\Application\Command\CommandBus;
 // una vez en el admin y la app la ofrece. Alcance: usuario de un nodo ve las de su sede + compartidas;
 // supervisor/admin ven todas las activas; cambiar la IP en el admin se refleja en la app.
 
-beforeEach(function (): void {})->skip(
-    env('DB_CONNECTION') !== 'pgsql',
-    'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',
-);
+const PRN_ENDPOINT = '/api/v1/app/printers';
+const PRN_HOST = '192.168.2.50';
+const PRN_NORTH = 'Zebra Norte';
+const PRN_SOUTH = 'Zebra Sur';
+const PRN_SHARED = 'Ricoh Compartida';
+const PRN_FORM = 'Zebra Formulario';
+
+beforeEach(function (): void {
+    if (env('DB_CONNECTION') !== 'pgsql') {
+        $this->markTestSkipped('Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.');
+    }
+});
 
 /**
  * Registra una impresora por el CommandBus y devuelve su id.
  */
-function registerPrinter(string $name, ?string $nodeId, string $host = '192.168.2.50', bool $active = true): string
+function registerPrinter(string $name, ?string $nodeId, string $host = PRN_HOST, bool $active = true): string
 {
     $id = Str::uuid7()->toString();
     app(CommandBus::class)->dispatch(new RegisterPrinter(
@@ -73,7 +81,7 @@ function printerNamesFor(User $user): array
 
     /** @var list<array{name: string}> $data */
     $data = test()->withoutMiddleware(EnsureDeviceToken::class)
-        ->getJson('/api/v1/app/printers')
+        ->getJson(PRN_ENDPOINT)
         ->assertOk()
         ->json('data');
 
@@ -82,14 +90,14 @@ function printerNamesFor(User $user): array
 
 describe('dominio', function (): void {
     it('valida host y puerto del endpoint', function (): void {
-        expect(PrinterEndpoint::of(' 192.168.2.50 ')->host)->toBe('192.168.2.50')
+        expect(PrinterEndpoint::of(' '.PRN_HOST.' ')->host)->toBe(PRN_HOST)
             ->and(PrinterEndpoint::of('zebra-anden2.dismac.local', 6101)->port)->toBe(6101)
             ->and(PrinterEndpoint::of('fe80::1')->port)->toBe(PrinterEndpoint::DEFAULT_PORT);
 
         expect(fn () => PrinterEndpoint::of(''))->toThrow(InvalidPrinterException::class);
-        expect(fn () => PrinterEndpoint::of('http://192.168.2.50'))->toThrow(InvalidPrinterException::class);
-        expect(fn () => PrinterEndpoint::of('192.168.2.50', 0))->toThrow(InvalidPrinterException::class);
-        expect(fn () => PrinterEndpoint::of('192.168.2.50', 70000))->toThrow(InvalidPrinterException::class);
+        expect(fn () => PrinterEndpoint::of('printer/'.PRN_HOST))->toThrow(InvalidPrinterException::class);
+        expect(fn () => PrinterEndpoint::of(PRN_HOST, 0))->toThrow(InvalidPrinterException::class);
+        expect(fn () => PrinterEndpoint::of(PRN_HOST, 70000))->toThrow(InvalidPrinterException::class);
     });
 });
 
@@ -98,19 +106,19 @@ describe('API y comandos', function (): void {
         $mine = NodeRecord::factory()->create(['code' => 'T-PRN-01', 'name' => 'Tienda Norte', 'type' => 'store']);
         $other = NodeRecord::factory()->create(['code' => 'T-PRN-02', 'name' => 'Tienda Sur', 'type' => 'store']);
 
-        registerPrinter('Zebra Norte', (string) $mine->id);
-        registerPrinter('Zebra Sur', (string) $other->id);
-        registerPrinter('Ricoh Compartida', null, 'ricoh.dismac.local');
-        registerPrinter('Zebra Norte Baja', (string) $mine->id, active: false);
+        registerPrinter(PRN_NORTH, (string) $mine->id);
+        registerPrinter(PRN_SOUTH, (string) $other->id);
+        registerPrinter(PRN_SHARED, null, 'ricoh.dismac.local');
+        registerPrinter(PRN_NORTH.' Baja', (string) $mine->id, active: false);
 
         expect(printerNamesFor(printerUser((string) $mine->id, Role::Tienda)))
-            ->toBe(['Ricoh Compartida', 'Zebra Norte']);
+            ->toBe([PRN_SHARED, PRN_NORTH]);
         expect(printerNamesFor(printerUser(null, Role::Chofer)))
-            ->toBe(['Ricoh Compartida']);
+            ->toBe([PRN_SHARED]);
         expect(printerNamesFor(printerUser((string) $mine->id, Role::Supervisor)))
-            ->toBe(['Ricoh Compartida', 'Zebra Norte', 'Zebra Sur']);
+            ->toBe([PRN_SHARED, PRN_NORTH, PRN_SOUTH]);
         expect(printerNamesFor(printerUser(null, Role::Admin)))
-            ->toBe(['Ricoh Compartida', 'Zebra Norte', 'Zebra Sur']);
+            ->toBe([PRN_SHARED, PRN_NORTH, PRN_SOUTH]);
     });
 
     it('devuelve el contrato completo con el nombre de la sede (sin segunda consulta)', function (): void {
@@ -119,13 +127,13 @@ describe('API y comandos', function (): void {
 
         Sanctum::actingAs(printerUser((string) $node->id, Role::Tienda));
         $this->withoutMiddleware(EnsureDeviceToken::class)
-            ->getJson('/api/v1/app/printers')
+            ->getJson(PRN_ENDPOINT)
             ->assertOk()
             ->assertExactJson(['data' => [[
                 'id' => $id,
                 'name' => 'Zebra Andén 2',
                 'model' => 'ZT411',
-                'host' => '192.168.2.50',
+                'host' => PRN_HOST,
                 'port' => 9100,
                 'language' => 'zpl',
                 'node_id' => (string) $node->id,
@@ -144,7 +152,7 @@ describe('API y comandos', function (): void {
 
         Sanctum::actingAs(printerUser(null, Role::Preparador));
         $this->withoutMiddleware(EnsureDeviceToken::class)
-            ->getJson('/api/v1/app/printers')
+            ->getJson(PRN_ENDPOINT)
             ->assertOk()
             ->assertJsonPath('data.0.host', '10.168.50.20')
             ->assertJsonPath('data.0.port', 6101)
@@ -160,7 +168,7 @@ describe('API y comandos', function (): void {
     });
 
     it('exige token de la puerta app', function (): void {
-        $this->getJson('/api/v1/app/printers')->assertUnauthorized();
+        $this->getJson(PRN_ENDPOINT)->assertUnauthorized();
     });
 });
 
@@ -173,7 +181,7 @@ describe('admin Filament', function (): void {
     it('renderiza listado y alta', function (): void {
         registerPrinter('Zebra Listada', null);
 
-        Livewire::test(ListPrinters::class)->assertOk()->assertSee('Zebra Listada')->assertSee('192.168.2.50:9100');
+        Livewire::test(ListPrinters::class)->assertOk()->assertSee('Zebra Listada')->assertSee(PRN_HOST.':9100');
         Livewire::test(CreatePrinter::class)->assertOk();
     });
 
@@ -182,7 +190,7 @@ describe('admin Filament', function (): void {
 
         Livewire::test(CreatePrinter::class)
             ->set('data', [
-                'name' => 'Zebra Formulario',
+                'name' => PRN_FORM,
                 'model' => 'ZD421',
                 'host' => '192.168.2.77',
                 'port' => 9100,
@@ -194,13 +202,13 @@ describe('admin Filament', function (): void {
             ->call('create')
             ->assertHasNoFormErrors();
 
-        $record = PrinterRecord::query()->where('name', 'Zebra Formulario')->firstOrFail();
+        $record = PrinterRecord::query()->where('name', PRN_FORM)->firstOrFail();
         expect($record->node_id)->toBe((string) $node->id)->and($record->active)->toBeTrue();
 
         Livewire::test(EditPrinter::class, ['record' => $record->getKey()])
             ->assertOk()
             ->set('data', [
-                'name' => 'Zebra Formulario',
+                'name' => PRN_FORM,
                 'model' => 'ZD421',
                 'host' => '192.168.2.78',
                 'port' => 9100,
@@ -218,7 +226,7 @@ describe('admin Filament', function (): void {
 
     it('valida el host en el formulario', function (): void {
         Livewire::test(CreatePrinter::class)
-            ->set('data', ['name' => 'X', 'host' => 'http://bad', 'port' => 9100, 'language' => 'zpl', 'active' => true])
+            ->set('data', ['name' => 'X', 'host' => 'bad host!', 'port' => 9100, 'language' => 'zpl', 'active' => true])
             ->call('create')
             ->assertHasFormErrors(['host']);
     });

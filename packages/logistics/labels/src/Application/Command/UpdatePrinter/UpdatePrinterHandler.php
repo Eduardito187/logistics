@@ -6,6 +6,7 @@ namespace Logistics\Labels\Application\Command\UpdatePrinter;
 
 use Logistics\Labels\Domain\Contract\PrinterRepository;
 use Logistics\Labels\Domain\Exception\InvalidPrinterException;
+use Logistics\Labels\Domain\ValueObject\PrinterDetails;
 use Logistics\Labels\Domain\ValueObject\PrinterEndpoint;
 use Logistics\Labels\Domain\ValueObject\PrinterId;
 use Logistics\Labels\Domain\ValueObject\PrinterLanguage;
@@ -31,13 +32,15 @@ final readonly class UpdatePrinterHandler implements CommandHandler
             ?? throw InvalidPrinterException::notFound($command->printerId);
 
         $printer->update(
-            name: $command->name,
-            model: $command->model,
-            endpoint: PrinterEndpoint::of($command->host, $command->port),
-            language: PrinterLanguage::from($command->language),
-            nodeId: $command->nodeId,
-            location: $command->location,
-            active: $command->active,
+            new PrinterDetails(
+                name: $command->name,
+                model: $command->model,
+                endpoint: PrinterEndpoint::of($command->host, $command->port),
+                language: PrinterLanguage::from($command->language),
+                nodeId: $command->nodeId,
+                location: $command->location,
+            ),
+            $command->active,
         );
 
         $this->printers->save($printer);
