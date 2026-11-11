@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Cockpit;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Logistics\Execution\Presentation\Filament\Support\UserNames;
@@ -74,7 +75,9 @@ final class LabelLifecycle
             ];
         }
 
-        usort($items, static fn (array $a, array $b): int => strcmp($b['at'], $a['at']));
+        // Orden por INSTANTE, no por texto: las fuentes mezclan timestamptz (con offset, que depende de la zona
+        // de la sesión de PostgreSQL) y timestamp sin zona (hora de la app); comparar strings las desordena.
+        usort($items, fn (array $a, array $b): int => $this->instant($b['at']) <=> $this->instant($a['at']));
 
         return $items;
     }
@@ -311,9 +314,30 @@ final class LabelLifecycle
             return '—';
         }
         try {
-            return (new DateTimeImmutable($iso))->format('d/m/Y H:i');
+            return $this->parse($iso)->format('d/m/Y H:i');
         } catch (Throwable) {
             return $iso;
         }
+    }
+
+    /** Segundos epoch del momento (0 si no se puede leer, queda al final). */
+    private function instant(string $iso): int
+    {
+        try {
+            return $iso === '' ? 0 : $this->parse($iso)->getTimestamp();
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Interpreta el valor en la zona de la app (un timestamp sin zona ya está en hora de la app) y lo lleva a
+     * esa zona, así un timestamptz con cualquier offset se muestra en hora local.
+     */
+    private function parse(string $iso): DateTimeImmutable
+    {
+        $zone = new DateTimeZone((string) config('app.timezone', 'UTC'));
+
+        return (new DateTimeImmutable($iso, $zone))->setTimezone($zone);
     }
 }
