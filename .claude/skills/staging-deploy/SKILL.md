@@ -49,7 +49,20 @@ esperar la notificación (el primer build compila extensiones PHP, varios minuto
   que el dueño lo pida (cada puerto hay que abrirlo en la Security List de OCI), sin bind-mounts.
 - **Cambio en el Dockerfile**: validar con `docker build --target web|prod` + la prueba local completa.
 
+## Validar los workflows ANTES de pushear (obligatorio)
+
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/repo" -w /repo rhysd/actionlint:1.7.7 -color=false   # debe salir exit 0
+```
+Config de etiquetas del runner (`docker`, `oci`) en `.github/actionlint.yaml`. Un workflow inválido NO
+falla "en su job": GitHub lo marca fallido con **0 jobs** en CADA push (aparece con la ruta del archivo en
+vez del nombre), aunque su disparador no corresponda — así un merge a staging mostró 3 corridas.
+
 ## Trampas ya vistas
+
+- **`${{ runner.temp }}` en `env:` a nivel de job invalida el workflow** (contexto no disponible ahí:
+  solo github/inputs/matrix/needs/secrets/strategy/vars). Armar rutas en un paso:
+  `echo "ENV_FILE=$RUNNER_TEMP/x.env" >> "$GITHUB_ENV"`. Pasó en el primer merge a staging (2026-11-11).
 
 - `entrypoint.sh` sin tope esperando Postgres → deploy colgado con credenciales malas. Hoy:
   `DB_WAIT_TIMEOUT` medido con `$SECONDS` + `timeout 10` por intento (contar intentos ≠ segundos).

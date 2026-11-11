@@ -24,11 +24,14 @@ jobs:
     runs-on: [self-hosted, docker]
     timeout-minutes: 45
     env:
-      ENV_FILE: ${{ runner.temp }}/logistics-staging-pr.env
       # Proyecto y tag PROPIOS del PR: nunca tocan los contenedores ni las imágenes de staging.
       STAGING_PROJECT: logistics-staging-pr-${{ github.event.pull_request.number }}
       STAGING_IMAGE_TAG: pr-${{ github.event.pull_request.number }}
     steps:
+      # `runner` no existe en el `env` a nivel de job (invalidaba el workflow): la ruta se arma acá.
+      - name: Preparar rutas
+        run: echo "ENV_FILE=$RUNNER_TEMP/logistics-staging-pr.env" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
         with:
           clean: true
