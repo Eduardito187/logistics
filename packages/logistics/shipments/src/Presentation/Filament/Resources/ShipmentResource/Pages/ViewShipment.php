@@ -34,6 +34,12 @@ final class ViewShipment extends ViewRecord
     // Vista propia (cockpit); conserva el chrome de página Filament (cabecera + acciones).
     protected string $view = 'filament.shipments.shipment-hub';
 
+    // Oculta el <h1> de Filament: el hero del cockpit (blade) ya muestra el título; así no se ve duplicado.
+    public function getHeading(): string
+    {
+        return '';
+    }
+
     // Título por el nº de pedido (external_id) o el cliente, no un genérico ni el UUID (consistencia).
     public function getTitle(): string
     {

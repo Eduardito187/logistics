@@ -22,6 +22,12 @@ final class ViewReturn extends ViewRecord
     // Vista propia (cockpit); conserva el chrome de página Filament (cabecera + acciones).
     protected string $view = 'filament.returns.return-hub';
 
+    // Oculta el <h1> de Filament: el hero del cockpit (blade) ya muestra el título; así no se ve duplicado.
+    public function getHeading(): string
+    {
+        return '';
+    }
+
     // Título por la referencia original de la devolución, no el UUID.
     public function getTitle(): string
     {

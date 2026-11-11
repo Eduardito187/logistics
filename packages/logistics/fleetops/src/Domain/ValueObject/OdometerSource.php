@@ -25,6 +25,9 @@ enum OdometerSource: string
     /** Tomada al registrar/cerrar una salida. */
     case Departure = 'departure';
 
+    /** Tomada al LLEGAR al centro de distribución (simétrico de Departure: cierra el par salida↔llegada). */
+    case Arrival = 'arrival';
+
     /**
      * Texto en inglés para el admin y la consola (regla 5 de CLAUDE.md).
      */
@@ -36,6 +39,7 @@ enum OdometerSource: string
             self::Refuel => 'Refuel',
             self::Maintenance => 'Maintenance',
             self::Departure => 'Departure',
+            self::Arrival => 'Arrival',
         };
     }
 }

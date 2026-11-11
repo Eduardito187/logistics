@@ -11141,6 +11141,7 @@ components:
           - refuel
           - maintenance
           - departure
+          - arrival
         read_at:
           type: string
           format: date-time
@@ -11486,6 +11487,7 @@ components:
           - refuel
           - maintenance
           - departure
+          - arrival
         read_at:
           type: string
           format: date-time

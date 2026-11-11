@@ -1,0 +1,12 @@
+/* Estilos de la app Vue+Inertia (cliente/campo). Tailwind 4 vía @tailwindcss/vite. Separado del tema
+   del admin Filament (resources/css/filament/admin/theme.css). */
+@import 'tailwindcss';
+
+:root {
+    --distrack-red: #e30613;
+}
+
+html,
+body {
+    min-height: 100%;
+}

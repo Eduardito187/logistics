@@ -58,6 +58,14 @@ final class DocumentResource extends Resource
 
     protected static ?int $navigationSort = 64;
 
+    // Fuera del menú: un documento PERTENECE a su dueño (vehículo / chofer / ayudante). Su hogar es la ficha
+    // 360 de esa entidad (sección «Gestión» → «Documentos», acotada por owner), no una vista suelta. Los
+    // vencimientos, además, se avisan en el CENTRO DE NOTIFICACIONES del header.
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getNavigationGroup(): string
     {
         return __('Fleet');
