@@ -36,7 +36,6 @@
 </style>
 <div
     x-data="dtkNotifications()"
-    x-init="init()"
     class="dtk-notif"
     @keydown.escape.window="open = false"
 >
@@ -83,10 +82,20 @@
             loading: false,
             count: 0,
             items: [],
+            timer: null,
+            // Alpine llama a init() solo (por eso NO hay x-init="init()": duplicaba carga e intervalo).
             init() {
+                if (this.timer) clearInterval(this.timer);
                 this.load();
-                // Refresco periódico (cada 60 s) para mantener la campana al día sin recargar.
-                setInterval(() => this.load(), 60000);
+                // Refresco periódico (cada 60 s) para mantener la campana al día sin recargar. Con la
+                // pestaña oculta no se pide nada. El intervalo se libera en destroy(): en modo SPA el
+                // topbar se reemplaza en cada navegación y, sin esto, se acumulaba un intervalo por página.
+                this.timer = setInterval(() => { if (!document.hidden) this.load(); }, 60000);
+            },
+            destroy() {
+                // Alpine lo invoca al quitar el componente del DOM (swap de página SPA).
+                if (this.timer) clearInterval(this.timer);
+                this.timer = null;
             },
             toggle() {
                 this.open = !this.open;

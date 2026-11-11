@@ -10,6 +10,7 @@
 #   docker compose -f docker-compose.yml -f .docker/compose/docker-compose.windows.yml up -d
 #
 # Permanente (recomendado): en el .env fijar
+#   COMPOSE_PATH_SEPARATOR=:   (obligatorio en Windows, cuyo separador por defecto es ';')
 #   COMPOSE_FILE=docker-compose.yml:.docker/compose/docker-compose.windows.yml
 # y entonces basta `docker compose up -d`.
 #

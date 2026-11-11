@@ -1,8 +1,8 @@
 # Migración de WSL → Windows (Docker Desktop) sin perder datos
 
 Guía para mover el proyecto completo (código + Docker + volúmenes + red + base de datos) desde el
-filesystem de WSL a `C:\Users\ehhuallata\Documents\APP`, conservando **todos los datos** y con el
-rendimiento lo más cerca posible del de WSL.
+filesystem de WSL a `C:\Users\<usuario>\Documents\APP\logistics`, conservando **todos los datos** y con
+el rendimiento lo más cerca posible del de WSL.
 
 ## Por qué NO se pierden datos
 
@@ -11,7 +11,11 @@ rendimiento lo más cerca posible del de WSL.
   mismos volúmenes y la misma red** — nada se recrea.
 - La base de datos vive en el **volumen nombrado `dismac-logistics_postgres_data`**, administrado por
   Docker Desktop **fuera de la carpeta del proyecto**. Copiar la carpeta ni lo roza.
-- Aun así hacemos un **backup lógico** (`db:backup`) como red de seguridad antes de tocar nada.
+- Aun así se hace un **backup de la base** (`php artisan backup:create`: estructura completa + datos +
+  `manifest.json` con conteos por tabla) como red de seguridad, se guarda **fuera del proyecto** y al
+  final se **verifica** (`backup:verify` + conteos de la base contra el manifest).
+- El backup es **solo de la base de datos**. Contenedores, imágenes y volúmenes no se respaldan: la
+  migración no los toca. El código se copia con robocopy y se controla con `git status` (Fases 2 y 5).
 
 ## Por qué el rendimiento baja en NTFS (y cómo lo mitigamos)
 
@@ -30,7 +34,7 @@ cruza la frontera WSL↔Windows y es más lento para PHP (miles de archivos). Mi
 1. **Docker Desktop** instalado y corriendo, con **WSL 2 engine** (Settings → General → "Use the WSL 2
    based engine") y la **integración WSL activada** para tu distro (Settings → Resources → WSL integration).
 2. **VirtioFS activado**: Settings → Resources → File sharing → **VirtioFS** (más rápido que gRPC/9p).
-3. **PowerShell** (viene con Windows). Opcional: Git para Windows.
+3. **PowerShell** (viene con Windows) y **Git para Windows** (para la verificación con `git status`).
 
 Averiguá el nombre de tu distro WSL (lo vas a necesitar para la ruta `\\wsl$`):
 
@@ -38,71 +42,105 @@ Averiguá el nombre de tu distro WSL (lo vas a necesitar para la ruta `\\wsl$`):
 wsl -l -q
 ```
 
+## Resumen: lo hace el script
+
+`scripts/windows/migrate.ps1` corre las fases 0 a 5 en orden y termina con código ≠ 0 si la
+verificación encuentra algo raro:
+
+```powershell
+# En PowerShell. Con el stack del ORIGEN (WSL) todavía ARRIBA: el script hace el backup y lo apaga él.
+powershell -ExecutionPolicy Bypass -File \\wsl$\<DISTRO>\dismac\logistics\scripts\windows\migrate.ps1 -Distro <DISTRO>
+```
+
+Parámetros útiles:
+
+| Parámetro | Default | Para qué |
+|---|---|---|
+| `-Dest` | `$HOME\Documents\APP\logistics` | Carpeta del proyecto en Windows. |
+| `-BackupDir` | `$HOME\Documents\backups` | Dónde queda el bundle de la base (FUERA del proyecto). |
+| `-LinuxPath` | `/dismac/logistics` | Ruta del proyecto dentro de la distro. |
+| `-SkipCopy` | — | Ya copiaste: solo override + levantar + verificar. |
+| `-SkipBackup -Bundle <tar>` | — | Usar un bundle hecho a mano (sigue verificando contra él). |
+| `-CopyOnly -Source <dir> -Dest <dir>` | — | Solo la copia (robocopy), para probar las exclusiones. |
+
+Las fases de abajo explican qué hace el script y cómo hacerlo a mano.
+
 ---
 
-## Fase 0 — Backup de seguridad (con Docker corriendo, desde la distro WSL)
+## Fase 0 — Backup de la base (stack del origen ARRIBA)
 
 ```bash
 # En la terminal WSL, dentro del proyecto actual:
-docker compose up -d                       # asegurate de que el stack esté arriba
-docker compose exec -T app php artisan db:backup
-#   → genera storage/app/backups/backup-logistics-<timestamp>.dump
+docker compose up -d                       # el stack tiene que estar arriba
+docker compose exec -T app php artisan backup:create \
+    --path=/var/www/html/storage/app/backups/premigracion-logistics-<ts>.tar
 ```
 
-Copiá ese `.dump` a un lugar seguro FUERA del proyecto, p. ej.:
+Copiá el bundle **fuera del proyecto** y comprobá que la copia sea idéntica:
 
 ```powershell
-# En PowerShell (Windows). Reemplazá <DISTRO> por el nombre de tu distro.
-New-Item -ItemType Directory -Force "C:\Users\ehhuallata\Documents\backups" | Out-Null
-Copy-Item "\\wsl$\<DISTRO>\dismac\logistics\storage\app\backups\*.dump" "C:\Users\ehhuallata\Documents\backups\"
+New-Item -ItemType Directory -Force "$HOME\Documents\backups" | Out-Null
+$src = "\\wsl$\<DISTRO>\dismac\logistics\storage\app\backups\premigracion-logistics-<ts>.tar"
+Copy-Item $src "$HOME\Documents\backups\"
+Get-FileHash $src, "$HOME\Documents\backups\premigracion-logistics-<ts>.tar"   # los dos hashes iguales
 ```
 
-## Fase 1 — Apagar el stack SIN borrar volúmenes
+`storage/app/backups` NO viaja con el proyecto (Fase 2): el bundle viaja solo por `-BackupDir`.
+
+## Fase 1 — Apagar el stack del origen SIN borrar volúmenes
 
 ```bash
 # En WSL:
 docker compose down        # ⚠️ NUNCA uses `-v`: eso borraría la base de datos.
 ```
 
-## Fase 2 — Copiar el proyecto a C:\Users\ehhuallata\Documents\APP
+## Fase 2 — Copiar el proyecto a C:\Users\<usuario>\Documents\APP\logistics
 
-Usá el script (recomendado) o robocopy a mano. El script detecta la distro, copia excluyendo lo pesado
-y lo que se regenera, fija el override de Windows y levanta el stack:
-
-```powershell
-# En PowerShell, parado en cualquier lado:
-\\wsl$\<DISTRO>\dismac\logistics\scripts\windows\migrate.ps1
-# o, si ya copiaste el script, desde donde esté:
-powershell -ExecutionPolicy Bypass -File .\migrate.ps1 -Distro <DISTRO>
-```
-
-Equivalente a mano con robocopy (excluye lo que se repuebla solo o es gigante):
+robocopy `/XD` acepta **nombres** (excluyen una carpeta con ese nombre a CUALQUIER profundidad) o
+**rutas completas** (excluyen SOLO esa carpeta). Usar siempre rutas completas ancladas al origen:
 
 ```powershell
-robocopy "\\wsl$\<DISTRO>\dismac\logistics" "C:\Users\ehhuallata\Documents\APP" /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 `
-  /XD vendor node_modules .git "storage\app\backups" ".docker\osrm\data" ".docker\nominatim\data" ".docker\tileserver\data" `
+$S = "\\wsl$\<DISTRO>\dismac\logistics"
+$D = "$HOME\Documents\APP\logistics"
+robocopy $S $D /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 `
+  /XD "$S\vendor" "$S\node_modules" "$S\storage\app\backups" `
+      "$S\.docker\osrm\data" "$S\.docker\nominatim\data" "$S\.docker\tileserver\data" `
   /XF "*.log"
+# De los dirs de datos geo, solo su .gitignore versionado (los datos pesados no):
+foreach ($g in '.docker\osrm\data', '.docker\nominatim\data', '.docker\tileserver\data') {
+  robocopy "$S\$g" "$D\$g" .gitignore /COPY:DAT /R:1 /W:1
+}
+git -C $D config core.fileMode false    # NTFS no tiene bit de ejecución (ver "Trampas")
 ```
 
-- `vendor` y `node_modules` NO se copian: se repueblan solos (volúmenes nombrados + composer/npm al arrancar).
-- Los datos geo (`osrm/nominatim/tileserver`) son varios GB y opt-in (`--profile geo`): se regeneran con sus
-  runbooks; no se copian.
+- `vendor` y `node_modules` **de la raíz** NO se copian: son volúmenes nombrados y se repueblan solos.
+  `public/vendor/leaflet` y `public/vendor/leaflet-geoman` (versionados) **sí** se copian.
+- **`.git` SÍ se copia**: sin él no se puede comprobar que no falte ningún archivo versionado, se pierde
+  la rama y los cambios sin commitear quedan sin referencia.
+- Los datos geo (`osrm/nominatim/tileserver`) son varios GB y opt-in (`--profile geo`): se regeneran con
+  sus runbooks. De esas carpetas solo se copia el `.gitignore` (mantiene el dir para el bind-mount).
+- `/XF "*.log"` sí es por nombre (robocopy no acepta comodines con ruta en `/XF`); no hay ningún `.log`
+  versionado.
 - El `.env` SÍ se copia (robocopy copia dotfiles).
 
 ## Fase 3 — Activar el override de Windows (perf)
 
-En `C:\Users\ehhuallata\Documents\APP\.env`, agregá esta línea (el script lo hace solo):
+En `C:\Users\<usuario>\Documents\APP\logistics\.env`, agregá estas líneas (el script lo hace solo):
 
 ```env
+COMPOSE_PATH_SEPARATOR=:
 COMPOSE_FILE=docker-compose.yml:.docker/compose/docker-compose.windows.yml
 ```
+
+`COMPOSE_PATH_SEPARATOR` es obligatorio: en Windows el separador por defecto de Compose es `;`, y sin
+esa línea `docker compose` falla con "The filename, directory name, or volume label syntax is incorrect".
 
 Así cada `docker compose ...` aplica el PHP afinado para NTFS automáticamente.
 
 ## Fase 4 — Levantar desde la nueva ubicación
 
 ```powershell
-cd C:\Users\ehhuallata\Documents\APP
+cd $HOME\Documents\APP\logistics
 docker compose up -d --build
 ```
 
@@ -111,18 +149,30 @@ Como el nombre del proyecto (`dismac-logistics`) y la red (`dismac_lg_network`) 
 `composer install` y repuebla el volumen `vendor` (rápido, ya estaba poblado); el servicio `assets`
 recompila el tema.
 
-## Fase 5 — Verificar (cero pérdida + rendimiento)
+## Fase 5 — Verificar (cero pérdida)
+
+El script lo hace solo y falla si algo no cuadra. A mano:
 
 ```powershell
 docker compose ps                                  # todo "healthy"
-start http://localhost:8110                         # abre el admin
+$B = "premigracion-logistics-<ts>.tar"
+
+# (a) El bundle es íntegro: lo restaura en una base scratch y lo compara con su manifest (no destructivo).
+Copy-Item "$HOME\Documents\backups\$B" storage\app\backups\
+docker compose exec -T app php artisan backup:verify /var/www/html/storage/app/backups/$B
+
+# (b) La base del destino tiene todo lo del backup: conteos exactos por tabla vs. el manifest.
+tar.exe -xOf "$HOME\Documents\backups\$B" manifest.json
+docker compose exec -T postgres psql -U logistics -d logistics -c "SELECT count(*) FROM shipments"
+
+# (c) No falta ningún archivo versionado:
+git status --short | Select-String '^( D|D )'      # debe salir vacío
 ```
 
-Conteo de control (debe coincidir con lo que tenías):
+En (b), una tabla **faltante** o con **menos** filas que el manifest es pérdida de datos (falla). Con
+**más** filas es actividad posterior al backup (workers/scheduler arrancan enseguida): se avisa, no falla.
 
-```powershell
-docker compose exec -T app php artisan tinker --execute="echo DB::table('commerce_orders')->count().' orders / '.DB::table('shipments')->count().' shipments';"
-```
+Si (c) lista archivos borrados, se recuperan con `git checkout -- <ruta>` (por eso hay que copiar `.git`).
 
 Prueba de rendimiento (la 2ª corrida, con OPcache caliente, debe ser notablemente más rápida):
 
@@ -131,22 +181,47 @@ Measure-Command { curl.exe -s -o NUL http://localhost:8110/admin/login }
 Measure-Command { curl.exe -s -o NUL http://localhost:8110/admin/login }
 ```
 
-## Fase 6 — Restore (SOLO si algo salió mal: DB vacía)
+## Fase 6 — Restore (SOLO si algo salió mal: base vacía o incompleta)
 
-Si por cualquier motivo la base apareciera vacía (p. ej. se corrió `down -v` por error), restaurá el backup:
+`backup:restore` restaura por **swap**: la base actual queda renombrada como `logistics_prev_<ts>` (no se
+borra), así un restore equivocado también se puede deshacer.
 
 ```powershell
-# Copiá el .dump a la nueva ubicación y restaurá:
-Copy-Item "C:\Users\ehhuallata\Documents\backups\backup-*.dump" "C:\Users\ehhuallata\Documents\APP\storage\app\backups\"
-docker compose exec -T app php artisan db:restore storage/app/backups/backup-<timestamp>.dump --force
+Copy-Item "$HOME\Documents\backups\$B" storage\app\backups\
+docker compose exec -T app php artisan backup:verify  /var/www/html/storage/app/backups/$B
+docker compose exec -T app php artisan backup:restore /var/www/html/storage/app/backups/$B --force
 ```
 
 ## Limpieza (opcional, al final y ya verificado)
 
-Cuando todo funcione desde `C:\...\APP`, podés borrar la copia vieja en WSL (`/dismac/logistics`). **No
-borres los volúmenes de Docker**: son los que tienen tus datos y los seguís usando desde la nueva carpeta.
+Cuando todo funcione desde `C:\...\APP\logistics` **y la Fase 5 pasó**, podés borrar la copia vieja en
+WSL (`/dismac/logistics`). **No borres los volúmenes de Docker**: son los que tienen tus datos y los
+seguís usando desde la nueva carpeta. Conservá el bundle de `-BackupDir` al menos unos días.
 
 ---
+
+## Trampas que ya pasaron
+
+- **robocopy `/XD` por nombre**: `/XD vendor node_modules .git` excluye CUALQUIER carpeta con ese nombre
+  a cualquier profundidad. Así se perdieron `public/vendor/leaflet` y `public/vendor/leaflet-geoman`
+  (versionados, los usa el mapa en vivo) y no se copió `.git`. Además, una ruta RELATIVA con `\` en `/XD`
+  (`.docker\osrm\data`) no matchea nada. Regla: **en `/XD` solo rutas completas ancladas al origen**.
+- **`.gitignore` de los dirs de datos geo**: `.docker/{osrm,nominatim,tileserver}/data/.gitignore` son
+  versionados (mantienen el dir para el bind-mount). Excluir el dir entero los pierde: se copian aparte.
+- **`COMPOSE_FILE` con `:` en Windows**: el separador por defecto de Compose en Windows es `;`. Con
+  `COMPOSE_FILE=a.yml:b.yml` y sin `COMPOSE_PATH_SEPARATOR=:` en el `.env`, todo `docker compose` falla
+  con "The filename, directory name, or volume label syntax is incorrect". Ya arreglado (el script lo
+  agrega).
+- **NTFS sin bit de ejecución**: los scripts versionados como `100755` aparecen modificados
+  (`old mode 100755 / new mode 100644`) en `git status`. Solución: `git config core.fileMode false` en el
+  clon de Windows (el script lo hace).
+- **Encoding del `.ps1`**: Windows PowerShell 5.1 lee un `.ps1` UTF-8 **sin BOM** como ANSI; un `—`
+  dentro de un string se decodifica a un byte que PowerShell toma como comilla y rompe el parseo.
+  `migrate.ps1` se guarda en UTF-8 **con BOM**.
+- **Backup programado vacío sin aviso** (`pg-backup`): dejaba `.dump.tmp` de 0 bytes cuando una corrida
+  fallaba o se interrumpía, y el nombre del archivo iba en UTC. Ya corregido (ver
+  `.docker/backups/README.md`): valida el dump, borra el `.tmp`, usa `TZ=America/La_Paz`, deja
+  `last-success` y el servicio queda `unhealthy` si no hay backup OK en 26 h.
 
 ## Notas de rendimiento
 

@@ -10,25 +10,32 @@ use Illuminate\Support\Facades\Process;
 use RuntimeException;
 
 /**
- * Backup/restore COMPLETO de la base PostgreSQL (esquema + datos) con las herramientas nativas
+ * Backup/restore COMPLETO de la base PostgreSQL (estructura + datos) con las herramientas nativas
  * `pg_dump`/`pg_restore`. La construcción de los comandos es PURA (sin I/O), para poder testearla sin
- * ejecutar nada; la ejecución real va por el `Process` de Laravel (fakeable en tests).
+ * ejecutar nada; la ejecución real va por el `Process` de Laravel, con la clave en `PGPASSWORD` (nunca en
+ * argv, que es visible en `ps`).
  *
- * El dump usa el formato CUSTOM de Postgres (`-Fc`, comprimido): es el respaldo íntegro y restaurable con
- * `pg_restore` (permite `--clean`/`--if-exists`, orden de dependencias, restauración selectiva). Se evita
- * depender de PgBouncer: el host/puerto se pueden sobreescribir para apuntar directo al Postgres real
- * (PgBouncer en modo transacción no soporta algunas operaciones de dump/restore).
+ * El dump usa el formato CUSTOM de Postgres (`-Fc`, comprimido). La restauración NUNCA usa `--clean`: se
+ * restaura siempre en una base NUEVA creada desde `template0` (ver DatabaseBackupService), así no choca con
+ * objetos preexistentes (p. ej. las extensiones `postgis_topology`/`postgis_tiger_geocoder` que crea la
+ * imagen de PostGIS, que hacían fallar el `DROP EXTENSION postgis` del `--clean`).
+ *
+ * El endpoint por defecto es DIRECTO a Postgres (DB_DIRECT_HOST/DB_DIRECT_PORT), no PgBouncer.
  */
 final class PostgresBackup
 {
     /**
      * @param array<string, mixed> $config configuración de la conexión (config/database.php)
      */
-    public function __construct(private readonly array $config) {}
+    public function __construct(
+        private readonly array $config,
+        private readonly ?string $directHost = null,
+        private readonly ?string $directPort = null,
+    ) {}
 
     /**
      * Construye el backup para una conexión del `config/database.php`. Falla claro si no es PostgreSQL:
-     * este mecanismo solo respalda pgsql (SQLite/otros tienen su propio flujo).
+     * este mecanismo solo respalda pgsql.
      */
     public static function forConnection(string $connection): self
     {
@@ -38,98 +45,161 @@ final class PostgresBackup
             throw new RuntimeException("La conexión '{$connection}' no es PostgreSQL; el backup/restore solo soporta pgsql.");
         }
 
+        $directHost = config('backup.direct_host');
+        $directPort = config('backup.direct_port');
+
         /** @var array<string, mixed> $config */
-        return new self($config);
+        return new self(
+            $config,
+            is_scalar($directHost) && (string) $directHost !== '' ? (string) $directHost : null,
+            is_scalar($directPort) && (string) $directPort !== '' ? (string) $directPort : null,
+        );
     }
 
     /**
-     * Endpoint efectivo (host/puerto/base/usuario/clave), resolviendo `DB_URL` si está presente y
-     * aplicando overrides opcionales de host/puerto (para apuntar al Postgres real y no a PgBouncer).
+     * Endpoint efectivo. Prioridad: override del comando > DB_DIRECT_* > host/puerto de la conexión
+     * (resolviendo `DB_URL` si está presente). Puro: no descubre nada; si el resultado parece PgBouncer y no
+     * es `direct`, el servicio descubre el Postgres real.
+     */
+    public function endpoint(?string $hostOverride = null, ?string $portOverride = null): PgEndpoint
+    {
+        $config = $this->config;
+
+        if (is_string($config['url'] ?? null) && $config['url'] !== '') {
+            $config = (new ConfigurationUrlParser)->parseConfiguration($config);
+        }
+
+        $direct = false;
+        $host = (string) ($config['host'] ?? '127.0.0.1');
+        $port = (string) ($config['port'] ?? '5432');
+
+        if ($this->directHost !== null) {
+            $host = $this->directHost;
+            $direct = true;
+        }
+        if ($this->directPort !== null) {
+            $port = $this->directPort;
+        }
+        if ($hostOverride !== null && $hostOverride !== '') {
+            $host = $hostOverride;
+            $direct = true;
+        }
+        if ($portOverride !== null && $portOverride !== '') {
+            $port = $portOverride;
+            $direct = true;
+        }
+
+        $sslmode = $config['sslmode'] ?? null;
+
+        return new PgEndpoint(
+            host: $host,
+            port: $port,
+            database: (string) ($config['database'] ?? ''),
+            username: (string) ($config['username'] ?? ''),
+            password: (string) ($config['password'] ?? ''),
+            sslmode: is_string($sslmode) && $sslmode !== '' ? $sslmode : null,
+            direct: $direct,
+        );
+    }
+
+    /**
+     * Forma array del endpoint (compatibilidad con el contrato anterior).
      *
      * @return array{host: string, port: string, database: string, username: string, password: string}
      */
     public function target(?string $hostOverride = null, ?string $portOverride = null): array
     {
-        $config = $this->config;
+        $e = $this->endpoint($hostOverride, $portOverride);
 
-        // Si la conexión se define por URL (DB_URL), se expande a host/puerto/base/usuario/clave.
-        if (is_string($config['url'] ?? null) && $config['url'] !== '') {
-            $config = (new ConfigurationUrlParser)->parseConfiguration($config);
-        }
-
-        $host = $hostOverride !== null && $hostOverride !== '' ? $hostOverride : (string) ($config['host'] ?? '127.0.0.1');
-        $port = $portOverride !== null && $portOverride !== '' ? $portOverride : (string) ($config['port'] ?? '5432');
-
-        return [
-            'host' => $host,
-            'port' => $port,
-            'database' => (string) ($config['database'] ?? ''),
-            'username' => (string) ($config['username'] ?? ''),
-            'password' => (string) ($config['password'] ?? ''),
-        ];
+        return ['host' => $e->host, 'port' => $e->port, 'database' => $e->database, 'username' => $e->username, 'password' => $e->password];
     }
 
     /**
-     * Comando `pg_dump` para un backup COMPLETO (esquema + datos) en formato custom comprimido.
+     * `pg_dump` COMPLETO (estructura + datos, todos los schemas) en formato custom comprimido. Con
+     * `$snapshot` usa un snapshot exportado: el dump ve EXACTAMENTE los mismos datos que el inventario del
+     * manifest (conteos tomados en esa misma transacción), aunque haya escrituras concurrentes.
      *
      * @return list<string>
      */
-    public function dumpCommand(string $file, ?string $hostOverride = null, ?string $portOverride = null): array
+    public function dumpCommand(string $file, PgEndpoint $endpoint, ?string $snapshot = null): array
     {
-        $target = $this->target($hostOverride, $portOverride);
-
-        return [
+        $command = [
             'pg_dump',
-            '--format=custom',   // formato restaurable con pg_restore (respaldo íntegro)
-            '--compress=9',      // comprimido al máximo
+            '--format=custom',   // restaurable con pg_restore (orden de dependencias, selectivo)
+            '--compress=9',
             '--no-owner',        // portable entre entornos (no fija dueño)
             '--no-privileges',   // ni GRANTs específicos del entorno origen
-            '--host='.$target['host'],
-            '--port='.$target['port'],
-            '--username='.$target['username'],
-            '--dbname='.$target['database'],
+        ];
+
+        if ($snapshot !== null) {
+            $command[] = '--snapshot='.$snapshot;
+        }
+
+        return [
+            ...$command,
+            '--host='.$endpoint->host,
+            '--port='.$endpoint->port,
+            '--username='.$endpoint->username,
+            '--dbname='.$endpoint->database,
             '--file='.$file,
         ];
     }
 
     /**
-     * Comando `pg_restore` para importar POR COMPLETO un backup custom, reemplazando el contenido actual
-     * (`--clean --if-exists`: dropea y recrea cada objeto). Operación destructiva: el comando que lo usa
-     * exige confirmación explícita.
+     * `pg_restore` de un dump custom sobre una base NUEVA y vacía (`$endpoint->database`, creada desde
+     * template0). Sin `--clean` (no hay nada que limpiar) y con `--exit-on-error`: cualquier error aborta y
+     * la base scratch se descarta entera.
      *
      * @return list<string>
      */
-    public function restoreCommand(string $file, ?string $hostOverride = null, ?string $portOverride = null): array
+    public function restoreCommand(string $file, PgEndpoint $endpoint): array
     {
-        $target = $this->target($hostOverride, $portOverride);
-
         return [
             'pg_restore',
-            '--clean',           // dropea los objetos antes de recrearlos (import completo)
-            '--if-exists',       // sin errores si el objeto aún no existe
             '--no-owner',
             '--no-privileges',
-            '--single-transaction', // todo o nada: si falla, no deja la base a medias
-            '--host='.$target['host'],
-            '--port='.$target['port'],
-            '--username='.$target['username'],
-            '--dbname='.$target['database'],
+            '--exit-on-error',
+            '--host='.$endpoint->host,
+            '--port='.$endpoint->port,
+            '--username='.$endpoint->username,
+            '--dbname='.$endpoint->database,
             $file,
         ];
     }
 
     /**
-     * Ejecuta un comando de dump/restore inyectando `PGPASSWORD` por entorno (nunca en la línea de
-     * comandos, que es visible en `ps`). Timeout alto: un dump/restore grande puede tardar.
+     * `pg_restore --list`: tabla de contenidos del dump (sin conectarse a ninguna base).
+     *
+     * @return list<string>
+     */
+    public function listCommand(string $file): array
+    {
+        return ['pg_restore', '--list', $file];
+    }
+
+    /** @return list<string> */
+    public static function versionCommand(string $binary): array
+    {
+        return [$binary, '--version'];
+    }
+
+    /** Major de la salida de `pg_dump --version` ("pg_dump (PostgreSQL) 18.6" → 18). */
+    public static function parseMajorVersion(string $output): ?int
+    {
+        return preg_match('/\(PostgreSQL\)\s+(\d+)/', $output, $m) === 1 ? (int) $m[1] : null;
+    }
+
+    /**
+     * Ejecuta un comando con `PGPASSWORD` por entorno (nunca en la línea de comandos).
      *
      * @param list<string> $command
      */
-    public function run(array $command, ?string $hostOverride = null, ?string $portOverride = null): ProcessResult
+    public function run(array $command, PgEndpoint $endpoint): ProcessResult
     {
-        $target = $this->target($hostOverride, $portOverride);
+        $timeout = config('backup.timeout', 7200);
 
-        return Process::env(['PGPASSWORD' => $target['password']])
-            ->timeout(3600)
+        return Process::env(['PGPASSWORD' => $endpoint->password])
+            ->timeout(is_numeric($timeout) ? (int) $timeout : 7200)
             ->run($command);
     }
 }

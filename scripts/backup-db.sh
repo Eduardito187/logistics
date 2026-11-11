@@ -5,6 +5,11 @@
 # Genera un dump en formato "custom" de pg_dump (`-Fc`), apto para PostGIS, y lo
 # comprime con gzip. Pensado para correr DESDE EL HOST:
 #
+#   - modo `artisan` (RECOMENDADO): delega en `php artisan backup:create` dentro del
+#     contenedor `app` (bundle .tar = estructura completa + datos + manifest con conteos
+#     por tabla) y a continuación corre `php artisan backup:verify` sobre el bundle
+#     (restaura en una base scratch y compara contra el manifest; no toca la base real).
+#     Es el mismo formato que usan `backup:restore` y scripts/windows/migrate.ps1.
 #   - modo `container` (default): hace `docker exec` contra el contenedor de
 #     Postgres del docker-compose (dismac_lg_postgres). Útil en desarrollo/staging.
 #   - modo `direct`: corre pg_dump instalado en el host contra un Postgres remoto
@@ -17,7 +22,8 @@
 #     compresión externa, para dejar un `.dump.gz` estándar y verificable con gunzip.
 #
 # Configuración por variables de entorno (ver también docs/backup-restore.md):
-#   BACKUP_MODE            container | direct            (default: container)
+#   BACKUP_MODE            artisan | container | direct  (default: container, por compatibilidad)
+#   APP_SERVICE            servicio compose de la app     (default: app; solo modo artisan)
 #   PG_CONTAINER           nombre del contenedor          (default: dismac_lg_postgres)
 #   DB_HOST DB_PORT DB_DATABASE DB_USERNAME DB_PASSWORD   (conexión)
 #   BACKUP_DIR             carpeta destino                (default: ./backups)
@@ -26,10 +32,12 @@
 #   GZIP_LEVEL             nivel de compresión gzip 1..9  (default: 6)
 #
 # Uso:
+#   BACKUP_MODE=artisan scripts/backup-db.sh        # bundle verificado (recomendado)
 #   scripts/backup-db.sh
 #   BACKUP_MODE=direct DB_HOST=db.prod DB_PASSWORD=... scripts/backup-db.sh
 #
 # Salida: $BACKUP_DIR/logistics-YYYYmmdd-HHMMSS.dump.gz (+ .sha256)
+#         modo artisan: storage/app/backups/logistics-YYYYmmdd-HHMMSS.tar (lo decide backup:create)
 # Código de salida 0 = respaldo verificado; distinto de 0 = falló (no rota nada).
 # ============================================================
 set -euo pipefail
@@ -82,12 +90,30 @@ preflight() {
         command -v pg_dump >/dev/null 2>&1 || die "pg_dump no está en el PATH (BACKUP_MODE=direct)"
         command -v gzip >/dev/null 2>&1 || die "gzip no está en el PATH"
     else
-        die "BACKUP_MODE inválido: '$BACKUP_MODE' (usar container | direct)"
+        die "BACKUP_MODE inválido: '$BACKUP_MODE' (usar artisan | container | direct)"
     fi
+}
+
+# -------------------- Modo artisan --------------------
+# Delega en los comandos de la app. backup:create elige la ruta por defecto
+# (storage/app/backups/logistics-<ts>.tar); acá se fija explícita para poder verificarla.
+APP_SERVICE="${APP_SERVICE:-app}"
+artisan_backup() {
+    command -v docker >/dev/null 2>&1 || die "docker no está instalado (BACKUP_MODE=artisan)"
+    local bundle="/var/www/html/storage/app/backups/${BASENAME}.tar"
+    log "backup:create (modo artisan) → ${bundle}"
+    docker compose exec -T "$APP_SERVICE" php artisan backup:create --path="$bundle"         || die "backup:create falló"
+    log "backup:verify ${bundle}"
+    docker compose exec -T "$APP_SERVICE" php artisan backup:verify "$bundle"         || die "backup:verify falló: el bundle NO coincide con su manifest"
+    log "respaldo verificado: storage/app/backups/${BASENAME}.tar (copialo FUERA del host para que sirva ante pérdida del disco)"
 }
 
 # -------------------- Respaldo --------------------
 main() {
+    if [[ "$BACKUP_MODE" == "artisan" ]]; then
+        artisan_backup
+        return 0
+    fi
     preflight
     mkdir -p "$BACKUP_DIR"
 

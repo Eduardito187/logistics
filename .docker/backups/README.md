@@ -1,5 +1,12 @@
 # Backups de PostgreSQL — logistics (C-1 auditoría)
 
+> **DESACTIVADO POR DEFECTO.** El sidecar `pg-backup` está bajo el profile `backup` del
+> `docker-compose.yml`: `docker compose up` NO lo arranca. El respaldo oficial es el **manual y completo
+> de la base**: `php artisan backup:create` (ver `docs/backup-restore.md`). Para usar este backup
+> automático en algún caso puntual, levantarlo a mano:
+> `docker compose --profile backup up -d pg-backup` (y `docker compose --profile backup stop pg-backup`
+> para volver a apagarlo).
+
 Respaldo automatizado de la base `logistics`. Resuelve el riesgo #1 de la auditoría
 DevOps: *"una base que crecerá a gigas sin estrategia de respaldo/restauración"*.
 
@@ -12,7 +19,19 @@ DevOps: *"una base que crecerá a gigas sin estrategia de respaldo/restauración
 - **Retención** por días (`BACKUP_RETENTION_DAYS`, default `14`; recomendado 7–30):
   se podan automáticamente los dumps de la base más viejos que N días.
 - **Volumen persistente** `backups` (montado en `/backups`). Cada dump:
-  `logistics-YYYYMMDD-HHMMSS.dump`. Log del cron en `/backups/backup.log`.
+  `logistics-YYYYMMDD-HHMMSS.dump` (hora local de Bolivia: el servicio fija
+  `TZ=America/La_Paz`, así el nombre, el log y `BACKUP_CRON` usan la misma hora). Log en
+  `/backups/backup.log` (backup inicial y los del cron).
+- **Nunca deja dumps a medias**: escribe a `.dump.tmp` y solo renombra a `.dump` si el dump
+  pasa la validación (`pg_restore -l` lo lee y su índice trae al menos una tabla). Un trap
+  borra el `.tmp` ante fallo o interrupción, y al arrancar cada corrida se borran `.tmp`
+  huérfanos (p. ej. de un `SIGKILL`). Un lock (`flock`) impide dos corridas a la vez.
+- **Estado visible**: `/backups/last-success` (fecha, epoch, archivo, tamaño) se escribe
+  SOLO tras un dump validado; `/backups/last-failure` registra el último fallo. Cada fallo
+  deja en el log una línea `FALLO: ...`.
+- **Healthcheck** (`healthcheck.sh`): el contenedor pasa a `unhealthy` si no hay
+  `last-success` o si tiene más de `BACKUP_MAX_AGE_HOURS` (default 26 h). Se ve en
+  `docker compose ps`; ya no se puede fallar en silencio.
 - **Restauración probada** con `restore.sh` (ver abajo), con guardia anti-pisada de
   las bases reales (`logistics` / `logistics_test`).
 
@@ -32,6 +51,7 @@ objetivo de producción y el siguiente paso (ver más abajo).
 |---|---|---|
 | `BACKUP_CRON` | `0 3 * * *` | Horario del respaldo (crontab de 5 campos). |
 | `BACKUP_RETENTION_DAYS` | `14` | Días de dumps a conservar (se podan los viejos). |
+| `BACKUP_MAX_AGE_HOURS` | `26` | Antigüedad máxima del último backup OK antes de marcar `unhealthy`. |
 
 Conexión del sidecar (ya fijada en el compose): `PGHOST=postgres`, `PGPORT=5432`,
 `PGUSER=logistics`, `PGPASSWORD=logistics`, `PGDATABASE=logistics`.
@@ -45,9 +65,33 @@ docker compose exec pg-backup /usr/local/bin/backup.sh
 # Listar los backups existentes:
 docker compose exec pg-backup ls -lh /backups
 
-# Ver el log del cron:
+# Ver el log del cron (buscar FALLO):
 docker compose exec pg-backup cat /backups/backup.log
+
+# Estado: último backup OK / último fallo / healthcheck:
+docker compose exec pg-backup cat /backups/last-success
+docker compose exec pg-backup sh /usr/local/bin/healthcheck.sh
+docker inspect dismac_lg_pg_backup --format '{{.State.Health.Status}}'
 ```
+
+> Tras cambiar `backup.sh`, `backup-entrypoint.sh`, `healthcheck.sh` o el servicio en el
+> compose, recrear SOLO este sidecar: `docker compose up -d pg-backup` (no toca la base).
+
+### Relación con `php artisan backup:*`
+
+Este sidecar es el respaldo **programado** de la base (dump `.dump`). Los comandos de la app
+generan un **bundle** `.tar` (estructura completa + datos + `manifest.json` con conteos por
+tabla), que es lo que se usa antes de operaciones de riesgo (migraciones de máquina,
+despliegues):
+
+```bash
+docker compose exec -T app php artisan backup:create            # → storage/app/backups/logistics-<ts>.tar
+docker compose exec -T app php artisan backup:verify <bundle>    # no destructivo (base scratch)
+docker compose exec -T app php artisan backup:restore <bundle>   # swap seguro (<db>_prev_<ts>)
+```
+
+Ver `docs/backup-restore.md`. Ambos respaldan SOLO la base de datos (no contenedores,
+imágenes, volúmenes ni archivos).
 
 ## Procedimiento de restauración (PROBADO)
 

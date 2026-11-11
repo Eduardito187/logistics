@@ -1,0 +1,194 @@
+# ============================================================
+# docker-compose.staging.yml — logistics (STAGING en el servidor del runner)
+# ============================================================
+# Archivo AUTÓNOMO (no se apila sobre el docker-compose.yml de desarrollo): dev monta el código del
+# host, fija credenciales `logistics/logistics` y publica una decena de puertos. Staging es un
+# despliegue INMUTABLE: el código va horneado en las imágenes (targets `prod` y `web` del Dockerfile),
+# los secretos llegan por un env-file generado en el deploy y SOLO se publica el puerto de nginx.
+#
+# Lo usa el workflow .github/workflows/staging-deploy.yml vía scripts/staging/deploy.sh:
+#   docker compose -p logistics-staging -f .docker/compose/docker-compose.staging.yml \
+#       --env-file <env generado> up -d --build --remove-orphans --wait
+#
+# Nombre de proyecto FIJO (`logistics-staging`): cada deploy recrea los MISMOS contenedores y
+# reutiliza los MISMOS volúmenes (la base de staging persiste entre deploys).
+#
+# Fuera de staging a propósito (se suman cuando haga falta, ver docs/deploy-staging.md):
+#   osrm/vroom/nominatim/tileserver (datos geo pesados; la app degrada sola), minio (disco local),
+#   soketi (BROADCAST_CONNECTION=log), pg-backup y el contenedor de Vite.
+# ============================================================
+
+name: logistics-staging
+
+x-logging: &default-logging
+    driver: json-file
+    options:
+        max-size: "10m"
+        max-file: "3"
+
+# Imagen de la app (FPM y workers comparten la MISMA imagen; solo cambia el comando).
+x-app-build: &app-build
+    context: ../..
+    dockerfile: .docker/php/Dockerfile
+    target: prod
+
+x-app: &app
+    build: *app-build
+    image: dismac/logistics-app:${STAGING_IMAGE_TAG:-staging}
+    restart: unless-stopped
+    # Env completo de la app (generado por scripts/staging/render-env.sh desde los secrets del repo).
+    env_file:
+        - ${STAGING_ENV_FILE:?Falta STAGING_ENV_FILE (lo genera scripts/staging/render-env.sh)}
+    volumes:
+        - storage:/var/www/html/storage
+    depends_on:
+        pgbouncer:
+            condition: service_healthy
+        valkey:
+            condition: service_healthy
+    networks:
+        - staging
+    logging: *default-logging
+
+services:
+    # -------------------- PostgreSQL + PostGIS --------------------
+    # La imagen crea la extensión postgis en POSTGRES_DB con su propio init (10_postgis.sh): no hace
+    # falta montar nada del workspace (el runner lo limpia al terminar cada job).
+    postgres:
+        image: postgis/postgis:17-3.5-alpine
+        restart: unless-stopped
+        command:
+            - "postgres"
+            - "-c"
+            - "shared_preload_libraries=pg_stat_statements"
+            - "-c"
+            - "max_connections=${PG_MAX_CONNECTIONS:-100}"
+            # Dimensionado para un host compartido de staging (dev/prod usan 1GB/3GB).
+            - "-c"
+            - "shared_buffers=${PG_SHARED_BUFFERS:-256MB}"
+            - "-c"
+            - "effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-768MB}"
+            - "-c"
+            - "work_mem=${PG_WORK_MEM:-8MB}"
+            - "-c"
+            - "log_min_duration_statement=${PG_LOG_MIN_DURATION_MS:-500}"
+        environment:
+            POSTGRES_DB: ${DB_DATABASE:-logistics}
+            POSTGRES_USER: ${DB_USERNAME:-logistics}
+            POSTGRES_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD (secret STAGING_DB_PASSWORD)}
+            TZ: America/La_Paz
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 30s
+        networks:
+            - staging
+        logging: *default-logging
+
+    # -------------------- PgBouncer (transaction pooling) --------------------
+    pgbouncer:
+        image: edoburu/pgbouncer:v1.23.1-p3
+        restart: unless-stopped
+        environment:
+            DB_HOST: postgres
+            DB_PORT: 5432
+            DB_USER: ${DB_USERNAME:-logistics}
+            DB_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD (secret STAGING_DB_PASSWORD)}
+            AUTH_TYPE: scram-sha-256
+            POOL_MODE: transaction
+            MAX_CLIENT_CONN: 500
+            DEFAULT_POOL_SIZE: 20
+            MIN_POOL_SIZE: 2
+            RESERVE_POOL_SIZE: 5
+            LISTEN_PORT: 6432
+            SERVER_IDLE_TIMEOUT: 60
+            MAX_PREPARED_STATEMENTS: 200
+        depends_on:
+            postgres:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD-SHELL", "nc -z 127.0.0.1 6432 || exit 1"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+            start_period: 10s
+        networks:
+            - staging
+        logging: *default-logging
+
+    # -------------------- Valkey (cache + colas + sesiones + locks) --------------------
+    # Sin puerto publicado: solo accesible dentro de la red docker de staging.
+    valkey:
+        image: valkey/valkey:8-alpine
+        restart: unless-stopped
+        command: >
+            valkey-server
+            --appendonly yes
+            --maxmemory ${VALKEY_MAXMEMORY:-256mb}
+            --maxmemory-policy volatile-lru
+        volumes:
+            - valkey_data:/data
+        healthcheck:
+            test: ["CMD", "valkey-cli", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        networks:
+            - staging
+        logging: *default-logging
+
+    # -------------------- App (PHP-FPM) --------------------
+    # Hereda el HEALTHCHECK de la imagen prod (FPM aceptando en :9000).
+    app:
+        <<: *app
+
+    # -------------------- Workers (supervisor: 4 colas + scheduler) --------------------
+    # Un solo contenedor con supervisord (.docker/supervisor/supervisord.conf): workers default/outbox/
+    # notifications/planning y el ÚNICO scheduler. Sobrescribe el healthcheck de la imagen (FPM :9000),
+    # que aquí no aplica.
+    worker:
+        <<: *app
+        command: ["supervisord", "-c", "/etc/supervisor/supervisord.conf", "-n"]
+        healthcheck:
+            test: ["CMD-SHELL", "pgrep -f 'queue:work' >/dev/null && pgrep -f 'schedule:work' >/dev/null || exit 1"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 30s
+        depends_on:
+            app:
+                condition: service_healthy
+
+    # -------------------- Web (Nginx con public/ horneado) --------------------
+    # ÚNICO puerto publicado del stack. Abrirlo aparte en la Security List de Oracle Cloud.
+    web:
+        build:
+            context: ../..
+            dockerfile: .docker/php/Dockerfile
+            target: web
+        image: dismac/logistics-web:${STAGING_IMAGE_TAG:-staging}
+        restart: unless-stopped
+        ports:
+            - "${STAGING_HTTP_PORT:-8110}:80"
+        volumes:
+            # Archivos subidos al disco `public` (servidos vía el symlink public/storage).
+            - storage:/var/www/html/storage:ro
+        depends_on:
+            app:
+                condition: service_healthy
+        networks:
+            - staging
+        logging: *default-logging
+
+volumes:
+    postgres_data:
+    valkey_data:
+    storage:
+
+networks:
+    staging:
+        driver: bridge

@@ -187,7 +187,12 @@ ARG UID=1000
 ARG GID=1000
 
 # supervisor gobierna los workers de cola y el scheduler en el contenedor de workers.
-RUN apk add --no-cache supervisor \
+# postgresql-client (pg_dump/pg_restore/psql): lo necesitan `db:backup`, `backup:create`,
+# `backup:verify` y `backup:restore`; sin él esos comandos fallan en staging/producción.
+# Es el MISMO paquete que el stage `dev` (hoy major 18), así un dump hecho en prod se
+# restaura con las mismas herramientas que en dev. Debe ser major >= al servidor
+# (PostgreSQL 17): pg_dump no puede volcar un servidor más nuevo que él mismo.
+RUN apk add --no-cache supervisor postgresql-client \
     && mkdir -p /var/log/supervisor \
     && chown -R ${UID}:${GID} /var/log/supervisor
 
@@ -244,3 +249,23 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["php-fpm", "-F"]
+
+# ============================================================
+# Web stage — Nginx con el `public/` horneado (staging / despliegues sin bind-mount)
+# ============================================================
+# En dev nginx monta el código del host. En un despliegue inmutable (staging) no hay código en el
+# host: nginx necesita los estáticos (build de Vite, assets de Filament/Livewire publicados, Leaflet
+# self-host, index.php para el try_files) DENTRO de su imagen. Se copian del stage `prod`, así web y
+# app salen SIEMPRE del mismo commit. Los .php se ejecutan en el contenedor `app` (fastcgi app:9000).
+FROM nginx:1.27-alpine AS web
+
+COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY --from=prod /var/www/html/public /var/www/html/public
+
+# `/storage/...` público (archivos subidos al disco `public`): el volumen de storage de la app se
+# monta en /var/www/html/storage (solo lectura) y este symlink lo expone, igual que `storage:link`.
+RUN ln -sfn /var/www/html/storage/app/public /var/www/html/public/storage
+
+# Liveness de punta a punta: nginx → FPM → Laravel (`/up`). Si FPM no responde, el web queda unhealthy.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+    CMD wget -q -O /dev/null http://127.0.0.1/up || exit 1

@@ -1,0 +1,53 @@
+name: Staging PR check
+
+# Valida un PR hacia `staging` ANTES de mergear, en el MISMO servidor donde se despliega: construye
+# las imágenes de staging (app + web) con el compose de staging, sin desplegar nada. Así un Dockerfile
+# o un build de assets roto se detecta en el PR y no en el deploy. Los tests (Pint/PHPStan/Pest) ya
+# los corre ci.yml en ubuntu-latest para el mismo PR.
+on:
+  pull_request:
+    branches: [staging]
+
+concurrency:
+  group: staging-pr-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build imágenes de staging (sin deploy)
+    # Seguridad: un PR desde un FORK ejecutaría código ajeno en el servidor (runner self-hosted).
+    # Solo se construyen PRs cuyas ramas viven en este mismo repo.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, docker]
+    timeout-minutes: 45
+    env:
+      ENV_FILE: ${{ runner.temp }}/logistics-staging-pr.env
+      # Proyecto y tag PROPIOS del PR: nunca tocan los contenedores ni las imágenes de staging.
+      STAGING_PROJECT: logistics-staging-pr-${{ github.event.pull_request.number }}
+      STAGING_IMAGE_TAG: pr-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: true
+
+      # El build no necesita secretos reales: se usan valores de relleno solo para que el compose valide.
+      - name: Env de relleno (solo build)
+        env:
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          DB_PASSWORD: build-only
+        run: bash scripts/staging/render-env.sh "$ENV_FILE"
+
+      - name: Build (sin deploy)
+        run: bash scripts/staging/deploy.sh "$ENV_FILE" build
+
+      - name: Limpieza
+        if: always()
+        run: |
+          rm -f "$ENV_FILE"
+          docker image rm -f "dismac/logistics-app:${STAGING_IMAGE_TAG}" "dismac/logistics-web:${STAGING_IMAGE_TAG}" 2>/dev/null || true
+          docker image prune -f
+          docker builder prune -f --filter until=168h
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +

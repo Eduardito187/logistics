@@ -52,12 +52,18 @@
         <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
         {{-- Teselas solo del tileserver self-host (CERO CDN): sin fallback a un CDN público si no responde. --}}
         <script src="{{ asset('js/dismac-maps.js') }}"></script>
+        {{-- Ciclo de vida del polling/mapa en modo SPA: libera intervalo y Leaflet al salir (dismac-live.js). --}}
+        <script src="{{ asset('js/dismac-live.js') }}"></script>
     @endassets
 
     @script
     <script>
         const el = document.getElementById('live-fleet-map');
         const panel = document.getElementById('fleet-exceptions');
+        // Sesión "en vivo": al salir con navegación SPA (o al destruirse el componente) corta el polling,
+        // los temporizadores y el mapa. Sin esto el intervalo seguía vivo con un $wire muerto y reventaba
+        // "Cannot read properties of undefined (reading 'then')" cada 10 s, acumulando mapas por visita.
+        const live = window.DismacLive.session({ el, component: $wire.__instance });
         // Datos iniciales (primitivos) inyectados por el servidor para el primer pintado.
         let positions = @js($positions);
         let exceptions = @js($exceptions);
@@ -82,6 +88,8 @@
             attribution: @js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
             maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
         }).addTo(map);
+        // Al salir de la página se destruye el mapa (listeners de window, teselas y capas).
+        live.onDispose(() => map.remove());
 
         // Capa de marcadores de vehículos (se vacía y se vuelve a llenar en cada refresco).
         const fleetLayer = L.layerGroup().addTo(map);
@@ -166,6 +174,8 @@
             fetch(url)
                 .then((r) => (r.ok ? r.json() : Promise.reject(new Error('match http ' + r.status))))
                 .then((data) => {
+                    // La página pudo cerrarse mientras OSRM respondía: no tocar un mapa ya liberado.
+                    if (!live.alive) return;
                     if (!data || data.code !== 'Ok' || !Array.isArray(data.matchings) || !data.matchings.length) {
                         throw new Error('match sin geometría');
                     }
@@ -182,7 +192,7 @@
                     const line = L.polyline(snapped, { color: '#E2231A', weight: 4, opacity: 0.9 }).addTo(trackLayer);
                     try { map.fitBounds(line.getBounds().pad(0.2)); } catch (e) {}
                 })
-                .catch(() => raw());
+                .catch(() => { if (live.alive) raw(); });
         };
 
         // Índice del vértice de la ruta MÁS CERCANO a un punto (para ubicar el avance del camión sobre la ruta).
@@ -253,20 +263,40 @@
         // Drill-down: dibuja la RUTA del día pegada a calles (geometría del plan), con el tramo recorrido en
         // negro y el camión sobre la ruta, MÁS las paradas de sus pedidos (numeradas). Oculta el marcador GPS
         // crudo de ese vehículo (quedaba fuera de la calle). Si no hay plan hoy, cae al recorrido GPS crudo.
+        // Vehículo enfocado cuya ruta se está mostrando: el polling NO vuelve a pintar su punto GPS crudo
+        // (ya se ve SOBRE la ruta; si no, aparecía duplicado fuera de la calle cada 10 s).
+        let focusedOnRoute = null;
+
+        // Día operativo (Y-m-d) de la ÚLTIMA posición conocida del vehículo: el drill-down se ancla a ese día
+        // y no al reloj del servidor (un camión visto ayer mostraba el mapa vacío al clic). El ISO viene con
+        // el offset local (-04:00), así que los 10 primeros caracteres son la fecha local correcta.
+        const dayOf = (vehicleId) => {
+            const p = (positions || []).find((x) => x.vehicle_id === vehicleId);
+            return p && typeof p.recorded_at === 'string' ? p.recorded_at.slice(0, 10) : null;
+        };
+
         const focusVehicle = (vehicleId, lat, lng) => {
             if (!vehicleId) return;
-            $wire.vehicleRoute(vehicleId).then((route) => {
+            const day = dayOf(vehicleId);
+            // Devuelve a la flota el punto del vehículo enfocado ANTES (estaba oculto bajo su ruta).
+            const prev = focusedOnRoute;
+            if (prev && prev !== vehicleId && markersById[prev]) fleetLayer.addLayer(markersById[prev]);
+            focusedOnRoute = null;
+            trackLayer.clearLayers();
+            stopsLayer.clearLayers();
+            live.call(() => $wire.vehicleRoute(vehicleId, day), (route) => {
                 if (route && route.length >= 2) {
+                    focusedOnRoute = vehicleId;
                     drawRoute(route, (lat != null && lng != null) ? [lat, lng] : null);
                     // Oculta el punto GPS fuera de ruta: el camión ya se ve SOBRE la ruta (lo pinta drawRoute).
                     if (markersById[vehicleId]) { fleetLayer.removeLayer(markersById[vehicleId]); }
                 } else {
                     if (lat != null && lng != null) map.setView([lat, lng], Math.max(map.getZoom(), 14));
-                    $wire.vehicleTrack(vehicleId).then((pings) => drawTrack(pings || []));
+                    live.call(() => $wire.vehicleTrack(vehicleId, day), (pings) => drawTrack(pings || []));
                 }
             });
             // Paradas de los pedidos (independiente de la ruta): numeradas, verde=entregada, rojo=pendiente.
-            $wire.vehicleStops(vehicleId).then((stops) => drawStops(stops || []));
+            live.call(() => $wire.vehicleStops(vehicleId, day), (stops) => drawStops(stops || []));
         };
 
         // Repinta todos los marcadores de la flota a partir de las posiciones actuales.
@@ -284,6 +314,8 @@
                 // Clic en el camión → su ruta del día (recorrido en negro, por recorrer en rojo, camión sobre la ruta).
                 marker.on('click', () => focusVehicle(p.vehicle_id, p.lat, p.lng));
                 markersById[p.vehicle_id] = marker;
+                // El enfocado ya está dibujado SOBRE su ruta: no repetir su punto GPS crudo.
+                if (p.vehicle_id === focusedOnRoute) fleetLayer.removeLayer(marker);
                 if (p.lat != null && p.lng != null) pts.push([p.lat, p.lng]);
             });
             // Encuadra la flota la primera vez (así no quedás en el centro de Bolivia con los camiones fuera de vista).
@@ -356,10 +388,10 @@
             panel.querySelectorAll('[data-ack]').forEach((btn) => {
                 btn.addEventListener('click', () => {
                     btn.disabled = true;
-                    $wire.acknowledge(btn.getAttribute('data-ack')).then((fresh) => {
+                    live.call(() => $wire.acknowledge(btn.getAttribute('data-ack')), (fresh) => {
                         exceptions = fresh || { alerts: [], idle: [] };
                         renderExceptions();
-                    });
+                    }, () => { btn.disabled = false; }); // si falla la red, se puede reintentar
                 });
             });
             panel.querySelectorAll('[data-focus-alert]').forEach((btn) => {
@@ -380,19 +412,20 @@
         renderExceptions();
 
         // El contenedor puede estar oculto al crearse; recalcular tamaño cuando ya es visible.
-        setTimeout(() => map.invalidateSize(), 300);
+        live.timeout(300, () => map.invalidateSize());
 
         // Polling: cada 10 s se vuelven a pedir posiciones y excepciones al servidor y se repinta todo.
-        setInterval(() => {
-            $wire.positions().then((fresh) => {
+        // Lo gestiona la sesión: se corta al salir de la página, no se solapa y no corre con la pestaña oculta.
+        live.every(10000, () => Promise.all([
+            live.call(() => $wire.positions(), (fresh) => {
                 positions = fresh || [];
                 render();
-            });
-            $wire.exceptions().then((fresh) => {
+            }),
+            live.call(() => $wire.exceptions(), (fresh) => {
                 exceptions = fresh || { alerts: [], idle: [] };
                 renderExceptions();
-            });
-        }, 10000);
+            }),
+        ]));
     </script>
     @endscript
 </x-filament-panels::page>
