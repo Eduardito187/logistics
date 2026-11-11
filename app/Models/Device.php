@@ -75,6 +75,18 @@ class Device extends Model
                 $device->uuid = (string) Str::uuid7();
             }
         });
+
+        // Invalidación del snapshot cacheado de la puerta app ante CUALQUIER cambio de binding o de
+        // revocación, venga del camino que venga (login, verify de 2FA, re-login tras desalojo, futuros).
+        // Sin esto, un login de OTRO usuario en el mismo teléfono (misma fila por fingerprint) quedaba
+        // ≤30 s con el snapshot del usuario anterior y la guarda respondía 401 device_revoked al token
+        // recién emitido. El camino caliente no se afecta: el touch de last_seen usa query()->update()
+        // (no dispara eventos) y aquí solo se reacciona a user_id/revoked_at/revoked_reason.
+        static::saved(function (Device $device): void {
+            if ($device->wasRecentlyCreated || $device->wasChanged(['user_id', 'revoked_at', 'revoked_reason'])) {
+                EnsureDeviceToken::forgetDevice($device->getKey());
+            }
+        });
     }
 
     /**
