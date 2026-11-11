@@ -114,6 +114,15 @@ check /up 200                 # Laravel vivo (nginx → FPM → framework)
 check /api/v1/health 200      # PostgreSQL+PostGIS y Valkey OK (503 si alguno falla)
 grep -q '"status":"ok"' /tmp/staging-smoke.out || { echo "health no reporta status ok"; cat /tmp/staging-smoke.out; false; }
 check /admin/login 200        # Panel Filament renderiza (detecta assets/manifest de Vite faltantes)
+
+# Teselas del mapa: la URL la pide el NAVEGADOR del usuario, así que nunca puede ser localhost en un
+# servidor (pasó: el mapa de flota quedaba sin fondo en staging). Falla el deploy en vez de dejarlo roto.
+tiles="$(dc exec -T app php artisan config:show maps.tile_url 2>&1 | tr -s ' ' | tail -n 2)"
+echo "Teselas: ${tiles}"
+if grep -Eq 'localhost|127\.0\.0\.1' <<< "$tiles"; then
+    echo "::error::MAP_TILE_URL apunta a localhost: el mapa quedaría sin fondo para cualquier usuario remoto. Quitá MAP_TILE_URL de STAGING_ENV_EXTRA (usa el default OSM) o poné la URL pública del tileserver."
+    false
+fi
 endstep
 
 trap - ERR

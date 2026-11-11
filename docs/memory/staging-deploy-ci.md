@@ -53,3 +53,16 @@ jobs (nombre = ruta del archivo): workflows INVÁLIDOS por `${{ runner.temp }}` 
 con un paso `echo "ENV_FILE=$RUNNER_TEMP/..." >> "$GITHUB_ENV"`; validado con actionlint (exit 0,
 config `.github/actionlint.yaml` con labels docker/oci). Por merge a staging lo esperado son 2 corridas:
 CI + Staging deploy (pr-check solo corre en PRs).
+
+**Unificado en ci.yml (2026-11-11, pedido del dueño "¿por qué se lanzan 2?"):** se borraron
+`staging-deploy.yml` y `staging-pr-check.yml`; ahora son jobs de `ci.yml`: `staging-build` (PR→staging) y
+`deploy-staging` (push a staging, `needs: [lint, test, assets, security, image]`, checkout de `github.sha`).
+Una corrida por merge y el deploy ya no sale si un test falla (antes corría en paralelo y desplegaba igual).
+No volver a crear workflows separados para staging.
+
+**Staging VIVO (2026-11-11):** `http://137.131.245.152:8110` (instancia OCI de pago, NO Always Free: el dueño
+la apaga cuando no la usa). 6 contenedores healthy. Base importada desde el backup de dev del 11-nov
+(`backup:verify` OK + `backup:restore --force`, swap en caliente): 120 tablas, 16.658 filas, users=7,
+migrations=167. Rollback: `logistics_prev_20261111_114405`. OJO: al ser copia de dev, trae las cuentas de
+prueba `*@dismac.test` / `password123` expuestas en IP pública → cambiarlas o desactivarlas.
+`ci.yml` usa `actions/checkout@v5` + `setup-node@v5` (aviso de Node 20).
