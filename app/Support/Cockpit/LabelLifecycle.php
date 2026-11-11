@@ -54,7 +54,25 @@ final class LabelLifecycle
      */
     public function timeline(string $labelId): array
     {
-        $items = [...$this->baseEvents($labelId), ...$this->auditEvents($labelId), ...$this->scanEvents($labelId)];
+        $unit = $this->resolveUnit($labelId);
+        $truck = $this->truckAssignment($unit?->shipmentId);
+        $scans = $this->scanEvents($unit?->unitId, $truck);
+
+        $items = [...$this->baseEvents($labelId), ...$this->auditEvents($labelId), ...$scans];
+
+        // Asignar el envío a un camión ES cargarlo (regla de operación): si no hubo escaneo de carga, la
+        // asignación aparece como «Cargada» con la placa; si lo hubo, la placa ya va en ese escaneo.
+        if ($truck !== null && !$this->hasLoadScan($scans)) {
+            $items[] = [
+                'at' => $truck['at'],
+                'when' => $this->human($truck['at']),
+                'event' => 'Cargada',
+                'label' => 'camión',
+                'actor' => '—',
+                'detail' => 'Asignada al camión '.$truck['plate'],
+                'tone' => 'info',
+            ];
+        }
 
         usort($items, static fn (array $a, array $b): int => strcmp($b['at'], $a['at']));
 
@@ -150,13 +168,14 @@ final class LabelLifecycle
     }
 
     /**
-     * Escaneos del bulto de la etiqueta (preparación, carga, prueba de entrega, recepción…) con su actor.
+     * Escaneos del bulto de la etiqueta (preparación, carga, prueba de entrega, recepción…) con su actor. El
+     * escaneo de CARGA lleva la placa del camión al que está asignado el envío.
      *
+     * @param  array{at: string, plate: string}|null                                                                            $truck
      * @return list<array{at: string, when: string, event: string, label: string, actor: string, detail: string, tone: string}>
      */
-    private function scanEvents(string $labelId): array
+    private function scanEvents(?string $unitId, ?array $truck): array
     {
-        $unitId = $this->unitIdOf($labelId);
         if ($unitId === null) {
             return [];
         }
@@ -170,13 +189,14 @@ final class LabelLifecycle
         $out = [];
         foreach ($rows as $r) {
             $at = (string) ($r->occurred_at ?? '');
+            $isLoad = strtolower((string) $r->type) === 'load';
             $out[] = [
                 'at' => $at,
                 'when' => $this->human($at),
                 'event' => $this->scanLabel((string) $r->type),
-                'label' => 'escaneo',
+                'label' => $isLoad ? 'carga' : 'escaneo',
                 'actor' => UserNames::label(is_string($r->user_id ?? null) ? $r->user_id : null),
-                'detail' => '',
+                'detail' => $isLoad && $truck !== null ? 'Camión '.$truck['plate'] : '',
                 'tone' => 'info',
             ];
         }
@@ -184,17 +204,62 @@ final class LabelLifecycle
         return $out;
     }
 
-    /** Resuelve el bulto físico de la etiqueta para unir sus escaneos. Tolerante: null si no resuelve. */
-    private function unitIdOf(string $labelId): ?string
+    /** Resuelve el bulto físico (y su envío) de la etiqueta para unir escaneos y camión. Tolerante: null. */
+    private function resolveUnit(string $labelId): ?LabelUnitView
     {
         try {
             /** @var LabelUnitView $view */
             $view = app(QueryBus::class)->ask(new ResolveLabelUnit($labelId));
 
-            return $view->unitId;
+            return $view;
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Camión al que está asignado el envío (parada de un plan de planificación) con su placa y cuándo se asignó.
+     * Si se reasignó, manda la asignación más reciente. Tolerante: null si no hay o si la lectura falla.
+     *
+     * @return array{at: string, plate: string}|null
+     */
+    private function truckAssignment(?string $shipmentId): ?array
+    {
+        if ($shipmentId === null) {
+            return null;
+        }
+
+        try {
+            $row = DB::table('planning_plan_stops as ps')
+                ->join('planning_plans as p', 'p.id', '=', 'ps.plan_id')
+                ->leftJoin('fleet_vehicles as v', 'v.id', '=', 'p.vehicle_id')
+                ->where('ps.shipment_id', $shipmentId)
+                ->orderByDesc('ps.created_at')
+                ->first(['ps.created_at', 'v.plate']);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'at' => (string) ($row->created_at ?? ''),
+            'plate' => is_string($row->plate ?? null) && $row->plate !== '' ? $row->plate : 'sin placa',
+        ];
+    }
+
+    /** @param list<array{label: string}> $scans */
+    private function hasLoadScan(array $scans): bool
+    {
+        foreach ($scans as $scan) {
+            if ($scan['label'] === 'carga') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param array<string, mixed> $meta */

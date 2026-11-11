@@ -91,6 +91,8 @@ En GitHub: **Settings → Secrets and variables → Actions**.
 |---|---|
 | `STAGING_ENV_EXTRA` | Líneas `CLAVE=valor` adicionales, una por línea: SAP, FCM, S3, MAIL, `LABELS_SIGNING_KEY`, `MAP_TILE_URL`, etc. **Reemplazan** a los defaults de staging (por ejemplo `MAIL_MAILER=smtp` pisa el `log` por defecto). Las líneas vacías y los comentarios se ignoran. Ver `.env.example`. |
 
+**Clave de firma de etiquetas (`LABELS_SIGNING_KEY`)**: si `STAGING_ENV_EXTRA` no trae una no vacía, `render-env.sh` genera un par Ed25519 **una sola vez** con `openssl` y lo persiste en el servidor en `$STAGING_STATE_DIR/labels-signing.env` (default `~/.logistics-staging/`, permisos 600, fuera del workspace que el checkout limpia). Los deploys siguientes reusan esa misma clave: rotarla invalidaría las etiquetas ya impresas (rotación controlada: `docs/security.md`). El smoke test corre `logistics:labels:public-keys` y **falla el deploy** si la firma no está configurada (antes daba 500 al emitir etiquetas).
+
 ### Variables (no secretas, pestaña *Variables*)
 
 | Variable | Default | Qué es |

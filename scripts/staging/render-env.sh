@@ -91,10 +91,40 @@ else
     cp "$base" "$out"
 fi
 
+# Clave de firma de etiquetas QR (Ed25519, ADR 004). Sin ella, emitir etiquetas da 500 (pasó en staging).
+# Prioridad: LABELS_SIGNING_KEY no vacía en STAGING_ENV_EXTRA → se usa esa. Si no, se usa la persistida en
+# el servidor; y si tampoco existe, se genera UNA vez y se persiste fuera del workspace (que el checkout
+# limpia). Debe ser ESTABLE entre deploys: rotarla invalida las etiquetas ya impresas.
+if ! grep -Eq '^LABELS_SIGNING_KEY=.+' "$out"; then
+    state_dir="${STAGING_STATE_DIR:-$HOME/.logistics-staging}"
+    key_file="$state_dir/labels-signing.env"
+    if [[ ! -s "$key_file" ]]; then
+        command -v openssl >/dev/null 2>&1 || fail "Falta openssl en el runner para generar LABELS_SIGNING_KEY (o definila en STAGING_ENV_EXTRA)."
+        mkdir -p "$state_dir"
+        chmod 700 "$state_dir"
+        work="$(mktemp -d)"
+        openssl genpkey -algorithm ed25519 -out "$work/k.pem" 2>/dev/null
+        # Formato libsodium: secretkey = semilla(32) || pública(32); son los últimos 32 bytes de cada DER.
+        openssl pkey -in "$work/k.pem" -outform DER | tail -c 32 > "$work/seed.bin"
+        openssl pkey -in "$work/k.pem" -pubout -outform DER | tail -c 32 > "$work/pub.bin"
+        secret="$(cat "$work/seed.bin" "$work/pub.bin" | base64 | tr -d '\n')"
+        rm -rf "$work"
+        [[ "$(printf '%s' "$secret" | base64 -d | wc -c)" -eq 64 ]] || fail "No se pudo generar LABELS_SIGNING_KEY (largo inválido)."
+        printf 'LABELS_ACTIVE_KEY_ID=1\nLABELS_SIGNING_KEY=%s\n' "$secret" > "$key_file"
+        chmod 600 "$key_file"
+        unset secret
+        echo "[render-env] LABELS_SIGNING_KEY generada y persistida en $key_file (estable entre deploys)."
+    fi
+    # La clave y su id van juntos: se reemplazan ambos (descarta un LABELS_SIGNING_KEY= vacío de EXTRA).
+    grep -Ev '^LABELS_(SIGNING_KEY|ACTIVE_KEY_ID)=' "$out" > "$out.tmp" || true
+    cat "$key_file" >> "$out.tmp"
+    mv "$out.tmp" "$out"
+fi
+
 # STAGING_HTTP_PORT también lo interpola el compose (puerto publicado de nginx).
 grep -q '^STAGING_HTTP_PORT=' "$out" || echo "STAGING_HTTP_PORT=${port}" >> "$out"
 
 chmod 600 "$out"
 echo "[render-env] env de staging generado ($(grep -c '=' "$out") claves):"
-cut -d= -f1 "$out" | grep -v '^$' | sort | tr '\n' ' '
+cut -d= -f1 "$out" | grep -Ev '^(#|$)' | sort | tr '\n' ' '
 echo

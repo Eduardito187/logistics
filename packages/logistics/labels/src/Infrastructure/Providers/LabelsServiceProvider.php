@@ -57,6 +57,8 @@ use Logistics\Labels\Infrastructure\Settings\SettingsLabelSymbologyProvider;
 use Logistics\Labels\Infrastructure\Zpl\ZplLabelRenderer;
 use Logistics\Labels\Presentation\Console\ExportPublicKeysCommand;
 use Logistics\Labels\Presentation\Console\GenerateSigningKeyCommand;
+use Logistics\Labels\Presentation\Filament\Configuration\LabelFormatSection;
+use Logistics\Settings\Presentation\Filament\Configuration\ConfigurationRegistry;
 use Logistics\Shared\Application\HandlerRegistry;
 use RuntimeException;
 
@@ -148,6 +150,9 @@ final class LabelsServiceProvider extends ServiceProvider
         $registry->register(UpdatePrinter::class, UpdatePrinterHandler::class);
         $registry->register(RemovePrinter::class, RemovePrinterHandler::class);
         $registry->register(ListAvailablePrinters::class, ListAvailablePrintersHandler::class);
+
+        // Sección de la pantalla «Configuración» (estilo Magento): formato de la etiqueta.
+        $this->app->make(ConfigurationRegistry::class)->register(LabelFormatSection::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([
