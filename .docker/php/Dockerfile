@@ -263,16 +263,25 @@ CMD ["php-fpm", "-F"]
 # STAGING_HTTP_PORT → 8080 (hacia afuera no cambia nada). El default.conf de dev (80) se reescribe acá.
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS web
 
-COPY --chown=101:101 .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-COPY --chown=101:101 --from=prod /var/www/html/public /var/www/html/public
+# Lo copiado queda de ROOT y solo legible por nginx (Sonar: "make sure the copied resource cannot be
+# modified by a non-root user"): el proceso uid 101 lee la config y los estáticos pero no puede alterarlos.
+# Los ajustes se hacen como root y recién al final se baja a uid 101.
+USER root
+
+COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY --from=prod /var/www/html/public /var/www/html/public
 
 # Puerto no privilegiado + `/storage/...` público (archivos subidos al disco `public`): el volumen de
 # storage de la app se monta en /var/www/html/storage (solo lectura) y este symlink lo expone, igual que
-# `storage:link`. Todo como uid 101 (dueño de lo copiado arriba), sin pasar a root.
+# `storage:link`. Permisos: root dueño, resto solo lectura (dirs 755, archivos 644).
 RUN sed -i -e 's/listen 80 default_server;/listen 8080 default_server;/' \
            -e 's/listen \[::\]:80 default_server;/listen [::]:8080 default_server;/' \
            /etc/nginx/conf.d/default.conf \
     && grep -q 'listen 8080 default_server;' /etc/nginx/conf.d/default.conf \
+    && chown root:root /etc/nginx/conf.d/default.conf && chmod 644 /etc/nginx/conf.d/default.conf \
+    && chown -R root:root /var/www/html/public \
+    && find /var/www/html/public -type d -exec chmod 755 {} + \
+    && find /var/www/html/public -type f -exec chmod 644 {} + \
     && ln -sfn /var/www/html/storage/app/public /var/www/html/public/storage
 
 USER 101

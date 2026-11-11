@@ -44,3 +44,6 @@ Ver [[ci-docker-vite-gotchas]], [[windows-migration]].
 **Sonar PR 27 (2026-11-11):** el stage `web` corría nginx como root → `docker:S6471` bajó el Security
 Rating a B y falló el Quality Gate. Ahora `nginxinc/nginx-unprivileged:1.27-alpine` (uid 101, escucha 8080
 dentro; el compose publica `STAGING_HTTP_PORT:8080`). Verificado: master y workers como `nginx`, `nginx -t` OK, estáticos 200.
+Segundo aviso de Sonar sobre el mismo stage: `COPY --chown=101:101` → "copied resource can be modified by
+a non-root user". Corregido: `USER root`, COPY sin chown, `chown root` + 755/644, `USER 101` al final
+(uid 101 solo lee; verificado que no puede escribir y que sirve 200).

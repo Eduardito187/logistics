@@ -71,9 +71,13 @@ scanner de CI, que sí las honra).
 
 - **docker:S6471 "image runs with root as the default user"** (PR 27, bajó el Security Rating a B): una
   imagen de servicio sin `USER`. Para nginx usar `nginxinc/nginx-unprivileged:<ver>-alpine` (uid 101,
-  escucha 8080: reescribir `listen 80` → `8080` en el conf, `COPY --chown=101:101`, `USER 101`,
-  healthcheck a `:8080`, y el compose publica `<host>:8080`). Verificar: `docker inspect -f '{{.Config.User}}'`
-  y `ps -o user,args` dentro del contenedor (el master también debe ser `nginx`).
+  escucha 8080: reescribir `listen 80` → `8080` en el conf, healthcheck a `:8080`, el compose publica
+  `<host>:8080`). Verificar: `docker inspect -f '{{.Config.User}}'` y `ps -o user,args` dentro del
+  contenedor (el master también debe ser `nginx`).
+- **"Make sure the copied resource cannot be modified by a non-root user"** (sale si se hace
+  `COPY --chown=<usuario-del-servicio>`): NO darle los archivos al usuario que corre el proceso. Patrón:
+  `USER root` → `COPY` sin `--chown` → `RUN` ajustes + `chown -R root:root` + dirs 755 / archivos 644 →
+  `USER 101` al final. Probar que `uid 101` NO puede escribir (`touch` falla) y que igual sirve (200).
 
 ### Reliability (bugs) — en esta plataforma casi siempre son de accesibilidad en blades
 - **S6853 input sin label** → agregar `id` + `aria-label` al `<input>`/`<textarea>`/`<select>`.
