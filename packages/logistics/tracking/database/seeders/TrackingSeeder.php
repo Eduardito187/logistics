@@ -37,9 +37,9 @@ final class TrackingSeeder extends Seeder
      */
     private const STATUS_CYCLE = [
         VisibleStatus::OnTheWay,
-        VisibleStatus::Registered,
-        VisibleStatus::Prepared,
-        VisibleStatus::Arriving,
+        VisibleStatus::Processing,
+        VisibleStatus::InProgress,
+        VisibleStatus::Loaded,
         VisibleStatus::Delivered,
         VisibleStatus::Failed,
     ];
@@ -105,7 +105,7 @@ final class TrackingSeeder extends Seeder
             ->get();
 
         foreach ($units as $unit) {
-            $shipmentStatus = $statusByShipment[$unit->shipment_id] ?? VisibleStatus::Registered->value;
+            $shipmentStatus = $statusByShipment[$unit->shipment_id] ?? VisibleStatus::Processing->value;
             $unitStatus = $this->unitStatusFor($shipmentStatus);
 
             UnitTrackingRecord::query()->updateOrCreate(
@@ -130,8 +130,8 @@ final class TrackingSeeder extends Seeder
         return match ($shipmentStatus) {
             VisibleStatus::Delivered->value => UnitStatus::Delivered,
             VisibleStatus::Failed->value => UnitStatus::Failed,
-            VisibleStatus::OnTheWay->value, VisibleStatus::Arriving->value => UnitStatus::Loaded,
-            VisibleStatus::Prepared->value => UnitStatus::Prepared,
+            VisibleStatus::OnTheWay->value, VisibleStatus::Loaded->value => UnitStatus::Loaded,
+            VisibleStatus::InProgress->value => UnitStatus::Prepared,
             default => UnitStatus::Registered,
         };
     }
@@ -159,9 +159,9 @@ final class TrackingSeeder extends Seeder
         ];
 
         // Los estados en movimiento traen posición GPS fresca, ETA y paradas por delante.
-        if (in_array($status, [VisibleStatus::OnTheWay, VisibleStatus::Arriving], true)) {
-            $minutesAhead = $status === VisibleStatus::Arriving ? 15 : 90;
-            $attributes['remaining_stops'] = $status === VisibleStatus::Arriving ? 1 : max(0, $position - 1);
+        if (in_array($status, [VisibleStatus::OnTheWay, VisibleStatus::Loaded], true)) {
+            $minutesAhead = $status === VisibleStatus::Loaded ? 90 : 60;
+            $attributes['remaining_stops'] = max(0, $position - 1);
             $attributes['eta'] = (new DateTimeImmutable(sprintf('+%d minutes', $minutesAhead)))->format(DateTimeImmutable::ATOM);
             $attributes['last_lat'] = '-16.5000000';
             $attributes['last_lng'] = '-68.1500000';
@@ -176,10 +176,10 @@ final class TrackingSeeder extends Seeder
      */
     private function seedFromFactories(): void
     {
-        TrackingRecordFactory::new()->withStatus(VisibleStatus::Registered)->count(4)->create();
-        TrackingRecordFactory::new()->withStatus(VisibleStatus::Prepared)->count(4)->create();
+        TrackingRecordFactory::new()->withStatus(VisibleStatus::Processing)->count(4)->create();
+        TrackingRecordFactory::new()->withStatus(VisibleStatus::InProgress)->count(4)->create();
         TrackingRecordFactory::new()->onTheWay()->count(6)->create();
-        TrackingRecordFactory::new()->withStatus(VisibleStatus::Arriving)->count(3)->create();
+        TrackingRecordFactory::new()->withStatus(VisibleStatus::Loaded)->count(3)->create();
         TrackingRecordFactory::new()->delivered()->count(8)->create();
         TrackingRecordFactory::new()->withStatus(VisibleStatus::Failed)->count(2)->create();
     }

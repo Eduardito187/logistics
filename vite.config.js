@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
 import tailwindcss from '@tailwindcss/vite';
+import vue from '@vitejs/plugin-vue';
 
 // Único build de assets: el tema del panel admin de Filament. La SPA Vue/Inertia fue eliminada;
 // el admin es el único frontend.
@@ -11,9 +12,16 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/css/filament/admin/theme.css', 'resources/js/echo.js'],
+            // Tema del admin Filament + Echo + bundle de la app Vue/Inertia (cliente/campo). Inputs
+            // independientes: la SPA no toca el tema del admin.
+            input: [
+                'resources/css/filament/admin/theme.css',
+                'resources/js/echo.js',
+                'resources/js/app.js',
+            ],
             refresh: true,
         }),
+        vue(),
         tailwindcss(),
     ],
     server: {

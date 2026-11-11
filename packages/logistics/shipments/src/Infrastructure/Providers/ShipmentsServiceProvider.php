@@ -16,6 +16,8 @@ use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipme
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddressHandler;
 use Logistics\Shipments\Application\Command\ReceiveShipment\ReceiveShipment;
 use Logistics\Shipments\Application\Command\ReceiveShipment\ReceiveShipmentHandler;
+use Logistics\Shipments\Application\Command\RescheduleShipmentDelivery\RescheduleShipmentDelivery;
+use Logistics\Shipments\Application\Command\RescheduleShipmentDelivery\RescheduleShipmentDeliveryHandler;
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlot;
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlotHandler;
 use Logistics\Shipments\Application\Contract\MagentoOrderReader;
@@ -67,6 +69,7 @@ final class ShipmentsServiceProvider extends ServiceProvider
         ReceiveShipment::class => ReceiveShipmentHandler::class,
         CancelShipment::class => CancelShipmentHandler::class,
         SetDeliverySlot::class => SetDeliverySlotHandler::class,
+        RescheduleShipmentDelivery::class => RescheduleShipmentDeliveryHandler::class,
         GeocodeShipmentAddress::class => GeocodeShipmentAddressHandler::class,
         FindShipment::class => FindShipmentHandler::class,
         ListShipments::class => ListShipmentsHandler::class,

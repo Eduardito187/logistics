@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Commerce\Orders\Infrastructure\Persistence\Eloquent\Mapper;
 
 use Commerce\Orders\Domain\Model\Order;
+use Commerce\Orders\Domain\ValueObject\FinancingPlan;
 use Commerce\Orders\Domain\ValueObject\OrderId;
 use Commerce\Orders\Domain\ValueObject\OrderLine;
 use Commerce\Orders\Domain\ValueObject\OrderStatus;
@@ -30,11 +31,14 @@ final class OrderMapper
                 $record->lines,
             )),
             $record->shipment_requested,
+            FinancingPlan::from($record->financing ?? 'cash'),
+            (bool) ($record->contract_signed ?? false),
+            (bool) ($record->initial_paid ?? false),
         );
     }
 
     /**
-     * @return array{id: string, customer_id: ?string, status: string, currency: string, shipment_requested: bool, ship_to: array{customer_name: string, address_text: string, reference: ?string, phone: ?string, email: ?string}, lines: list<array{sku: string, product_name: string, unit_price_cents: int, quantity: int}>}
+     * @return array{id: string, customer_id: ?string, status: string, currency: string, shipment_requested: bool, financing: string, contract_signed: bool, initial_paid: bool, ship_to: array{customer_name: string, address_text: string, reference: ?string, phone: ?string, email: ?string}, lines: list<array{sku: string, product_name: string, unit_price_cents: int, quantity: int}>}
      */
     public function toRow(Order $order): array
     {
@@ -44,6 +48,9 @@ final class OrderMapper
             'status' => $order->status()->value,
             'currency' => $order->currency(),
             'shipment_requested' => $order->shipmentRequested(),
+            'financing' => $order->financing()->value,
+            'contract_signed' => $order->contractSigned(),
+            'initial_paid' => $order->initialPaid(),
             'ship_to' => $order->shipTo()->toArray(),
             'lines' => array_values(array_map(
                 static fn (OrderLine $line): array => $line->toArray(),

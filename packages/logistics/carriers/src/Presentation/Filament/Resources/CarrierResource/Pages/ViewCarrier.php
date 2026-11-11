@@ -28,6 +28,12 @@ final class ViewCarrier extends ViewRecord
     // Vista propia (cockpit) en lugar del infolist estándar; conserva el chrome de página Filament.
     protected string $view = 'filament.carriers.carrier-hub';
 
+    // Oculta el <h1> de Filament: el hero del cockpit (blade) ya muestra el título; así no se ve duplicado.
+    public function getHeading(): string
+    {
+        return '';
+    }
+
     // Título por el nombre del transportista, nunca el UUID.
     public function getTitle(): string
     {

@@ -13,6 +13,8 @@ use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDrops
 use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDropshipDeliveryHandler;
 use Logistics\Execution\Application\Command\ConfirmDropshipDispatch\ConfirmDropshipDispatch;
 use Logistics\Execution\Application\Command\ConfirmDropshipDispatch\ConfirmDropshipDispatchHandler;
+use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDeparted;
+use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDepartedHandler;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReception;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReceptionHandler;
 use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNode;
@@ -100,6 +102,7 @@ final class ExecutionServiceProvider extends ServiceProvider
     private const HANDLERS = [
         RecordPreparationScan::class => RecordPreparationScanHandler::class,
         RecordLoadScan::class => RecordLoadScanHandler::class,
+        MarkShipmentDeparted::class => MarkShipmentDepartedHandler::class,
         RecordUnloadScan::class => RecordUnloadScanHandler::class,
         RecordProofOfDelivery::class => RecordProofOfDeliveryHandler::class,
         RecordFailedDelivery::class => RecordFailedDeliveryHandler::class,

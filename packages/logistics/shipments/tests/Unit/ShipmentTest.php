@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 use Logistics\Shipments\Domain\Event\ShipmentPlanned;
 use Logistics\Shipments\Domain\Event\ShipmentReceived;
+use Logistics\Shipments\Domain\Event\ShipmentRescheduled;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
 use Logistics\Shipments\Domain\Model\Shipment;
 use Logistics\Shipments\Domain\Model\ShipmentLine;
 use Logistics\Shipments\Domain\ValueObject\Address;
 use Logistics\Shipments\Domain\ValueObject\AddressConfidence;
 use Logistics\Shipments\Domain\ValueObject\Customer;
+use Logistics\Shipments\Domain\ValueObject\DeliverySlot;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ProductName;
 use Logistics\Shipments\Domain\ValueObject\ShipmentId;
@@ -154,4 +156,31 @@ it('reconstitutes without recording events, enabling idempotent reload', functio
         ->and($reloaded->id()->equals($original->id()))->toBeTrue()
         ->and($reloaded->sourceReference()->equals($original->sourceReference()))->toBeTrue()
         ->and($reloaded->physicalUnits())->toHaveCount(2);
+});
+
+it('reschedules the delivery and records ShipmentRescheduled', function (): void {
+    $shipment = receiveShipment();
+    $shipment->releaseEvents();
+
+    $shipment->reschedule(DeliverySlot::of('2026-11-20', '09:00', '12:00'), 'Cliente pidió otro día');
+
+    expect($shipment->deliverySlot()?->date)->toBe('2026-11-20');
+    $events = $shipment->releaseEvents();
+    expect($events)->toHaveCount(1)
+        ->and($events[0])->toBeInstanceOf(ShipmentRescheduled::class)
+        ->and($events[0]->eventName())->toBe('shipments.shipment_rescheduled')
+        ->and($events[0]->payload())->toMatchArray([
+            'delivery_date' => '2026-11-20',
+            'window_start' => '09:00',
+            'window_end' => '12:00',
+            'reason' => 'Cliente pidió otro día',
+        ]);
+});
+
+it('rejects rescheduling a cancelled shipment', function (): void {
+    $shipment = receiveShipment();
+    $shipment->cancel('cliente anuló');
+
+    expect(fn () => $shipment->reschedule(DeliverySlot::of('2026-11-20', '09:00', '12:00')))
+        ->toThrow(ShipmentsException::class, 'reprogramar');
 });

@@ -57,6 +57,10 @@ final class RecordSatisfactionSurveyHandler implements CommandHandler
         }
 
         $shipmentId = $tracking->shipmentId();
+        if ($shipmentId === null) {
+            // Un envío entregado siempre tiene su shipmentId ligado; defensivo para el tipo.
+            throw TrackingException::because('el seguimiento no tiene envío ligado');
+        }
         if ($this->surveys->existsForShipment($shipmentId)) {
             throw TrackingException::because('este envío ya tiene una respuesta de encuesta');
         }
