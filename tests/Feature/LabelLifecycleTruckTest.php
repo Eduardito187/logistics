@@ -80,13 +80,16 @@ beforeEach(function (): void {
     ]);
 });
 
-it('asignar el envío a un camión aparece como Cargada con la placa', function (): void {
+it('asignar el envío a un camión aparece como Cargada con la placa', function (string $dbZone): void {
+    // CI corre PostgreSQL en UTC y local en La Paz: el orden no puede depender de la zona de la sesión.
+    DB::statement("SET LOCAL TIME ZONE '{$dbZone}'");
+
     $timeline = app(LabelLifecycle::class)->timeline(LLT_LABEL);
 
     expect(array_column($timeline, 'event'))->toBe(['Cargada', 'Generada'])
         ->and($timeline[0]['detail'])->toBe('Asignada al camión '.LLT_PLATE)
         ->and($timeline[0]['when'])->toBe('11/11/2026 09:15');
-});
+})->with(['UTC', 'America/La_Paz']);
 
 it('con escaneo de carga, la placa va en el escaneo y no se duplica la carga', function (): void {
     DB::table('execution_scan_events')->insert([
