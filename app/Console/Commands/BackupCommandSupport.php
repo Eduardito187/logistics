@@ -73,40 +73,76 @@ trait BackupCommandSupport
      */
     private function restoreDump(callable $prepare, string $near, bool $force): int
     {
-        try {
-            $database = PostgresBackup::forConnection($this->stringOption('connection') ?? (string) config('database.default'))
-                ->endpoint($this->stringOption('host'), $this->stringOption('port'))->database;
-        } catch (Throwable $e) {
-            $this->error($e->getMessage());
-
-            return self::FAILURE;
-        }
-
-        if (app()->environment('production') && !$force) {
-            $this->error('Restauración en PRODUCCIÓN bloqueada. Volvé a correr con --force si es intencional.');
-
+        $database = $this->restoreTargetDatabase($force);
+        if ($database === null) {
             return self::FAILURE;
         }
         if (!$this->confirmReplace($database, $force)) {
             return self::SUCCESS;
         }
 
+        $result = $this->runSafeRestore($prepare, $near, $database);
+
+        return $result === null ? self::FAILURE : $this->reportRestore($result, $database);
+    }
+
+    /**
+     * Nombre de la base viva destino, o null (con el error ya impreso) si la conexión no sirve o si es
+     * producción sin --force.
+     */
+    private function restoreTargetDatabase(bool $force): ?string
+    {
+        if (app()->environment('production') && !$force) {
+            $this->error('Restauración en PRODUCCIÓN bloqueada. Volvé a correr con --force si es intencional.');
+
+            return null;
+        }
+
+        try {
+            return PostgresBackup::forConnection($this->stringOption('connection') ?? (string) config('database.default'))
+                ->endpoint($this->stringOption('host'), $this->stringOption('port'))->database;
+        } catch (Throwable $e) {
+            $this->error($e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Prepara el dump y corre el restore seguro (scratch + verificación + swap). Null (con el error ya
+     * impreso) si algo falló antes de terminar; el directorio de trabajo se borra siempre.
+     *
+     * @param  callable(string): array{0: string, 1: array<string, mixed>|null}                                                                                                                                                 $prepare
+     * @return array{live: string, prev: string|null, diffs: list<array{item: string, expected: string, actual: string}>, final_diffs: list<array{item: string, expected: string, actual: string}>, verified_counts: bool}|null
+     */
+    private function runSafeRestore(callable $prepare, string $near, string $database): ?array
+    {
         $workDir = BackupBundle::makeWorkDir($near);
 
         try {
             [$dump, $expected] = $prepare($workDir);
             $service = $this->backupService();
             $service->assertClientVersions();
-            $result = $service->safeRestore($dump, $expected, new DateTimeImmutable);
+
+            return $service->safeRestore($dump, $expected, new DateTimeImmutable);
         } catch (Throwable $e) {
             $this->error('Restauración FALLIDA: '.$e->getMessage());
             $this->line("La base viva '{$database}' no fue reemplazada (salvo que el mensaje diga lo contrario).");
 
-            return self::FAILURE;
+            return null;
         } finally {
             File::deleteDirectory($workDir);
         }
+    }
 
+    /**
+     * Reporta el resultado del restore: aborto por diferencias (la viva no se tocó), swap + rollback, y
+     * verificación final.
+     *
+     * @param array{live: string, prev: string|null, diffs: list<array{item: string, expected: string, actual: string}>, final_diffs: list<array{item: string, expected: string, actual: string}>, verified_counts: bool} $result
+     */
+    private function reportRestore(array $result, string $database): int
+    {
         if ($result['diffs'] !== []) {
             $this->printDiffs($result['diffs']);
             $this->error("Restauración ABORTADA: la base restaurada no coincide. La base viva '{$database}' NO se tocó.");

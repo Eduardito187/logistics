@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Support\Database\BackupBundle;
+use App\Support\Database\BackupException;
 use App\Support\Database\DatabaseBackupService;
 use DateTimeImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -52,7 +52,7 @@ final class DatabaseBackupCommand extends Command
             $database = $service->dump($tmp, $versions);
             $database['file'] = basename($file);
             if (!rename($tmp, $file)) {
-                throw new RuntimeException("No se pudo renombrar {$tmp} a {$file}.");
+                throw new BackupException("No se pudo renombrar {$tmp} a {$file}.");
             }
             BackupBundle::writeManifest($file.'.manifest.json', BackupBundle::manifest($database, $at, DatabaseBackupService::gitCommit()));
         } catch (Throwable $e) {

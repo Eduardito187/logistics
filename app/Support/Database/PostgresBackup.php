@@ -7,7 +7,6 @@ namespace App\Support\Database;
 use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Facades\Process;
-use RuntimeException;
 
 /**
  * Backup/restore COMPLETO de la base PostgreSQL (estructura + datos) con las herramientas nativas
@@ -42,7 +41,7 @@ final class PostgresBackup
         $config = config("database.connections.{$connection}");
 
         if (!is_array($config) || ($config['driver'] ?? null) !== 'pgsql') {
-            throw new RuntimeException("La conexión '{$connection}' no es PostgreSQL; el backup/restore solo soporta pgsql.");
+            throw new BackupException("La conexión '{$connection}' no es PostgreSQL; el backup/restore solo soporta pgsql.");
         }
 
         $directHost = config('backup.direct_host');

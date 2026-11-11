@@ -108,7 +108,7 @@ it('devuelve el recorrido del día de un vehículo desde el mapa en vivo', funct
 
 it('ancla el drill-down al día de la última posición del camión, no al de hoy', function (): void {
     // Regresión: un camión visto AYER (el mapa lista posiciones de hasta 48 h) quedaba sin ruta ni
-    // recorrido al hacerle clic porque todo se filtraba por "hoy".
+    // recorrido al hacerle clic porque cada consulta se filtraba por "hoy".
     $vehicleId = '0192aaaa-bbbb-7ccc-8ddd-eeeeeeeeeef0';
     $yesterday = new DateTimeImmutable('yesterday');
     PingFactory::new()->forVehicleAt($vehicleId, $yesterday->modify('+10 hours'))->create();

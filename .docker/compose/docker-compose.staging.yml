@@ -173,7 +173,8 @@ services:
         image: dismac/logistics-web:${STAGING_IMAGE_TAG:-staging}
         restart: unless-stopped
         ports:
-            - "${STAGING_HTTP_PORT:-8110}:80"
+            # nginx corre sin root (nginx-unprivileged) y escucha en 8080 adentro del contenedor.
+            - "${STAGING_HTTP_PORT:-8110}:8080"
         volumes:
             # Archivos subidos al disco `public` (servidos vía el symlink public/storage).
             - storage:/var/www/html/storage:ro

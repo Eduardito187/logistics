@@ -33,48 +33,12 @@ final class BackupVerifyCommand extends Command
     public function handle(): int
     {
         $bundle = (string) $this->argument('bundle');
-        if (!is_file($bundle)) {
-            $this->error("No existe el bundle: {$bundle}");
-
+        $outcome = is_file($bundle) ? $this->verifyBundle($bundle) : $this->missingBundle($bundle);
+        if ($outcome === null) {
             return self::FAILURE;
         }
 
-        $workDir = BackupBundle::makeWorkDir($bundle);
-        $scratch = null;
-        $service = null;
-        $database = [];
-
-        try {
-            $manifest = BackupBundle::unpack($bundle, $workDir);
-            /** @var array<string, mixed> $database */
-            $database = $manifest['database'];
-            $dump = $workDir.'/'.BackupBundle::DUMP;
-
-            $diffs = [];
-            $sha = (string) hash_file('sha256', $dump);
-            $expectedSha = $database['sha256'] ?? null;
-            if ($sha !== $expectedSha) {
-                $diffs[] = ['item' => 'database.dump sha256', 'expected' => is_string($expectedSha) ? $expectedSha : 'null', 'actual' => $sha];
-            }
-
-            if ($diffs === []) {
-                $service = $this->backupService();
-                $service->assertClientVersions();
-                $scratch = BackupManifest::auxiliaryName($service->endpoint()->database, 'verify', new DateTimeImmutable);
-                $diffs = $service->restoreIntoScratch($dump, $scratch, $database);
-            }
-        } catch (Throwable $e) {
-            $this->error('Verificación FALLIDA: '.$e->getMessage());
-
-            return self::FAILURE;
-        } finally {
-            if ($service !== null && $scratch !== null) {
-                $service->dropScratchQuietly($scratch);
-                $this->line("Base scratch '{$scratch}' eliminada.");
-            }
-            File::deleteDirectory($workDir);
-        }
-
+        [$diffs, $database] = $outcome;
         if ($diffs !== []) {
             $this->printDiffs($diffs);
             $this->error('Verificación FALLIDA: el backup no coincide con su manifest.');
@@ -86,5 +50,57 @@ final class BackupVerifyCommand extends Command
         $this->info('Verificación OK: estructura y conteo de filas idénticos al manifest.');
 
         return self::SUCCESS;
+    }
+
+    /** Bundle inexistente: imprime el error y no hay resultado. */
+    private function missingBundle(string $bundle): null
+    {
+        $this->error("No existe el bundle: {$bundle}");
+
+        return null;
+    }
+
+    /**
+     * Desempaqueta, valida el sha256 y restaura en una base scratch comparando contra el manifest. Devuelve
+     * [diferencias, sección `database` del manifest], o null (con el error ya impreso) si no pudo verificar.
+     * La base scratch y el directorio de trabajo se eliminan siempre.
+     *
+     * @return array{0: list<array{item: string, expected: string, actual: string}>, 1: array<string, mixed>}|null
+     */
+    private function verifyBundle(string $bundle): ?array
+    {
+        $workDir = BackupBundle::makeWorkDir($bundle);
+        $scratch = null;
+        $service = null;
+
+        try {
+            $manifest = BackupBundle::unpack($bundle, $workDir);
+            /** @var array<string, mixed> $database */
+            $database = $manifest['database'];
+            $dump = $workDir.'/'.BackupBundle::DUMP;
+
+            $sha = (string) hash_file('sha256', $dump);
+            $expectedSha = $database['sha256'] ?? null;
+            if ($sha !== $expectedSha) {
+                // Dump corrupto: no tiene sentido restaurarlo; la diferencia de sha256 ya es el veredicto.
+                return [[['item' => 'database.dump sha256', 'expected' => is_string($expectedSha) ? $expectedSha : 'null', 'actual' => $sha]], $database];
+            }
+
+            $service = $this->backupService();
+            $service->assertClientVersions();
+            $scratch = BackupManifest::auxiliaryName($service->endpoint()->database, 'verify', new DateTimeImmutable);
+
+            return [$service->restoreIntoScratch($dump, $scratch, $database), $database];
+        } catch (Throwable $e) {
+            $this->error('Verificación FALLIDA: '.$e->getMessage());
+
+            return null;
+        } finally {
+            if ($service !== null && $scratch !== null) {
+                $service->dropScratchQuietly($scratch);
+                $this->line("Base scratch '{$scratch}' eliminada.");
+            }
+            File::deleteDirectory($workDir);
+        }
     }
 }

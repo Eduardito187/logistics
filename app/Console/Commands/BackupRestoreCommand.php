@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Support\Database\BackupBundle;
+use App\Support\Database\BackupException;
 use Illuminate\Console\Command;
-use RuntimeException;
 
 /**
  * Restore SEGURO por SWAP de un bundle de backup:create sobre la base de la conexión:
@@ -51,7 +51,7 @@ final class BackupRestoreCommand extends Command
             $dump = $workDir.'/'.BackupBundle::DUMP;
 
             if (hash_file('sha256', $dump) !== ($database['sha256'] ?? null)) {
-                throw new RuntimeException('El sha256 de database.dump no coincide con el manifest: bundle corrupto.');
+                throw new BackupException('El sha256 de database.dump no coincide con el manifest: bundle corrupto.');
             }
 
             return [$dump, $database];

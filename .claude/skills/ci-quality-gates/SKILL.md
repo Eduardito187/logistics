@@ -69,6 +69,12 @@ scanner de CI, que sí las honra).
   Verificado: quita el patrón y los tests de subida/import siguen verdes. Aplicarlo a TODOS los sitios con
   ese patrón (`grep -rn "'file'" **/Http/Request **/Http/Controller`), no solo al del New Code.
 
+- **docker:S6471 "image runs with root as the default user"** (PR 27, bajó el Security Rating a B): una
+  imagen de servicio sin `USER`. Para nginx usar `nginxinc/nginx-unprivileged:<ver>-alpine` (uid 101,
+  escucha 8080: reescribir `listen 80` → `8080` en el conf, `COPY --chown=101:101`, `USER 101`,
+  healthcheck a `:8080`, y el compose publica `<host>:8080`). Verificar: `docker inspect -f '{{.Config.User}}'`
+  y `ps -o user,args` dentro del contenedor (el master también debe ser `nginx`).
+
 ### Reliability (bugs) — en esta plataforma casi siempre son de accesibilidad en blades
 - **S6853 input sin label** → agregar `id` + `aria-label` al `<input>`/`<textarea>`/`<select>`.
 - **S1082 `<div>`/`<li>` con `@click` sin teclado** → agregar `@keydown.*` simétrico (`@keydown.escape`,
@@ -81,8 +87,36 @@ scanner de CI, que sí las honra).
 - Va en `sonar.cpd.exclusions` de `.sonarcloud.properties` (ESO sí se honra). Ya excluidos a propósito:
   `**/Presentation/**`, `app/Filament/**`, tests, seeders (duplicación intencional por ADR 001/008).
 
+### Mantenibilidad: recetas seguras cuando el dueño pide "fix all" (no bloquean el gate)
+
+Cuando el dueño pide arreglar TODO, hacerlo, pero con cambios mecánicos y probados (tests del archivo):
+- **"Define and throw a dedicated exception"** → excepción propia del módulo que EXTIENDE la genérica
+  (`final class BackupException extends RuntimeException {}`): ningún `catch` existente se rompe.
+- **"N returns > 3" / cognitive complexity** → extraer pasos a métodos privados que devuelvan `?valor`
+  (null = error ya impreso) y dejar el método público como orquestador de ≤3 returns. Preservar mensajes
+  y orden de las comprobaciones; correr los tests del comando.
+- **Literal duplicado ×3** → constante de clase; en tests de Pest (scope global) `const` con prefijo
+  ÚNICO por archivo (`BACKUP_CMD_TEST_DIR`) para no chocar con otros archivos; en SQL repetido, un closure
+  que arme la cola común.
+- **"Immediate return"** en `fetchAll` tipado → `return $stmt !== false ? array_values(array_filter($stmt->fetchAll(PDO::FETCH_NUM), is_array(...))) : [];`
+- **Nested ternary** → `if (...) { return ...; }` + ternario simple.
+- **Parámetro sin usar en closure** que exige una firma `callable(string)` → quitar el parámetro (PHP
+  acepta closures con menos parámetros) y comentar por qué.
+- **Bloque vacío `function (...) {}`** como logger no-op → propiedad `?Closure` + método `say()` que
+  chequea null. OJO al reemplazar en masa `($this->log)(` por `$this->say(`: no tocar la línea DENTRO de
+  `say()` (recursión infinita).
+- **Shell**: `[` → `[[ … && … ]]` en scripts bash (no en `#!/bin/sh`); `case` sin `*)` → agregar
+  `*) ;;` comentado; "assign positional parameter" → `local path="$1"`.
+- **PowerShell complejidad** → partir funciones y eliminar ramas para formatos que ya no existen.
+
 ### Falsos positivos de texto
 - Sonar marca la palabra española **"todo"** suelta como TODO → usar `cada`/`completo`/`íntegramente`.
+  Pasa también en comentarios de TESTS (PR 27: "porque todo se filtraba por hoy").
+
+### Bash del harness en Windows (al aplicar fixes)
+La herramienta Bash de este entorno colapsa `\\` en `sed`/`perl` → un `use App\Support\...` sale como
+`use AppSupport...`. Para imports/namespace con barras invertidas usar el editor (Edit), no sed. Después de
+cualquier reemplazo masivo: `php -l` de cada archivo + PHPStan.
 
 ## Paso 4 — `composer audit` (job aparte del gate Sonar)
 
@@ -102,6 +136,24 @@ docker compose exec -T app ./vendor/bin/phpstan analyse --memory-limit=1G    # 0
 docker compose exec -T app ./vendor/bin/pest                                 # exit 0, reportar N passed
 ```
 No pipear `pest` a `tail -N` en background: trunca el resumen "Tests: N passed". Confiar en exit 0 + cero FAIL.
+
+## Mapa de workflows (`.github/workflows/`)
+
+| Workflow | Cuándo | Runner | Qué valida |
+|---|---|---|---|
+| `ci.yml` | PR y push a `dev`/`staging`/`production` | `ubuntu-latest` | Pint, PHPStan 8, Pest `--coverage --min=75`, build de assets, `composer audit` + `npm audit`, build de imagen `prod` |
+| `branch-policy.yml` | PR | `ubuntu-latest` | origen permitido (feature→dev→staging→production; hotfix/*) |
+| `staging-pr-check.yml` | PR → `staging` (solo ramas del repo, no forks) | self-hosted OCI | build de imágenes de staging (`scripts/staging/deploy.sh <env> build`) |
+| `staging-deploy.yml` | push a `staging` (solo ese ref) | self-hosted OCI | build + migrate + up + smoke. Ver skill `staging-deploy` |
+
+Si falla `staging-pr-check` pero `ci.yml` pasa, el problema está en el Dockerfile/compose de staging, no en
+el código: reproducir con la skill `staging-deploy` (prueba local).
+
+## Fin de línea (evita diffs fantasma)
+
+`.gitattributes`: `* text=auto eol=lf` y `*.ps1 text eol=crlf`. Los `.sh` deben quedar LF (CRLF rompe el
+`entrypoint.sh` en el contenedor: `bash\r`). En Windows `git config core.fileMode false` (NTFS sin bit de
+ejecución → 755→644 falsos). Verificar: `git ls-files --eol <archivo>`.
 
 ## Gotchas PHPStan nivel 8 (recurrentes)
 - `DB::table()->first()` → tipar el método como `?\stdClass` (acceso a props de stdClass exento). NO

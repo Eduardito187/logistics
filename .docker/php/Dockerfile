@@ -257,15 +257,28 @@ CMD ["php-fpm", "-F"]
 # host: nginx necesita los estáticos (build de Vite, assets de Filament/Livewire publicados, Leaflet
 # self-host, index.php para el try_files) DENTRO de su imagen. Se copian del stage `prod`, así web y
 # app salen SIEMPRE del mismo commit. Los .php se ejecutan en el contenedor `app` (fastcgi app:9000).
-FROM nginx:1.27-alpine AS web
+#
+# SEGURIDAD (Sonar docker:S6471): imagen oficial NO-ROOT de nginx (corre como uid 101). Un usuario sin
+# privilegios no puede abrir el puerto 80, así que adentro escucha en 8080; el compose de staging publica
+# STAGING_HTTP_PORT → 8080 (hacia afuera no cambia nada). El default.conf de dev (80) se reescribe acá.
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS web
 
-COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-COPY --from=prod /var/www/html/public /var/www/html/public
+COPY --chown=101:101 .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY --chown=101:101 --from=prod /var/www/html/public /var/www/html/public
 
-# `/storage/...` público (archivos subidos al disco `public`): el volumen de storage de la app se
-# monta en /var/www/html/storage (solo lectura) y este symlink lo expone, igual que `storage:link`.
-RUN ln -sfn /var/www/html/storage/app/public /var/www/html/public/storage
+# Puerto no privilegiado + `/storage/...` público (archivos subidos al disco `public`): el volumen de
+# storage de la app se monta en /var/www/html/storage (solo lectura) y este symlink lo expone, igual que
+# `storage:link`. Todo como uid 101 (dueño de lo copiado arriba), sin pasar a root.
+RUN sed -i -e 's/listen 80 default_server;/listen 8080 default_server;/' \
+           -e 's/listen \[::\]:80 default_server;/listen [::]:8080 default_server;/' \
+           /etc/nginx/conf.d/default.conf \
+    && grep -q 'listen 8080 default_server;' /etc/nginx/conf.d/default.conf \
+    && ln -sfn /var/www/html/storage/app/public /var/www/html/public/storage
+
+USER 101
+
+EXPOSE 8080
 
 # Liveness de punta a punta: nginx → FPM → Laravel (`/up`). Si FPM no responde, el web queda unhealthy.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
-    CMD wget -q -O /dev/null http://127.0.0.1/up || exit 1
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/up || exit 1

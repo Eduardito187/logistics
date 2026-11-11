@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Support\Database\BackupBundle;
+use App\Support\Database\BackupException;
 use Illuminate\Console\Command;
 
 /**
@@ -40,7 +41,8 @@ final class DatabaseRestoreCommand extends Command
             return self::FAILURE;
         }
 
-        return $this->restoreDump(function (string $workDir) use ($file): array {
+        // El directorio de trabajo que pasa restoreDump no hace falta acá: el dump ya está en disco.
+        return $this->restoreDump(function () use ($file): array {
             $manifestPath = $file.'.manifest.json';
             if (!is_file($manifestPath)) {
                 $this->warn('Sin manifest al lado del dump: se hará verificación estructural (tablas del TOC), sin conteo de filas.');
@@ -51,7 +53,7 @@ final class DatabaseRestoreCommand extends Command
             $database = BackupBundle::readManifest($manifestPath)['database'];
             /** @var array<string, mixed> $database */
             if (is_string($database['sha256'] ?? null) && hash_file('sha256', $file) !== $database['sha256']) {
-                throw new \RuntimeException('El sha256 del dump no coincide con su manifest: archivo corrupto.');
+                throw new BackupException('El sha256 del dump no coincide con su manifest: archivo corrupto.');
             }
 
             return [$file, $database];

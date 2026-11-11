@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Support\Database\BackupBundle;
+use App\Support\Database\BackupException;
 use App\Support\Database\DatabaseBackupService;
 use DateTimeImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -56,7 +56,7 @@ final class BackupCreateCommand extends Command
             @unlink($tmp);
             BackupBundle::pack($tmp, $workDir);
             if (!rename($tmp, $bundle)) {
-                throw new RuntimeException("No se pudo renombrar {$tmp} a {$bundle}.");
+                throw new BackupException("No se pudo renombrar {$tmp} a {$bundle}.");
             }
         } catch (Throwable $e) {
             @unlink($tmp);

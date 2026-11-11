@@ -19,7 +19,7 @@ if [ -n "$DB_HOST" ]; then
     echo "[entrypoint] Esperando PostgreSQL en ${DB_HOST}:${DB_PORT:-5432}..."
     wait_start=$SECONDS
     until timeout 10 php -r "try { new PDO('pgsql:host=${DB_HOST};port=${DB_PORT:-5432};dbname=${DB_DATABASE:-logistics}', '${DB_USERNAME:-logistics}', '${DB_PASSWORD:-logistics}'); exit(0); } catch (\Throwable \$e) { exit(1); }" > /dev/null 2>&1; do
-        if [ "${DB_WAIT_TIMEOUT:-0}" -gt 0 ] && [ $((SECONDS - wait_start)) -ge "${DB_WAIT_TIMEOUT}" ]; then
+        if [[ "${DB_WAIT_TIMEOUT:-0}" -gt 0 && $((SECONDS - wait_start)) -ge "${DB_WAIT_TIMEOUT}" ]]; then
             echo "[entrypoint] ERROR: PostgreSQL no aceptó la conexión en ${DB_WAIT_TIMEOUT}s (¿host caído o credenciales incorrectas?)." >&2
             exit 1
         fi

@@ -51,7 +51,7 @@ volúmenes**, así que la base de staging persiste entre deploys.
 
 | Servicio | Imagen | Rol |
 |---|---|---|
-| `web` | `dismac/logistics-web:staging` | nginx, **único puerto publicado** |
+| `web` | `dismac/logistics-web:staging` | nginx **sin root** (`nginx-unprivileged`, uid 101, escucha 8080 adentro), **único puerto publicado** |
 | `app` | `dismac/logistics-app:staging` | PHP-FPM |
 | `worker` | `dismac/logistics-app:staging` | supervisor: colas `default`, `outbox`, `notifications`, `planning` y el **único** scheduler |
 | `postgres` | `postgis/postgis:17-3.5-alpine` | base `logistics` (PostGIS lo crea el init de la imagen) |

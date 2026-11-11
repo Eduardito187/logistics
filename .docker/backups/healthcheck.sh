@@ -18,6 +18,7 @@ fi
 last="$(sed -n 's/^epoch=//p' "$MARKER")"
 case "$last" in
     ''|*[!0-9]*) echo "marcador ilegible: ${MARKER}"; exit 1 ;;
+    *) ;; # epoch numérico válido: se sigue con el cálculo de antigüedad
 esac
 
 age=$(( $(date +%s) - last ))

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Support\Database;
 
 use PDO;
-use RuntimeException;
 
 /**
  * I/O contra el servidor PostgreSQL para backups: inventario de estructura, conteo exacto de filas,
@@ -93,19 +92,21 @@ final class PostgresAdmin
     public function inventory(PDO $pdo): array
     {
         $notMember = static fn (string $catalog, string $oid): string => "NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = '{$catalog}'::regclass AND d.objid = {$oid} AND d.deptype = 'e')";
+        // Cola común de cada consulta: solo schemas de usuario, sin objetos que pertenecen a una extensión, ordenado.
+        $userObjects = static fn (string $catalog, string $oid): string => self::USER_SCHEMA.' AND '.$notMember($catalog, $oid).' ORDER BY 1';
 
         $sequences = [];
         foreach ($this->rows($pdo, "SELECT s.schemaname || '.' || s.sequencename, s.last_value
             FROM pg_sequences s
             JOIN pg_namespace n ON n.nspname = s.schemaname
             JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = s.sequencename
-            WHERE ".self::USER_SCHEMA.' AND '.$notMember('pg_class', 'c.oid').' ORDER BY 1') as $row) {
+            WHERE ".$userObjects('pg_class', 'c.oid')) as $row) {
             $sequences[(string) $row[0]] = is_numeric($row[1]) ? (int) $row[1] : null;
         }
 
         $relations = fn (string $relkinds): array => $this->column($pdo, "SELECT n.nspname || '.' || c.relname
             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relkind IN ({$relkinds}) AND ".self::USER_SCHEMA.' AND '.$notMember('pg_class', 'c.oid').' ORDER BY 1');
+            WHERE c.relkind IN ({$relkinds}) AND ".$userObjects('pg_class', 'c.oid'));
 
         $extensions = [];
         foreach ($this->rows($pdo, 'SELECT extname, extversion FROM pg_extension ORDER BY 1') as $row) {
@@ -113,7 +114,7 @@ final class PostgresAdmin
         }
 
         return [
-            'schemas' => $this->column($pdo, 'SELECT n.nspname FROM pg_namespace n WHERE '.self::USER_SCHEMA.' AND '.$notMember('pg_namespace', 'n.oid').' ORDER BY 1'),
+            'schemas' => $this->column($pdo, 'SELECT n.nspname FROM pg_namespace n WHERE '.$userObjects('pg_namespace', 'n.oid')),
             'tables' => $relations("'r'"),
             'partitioned_tables' => $relations("'p'"),
             'indexes' => $this->column($pdo, "SELECT n.nspname || '.' || c.relname
@@ -121,7 +122,7 @@ final class PostgresAdmin
                 JOIN pg_class c ON c.oid = i.indexrelid
                 JOIN pg_class t ON t.oid = i.indrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE ".self::USER_SCHEMA.' AND '.$notMember('pg_class', 't.oid').' ORDER BY 1'),
+                WHERE ".$userObjects('pg_class', 't.oid')),
             'constraints' => $this->column($pdo, "SELECT n.nspname || '.' || COALESCE(t.relname, '-') || '.' || con.conname
                 FROM pg_constraint con
                 JOIN pg_namespace n ON n.oid = con.connamespace
@@ -133,12 +134,12 @@ final class PostgresAdmin
             'materialized_views' => $relations("'m'"),
             'functions' => $this->column($pdo, "SELECT n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-                WHERE ".self::USER_SCHEMA.' AND '.$notMember('pg_proc', 'p.oid').' ORDER BY 1'),
+                WHERE ".$userObjects('pg_proc', 'p.oid')),
             'triggers' => $this->column($pdo, "SELECT n.nspname || '.' || t.relname || '.' || tg.tgname
                 FROM pg_trigger tg
                 JOIN pg_class t ON t.oid = tg.tgrelid
                 JOIN pg_namespace n ON n.oid = t.relnamespace
-                WHERE NOT tg.tgisinternal AND ".self::USER_SCHEMA.' AND '.$notMember('pg_class', 't.oid').' ORDER BY 1'),
+                WHERE NOT tg.tgisinternal AND ".$userObjects('pg_class', 't.oid')),
             'sequences' => $sequences,
             'extensions' => $extensions,
         ];
@@ -206,7 +207,7 @@ final class PostgresAdmin
     public function dropScratchDatabase(string $database): void
     {
         if (!BackupManifest::isScratchName($database)) {
-            throw new RuntimeException("Me niego a dropear '{$database}': no es una base scratch de backup.");
+            throw new BackupException("Me niego a dropear '{$database}': no es una base scratch de backup.");
         }
 
         $this->connect($this->maintenanceDatabase)->exec('DROP DATABASE IF EXISTS '.BackupManifest::quoteIdent($database).' WITH (FORCE)');
@@ -295,10 +296,8 @@ final class PostgresAdmin
     private function rows(PDO $pdo, string $sql): array
     {
         $stmt = $pdo->query($sql);
-        /** @var list<array<int, mixed>> $rows */
-        $rows = $stmt !== false ? $stmt->fetchAll(PDO::FETCH_NUM) : [];
 
-        return $rows;
+        return $stmt !== false ? array_values(array_filter($stmt->fetchAll(PDO::FETCH_NUM), is_array(...))) : [];
     }
 
     /** @return list<string> */

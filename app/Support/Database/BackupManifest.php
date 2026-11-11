@@ -46,59 +46,99 @@ final class BackupManifest
      */
     public static function compare(array $expected, array $actual): array
     {
-        $diffs = [];
         $expectedInventory = self::arrayOf($expected['inventory'] ?? []);
         $actualInventory = self::arrayOf($actual['inventory'] ?? []);
 
+        $diffs = [];
         foreach (self::LIST_KEYS as $key) {
-            $want = self::stringList($expectedInventory[$key] ?? []);
-            $have = self::stringList($actualInventory[$key] ?? []);
-
-            foreach (array_diff($want, $have) as $missing) {
-                $diffs[] = ['item' => "{$key}: {$missing}", 'expected' => 'present', 'actual' => 'missing'];
-            }
-            foreach (array_diff($have, $want) as $extra) {
-                $diffs[] = ['item' => "{$key}: {$extra}", 'expected' => 'absent', 'actual' => 'present'];
-            }
+            $diffs = [...$diffs, ...self::presenceDiffs(
+                $key,
+                self::stringList($expectedInventory[$key] ?? []),
+                self::stringList($actualInventory[$key] ?? []),
+            )];
         }
 
-        $wantExt = array_keys(self::arrayOf($expectedInventory['extensions'] ?? []));
-        $haveExt = array_keys(self::arrayOf($actualInventory['extensions'] ?? []));
-        foreach (array_diff($wantExt, $haveExt) as $missing) {
-            $diffs[] = ['item' => "extensions: {$missing}", 'expected' => 'present', 'actual' => 'missing'];
+        // Extensiones: por nombre (las claves del mapa nombre → versión).
+        $diffs = [...$diffs, ...self::presenceDiffs(
+            'extensions',
+            self::stringList(array_keys(self::arrayOf($expectedInventory['extensions'] ?? []))),
+            self::stringList(array_keys(self::arrayOf($actualInventory['extensions'] ?? []))),
+        )];
+
+        return [
+            ...$diffs,
+            ...self::sequenceDiffs(self::arrayOf($expectedInventory['sequences'] ?? []), self::arrayOf($actualInventory['sequences'] ?? [])),
+            ...self::rowCountDiffs(self::arrayOf($expected['row_counts'] ?? []), self::arrayOf($actual['row_counts'] ?? [])),
+        ];
+    }
+
+    /**
+     * Faltantes y sobrantes de un conjunto de nombres.
+     *
+     * @param  list<string>                                                $want
+     * @param  list<string>                                                $have
+     * @return list<array{item: string, expected: string, actual: string}>
+     */
+    private static function presenceDiffs(string $key, array $want, array $have): array
+    {
+        $diffs = [];
+        foreach (array_diff($want, $have) as $missing) {
+            $diffs[] = ['item' => "{$key}: {$missing}", 'expected' => 'present', 'actual' => 'missing'];
         }
-        foreach (array_diff($haveExt, $wantExt) as $extra) {
-            $diffs[] = ['item' => "extensions: {$extra}", 'expected' => 'absent', 'actual' => 'present'];
+        foreach (array_diff($have, $want) as $extra) {
+            $diffs[] = ['item' => "{$key}: {$extra}", 'expected' => 'absent', 'actual' => 'present'];
         }
 
-        $wantSeq = self::arrayOf($expectedInventory['sequences'] ?? []);
-        $haveSeq = self::arrayOf($actualInventory['sequences'] ?? []);
-        foreach ($wantSeq as $name => $value) {
-            if (!array_key_exists($name, $haveSeq)) {
+        return $diffs;
+    }
+
+    /**
+     * Secuencias: deben existir todas y su valor restaurado debe ser >= al del manifest.
+     *
+     * @param  array<mixed>                                                $want
+     * @param  array<mixed>                                                $have
+     * @return list<array{item: string, expected: string, actual: string}>
+     */
+    private static function sequenceDiffs(array $want, array $have): array
+    {
+        $diffs = [];
+        foreach ($want as $name => $value) {
+            if (!array_key_exists($name, $have)) {
                 $diffs[] = ['item' => "sequences: {$name}", 'expected' => self::show($value), 'actual' => 'missing'];
 
                 continue;
             }
-            $restored = $haveSeq[$name];
+            $restored = $have[$name];
             if (is_numeric($value) && (!is_numeric($restored) || (int) $restored < (int) $value)) {
                 $diffs[] = ['item' => "sequences: {$name}", 'expected' => '>= '.self::show($value), 'actual' => self::show($restored)];
             }
         }
-        foreach (array_diff_key($haveSeq, $wantSeq) as $name => $value) {
+        foreach (array_diff_key($have, $want) as $name => $value) {
             $diffs[] = ['item' => "sequences: {$name}", 'expected' => 'absent', 'actual' => self::show($value)];
         }
 
-        $wantRows = self::arrayOf($expected['row_counts'] ?? []);
-        $haveRows = self::arrayOf($actual['row_counts'] ?? []);
-        foreach ($wantRows as $table => $count) {
-            $restored = $haveRows[$table] ?? null;
+        return $diffs;
+    }
+
+    /**
+     * Conteo EXACTO de filas por tabla: faltantes, distintas y sobrantes.
+     *
+     * @param  array<mixed>                                                $want
+     * @param  array<mixed>                                                $have
+     * @return list<array{item: string, expected: string, actual: string}>
+     */
+    private static function rowCountDiffs(array $want, array $have): array
+    {
+        $diffs = [];
+        foreach ($want as $table => $count) {
+            $restored = $have[$table] ?? null;
             if ($restored === null) {
                 $diffs[] = ['item' => "rows: {$table}", 'expected' => self::show($count), 'actual' => 'missing'];
             } elseif ((int) self::show($restored) !== (int) self::show($count)) {
                 $diffs[] = ['item' => "rows: {$table}", 'expected' => self::show($count), 'actual' => self::show($restored)];
             }
         }
-        foreach (array_diff_key($haveRows, $wantRows) as $table => $count) {
+        foreach (array_diff_key($have, $want) as $table => $count) {
             $diffs[] = ['item' => "rows: {$table}", 'expected' => 'absent', 'actual' => self::show($count)];
         }
 
@@ -200,6 +240,10 @@ final class BackupManifest
 
     private static function show(mixed $value): string
     {
-        return $value === null ? 'null' : (is_scalar($value) ? (string) $value : json_encode($value, JSON_THROW_ON_ERROR));
+        if ($value === null) {
+            return 'null';
+        }
+
+        return is_scalar($value) ? (string) $value : json_encode($value, JSON_THROW_ON_ERROR);
     }
 }

@@ -138,49 +138,30 @@ function Get-LiveRowCounts {
     return $counts
 }
 
-# Lee los conteos por tabla del manifest.json del bundle (`database.row_counts`: { "public.tabla": n }).
-# Tolera variantes (`row_counts`/`tables`/`counts` en la raíz o en `database`; objeto nombre→n,
-# nombre→{rows|count} o lista de {table|name, rows|count}). Ignora listas de nombres (p. ej. el inventario).
-function Get-ManifestRowCounts {
+# Extrae y parsea el manifest.json de un bundle de `backup:create`.
+function Read-BundleManifest {
     param([Parameter(Mandatory)][string]$BundlePath)
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("migrate-manifest-" + [guid]::NewGuid())
     New-Item -ItemType Directory -Force $tmp | Out-Null
     try {
-        & tar.exe -xf $BundlePath -C $tmp manifest.json
+        # tar de Windows (bsdtar) por ruta absoluta: si en el PATH está antes el tar de Git (GNU), toma "C:" como host remoto.
+        & (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $BundlePath -C $tmp manifest.json
         if ($LASTEXITCODE -ne 0) { throw "No se pudo extraer manifest.json de $BundlePath." }
-        $m = Get-Content (Join-Path $tmp 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        return Get-Content (Join-Path $tmp 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
-    $node = $null
-    foreach ($k in @('row_counts', 'counts', 'tables')) {
-        if ($m.PSObject.Properties['database'] -and $m.database.PSObject.Properties[$k]) { $node = $m.database.$k; break }
-        if ($m.PSObject.Properties[$k]) { $node = $m.$k; break }
-    }
-    if ($null -eq $node) { return $null }
+}
 
+# Conteos por tabla del manifest (formato 1 de backup:create: `database.row_counts` = { "public.tabla": n }).
+# Devuelve $null si el manifest no trae conteos (bundle de otro formato).
+function Get-ManifestRowCounts {
+    param([Parameter(Mandatory)][string]$BundlePath)
+    $m = Read-BundleManifest -BundlePath $BundlePath
+    if (-not ($m.PSObject.Properties['database'] -and $m.database.PSObject.Properties['row_counts'])) { return $null }
     $counts = @{}
-    $toN = {
-        param($v)
-        if ($v -is [System.Management.Automation.PSCustomObject]) {
-            foreach ($f in @('rows', 'count', 'row_count')) { if ($v.PSObject.Properties[$f]) { return [long]$v.$f } }
-            return $null
-        }
-        if ("$v" -match '^\d+$') { return [long]$v }
-        return $null
-    }
-    if ($node -is [System.Array]) {
-        foreach ($it in $node) {
-            $name = $null
-            foreach ($f in @('table', 'name')) { if ($it.PSObject.Properties[$f]) { $name = $it.$f; break } }
-            $n = & $toN $it
-            if ($name -and $null -ne $n) { $counts[($name -replace '^public\.', '')] = $n }
-        }
-    } else {
-        foreach ($prop in $node.PSObject.Properties) {
-            $n = & $toN $prop.Value
-            if ($null -ne $n) { $counts[($prop.Name -replace '^public\.', '')] = $n }
-        }
+    foreach ($prop in $m.database.row_counts.PSObject.Properties) {
+        $counts[($prop.Name -replace '^public\.', '')] = [long]$prop.Value
     }
     return $counts
 }

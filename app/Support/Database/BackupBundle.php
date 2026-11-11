@@ -7,7 +7,6 @@ namespace App\Support\Database;
 use DateTimeInterface;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
-use RuntimeException;
 
 /**
  * Bundle de backup: un `.tar` (sin comprimir: el dump ya va comprimido) con exactamente dos miembros:
@@ -83,10 +82,10 @@ final class BackupBundle
         $manifest = is_string($raw) ? json_decode($raw, true) : null;
 
         if (!is_array($manifest) || !is_array($manifest['database'] ?? null)) {
-            throw new RuntimeException("Manifest inválido o ilegible: {$path}");
+            throw new BackupException("Manifest inválido o ilegible: {$path}");
         }
         if (($manifest['format'] ?? null) !== BackupManifest::FORMAT) {
-            throw new RuntimeException('Formato de manifest no soportado: '.json_encode($manifest['format'] ?? null).' (se espera '.BackupManifest::FORMAT.').');
+            throw new BackupException('Formato de manifest no soportado: '.json_encode($manifest['format'] ?? null).' (se espera '.BackupManifest::FORMAT.').');
         }
 
         /** @var array<string, mixed> $manifest */
@@ -125,7 +124,7 @@ final class BackupBundle
         $result = Process::timeout(is_numeric($timeout) ? (int) $timeout : 7200)->run($command);
 
         if (!$result->successful()) {
-            throw new RuntimeException("No se pudo {$what} el bundle (tar): ".trim($result->errorOutput()));
+            throw new BackupException("No se pudo {$what} el bundle (tar): ".trim($result->errorOutput()));
         }
     }
 }

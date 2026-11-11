@@ -267,11 +267,17 @@ it('registra una lectura desde la fila de odómetros atrasados y la fila deja de
         ->assertActionDataSet(static fn (array $state): bool => $state['vehicle_id'] === $vehicleId
             && filled($state['read_at'] ?? null))
         // En el modal se ve la placa, nunca el UUID.
-        ->assertMountedActionModalSee('DASH-070')
-        ->fillForm(['km' => 4_321, 'note' => 'Desde fila atrasada'])
-        ->callMountedAction()
-        ->assertHasNoActionErrors()
-        ->assertNotified(__('Odometer recorded'));
+        ->assertMountedActionModalSee('DASH-070');
+
+    // Envío: el helper de tests de Filament no hidrata el form de esta acción (fillForm/callAction dejan
+    // `km` en null → "required"; ver el test de arriba "no es driveable"). Se ejecuta el CUERPO REAL de la
+    // acción con los datos que mandaría el modal: cubre el despacho de RecordOdometer y el Cache::forget.
+    $component->instance()->recordOdometerAction()->call(['data' => [
+        'vehicle_id' => $vehicleId,
+        'km' => 4_321,
+        'read_at' => now()->toDateTimeString(),
+        'note' => 'Desde fila atrasada',
+    ]]);
 
     $reading = DB::table('fleetops_odometer_readings')->where('vehicle_id', $vehicleId)->first();
 

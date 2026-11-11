@@ -8,14 +8,16 @@
 - [Paleta de marca](brand-palette.md) — colores Dismac del e-commerce (rojo #E2231A) para admin/UI
 - [Seeders FKs cruzadas](seed-data-cross-refs.md) — por qué las relaciones salen vacías en el admin (datos huérfanos), cómo sembrar
 - [NO operaciones destructivas de DB](no-destructive-db-ops.md) — nunca migrate:fresh/wipe; aditivo e idempotente; backup antes de algo crítico
+- [Backup/restore de PostgreSQL](db-backup-restore.md) — backup:create/verify/restore (manifest conteos+estructura, restore por swap con _prev_), bug postgis del viejo --clean, directo a Postgres
+- [Gotchas Postgres+PgBouncer](pg-pgbouncer-gotchas.md) — "cached plan" tras ALTER en vivo (reiniciar pgbouncer), y columnas de actor deben ser varchar (admin.id es bigint, no uuid)
 - [Contexto access (IAM)](access-iam-context.md) — identidad, RBAC dinámico y tokens de integración; agregados, API, Filament, seeder; DoD verde (phpstan8/pint/pest) + limpieza repo-wide 201→0
 - [Admin Filament hardening](filament-admin-hardening.md) — logout aleatorio (AuthenticateSession), 404 de deep-links (redirect handler), gating por rol, opcache
-- [Contexto telemetry](telemetry-context.md) — GPS en vivo de camiones, trips (minutos/distancia/inactividad), analítica de calles OSRM, geocercas y alertas de mal uso
+- [Contexto telemetry](telemetry-context.md) — GPS en vivo, trips, calles OSRM, geocercas/alertas; LiveFleetMap ancla el clic al día de la última posición
 - [Contexto fleetops](fleetops-context.md) — operación y costos de la flota propia: combustible, mantenimiento, salidas/cargas, odómetro, perfil técnico, gastos y TCO/costo-por-km
 - [Regla geográfica + ruteo](routing-geo-rule.md) — ruta de un solo departamento, orden por cercanía, VRP/OSRM/VROOM, incidentes de camión, auto-planner, slots
 - [Admin UI y mapas](admin-ui-maps.md) — Filament (tema compilado, i18n, RBAC/login), mapas OSM/OSRM (tiles resilientes), dropdowns propios, build del tema, GD
 - [Admin operaciones-primero](admin-ops-first-redesign.md) — IA 16→5 grupos, Control Tower como landing, cockpits por frente, gating de 2 roles, native(false) ya cumplido
-- [Gotchas componentes Filament v4](filament-v4-component-gotchas.md) — tipos de propiedad invariantes (fatales), ImageColumn cuadrado, tarjeta Repeatable clickeable
+- [Gotchas componentes Filament v4](filament-v4-component-gotchas.md) — tipos invariantes, ImageColumn, Repeatable clickeable, @js en <x-> no compila, fillForm borra defaults, SPA: liberar intervalos (dismac-live.js)
 - [Enriquecimiento de ReadModels/API](api-readmodel-enrichment.md) — mostrar valor legible junto a FK UUID (cross-context sin acople), openapi additivo, bug casts Carbon
 - [App web Vue + Inertia (SPA)](frontend-spa-vue-inertia.md) — híbrido con Filament, /app operativo, stack/estructura/contrato, gotchas de build (npm host, ENOTEMPTY)
 - [Expansión flota/personal](fleet-personnel-expansion.md) — datos personales de choferes/ayudantes, documentos, referencias, historial operativo GetDriverHistory (gotcha doble conteo)
@@ -30,3 +32,16 @@
 - [2FA + OTP](auth-2fa-otp.md) — TOTP unificado admin(Filament MFA)+app(API), reseteo por código OTP 6 díg; núcleo app/Auth; composer bacon/google2fa; MAIL_MAILER=log para ver el código en dev
 - [Datos de prueba app](test-data-seeders.md) — TestDataSeeder (14 días) todos los roles (idempotente), cuentas *@dismac.test/password123, chofer↔vehículo, tienda↔T-SCZ-01
 - [Etiquetado de productos](product-labeling-rules.md) — regla dura: nunca "bulto" (decir "producto"), nunca null/vacío; SIEMPRE nombre + SKU del producto donde se muestre
+- [Playbook quality gates CI](ci-quality-gates-playbook.md) — pasar SonarCloud/PHPStan/Pint en un lote; gate solo falla por Duplication>3% y Reliability<A; `.sonarcloud.properties` (no sonar-project); "todo" falso positivo; stdClass typing; docs/ci-quality-gates.md
+- [Iconos Filament custom + animados](filament-icons-custom-animated.md) — catálogo semántico, SVG self-host (CERO CDN), animación por CSS en el tema; prompt reutilizable en docs/filament-iconos-custom-animados.md
+- [Cockpit Torre de Control](cockpit-control-tower.md) — rediseño admin de CRUD a cockpit ops (light/warm scoped, inteligencia derivada real); ola 1 landing hecha; superficie=Filament (SPA eliminada); olas 2-4 pendientes
+- [Multishipping](multishipping.md) — una orden → varios envíos (uno por destino): order_reference, agrupación en el dispatcher, reader/enricher/tracking por hermanos
+- [Máquina de estados del tracking](tracking-lifecycle-state-machine.md) — ciclo de vida del pedido (pendiente→…→entregado + cancelar/reprogramar/devolver), transiciones estrictas, reactores del outbox que lo alimentan solo, piezas nuevas (salida de camión, reprogramación)
+- [Regla de crédito/minicuotas + README comandos](order-financing-credit-rule.md) — paso a procesando por financiamiento (contado=pago; crédito con/sin inicial=contrato[+inicial]); FinancingPlan, señales por API, OrderPaid reusado; README con todos los comandos
+- [Migración WSL→Windows](windows-migration.md) — volúmenes fijos (la base NO se perdió), robocopy /XD por nombre perdía public/vendor y .git (arreglado), COMPOSE_PATH_SEPARATOR, fileMode, ps1 con BOM/CRLF
+- [Roadmap estructura+escala](roadmap-structure-scale.md) — docs/roadmap-estructura-escalabilidad.md: consolidación VOs/dominio, admin entidad-céntrico, escalabilidad a millones; por olas; falsos positivos marcados
+- [Admin CRUD→CRM por fases](admin-crm-phases.md) — F1 nav · F2 segmentos/360/cross-link · F3 timeline/vistas/bulk · F4 Cliente360+notas/homes/analítica/colas · F5 notas-en-todo+Agenda/tiempo-real(soketi)/reportes/⌘K — F1-F5 completas, sin commitear
+- [Roadmap B2B/B2C/C2C](roadmap-b2b-b2c-c2c.md) — reunión POS/MPS; qué ya existe vs huecos (mayorista B2B, WMS, trailers/multimodal, canales, C2C, MPS); fases S/M/W/V/T/I/C/P/D; Lisa = LISA WMS (integrar, no reconstruir); docs/roadmap-ecommerce-b2b-b2c-c2c.md
+- [Backup solo manual y de la base](backup-manual-only.md) — backup:create/verify/restore manual, solo PostgreSQL completo; pg-backup automático siempre desactivado (profile backup)
+- [Deploy de staging (CI)](staging-deploy-ci.md) — self-hosted runner OCI, staging-deploy.yml solo desde staging, compose autónomo logistics-staging, secrets, prueba local, DB_WAIT_TIMEOUT
+- [Coordinación de agentes en paralelo](parallel-agents-coordination.md) — territorios disjuntos, Pest serializado por el coordinador, base de dev intocable, alcance fijado antes

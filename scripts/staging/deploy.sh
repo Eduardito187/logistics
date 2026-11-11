@@ -25,7 +25,10 @@ project="${STAGING_PROJECT:-logistics-staging}"
 export STAGING_IMAGE_TAG="${STAGING_IMAGE_TAG:-staging}"
 
 # Docker en Windows (Git Bash) necesita rutas C:/...; en Linux esto no hace nada.
-to_native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+to_native() {
+    local path="$1"
+    if command -v cygpath >/dev/null 2>&1; then cygpath -m "$path"; else printf '%s' "$path"; fi
+}
 [[ -f "$env_file" ]] || { echo "::error::No existe el env-file '$env_file' (correr render-env.sh antes)."; exit 1; }
 env_file="$(to_native "$(cd "$(dirname "$env_file")" && pwd)/$(basename "$env_file")")"
 compose_file="$(to_native "$compose_file")"

@@ -7,7 +7,6 @@ namespace App\Support\Database;
 use Closure;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\Process;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -24,18 +23,21 @@ use Throwable;
  */
 final class DatabaseBackupService
 {
-    /** @var Closure(string): void */
-    private readonly Closure $log;
-
     /**
-     * @param (Closure(string): void)|null $log salida de progreso (los comandos la mandan a consola)
+     * @param (Closure(string): void)|null $log salida de progreso (los comandos la mandan a consola); null = silencio
      */
     public function __construct(
         private readonly PostgresBackup $backup,
         private readonly PostgresAdmin $admin,
-        ?Closure $log = null,
-    ) {
-        $this->log = $log ?? static function (string $line): void {};
+        private readonly ?Closure $log = null,
+    ) {}
+
+    /** Reporta progreso si hay a quién (los comandos pasan la consola; los tests, nada). */
+    private function say(string $line): void
+    {
+        if ($this->log !== null) {
+            ($this->log)($line);
+        }
     }
 
     /**
@@ -52,7 +54,7 @@ final class DatabaseBackupService
         if (!$endpoint->direct && $endpoint->looksLikePooler()) {
             $real = PostgresAdmin::discoverBackend($endpoint);
             if ($real === null) {
-                throw new RuntimeException("La conexión apunta a un pooler ({$endpoint->host}:{$endpoint->port}) y no se pudo descubrir el Postgres real. Definí DB_DIRECT_HOST/DB_DIRECT_PORT o usá --host/--port.");
+                throw new BackupException("La conexión apunta a un pooler ({$endpoint->host}:{$endpoint->port}) y no se pudo descubrir el Postgres real. Definí DB_DIRECT_HOST/DB_DIRECT_PORT o usá --host/--port.");
             }
             if ($log !== null) {
                 $log("Aviso: {$endpoint->host}:{$endpoint->port} parece PgBouncer; uso el Postgres real {$real->host}:{$real->port}. Fijá DB_DIRECT_HOST/DB_DIRECT_PORT para no depender del descubrimiento.");
@@ -91,16 +93,16 @@ final class DatabaseBackupService
             try {
                 $result = Process::timeout(30)->run(PostgresBackup::versionCommand($binary));
             } catch (Throwable $e) {
-                throw new RuntimeException("No se pudo ejecutar {$binary}: {$e->getMessage()}. ¿Está instalado postgresql-client?");
+                throw new BackupException("No se pudo ejecutar {$binary}: {$e->getMessage()}. ¿Está instalado postgresql-client?");
             }
             $output = trim($result->output());
             $major = PostgresBackup::parseMajorVersion($output);
 
             if (!$result->successful() || $major === null) {
-                throw new RuntimeException("No se pudo leer la versión de {$binary} (¿está instalado postgresql-client?): ".trim($result->errorOutput().' '.$output));
+                throw new BackupException("No se pudo leer la versión de {$binary} (¿está instalado postgresql-client?): ".trim($result->errorOutput().' '.$output));
             }
             if ($major < $serverMajor) {
-                throw new RuntimeException("{$binary} {$major} es más viejo que el servidor PostgreSQL {$server['text']} (major {$serverMajor}). Instalá postgresql-client >= {$serverMajor}.");
+                throw new BackupException("{$binary} {$major} es más viejo que el servidor PostgreSQL {$server['text']} (major {$serverMajor}). Instalá postgresql-client >= {$serverMajor}.");
             }
             $found[$binary] = $output;
         }
@@ -125,13 +127,13 @@ final class DatabaseBackupService
             // Inventario (y valor de secuencias) ANTES del dump; conteos en el mismo snapshot.
             $inventory = $this->admin->inventory($pdo);
 
-            ($this->log)("pg_dump de '{$endpoint->database}' en {$endpoint->host}:{$endpoint->port} (snapshot {$snapshot}) …");
+            $this->say("pg_dump de '{$endpoint->database}' en {$endpoint->host}:{$endpoint->port} (snapshot {$snapshot}) …");
             $result = $this->backup->run($this->backup->dumpCommand($file, $endpoint, $snapshot), $endpoint);
             if (!$result->successful()) {
-                throw new RuntimeException('pg_dump terminó con error: '.trim($result->errorOutput() !== '' ? $result->errorOutput() : $result->output()));
+                throw new BackupException('pg_dump terminó con error: '.trim($result->errorOutput() !== '' ? $result->errorOutput() : $result->output()));
             }
 
-            ($this->log)('Contando filas por tabla (count(*) exacto, mismo snapshot) …');
+            $this->say('Contando filas por tabla (count(*) exacto, mismo snapshot) …');
             $rowCounts = $this->admin->rowCounts($pdo);
         } finally {
             try {
@@ -169,16 +171,16 @@ final class DatabaseBackupService
     {
         $target = $this->endpoint()->withDatabase($scratch);
 
-        ($this->log)("Creando base scratch '{$scratch}' (TEMPLATE template0) …");
+        $this->say("Creando base scratch '{$scratch}' (TEMPLATE template0) …");
         $this->admin->createDatabase($scratch);
 
-        ($this->log)("pg_restore en '{$scratch}' …");
+        $this->say("pg_restore en '{$scratch}' …");
         $result = $this->backup->run($this->backup->restoreCommand($dumpFile, $target), $target);
         if (!$result->successful()) {
-            throw new RuntimeException('pg_restore terminó con error: '.trim($result->errorOutput() !== '' ? $result->errorOutput() : $result->output()));
+            throw new BackupException('pg_restore terminó con error: '.trim($result->errorOutput() !== '' ? $result->errorOutput() : $result->output()));
         }
 
-        ($this->log)('Comparando estructura y conteo de filas …');
+        $this->say('Comparando estructura y conteo de filas …');
         $pdo = $this->admin->connect($scratch);
         $inventory = $this->admin->inventory($pdo);
         $actual = ['inventory' => $inventory, 'row_counts' => $this->admin->rowCounts($pdo)];
@@ -195,7 +197,7 @@ final class DatabaseBackupService
         try {
             $this->admin->dropScratchDatabase($scratch);
         } catch (Throwable $e) {
-            ($this->log)("Aviso: no se pudo dropear la base scratch '{$scratch}': {$e->getMessage()}");
+            $this->say("Aviso: no se pudo dropear la base scratch '{$scratch}': {$e->getMessage()}");
         }
     }
 
@@ -228,13 +230,13 @@ final class DatabaseBackupService
         }
 
         $restoredOid = $this->admin->databaseOid($scratch);
-        ($this->log)("Swap: '{$live}' → '{$prev}', '{$scratch}' → '{$live}' (terminando conexiones) …");
+        $this->say("Swap: '{$live}' → '{$prev}', '{$scratch}' → '{$live}' (terminando conexiones) …");
         try {
             $this->admin->swap($live, $scratch, $prev);
         } catch (Throwable $e) {
             $this->dropScratchQuietly($scratch);
 
-            throw new RuntimeException('Falló el swap; la base viva quedó como estaba: '.$e->getMessage(), 0, $e);
+            throw new BackupException('Falló el swap; la base viva quedó como estaba: '.$e->getMessage(), 0, $e);
         }
 
         // Verificación final: el nombre vivo apunta a la base restaurada y su contenido coincide.
@@ -254,7 +256,7 @@ final class DatabaseBackupService
     {
         $result = $this->backup->run($this->backup->listCommand($dumpFile), $this->endpoint());
         if (!$result->successful()) {
-            throw new RuntimeException('pg_restore --list no pudo leer el dump (¿archivo corrupto?): '.trim($result->errorOutput()));
+            throw new BackupException('pg_restore --list no pudo leer el dump (¿archivo corrupto?): '.trim($result->errorOutput()));
         }
 
         return BackupManifest::tablesFromToc($result->output());
@@ -276,6 +278,10 @@ final class DatabaseBackupService
     /** @return list<string> */
     private static function listOf(mixed $value): array
     {
-        return is_array($value) ? array_values(array_map(static fn (mixed $v): string => is_scalar($v) ? (string) $v : '', $value)) : [];
+        if (!is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_map(static fn (mixed $v): string => is_scalar($v) ? (string) $v : '', $value));
     }
 }

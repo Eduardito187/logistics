@@ -12,6 +12,9 @@ use Illuminate\Support\Str;
 // la suite, sobre una base PROPIA y descartable `lg_bkit_<random>` (nunca logistics ni logistics_test).
 // Se salta si no hay pg_dump/pg_restore o si su major es menor al del servidor (p. ej. CI con cliente viejo).
 
+// Prefijo de los archivos temporales del test (prefijo único: los tests de Pest viven en el scope global).
+const BACKUP_IT_PREFIX = 'app/backups/test-';
+
 /** Endpoint directo al Postgres de la suite (descubre el real si la conexión es PgBouncer) o null si no aplica. */
 function bkitAdmin(): ?PostgresAdmin
 {
@@ -54,8 +57,8 @@ it('respalda, verifica, detecta un manifest alterado y restaura por swap una bas
         'driver' => 'pgsql', 'host' => $endpoint->host, 'port' => $endpoint->port, 'database' => $database,
         'username' => $endpoint->username, 'password' => $endpoint->password,
     ]);
-    $bundle = storage_path('app/backups/test-'.$database.'.tar');
-    $dump = storage_path('app/backups/test-'.$database.'.dump');
+    $bundle = storage_path(BACKUP_IT_PREFIX.$database.'.tar');
+    $dump = storage_path(BACKUP_IT_PREFIX.$database.'.dump');
 
     try {
         $admin->connect('postgres')->exec('CREATE DATABASE "'.$database.'" TEMPLATE template0');
@@ -102,7 +105,7 @@ it('respalda, verifica, detecta un manifest alterado y restaura por swap una bas
         expect(bkitScalar($admin, 'postgres', "SELECT count(*) FROM pg_database WHERE datname LIKE '{$database}\\_verify\\_%'"))->toBe(0);
 
         // 3) Caso NEGATIVO: manifest alterado → verify falla.
-        $tampered = storage_path('app/backups/test-'.$database.'-bad.tar');
+        $tampered = storage_path(BACKUP_IT_PREFIX.$database.'-bad.tar');
         $manifest['database']['row_counts']['public.users'] = 999;
         BackupBundle::writeManifest($work.'/manifest.json', $manifest);
         BackupBundle::pack($tampered, $work);
