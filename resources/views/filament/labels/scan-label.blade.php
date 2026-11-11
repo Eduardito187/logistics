@@ -30,6 +30,8 @@
             .dtk-scan__kv { display: grid; grid-template-columns: auto 1fr; gap: .25rem 1rem; margin-top: .6rem;
                 font-size: .9rem; } .dtk-scan__kv dt { color: #a1a1aa; } .dtk-scan__kv dd { margin: 0; font-weight: 600; }
             .dtk-scan__err { margin-top: .8rem; color: #f87171; font-size: .85rem; }
+            .dtk-scan__sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+                clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
         </style>
 
         <p style="color:var(--ck-muted,#a1a1aa);margin-bottom:1rem;font-size:.9rem">
@@ -56,7 +58,8 @@
 
         {{-- Respaldo: código a mano (si no hay cámara o BarcodeDetector) --}}
         <form class="dtk-scan__manual" @submit.prevent="manual()">
-            <input type="text" x-model="code" :placeholder="'{{ __('Or type / paste the label code') }}'" autocomplete="off" />
+            <label for="dtk-scan-code" class="dtk-scan__sr">{{ __('Label code') }}</label>
+            <input id="dtk-scan-code" type="text" x-model="code" :placeholder="'{{ __('Or type / paste the label code') }}'" autocomplete="off" />
             <button type="submit" class="dtk-scan__btn dtk-scan__btn--ghost">{{ __('Resolve') }}</button>
         </form>
 

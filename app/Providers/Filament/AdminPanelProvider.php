@@ -108,7 +108,7 @@ final class AdminPanelProvider extends PanelProvider
             // Panel interno en tema Noche (#141414) por defecto para diferenciarlo de la app de clientes.
             // Se mantiene el toggle de modo claro/oscuro de Filament (no se fuerza), solo cambia el default.
             ->defaultThemeMode(ThemeMode::Dark)
-            // Ancho COMPLETO en TODO el panel (todas las vistas usan toda la pantalla, sin la columna
+            // Ancho COMPLETO en el panel entero (todas las vistas usan toda la pantalla, sin la columna
             // centrada por defecto). Cada página puede sobreescribirlo con getMaxContentWidth().
             ->maxContentWidth(Width::Full)
             // Un SOLO buscador global: el command palette ⌘K (más abajo, render hook). Se APAGA el buscador

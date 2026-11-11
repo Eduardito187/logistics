@@ -14,21 +14,33 @@
 
     // Etiqueta legible del estado (español, copy de cliente).
     $statusLabels = [
-        'REGISTERED' => 'Registrado',
-        'PREPARED' => 'Preparado',
+        'PENDING' => 'Pendiente',
+        'PROCESSING' => 'Procesando',
+        'IN_PROGRESS' => 'En preparación',
+        'LOADED' => 'Cargado',
         'ON_THE_WAY' => 'En camino',
-        'ARRIVING' => 'Llegando',
         'DELIVERED' => 'Entregado',
         'FAILED' => 'No entregado',
+        'RESCHEDULED' => 'Reprogramado',
+        'CANCELLED' => 'Anulado',
+        'RETURNED' => 'Devuelto',
     ];
     $status = $tracking['status'];
     $statusLabel = $statusLabels[$status] ?? $status;
     $position = $tracking['last_position'] ?? null;
     $isLive = $tracking['position_is_live'] ?? null;
 
-    // Progreso visual aproximado por estado, para la barra de etapas.
-    $stages = ['REGISTERED', 'PREPARED', 'ON_THE_WAY', 'ARRIVING', 'DELIVERED'];
-    $currentIndex = array_search($status === 'FAILED' ? 'ARRIVING' : $status, $stages, true);
+    // Progreso visual aproximado por estado, para la barra de etapas. Los estados fuera del camino feliz
+    // (fallido/reprogramado/devuelto/anulado) se proyectan a la etapa más cercana.
+    $stages = ['PENDING', 'PROCESSING', 'IN_PROGRESS', 'LOADED', 'ON_THE_WAY', 'DELIVERED'];
+    $stageKey = match ($status) {
+        'FAILED' => 'ON_THE_WAY',
+        'RESCHEDULED' => 'PROCESSING',
+        'RETURNED' => 'DELIVERED',
+        'CANCELLED' => 'PENDING',
+        default => $status,
+    };
+    $currentIndex = array_search($stageKey, $stages, true);
     $currentIndex = $currentIndex === false ? 0 : $currentIndex;
 @endphp
 <!doctype html>

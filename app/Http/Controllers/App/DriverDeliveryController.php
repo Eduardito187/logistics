@@ -38,6 +38,20 @@ final class DriverDeliveryController
             return back()->with('error', 'Sesión de chofer no válida.');
         }
 
+        // Un único punto de salida: el registro devuelve [clave_flash, mensaje] y acá se emite el redirect.
+        [$key, $message] = $this->record($shipment, $user, $data);
+
+        return back()->with($key, $message);
+    }
+
+    /**
+     * Registra la prueba de entrega del primer bulto del envío por el dominio y devuelve el flash a mostrar.
+     *
+     * @param  array<string, mixed>        $data
+     * @return array{0: string, 1: string}
+     */
+    private function record(string $shipment, User $user, array $data): array
+    {
         // Primer bulto del envío (la prueba de entrega se ancla a una unidad del envío).
         $unitId = DB::table('shipment_units')
             ->where('shipment_id', $shipment)
@@ -45,14 +59,14 @@ final class DriverDeliveryController
             ->value('id');
 
         if (!is_string($unitId) || $unitId === '') {
-            return back()->with('error', 'No se encontraron bultos para este pedido.');
+            return ['error', 'No se encontraron bultos para este pedido.'];
         }
 
         try {
             $this->bus->dispatch(new RecordProofOfDelivery(
                 shipmentId: $shipment,
-                unitId: (string) $unitId,
-                confirmation: $data['confirmation'],
+                unitId: $unitId,
+                confirmation: is_string($data['confirmation'] ?? null) ? $data['confirmation'] : '',
                 photoUrl: null,
                 photoPath: null,
                 lat: (float) ($data['lat'] ?? 0.0),
@@ -63,9 +77,9 @@ final class DriverDeliveryController
                 idempotencyKey: 'fieldapp-pod-'.$shipment,
             ));
         } catch (Throwable $e) {
-            return back()->with('error', 'No se pudo confirmar la entrega: '.$e->getMessage());
+            return ['error', 'No se pudo confirmar la entrega: '.$e->getMessage()];
         }
 
-        return back()->with('success', 'Entrega confirmada.');
+        return ['success', 'Entrega confirmada.'];
     }
 }

@@ -41,14 +41,14 @@
     @keydown.escape.window="open = false"
 >
     <button type="button" class="dtk-notif__bell" @click="toggle()" :aria-expanded="open" aria-label="Notificaciones">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
             <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
         <span x-show="count > 0" x-cloak class="dtk-notif__badge" x-text="count > 99 ? '99+' : count"></span>
     </button>
 
-    <div x-show="open" x-cloak x-transition.opacity.duration.120ms class="dtk-notif__panel" @click.outside="open = false">
+    <div x-show="open" x-cloak x-transition.opacity.duration.120ms class="dtk-notif__panel" role="menu" tabindex="-1" @click.outside="open = false" @keydown.escape="open = false">
         <div class="dtk-notif__head">
             <span>Notificaciones</span>
             <button type="button" class="dtk-notif__refresh" @click="load()" :disabled="loading">↻</button>

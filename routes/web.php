@@ -51,6 +51,8 @@ Route::post('/app/login', [DriverAuthController::class, 'login']);
 Route::middleware('auth')->group(function (): void {
     Route::post('/app/logout', [DriverAuthController::class, 'logout'])->name('app.logout');
     Route::get('/app/driver', DriverRouteController::class)->name('app.driver');
+    // Inicio de ruta: marca la salida de todos los envíos del chofer → «en camino».
+    Route::post('/app/driver/route/start', [DriverRouteController::class, 'start'])->name('app.driver.start');
     Route::post('/app/driver/stops/{shipment}/deliver', [DriverDeliveryController::class, 'confirm'])->name('app.driver.deliver');
 });
 

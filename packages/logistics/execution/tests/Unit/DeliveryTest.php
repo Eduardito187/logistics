@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Logistics\Execution\Domain\Event\DeliveryFailed;
 use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
+use Logistics\Execution\Domain\Event\ShipmentDeparted;
 use Logistics\Execution\Domain\Event\ShipmentLoaded;
 use Logistics\Execution\Domain\Event\ShipmentPrepared;
 use Logistics\Execution\Domain\Exception\ExecutionException;
@@ -183,4 +184,29 @@ it('reconstitutes without recording events', function (): void {
         ->and($reloaded->status())->toBe(DeliveryStatus::Prepared)
         ->and($reloaded->scans())->toHaveCount(1)
         ->and($reloaded->id()->equals($delivery->id()))->toBeTrue();
+});
+
+it('marks departure from Loaded to InTransit and records ShipmentDeparted', function (): void {
+    $delivery = newDelivery();
+    $delivery->recordPreparationScan('u-1', geo(), device(), at('2026-10-13T08:00:00+00:00'), 'k-prep');
+    $delivery->recordLoadScan('u-1', geo(), device(), at('2026-10-13T09:00:00+00:00'), 'k-load');
+    $delivery->releaseEvents();
+
+    $delivery->markDeparted(at('2026-10-13T10:00:00+00:00'));
+
+    expect($delivery->status())->toBe(DeliveryStatus::InTransit);
+    $events = $delivery->releaseEvents();
+    expect($events)->toHaveCount(1)
+        ->and($events[0])->toBeInstanceOf(ShipmentDeparted::class)
+        ->and($events[0]->eventName())->toBe('execution.shipment_departed')
+        ->and($events[0]->payload()['shipment_id'])->toBe($delivery->shipmentId());
+});
+
+it('departure is idempotent: no event when not Loaded', function (): void {
+    $delivery = newDelivery();
+    // Pending (no cargada): la salida no aplica y no reemite.
+    $delivery->markDeparted(at('2026-10-13T10:00:00+00:00'));
+
+    expect($delivery->status())->toBe(DeliveryStatus::Pending)
+        ->and($delivery->releaseEvents())->toBe([]);
 });

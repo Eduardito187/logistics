@@ -41,13 +41,19 @@ final class ProjectExecutionEventHandler implements CommandHandler
 
         $tracking = $this->trackings->findByShipmentId($command->shipmentId);
         if ($tracking === null) {
-            // Todavía no se abrió el seguimiento de este envío: nada que proyectar.
+            // Todavía no se ligó el envío a un seguimiento: nada que proyectar.
             return;
         }
 
-        // Antes de aplicar: ¿ya estaba cerrado? Si ya era terminal, este evento es un reenvío del relay
-        // y no debe volver a avanzar la cascada (evita el doble descuento en reintentos).
-        $wasTerminal = $tracking->status()->isTerminal();
+        // Proyección TOLERANTE: si la transición no aplica desde el estado actual (evento tardío,
+        // duplicado o fuera de orden del relay), se saltea en vez de romper.
+        if (!$tracking->canApply($status)) {
+            return;
+        }
+
+        // ¿La parada ya estaba resuelta (entregada/fallida)? Si sí, este evento es un reenvío y no debe
+        // volver a avanzar la cascada (evita el doble descuento en reintentos).
+        $wasResolved = $this->isStopResolved($tracking->status());
 
         $tracking->applyStatus($status);
 
@@ -55,13 +61,18 @@ final class ProjectExecutionEventHandler implements CommandHandler
 
         $this->recordEvents->record($tracking->releaseEvents(), 'tracking.shipment_tracking');
 
-        // Una parada se completó (entrega resuelta: entregada o fallida) POR PRIMERA VEZ. Si el envío
-        // tiene ubicación en la ruta, los envíos de atrás en la MISMA ruta quedan una parada más cerca
-        // del cliente: se baja su stops_remaining en cascada. Es un ajuste de proyección (no graba
-        // eventos de negocio) y corre una sola vez por parada, no en cada reintento del relay.
-        if (!$wasTerminal && $status->isTerminal()) {
+        // Una parada se completó (entregada o fallida) POR PRIMERA VEZ. Si el envío tiene ubicación en la
+        // ruta, los envíos de atrás en la MISMA ruta quedan una parada más cerca del cliente: se baja su
+        // stops_remaining en cascada. Es un ajuste de proyección (no graba eventos), una vez por parada.
+        if (!$wasResolved && $this->isStopResolved($status)) {
             $this->advanceLaterStops($tracking->routeId(), $tracking->routePosition()?->value);
         }
+    }
+
+    /** Una parada queda resuelta cuando el envío se entrega o falla el intento. */
+    private function isStopResolved(VisibleStatus $status): bool
+    {
+        return $status === VisibleStatus::Delivered || $status === VisibleStatus::Failed;
     }
 
     /**

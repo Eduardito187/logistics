@@ -309,15 +309,17 @@ final class EmittedLabelResource extends Resource
      * label_ids que YA tienen un evento de impresión en la bitácora (para el filtro «impresa/pendiente»).
      * Tolerante: lista vacía si la tabla no existe todavía.
      *
-     * @return list<string>
+     * @return array<int, string>
      */
     private static function printedLabelIds(): array
     {
         try {
-            /** @var list<string> $ids */
-            $ids = DB::table('label_events')->where('event', 'printed')->distinct()->pluck('label_id')->all();
-
-            return $ids;
+            return DB::table('label_events')
+                ->where('event', 'printed')
+                ->distinct()
+                ->pluck('label_id')
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->all();
         } catch (\Throwable) {
             return [];
         }

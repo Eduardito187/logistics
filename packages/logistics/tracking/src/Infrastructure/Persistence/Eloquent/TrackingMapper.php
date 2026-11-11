@@ -30,6 +30,7 @@ final class TrackingMapper
         return [
             'id' => $tracking->id()->toString(),
             'shipment_id' => $tracking->shipmentId(),
+            'order_reference' => $tracking->orderReference(),
             'token' => $tracking->token()->toString(),
             'status' => $tracking->status()->value,
             'remaining_stops' => $tracking->remainingStops(),
@@ -76,6 +77,7 @@ final class TrackingMapper
             $lastPosition,
             $record->route_id,
             $routePosition,
+            $record->order_reference,
         );
     }
 }

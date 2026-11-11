@@ -14,9 +14,10 @@ final readonly class TrackingStatusChanged extends BaseDomainEvent
 {
     public function __construct(
         string $trackingId,
-        public string $shipmentId,
+        public ?string $shipmentId,
         public string $previousStatus,
         public string $status,
+        public ?string $orderReference = null,
     ) {
         parent::__construct($trackingId);
     }
@@ -31,6 +32,7 @@ final readonly class TrackingStatusChanged extends BaseDomainEvent
         return [
             'tracking_id' => $this->aggregateId,
             'shipment_id' => $this->shipmentId,
+            'order_reference' => $this->orderReference,
             'previous_status' => $this->previousStatus,
             'status' => $this->status,
         ];

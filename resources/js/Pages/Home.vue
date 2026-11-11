@@ -19,13 +19,13 @@ const go = () => {
 </script>
 
 <template>
-    <Head title="Seguí tu pedido" />
+    <Head><title>Seguí tu pedido</title></Head>
 
     <div class="min-h-screen bg-neutral-950 text-neutral-100">
         <header class="border-b border-white/10">
             <div class="mx-auto flex max-w-xl items-center gap-2 px-4 py-4">
                 <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background:#e30613">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.4">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.4">
                         <path d="M3 7h11v8H3z" /><path d="M14 10h4l3 3v2h-7z" /><circle cx="7" cy="17" r="1.6" /><circle cx="17" cy="17" r="1.6" />
                     </svg>
                 </span>

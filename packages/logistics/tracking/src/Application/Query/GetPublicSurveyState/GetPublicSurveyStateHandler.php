@@ -44,9 +44,11 @@ final class GetPublicSurveyStateHandler implements QueryHandler
             return null;
         }
 
+        $shipmentId = $tracking->shipmentId();
+
         return new PublicSurveyStateView(
             eligible: $tracking->status() === VisibleStatus::Delivered,
-            alreadySubmitted: $this->surveys->existsForShipment($tracking->shipmentId()),
+            alreadySubmitted: $shipmentId !== null && $this->surveys->existsForShipment($shipmentId),
         );
     }
 }

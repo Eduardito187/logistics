@@ -14,10 +14,10 @@ use Logistics\Tracking\Domain\ValueObject\TrackingId;
 use Logistics\Tracking\Domain\ValueObject\TrackingToken;
 
 /**
- * Abre el seguimiento de un envío: genera el token público, construye el agregado, lo persiste y
+ * Abre el seguimiento de un pedido: genera el token público, construye el agregado, lo persiste y
  * libera sus eventos.
  *
- * Idempotente por shipmentId: si ya existe seguimiento para ese envío, no duplica; deja disponible el
+ * Idempotente por orderReference: si ya existe seguimiento para esa orden, no duplica; deja disponible el
  * id del existente en lastTrackingId() y no vuelve a grabar eventos.
  *
  * @implements CommandHandler<OpenTracking>
@@ -37,7 +37,7 @@ final class OpenTrackingHandler implements CommandHandler
             throw TrackingException::because('OpenTrackingHandler solo maneja OpenTracking');
         }
 
-        $existing = $this->trackings->findByShipmentId($command->shipmentId);
+        $existing = $this->trackings->findByOrderReference($command->orderReference);
         if ($existing !== null) {
             $this->lastTrackingId = $existing->id();
 
@@ -46,7 +46,7 @@ final class OpenTrackingHandler implements CommandHandler
 
         $tracking = ShipmentTracking::open(
             $this->trackings->nextIdentity(),
-            $command->shipmentId,
+            $command->orderReference,
             TrackingToken::generate(),
             $command->remainingStops,
         );

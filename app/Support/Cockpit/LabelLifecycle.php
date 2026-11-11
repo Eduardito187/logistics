@@ -142,7 +142,7 @@ final class LabelLifecycle
                 'label' => 'etiqueta',
                 'actor' => is_string($r->actor_name ?? null) && $r->actor_name !== '' ? $r->actor_name : '—',
                 'detail' => $this->auditDetail((string) $r->event, $meta),
-                'tone' => (string) $r->event === 'revoked' ? 'danger' : ((string) $r->event === 'printed' ? 'info' : 'ok'),
+                'tone' => $this->eventTone((string) $r->event),
             ];
         }
 
@@ -217,6 +217,16 @@ final class LabelLifecycle
             'printed' => 'Impresa',
             'revoked' => 'Revocada',
             default => ucfirst($event),
+        };
+    }
+
+    /** Tono visual del evento de bitácora (revocación en rojo, impresión en azul, el resto neutro). */
+    private function eventTone(string $event): string
+    {
+        return match ($event) {
+            'revoked' => 'danger',
+            'printed' => 'info',
+            default => 'ok',
         };
     }
 

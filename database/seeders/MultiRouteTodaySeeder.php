@@ -453,21 +453,45 @@ final class MultiRouteTodaySeeder extends Seeder
             return;
         }
 
-        // Recorrido: CD → paradas cerradas → 75% hacia la parada actual.
+        $trail = $this->densifyTrail($this->telemetryWaypoints($route));
+        $pings = $this->buildPings($trail, $gps);
+
+        $this->bus->dispatch(new RecordVehiclePings($vehicleId, $driverId, $route->id()->toString(), 'app', $pings));
+    }
+
+    /**
+     * Recorrido base del camión: CD → paradas ya cerradas → 75% hacia la parada actual.
+     *
+     * @return list<array{0: float, 1: float}>
+     */
+    private function telemetryWaypoints(VehicleRoute $route): array
+    {
         $waypoints = [[self::CD_LAT, self::CD_LNG]];
         $stops = $route->stops();
+
         foreach (array_slice($stops, 0, self::COMPLETED_STOPS) as $stop) {
             if ($stop->lat() !== null && $stop->lng() !== null) {
                 $waypoints[] = [$stop->lat(), $stop->lng()];
             }
         }
+
         $current = $stops[self::COMPLETED_STOPS] ?? null;
         $last = $waypoints[count($waypoints) - 1];
         if ($current !== null && $current->lat() !== null && $current->lng() !== null) {
             $waypoints[] = [$last[0] + ($current->lat() - $last[0]) * 0.75, $last[1] + ($current->lng() - $last[1]) * 0.75];
         }
 
-        // Densificar.
+        return $waypoints;
+    }
+
+    /**
+     * Interpola puntos intermedios entre cada par de waypoints (traza suave para el mapa).
+     *
+     * @param  list<array{0: float, 1: float}> $waypoints
+     * @return list<array{0: float, 1: float}>
+     */
+    private function densifyTrail(array $waypoints): array
+    {
         $trail = [];
         for ($i = 1, $c = count($waypoints); $i < $c; $i++) {
             [$fromLat, $fromLng] = $waypoints[$i - 1];
@@ -478,6 +502,17 @@ final class MultiRouteTodaySeeder extends Seeder
             }
         }
 
+        return $trail;
+    }
+
+    /**
+     * Convierte la traza en pings GPS con hora y velocidad derivadas (últimas 2 horas hasta hace 1 minuto).
+     *
+     * @param  list<array{0: float, 1: float}>                                                                                                                $trail
+     * @return list<array{recorded_at: string, lat: float, lng: float, speed_kph: float, heading: int, accuracy_m: float, ignition: bool, device_id: string}>
+     */
+    private function buildPings(array $trail, string $gps): array
+    {
         $start = $this->now->modify('-2 hours');
         $end = $this->now->modify('-1 minute');
         $span = max(60, $end->getTimestamp() - $start->getTimestamp());
@@ -505,7 +540,7 @@ final class MultiRouteTodaySeeder extends Seeder
             $previous = [$lat, $lng, $at];
         }
 
-        $this->bus->dispatch(new RecordVehiclePings($vehicleId, $driverId, $route->id()->toString(), 'app', $pings));
+        return $pings;
     }
 
     private function say(string $level, string $message): void

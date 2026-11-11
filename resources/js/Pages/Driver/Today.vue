@@ -17,6 +17,12 @@ const flash = computed(() => page.props.flash || {});
 
 const logout = () => router.post('/app/logout');
 
+// Inicia la ruta: marca la salida de todos los pedidos → «en camino» en el seguimiento del cliente.
+const startRoute = () => {
+    if (!window.confirm('¿Iniciar la ruta? Tus pedidos pasarán a «en camino».')) return;
+    router.post('/app/driver/route/start', {}, { preserveScroll: true });
+};
+
 // Abre el mapa de navegación del teléfono hacia la parada.
 const navigate = (stop) => {
     if (stop.lat == null || stop.lng == null) return;
@@ -26,7 +32,7 @@ const navigate = (stop) => {
 // Confirma la entrega (prueba de entrega real por el dominio) con el nombre de quien recibió.
 const confirmDeliver = (stop) => {
     const who = window.prompt('¿Quién recibió el pedido? (nombre y apellido)');
-    if (!who || !who.trim()) return;
+    if (!who?.trim()) return;
     router.post(
         `/app/driver/stops/${stop.shipment_id}/deliver`,
         { confirmation: who.trim(), lat: stop.lat, lng: stop.lng },
@@ -36,14 +42,14 @@ const confirmDeliver = (stop) => {
 </script>
 
 <template>
-    <Head title="Mi ruta de hoy" />
+    <Head><title>Mi ruta de hoy</title></Head>
 
     <div class="min-h-screen bg-neutral-950 text-neutral-100">
         <!-- Cabecera -->
         <header class="sticky top-0 z-10 border-b border-white/10 bg-neutral-950/90 backdrop-blur">
             <div class="mx-auto flex max-w-xl items-center gap-3 px-4 py-3">
                 <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background:#e30613">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.4">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.4">
                         <path d="M3 7h11v8H3z" /><path d="M14 10h4l3 3v2h-7z" /><circle cx="7" cy="17" r="1.6" /><circle cx="17" cy="17" r="1.6" />
                     </svg>
                 </span>
@@ -61,6 +67,13 @@ const confirmDeliver = (stop) => {
             <p v-if="flash.error" class="mb-4 rounded-xl bg-red-500/15 px-4 py-3 text-sm text-red-300 ring-1 ring-red-500/30">{{ flash.error }}</p>
 
             <template v-if="hasRoute">
+                <!-- Iniciar ruta: pasa los pedidos a «en camino» -->
+                <button
+                    class="mb-4 w-full rounded-xl py-3 text-sm font-semibold text-white"
+                    style="background:#e30613"
+                    @click="startRoute"
+                >Iniciar ruta (marcar salida)</button>
+
                 <!-- Resumen -->
                 <div class="mb-4 grid grid-cols-3 gap-3 text-center">
                     <div class="rounded-xl border border-white/10 bg-neutral-900/60 p-3">

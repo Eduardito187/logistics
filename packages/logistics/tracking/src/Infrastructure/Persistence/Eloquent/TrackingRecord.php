@@ -18,7 +18,8 @@ use Logistics\Tracking\Database\Factories\TrackingRecordFactory;
  * La pk es el UUID del seguimiento (string, no autoincremental). token y shipment_id son únicos.
  *
  * @property string      $id
- * @property string      $shipment_id
+ * @property string|null $shipment_id
+ * @property string|null $order_reference
  * @property string      $token
  * @property string      $status
  * @property int         $remaining_stops
@@ -44,6 +45,7 @@ final class TrackingRecord extends Model
     protected $fillable = [
         'id',
         'shipment_id',
+        'order_reference',
         'token',
         'status',
         'remaining_stops',

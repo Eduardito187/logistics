@@ -10,9 +10,11 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\TimePicker;
 use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -30,6 +32,8 @@ use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddress;
+use Logistics\Shipments\Application\Command\RescheduleShipmentDelivery\RescheduleShipmentDelivery;
+use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource\Pages\EditShipment;
@@ -469,6 +473,7 @@ final class ShipmentResource extends Resource
                 ViewAction::make(),
                 EditAction::make(),
                 self::reGeocodeAction(),
+                self::rescheduleAction(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
@@ -497,6 +502,59 @@ final class ShipmentResource extends Resource
 
                 Notification::make()
                     ->title(__('Address re-geocoded'))
+                    ->success()
+                    ->send();
+            });
+    }
+
+    /**
+     * Acción de REPROGRAMACIÓN de la entrega: cambia la fecha/ventana del envío (tras el pago, antes de
+     * entregar). Despacha RescheduleShipmentDelivery por el CommandBus; el seguimiento del cliente pasa a
+     * «reprogramada» y se dispara el aviso. Oculta en envíos cerrados (entregados/fallidos/cancelados).
+     */
+    private static function rescheduleAction(): Action
+    {
+        return Action::make('reschedule')
+            ->label(__('Reschedule delivery'))
+            ->icon('heroicon-o-calendar-days')
+            ->modalHeading(__('Reschedule delivery'))
+            ->modalSubmitActionLabel(__('Reschedule'))
+            ->visible(static fn (ShipmentRecord $record): bool => !in_array(
+                (string) $record->status,
+                [ShipmentStatus::Delivered->value, ShipmentStatus::Failed->value, ShipmentStatus::Cancelled->value],
+                true,
+            ))
+            ->schema([
+                DatePicker::make('delivery_date')
+                    ->label(__('New delivery date'))
+                    ->native(false)
+                    ->required(),
+                TimePicker::make('window_start')
+                    ->label(__('Window start'))
+                    ->seconds(false)
+                    ->required(),
+                TimePicker::make('window_end')
+                    ->label(__('Window end'))
+                    ->seconds(false)
+                    ->required(),
+                Textarea::make('reason')
+                    ->label(__('Reason'))
+                    ->rows(2)
+                    ->maxLength(500),
+            ])
+            ->action(function (array $data, ShipmentRecord $record): void {
+                /** @var CommandBus $commandBus */
+                $commandBus = app(CommandBus::class);
+                $commandBus->dispatch(new RescheduleShipmentDelivery(
+                    shipmentId: (string) $record->getKey(),
+                    deliveryDate: (string) $data['delivery_date'],
+                    windowStart: substr((string) $data['window_start'], 0, 5),
+                    windowEnd: substr((string) $data['window_end'], 0, 5),
+                    reason: is_string($data['reason'] ?? null) && $data['reason'] !== '' ? $data['reason'] : null,
+                ));
+
+                Notification::make()
+                    ->title(__('Delivery rescheduled'))
                     ->success()
                     ->send();
             });

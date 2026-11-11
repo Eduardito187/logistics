@@ -6,6 +6,7 @@ namespace Commerce\Orders\Application\Command\PlaceOrder;
 
 use Commerce\Orders\Domain\Contract\OrderRepository;
 use Commerce\Orders\Domain\Model\Order;
+use Commerce\Orders\Domain\ValueObject\FinancingPlan;
 use Commerce\Orders\Domain\ValueObject\OrderLine;
 use Commerce\Orders\Domain\ValueObject\ShippingAddress;
 use Logistics\Outbox\Application\RecordDomainEvents;
@@ -47,6 +48,7 @@ final readonly class PlaceOrderHandler implements CommandHandler
             $lines,
             $command->currency,
             $command->cartId,
+            FinancingPlan::from($command->financing),
         );
 
         $this->orders->save($order);

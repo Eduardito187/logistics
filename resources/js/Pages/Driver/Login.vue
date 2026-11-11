@@ -7,13 +7,13 @@ const submit = () => form.post('/app/login', { onFinish: () => form.reset('passw
 </script>
 
 <template>
-    <Head title="Ingreso chofer" />
+    <Head><title>Ingreso chofer</title></Head>
 
     <div class="flex min-h-screen items-center justify-center bg-neutral-950 px-4 text-neutral-100">
         <div class="w-full max-w-sm">
             <div class="mb-6 flex items-center gap-2">
                 <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg" style="background:#e30613">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.4">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.4">
                         <path d="M3 7h11v8H3z" /><path d="M14 10h4l3 3v2h-7z" /><circle cx="7" cy="17" r="1.6" /><circle cx="17" cy="17" r="1.6" />
                     </svg>
                 </span>
