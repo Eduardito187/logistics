@@ -47,3 +47,9 @@ dentro; el compose publica `STAGING_HTTP_PORT:8080`). Verificado: master y worke
 Segundo aviso de Sonar sobre el mismo stage: `COPY --chown=101:101` → "copied resource can be modified by
 a non-root user". Corregido: `USER root`, COPY sin chown, `chown root` + 755/644, `USER 101` al final
 (uid 101 solo lee; verificado que no puede escribir y que sirve 200).
+
+**Primer merge a staging (PR #28, 49e8bc0):** staging-deploy y staging-pr-check salieron "Failure" con 0
+jobs (nombre = ruta del archivo): workflows INVÁLIDOS por `${{ runner.temp }}` en `env:` de job. Arreglado
+con un paso `echo "ENV_FILE=$RUNNER_TEMP/..." >> "$GITHUB_ENV"`; validado con actionlint (exit 0,
+config `.github/actionlint.yaml` con labels docker/oci). Por merge a staging lo esperado son 2 corridas:
+CI + Staging deploy (pr-check solo corre en PRs).

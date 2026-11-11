@@ -141,6 +141,10 @@ docker compose exec -T app ./vendor/bin/pest                                 # e
 ```
 No pipear `pest` a `tail -N` en background: trunca el resumen "Tests: N passed". Confiar en exit 0 + cero FAIL.
 
+**NO usar `pest --parallel`.** Las bases paralelas `logistics_test_test_1..4` NO tienen PostGIS (las
+migraciones no crean la extensión; solo el init de la imagen la puso en `logistics_test`) → ~1.000 fallas
+falsas `type "geography" does not exist`. La suite válida es la serial (igual que CI): `./vendor/bin/pest`.
+
 ## Mapa de workflows (`.github/workflows/`)
 
 | Workflow | Cuándo | Runner | Qué valida |
