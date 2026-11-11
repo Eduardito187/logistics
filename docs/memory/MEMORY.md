@@ -43,5 +43,6 @@
 - [Admin CRUD→CRM por fases](admin-crm-phases.md) — F1 nav · F2 segmentos/360/cross-link · F3 timeline/vistas/bulk · F4 Cliente360+notas/homes/analítica/colas · F5 notas-en-todo+Agenda/tiempo-real(soketi)/reportes/⌘K — F1-F5 completas, sin commitear
 - [Roadmap B2B/B2C/C2C](roadmap-b2b-b2c-c2c.md) — reunión POS/MPS; qué ya existe vs huecos (mayorista B2B, WMS, trailers/multimodal, canales, C2C, MPS); fases S/M/W/V/T/I/C/P/D; Lisa = LISA WMS (integrar, no reconstruir); docs/roadmap-ecommerce-b2b-b2c-c2c.md
 - [Backup solo manual y de la base](backup-manual-only.md) — backup:create/verify/restore manual, solo PostgreSQL completo; pg-backup automático siempre desactivado (profile backup)
-- [Deploy de staging (CI)](staging-deploy-ci.md) — self-hosted runner OCI, staging-deploy.yml solo desde staging, compose autónomo logistics-staging, secrets, prueba local, DB_WAIT_TIMEOUT
+- [Deploy de staging (CI)](staging-deploy-ci.md) — self-hosted runner OCI, jobs deploy-staging/staging-build dentro de ci.yml (deploy needs CI verde), solo desde staging, compose autónomo logistics-staging, secrets, prueba local, DB_WAIT_TIMEOUT
 - [Coordinación de agentes en paralelo](parallel-agents-coordination.md) — territorios disjuntos, Pest serializado por el coordinador, base de dev intocable, alcance fijado antes
+- [Funciona en docker nuevo (regla dura)](works-on-fresh-docker.md) — defaults funcionales en cualquier entorno, nunca depender del .env local; candados que fallen si vuelve; teselas OSM por defecto

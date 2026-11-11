@@ -1,10 +1,9 @@
 /**
  * Helper compartido de teselas (tiles) para todos los mapas Leaflet del proyecto.
  *
- * Política de la plataforma: CERO CDN público. Los mapas usan ÚNICAMENTE el tileserver OSM self-host
- * (config/maps.php → MAP_TILE_URL, por defecto http://localhost:8082/...). Se eliminó el antiguo
- * fallback al OSM público: si el tileserver self-host no está levantado, el mapa simplemente no
- * muestra teselas (comportamiento aceptado) y NUNCA se pega a un CDN público de teselas.
+ * Fuente de teselas: config/maps.php → MAP_TILE_URL. Por defecto las públicas de OpenStreetMap
+ * (funcionan en cualquier entorno sin levantar nada); el tileserver self-host es opcional (perfil `geo`)
+ * apuntando MAP_TILE_URL a su URL PÚBLICA. Una sola fuente, sin fallback.
  *
  * Uso en un blade (tras cargar Leaflet y este script):
  *   window.DismacMaps.tileLayer(L, {

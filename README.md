@@ -142,10 +142,11 @@ conciencia; hoy no están agendados).
 
 ## Deploy de staging (automático)
 
-Cada merge a `staging` se despliega solo en el servidor de Oracle Cloud (self-hosted runner) con
-[.github/workflows/staging-deploy.yml](.github/workflows/staging-deploy.yml): build en Docker,
-migraciones, `docker compose -p logistics-staging up -d --build --remove-orphans` y smoke test. Los PR
-hacia `staging` solo se construyen ([staging-pr-check.yml](.github/workflows/staging-pr-check.yml)).
+Cada merge a `staging` se despliega solo en el servidor de Oracle Cloud (self-hosted runner) con el job
+`Deploy staging` de [.github/workflows/ci.yml](.github/workflows/ci.yml), que corre **solo si pasaron
+lint, tests, assets, auditoría e imagen**: build en Docker, migraciones,
+`docker compose -p logistics-staging up -d --build --remove-orphans` y smoke test. Los PR hacia `staging`
+solo se construyen en el servidor (job `Staging build`). Una corrida por merge.
 
 - **Secrets obligatorios:** `STAGING_APP_KEY`, `STAGING_DB_PASSWORD`. Opcional: `STAGING_ENV_EXTRA`.
 - **Puerto:** `8110` (variable `STAGING_HTTP_PORT`); hay que abrirlo en la Security List de Oracle Cloud.

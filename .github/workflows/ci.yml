@@ -4,11 +4,18 @@ name: CI
 # La suite que valida acá es la misma que `make ci`: Pint (--test) + PHPStan nivel 8 + Pest.
 # En CI se ejecuta de forma nativa (sin Docker) contra los servicios de GitHub Actions para
 # que sea rápida y cacheable; localmente el equipo usa `make ci` dentro de los containers.
+#
+# STAGING vive en ESTE mismo workflow (una sola corrida por merge, no dos en paralelo):
+#   - `staging-build`  (PR → staging): construye las imágenes de staging en el servidor, sin desplegar.
+#   - `deploy-staging` (push a staging): despliega SOLO si pasaron lint, tests, assets, auditoría e imagen.
+# Guía: docs/deploy-staging.md. `workflow_dispatch` permite redesplegar staging a mano (eligiendo la
+# rama staging en la UI; desde otra rama el deploy se omite).
 on:
   push:
     branches: [dev, staging, production]
   pull_request:
     branches: [dev, staging, production]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: PHP + deps (cacheado)
         uses: ./.github/actions/php-deps
@@ -79,7 +86,7 @@ jobs:
       REDIS_PORT: 6379
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: PHP + deps (cacheado)
         uses: ./.github/actions/php-deps
@@ -110,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Sólo se necesita PHP/Composer para traer vendor/filament: el tema de Filament hace
       # `@import` de vendor/filament/filament/resources/css/theme.css y Tailwind escanea sus vistas.
@@ -119,7 +126,7 @@ jobs:
         with:
           php-version: ${{ env.PHP_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -148,7 +155,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 (2.40.0)
         with:
@@ -168,7 +175,7 @@ jobs:
       - name: composer audit
         run: composer audit --locked --no-interaction --ansi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -183,7 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: docker/setup-buildx-action@v3
 
@@ -199,3 +206,113 @@ jobs:
           tags: dismac/logistics-app:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ──────────────────────────── STAGING (servidor de Oracle Cloud, self-hosted runner) ────────────────────────────
+
+  # PR → staging: valida que las imágenes de staging construyan EN el servidor (sin desplegar).
+  staging-build:
+    name: Staging build (sin deploy)
+    # Solo PRs hacia staging cuyas ramas viven en ESTE repo: un PR desde un fork ejecutaría código ajeno
+    # en el servidor (runner self-hosted).
+    if: >-
+      github.event_name == 'pull_request' && github.base_ref == 'staging'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, docker]
+    timeout-minutes: 45
+    env:
+      # Proyecto y tag PROPIOS del PR: nunca tocan los contenedores ni las imágenes de staging.
+      STAGING_PROJECT: logistics-staging-pr-${{ github.event.pull_request.number }}
+      STAGING_IMAGE_TAG: pr-${{ github.event.pull_request.number }}
+    steps:
+      # `runner` no existe en el `env` a nivel de job (invalida el workflow): la ruta se arma acá.
+      - name: Preparar rutas
+        run: echo "ENV_FILE=$RUNNER_TEMP/logistics-staging-pr.env" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v5
+        with:
+          clean: true
+
+      # El build no necesita secretos reales: valores de relleno solo para que el compose valide.
+      - name: Env de relleno (solo build)
+        env:
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          DB_PASSWORD: build-only
+        run: bash scripts/staging/render-env.sh "$ENV_FILE"
+
+      - name: Build (sin deploy)
+        run: bash scripts/staging/deploy.sh "$ENV_FILE" build
+
+      - name: Limpieza
+        if: always()
+        run: |
+          rm -f "$ENV_FILE"
+          docker image rm -f "dismac/logistics-app:${STAGING_IMAGE_TAG}" "dismac/logistics-web:${STAGING_IMAGE_TAG}" 2>/dev/null || true
+          docker image prune -f
+          docker builder prune -f --filter until=168h
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+  # Push a staging (merge de un PR) o manual: despliega en el servidor SOLO si todo lo anterior pasó.
+  deploy-staging:
+    name: Deploy staging (logistics-staging)
+    needs: [lint, test, assets, security, image]
+    # Candado: SOLO desde la rama staging (el dueño lo exige) y nunca en un PR.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/staging'
+    runs-on: [self-hosted, docker]
+    timeout-minutes: 60
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_APP_URL }}
+    env:
+      STAGING_PROJECT: logistics-staging
+      STAGING_IMAGE_TAG: staging
+    steps:
+      # `runner` no existe en el `env` a nivel de job (invalida el workflow): la ruta se arma acá.
+      - name: Preparar rutas
+        run: echo "ENV_FILE=$RUNNER_TEMP/logistics-staging.env" >> "$GITHUB_ENV"
+
+      # El commit EXACTO que pasó lint/tests/imagen (no "lo último de staging", que podría ser otro).
+      - name: Checkout del commit validado
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          # Runner persistente: limpia restos de corridas anteriores antes de traer el código.
+          clean: true
+
+      - name: Generar env de staging desde secrets
+        env:
+          APP_KEY: ${{ secrets.STAGING_APP_KEY }}
+          DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          STAGING_ENV_EXTRA: ${{ secrets.STAGING_ENV_EXTRA }}
+          APP_URL: ${{ vars.STAGING_APP_URL }}
+          STAGING_HTTP_PORT: ${{ vars.STAGING_HTTP_PORT }}
+        run: bash scripts/staging/render-env.sh "$ENV_FILE"
+
+      - name: Build, migrar, desplegar y smoke test
+        run: bash scripts/staging/deploy.sh "$ENV_FILE"
+
+      - name: Resumen
+        if: success()
+        run: |
+          {
+            echo "### Staging desplegado"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+            echo "- Proyecto compose: \`$STAGING_PROJECT\`"
+            echo "- Puerto publicado: \`${{ vars.STAGING_HTTP_PORT || '8110' }}\`"
+            echo ""
+            echo '```'
+            docker compose -p "$STAGING_PROJECT" ps --format 'table {{.Service}}\t{{.Status}}\t{{.Ports}}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Runner NO efímero (disco de 45 GB): se borra el env con secretos, las imágenes colgadas, la caché
+      # de build vieja (se conserva la de la última semana) y el workspace. Corre SIEMPRE. Los contenedores
+      # no montan nada del workspace, así que borrarlo no afecta a staging.
+      - name: Limpieza
+        if: always()
+        run: |
+          rm -f "$ENV_FILE"
+          docker image prune -f
+          docker builder prune -f --filter until=168h
+          df -h / | tail -1 | awk '{print "Disco tras limpieza: " $4 " libres (" $5 " usado)"}'
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +

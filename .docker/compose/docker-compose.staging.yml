@@ -6,7 +6,7 @@
 # despliegue INMUTABLE: el código va horneado en las imágenes (targets `prod` y `web` del Dockerfile),
 # los secretos llegan por un env-file generado en el deploy y SOLO se publica el puerto de nginx.
 #
-# Lo usa el workflow .github/workflows/staging-deploy.yml vía scripts/staging/deploy.sh:
+# Lo usa el job `deploy-staging` de .github/workflows/ci.yml vía scripts/staging/deploy.sh:
 #   docker compose -p logistics-staging -f .docker/compose/docker-compose.staging.yml \
 #       --env-file <env generado> up -d --build --remove-orphans --wait
 #

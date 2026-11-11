@@ -441,10 +441,9 @@ services:
 
     # -------------------- Tileserver (teselas de mapa OpenStreetMap self-host) --------------------
     # Sirve las teselas raster del estilo osm-bright a los mapas Leaflet (admin + seguimiento público).
-    # Reemplaza a tile.openstreetmap.org / tiles de pago: todo OSM self-host. Siempre encendido (sin
-    # `profiles`): las vistas apuntan aquí vía MAP_TILE_URL=http://localhost:8082/styles/osm-bright/{z}/{x}/{y}.png
-    # (puerto del host, porque las teselas las pide el navegador). Si no hay self-host configurado, las
-    # vistas caen al tile público de OSM (solo demo).
+    # OPCIONAL (perfil `geo`): por defecto los mapas usan las teselas públicas de OSM (config/maps.php) y
+    # funcionan sin este servicio. Para usarlo, MAP_TILE_URL debe apuntar a su URL PÚBLICA (la pide el
+    # navegador): en dev local http://localhost:8082/styles/osm-bright/{z}/{x}/{y}.png sirve; en un servidor NO.
     #
     # Requiere el mbtiles/pmtiles de Bolivia y la config del estilo en `.docker/tileserver/data` (config.json
     # + estilo osm-bright + el .mbtiles). La generación es pesada y NO corre aquí: ver
