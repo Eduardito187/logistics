@@ -149,13 +149,14 @@ falsas `type "geography" does not exist`. La suite válida es la serial (igual q
 
 | Workflow | Cuándo | Runner | Qué valida |
 |---|---|---|---|
-| `ci.yml` | PR y push a `dev`/`staging`/`production` | `ubuntu-latest` | Pint, PHPStan 8, Pest `--coverage --min=75`, build de assets, `composer audit` + `npm audit`, build de imagen `prod` |
+| `ci.yml` (jobs lint/test/assets/security/image) | PR y push a `dev`/`staging`/`production` | `ubuntu-latest` | Pint, PHPStan 8, Pest `--coverage --min=75`, build de assets, `composer audit` + `npm audit`, build de imagen `prod` |
+| `ci.yml` job `staging-build` | PR → `staging` (solo ramas del repo, no forks) | self-hosted OCI | build de imágenes de staging (`scripts/staging/deploy.sh <env> build`) |
+| `ci.yml` job `deploy-staging` | push a `staging` (solo ese ref), `needs` todos los anteriores | self-hosted OCI | build + migrate + up + smoke. Ver skill `staging-deploy` |
 | `branch-policy.yml` | PR | `ubuntu-latest` | origen permitido (feature→dev→staging→production; hotfix/*) |
-| `staging-pr-check.yml` | PR → `staging` (solo ramas del repo, no forks) | self-hosted OCI | build de imágenes de staging (`scripts/staging/deploy.sh <env> build`) |
-| `staging-deploy.yml` | push a `staging` (solo ese ref) | self-hosted OCI | build + migrate + up + smoke. Ver skill `staging-deploy` |
 
-Si falla `staging-pr-check` pero `ci.yml` pasa, el problema está en el Dockerfile/compose de staging, no en
-el código: reproducir con la skill `staging-deploy` (prueba local).
+Si falla `staging-build` pero el resto del CI pasa, el problema está en el Dockerfile/compose de staging,
+no en el código: reproducir con la skill `staging-deploy` (prueba local). Validar SIEMPRE los workflows
+con actionlint antes de pushear (ver skill `staging-deploy`).
 
 ## Fin de línea (evita diffs fantasma)
 

@@ -27,20 +27,53 @@ it('sets the hardening headers on the response', function (): void {
         ->and($response->headers->get('Content-Security-Policy'))->not->toBeNull();
 });
 
-it('keeps the CSP self-only: no external CDN, local leaflet/geoman, self-host tiles', function (): void {
+it('keeps the CSP self-only for code: no external CDN, local leaflet/geoman; only the tile origin is opened', function (): void {
     $csp = (string) runSecurityHeaders(Request::create('http://localhost/admin'))
         ->headers->get('Content-Security-Policy');
 
-    // CERO CDN externo: Leaflet/Geoman y fuentes se sirven locales desde 'self'; los tiles, desde el
-    // tileserver self-host (origen agregado en runtime desde config/maps.php). Nada de unpkg ni OSM público.
+    // CERO CDN para CÓDIGO: Leaflet/Geoman y fuentes se sirven locales desde 'self'. La única excepción
+    // es la imagen de las teselas: se abre en img-src el origen de config('maps.tile_url').
     expect($csp)->not->toContain('unpkg.com')
-        ->and($csp)->not->toContain('tile.openstreetmap.org')
+        ->and($csp)->toContain('img-src')
+        ->and($csp)->toContain((string) parse_url((string) config('maps.tile_url'), PHP_URL_HOST))
         ->and($csp)->toContain("script-src 'self'")
         ->and($csp)->toContain("style-src 'self'")
         ->and($csp)->toContain("frame-ancestors 'self'")
         // Alpine (Filament) y los scripts inline de las páginas de mapa necesitan estos dos.
         ->and($csp)->toContain("'unsafe-inline'")
         ->and($csp)->toContain("'unsafe-eval'");
+});
+
+it('default map tiles work in ANY environment without configuring anything (never localhost)', function (): void {
+    // Regresión (2026-11-11): el default era `http://localhost:8082` (tileserver opcional del perfil geo) y en
+    // staging/cloud el mapa quedaba SIN FONDO; solo andaba en la PC del dueño por su `.env` local. Se evalúa
+    // config/maps.php SIN la variable, como en una instalación nueva.
+    $saved = [getenv('MAP_TILE_URL'), $_ENV['MAP_TILE_URL'] ?? null, $_SERVER['MAP_TILE_URL'] ?? null];
+    putenv('MAP_TILE_URL');
+    unset($_ENV['MAP_TILE_URL'], $_SERVER['MAP_TILE_URL']);
+
+    try {
+        /** @var array{tile_url: string} $maps */
+        $maps = require base_path('config/maps.php');
+    } finally {
+        if (is_string($saved[0])) {
+            putenv('MAP_TILE_URL='.$saved[0]);
+        }
+        if ($saved[1] !== null) {
+            $_ENV['MAP_TILE_URL'] = $saved[1];
+        }
+        if ($saved[2] !== null) {
+            $_SERVER['MAP_TILE_URL'] = $saved[2];
+        }
+    }
+
+    $host = (string) parse_url($maps['tile_url'], PHP_URL_HOST);
+
+    expect($maps['tile_url'])->toStartWith('https://')
+        ->toContain('{z}')
+        ->and($host)->not->toBeIn(['localhost', '127.0.0.1', ''])
+        // .env.example es lo que copia una instalación nueva (y el CI): tampoco puede apuntar a localhost.
+        ->and((string) file_get_contents(base_path('.env.example')))->not->toMatch('/^MAP_TILE_URL=https?:\/\/(localhost|127\.0\.0\.1)/m');
 });
 
 it('emits HSTS only over HTTPS', function (): void {

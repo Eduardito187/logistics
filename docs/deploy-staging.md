@@ -6,18 +6,26 @@ guía general de staging y producción.
 
 ## Qué dispara el deploy
 
-| Evento | Workflow | Qué hace |
-|---|---|---|
-| Push a `staging` (= merge de un PR hacia `staging`) | [staging-deploy.yml](../.github/workflows/staging-deploy.yml) | Build, migraciones, deploy y smoke test |
-| Manual (Actions → *Staging deploy* → *Run workflow*) | ídem | Redespliega sin commit nuevo |
-| PR abierto/actualizado hacia `staging` | [staging-pr-check.yml](../.github/workflows/staging-pr-check.yml) | **Solo build** de las imágenes en el servidor, sin desplegar |
-| PR o push a `dev`/`staging`/`production` | [ci.yml](../.github/workflows/ci.yml) (ya existía) | Pint, PHPStan 8, Pest con cobertura ≥75%, en `ubuntu-latest` |
+Todo vive en **un solo workflow**, [ci.yml](../.github/workflows/ci.yml): **una corrida por evento**, y el
+deploy **espera** a que pase todo lo demás.
 
-**Solo se despliega desde `staging`.** El job tiene el candado `if: github.ref == 'refs/heads/staging'`:
-un *Run workflow* lanzado eligiendo otra rama se omite sin tocar el servidor. Pushes a `dev`,
-`production` o `feature/*` nunca despliegan.
+| Evento | Jobs de `ci.yml` |
+|---|---|
+| PR abierto/actualizado hacia `staging` | Lint, Tests, Build admin theme, Security audit, Build production image **+ `Staging build (sin deploy)`** en el servidor |
+| Push a `staging` (= merge de un PR) | Lint, Tests, Build admin theme, Security audit, Build production image → **`Deploy staging`** (solo si TODOS pasaron) |
+| Manual (Actions → *CI* → *Run workflow*, eligiendo la rama `staging`) | Lo mismo que un push: CI completo → deploy |
+| PR o push a `dev` / `production` | Solo el CI (nunca despliega) |
 
-Un push nuevo a `staging` **cancela** el deploy en curso (`concurrency` con `cancel-in-progress`). Es
+El job `Deploy staging` tiene `needs: [lint, test, assets, security, image]`: **si un test falla, no se
+despliega**. Además hace checkout del **commit exacto que se validó** (`github.sha`), no de "lo último de
+staging". (Antes era un workflow aparte que corría en paralelo con los tests y desplegaba igual aunque
+fallaran.)
+
+**Solo se despliega desde `staging`.** El job tiene el candado
+`if: github.event_name != 'pull_request' && github.ref == 'refs/heads/staging'`: un *Run workflow* desde
+otra rama se omite sin tocar el servidor.
+
+Un push nuevo a `staging` **cancela** la corrida en curso (`concurrency` con `cancel-in-progress`). Es
 seguro: el deploy es idempotente y la corrida siguiente deja el estado completo.
 
 Los PR desde **forks** no se construyen en el servidor: ejecutarían código ajeno en él.

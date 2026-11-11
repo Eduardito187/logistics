@@ -51,3 +51,9 @@ general para cliente** (sin jerga "bulto/andén/rol/supervisor"): 404 "No encont
 "No tienes acceso a esta página", 500 "Algo salió mal", etc. Ver [[no-uuid-in-admin]] y [[auth-2fa-otp]].
 
 Reportes: `docs/perf/AUDITORIA-devops-performance-2026-10-20.md` y los REPORTE-*.md de perf.
+
+**ACTUALIZADO 2026-11-11 — teselas:** la regla "tiles SOLO self-host, sin fallback" se reemplazó: el default
+de `config/maps.php` y `.env.example` es el OSM público (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`);
+el tileserver self-host es opt-in vía `MAP_TILE_URL` (URL pública, nunca localhost en un servidor). Motivo:
+con el default self-host el mapa quedaba sin fondo en staging/cloud. Cero CDN sigue vigente para CÓDIGO
+(Leaflet/Geoman/fuentes locales). Ver [[works-on-fresh-docker]].

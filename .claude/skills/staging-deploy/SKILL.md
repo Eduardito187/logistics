@@ -2,8 +2,9 @@
 name: staging-deploy
 description: >-
   Deploy automático de STAGING en el servidor de Oracle Cloud (self-hosted runner, labels self-hosted+docker):
-  workflow staging-deploy.yml, compose autónomo logistics-staging, secrets, smoke test. Usar al tocar el
-  Dockerfile/compose/scripts de staging, cuando falle el job "Staging deploy" o "Staging PR check", al
+  jobs `deploy-staging`/`staging-build` de ci.yml, compose autónomo logistics-staging, secrets, smoke test.
+  Usar al tocar el Dockerfile/compose/scripts de staging, cuando falle el job "Deploy staging" o
+  "Staging build" del CI, al
   agregar un servicio o variable a staging, o para probar el deploy localmente antes de pushear.
 ---
 
@@ -15,8 +16,11 @@ Guía para humanos: `docs/deploy-staging.md`. Esta skill es el cómo-trabajarlo.
 
 | Archivo | Rol |
 |---|---|
-| `.github/workflows/staging-deploy.yml` | push a `staging` (+ manual). Candado `if: github.ref == 'refs/heads/staging'`: el dueño exige deploy SOLO desde staging |
-| `.github/workflows/staging-pr-check.yml` | PR→staging: solo build (proyecto `logistics-staging-pr-<n>`, tag `pr-<n>`); bloquea forks |
+| `.github/workflows/ci.yml` job `deploy-staging` | push a `staging` (+ manual). `needs: [lint, test, assets, security, image]` → deploy SOLO si el CI pasó; checkout de `github.sha` (el commit validado). Candado `github.event_name != 'pull_request' && github.ref == 'refs/heads/staging'` |
+| `.github/workflows/ci.yml` job `staging-build` | PR→staging: solo build (proyecto `logistics-staging-pr-<n>`, tag `pr-<n>`); bloquea forks |
+
+**Una sola corrida por evento.** No crear workflows aparte para staging: el dueño vio "2 corridas por
+merge" (CI y deploy en paralelo, el deploy sin esperar a los tests) y pidió unificarlo. Todo va en `ci.yml`.
 | `.docker/compose/docker-compose.staging.yml` | AUTÓNOMO (no se apila sobre el de dev). `name: logistics-staging`. Sin bind-mounts (el runner borra el workspace) |
 | `.docker/php/Dockerfile` stages `prod` (app/worker) y `web` | `web` = `nginxinc/nginx-unprivileged` (uid 101, escucha **8080**; Sonar S6471 exige no-root) con `public/` horneado |
 | `scripts/staging/render-env.sh` | env desde secrets (`STAGING_APP_KEY`, `STAGING_DB_PASSWORD`, opcional `STAGING_ENV_EXTRA` que pisa claves) |
@@ -57,6 +61,13 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/repo" -w /repo rhysd/actionlin
 Config de etiquetas del runner (`docker`, `oci`) en `.github/actionlint.yaml`. Un workflow inválido NO
 falla "en su job": GitHub lo marca fallido con **0 jobs** en CADA push (aparece con la ruta del archivo en
 vez del nombre), aunque su disparador no corresponda — así un merge a staging mostró 3 corridas.
+
+## Regla dura: tiene que funcionar en un docker NUEVO
+
+Nada visible puede depender del `.env` local del dueño. Antes de dar algo por arreglado, comparar `.env`
+vs `.env.example` / `render-env.sh` y dejar un candado (test o check del smoke). Caso real: el mapa de
+flota sin fondo en staging porque el default de teselas era `localhost:8082`; hoy el default es OSM
+público, `SecurityHeadersTest` lo protege y el smoke de `deploy.sh` falla si `maps.tile_url` es localhost.
 
 ## Trampas ya vistas
 
