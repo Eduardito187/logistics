@@ -43,6 +43,13 @@ Generar las claves de firma de etiquetas (van al `.env`, nunca al repo):
 make artisan c="logistics:labels:keygen"
 ```
 
+### Correr en Windows (Docker Desktop, sin perder datos)
+
+Para mover el proyecto del filesystem de WSL a una carpeta de Windows (NTFS) conservando todos los datos y
+con el rendimiento afinado (OPcache + VirtioFS + volúmenes nombrados para `vendor`/`node_modules`), ver el
+runbook **[docs/migracion-windows.md](docs/migracion-windows.md)** y el script
+`scripts/windows/migrate.ps1`. El override de perf es `.docker/compose/docker-compose.windows.yml`.
+
 ## Comandos frecuentes
 
 ```bash

@@ -1,0 +1,40 @@
+# ============================================================
+# Override de DESARROLLO en WINDOWS (Docker Desktop sobre NTFS)
+# ============================================================
+# El código fuente se monta desde el filesystem de Windows (C:\...\APP), que cruza
+# la frontera WSL↔Windows y es más lento que el ext4 de WSL. Este override aplica el
+# PHP afinado para ese caso (OPcache sin stat-storm + file-cache en RAM), acercando
+# el rendimiento al de WSL SIN tocar la config base (que sirve a quien corre en WSL).
+#
+# USO (desde C:\Users\ehhuallata\Documents\APP):
+#   docker compose -f docker-compose.yml -f .docker/compose/docker-compose.windows.yml up -d
+#
+# Permanente (recomendado): en el .env fijar
+#   COMPOSE_FILE=docker-compose.yml:.docker/compose/docker-compose.windows.yml
+# y entonces basta `docker compose up -d`.
+#
+# IMPORTANTE (rendimiento): en Docker Desktop → Settings → General, activar
+# "Use the WSL 2 based engine" y en Resources → File sharing habilitar VirtioFS.
+# vendor/ y node_modules/ ya viven en volúmenes nombrados (no cruzan NTFS): no tocar.
+# ============================================================
+
+services:
+    app:
+        volumes:
+            # El bind-mount de este .ini SOMBREA el php.dev.ini horneado en la imagen.
+            - ./.docker/php/php.windows.ini:/usr/local/etc/php/conf.d/zzz-logistics.ini:ro
+        # Segundo nivel de caché de OPcache en RAM (rápido, efímero): arranque en frío veloz.
+        tmpfs:
+            - /tmp/opcache
+
+    queue-worker:
+        volumes:
+            - ./.docker/php/php.windows.ini:/usr/local/etc/php/conf.d/zzz-logistics.ini:ro
+        tmpfs:
+            - /tmp/opcache
+
+    scheduler:
+        volumes:
+            - ./.docker/php/php.windows.ini:/usr/local/etc/php/conf.d/zzz-logistics.ini:ro
+        tmpfs:
+            - /tmp/opcache
