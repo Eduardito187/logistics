@@ -12,19 +12,28 @@ use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
 use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabelsHandler;
 use Logistics\Labels\Application\Command\PreEmitOrderLabels\PreEmitOrderLabels;
 use Logistics\Labels\Application\Command\PreEmitOrderLabels\PreEmitOrderLabelsHandler;
+use Logistics\Labels\Application\Command\RegisterPrinter\RegisterPrinter;
+use Logistics\Labels\Application\Command\RegisterPrinter\RegisterPrinterHandler;
+use Logistics\Labels\Application\Command\RemovePrinter\RemovePrinter;
+use Logistics\Labels\Application\Command\RemovePrinter\RemovePrinterHandler;
 use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
 use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabelsHandler;
+use Logistics\Labels\Application\Command\UpdatePrinter\UpdatePrinter;
+use Logistics\Labels\Application\Command\UpdatePrinter\UpdatePrinterHandler;
 use Logistics\Labels\Application\Contract\DispatchLinesReader;
 use Logistics\Labels\Application\Contract\LabelEnricher;
 use Logistics\Labels\Application\Contract\LabelUnitResolver;
 use Logistics\Labels\Application\Contract\OrderLabelEmissionPlanReader;
 use Logistics\Labels\Application\Contract\OriginResolver;
+use Logistics\Labels\Application\Contract\PrinterReader;
 use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLines;
 use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLinesHandler;
 use Logistics\Labels\Application\Query\GetPublicKeysBundle\GetPublicKeysBundle;
 use Logistics\Labels\Application\Query\GetPublicKeysBundle\GetPublicKeysBundleHandler;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabelsHandler;
+use Logistics\Labels\Application\Query\ListAvailablePrinters\ListAvailablePrinters;
+use Logistics\Labels\Application\Query\ListAvailablePrinters\ListAvailablePrintersHandler;
 use Logistics\Labels\Application\Query\ResolveLabelUnit\ResolveLabelUnit;
 use Logistics\Labels\Application\Query\ResolveLabelUnit\ResolveLabelUnitHandler;
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
@@ -32,15 +41,18 @@ use Logistics\Labels\Domain\Contract\LabelRenderer;
 use Logistics\Labels\Domain\Contract\LabelSigner;
 use Logistics\Labels\Domain\Contract\LabelSymbologyProvider;
 use Logistics\Labels\Domain\Contract\LabelVerifier;
+use Logistics\Labels\Domain\Contract\PrinterRepository;
 use Logistics\Labels\Domain\Contract\PublicKeyDirectory;
 use Logistics\Labels\Infrastructure\Crypto\ConfigPublicKeyDirectory;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelSigner;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelVerifier;
 use Logistics\Labels\Infrastructure\Persistence\Eloquent\EloquentEmittedLabelRepository;
+use Logistics\Labels\Infrastructure\Persistence\Eloquent\EloquentPrinterRepository;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentDispatchLinesReader;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentLabelEnricher;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentLabelUnitResolver;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentOriginResolver;
+use Logistics\Labels\Infrastructure\ReadModel\EloquentPrinterReader;
 use Logistics\Labels\Infrastructure\Settings\SettingsLabelSymbologyProvider;
 use Logistics\Labels\Infrastructure\Zpl\ZplLabelRenderer;
 use Logistics\Labels\Presentation\Console\ExportPublicKeysCommand;
@@ -111,6 +123,10 @@ final class LabelsServiceProvider extends ServiceProvider
 
         // Directorio de claves públicas para distribuir el bundle de verificación offline a la app.
         $this->app->bind(PublicKeyDirectory::class, ConfigPublicKeyDirectory::class);
+
+        // Registro central de impresoras de red por sede (escritura por agregado, lectura por ReadModel SQL).
+        $this->app->bind(PrinterRepository::class, EloquentPrinterRepository::class);
+        $this->app->bind(PrinterReader::class, EloquentPrinterReader::class);
     }
 
     public function boot(): void
@@ -128,6 +144,10 @@ final class LabelsServiceProvider extends ServiceProvider
         $registry->register(GetDispatchLines::class, GetDispatchLinesHandler::class);
         $registry->register(ResolveLabelUnit::class, ResolveLabelUnitHandler::class);
         $registry->register(GetPublicKeysBundle::class, GetPublicKeysBundleHandler::class);
+        $registry->register(RegisterPrinter::class, RegisterPrinterHandler::class);
+        $registry->register(UpdatePrinter::class, UpdatePrinterHandler::class);
+        $registry->register(RemovePrinter::class, RemovePrinterHandler::class);
+        $registry->register(ListAvailablePrinters::class, ListAvailablePrintersHandler::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([

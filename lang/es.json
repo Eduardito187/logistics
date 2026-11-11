@@ -1829,5 +1829,18 @@
     "yes": "sí",
     "— top level —": "— nivel superior —",
     "•••• already set": "•••• ya configurado",
-    "•••• set": "•••• configurado"
+    "•••• set": "•••• configurado",
+    "Network printer": "Impresora de red",
+    "Network printers": "Impresoras de red",
+    "Host": "Host",
+    "IP address or hostname reachable from the site network.": "Dirección IP o nombre de host alcanzable desde la red de la sede.",
+    "Enter a valid IP address or hostname.": "Ingrese una dirección IP o nombre de host válido.",
+    "Port": "Puerto",
+    "Print language": "Lenguaje de impresión",
+    "Site": "Sede",
+    "Shared (all sites)": "Compartida (todas las sedes)",
+    "Leave empty to offer this printer at every site.": "Dejar vacío para ofrecer esta impresora en todas las sedes.",
+    "Location": "Ubicación",
+    "Inactive printers are not offered in the app.": "Las impresoras inactivas no se ofrecen en la app.",
+    "Register printer": "Registrar impresora"
 }

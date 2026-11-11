@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Logistics\Labels\Presentation\Http\Controller\LabelController;
 use Logistics\Labels\Presentation\Http\Controller\LabelPreEmissionController;
+use Logistics\Labels\Presentation\Http\Controller\PrinterController;
 use Logistics\Labels\Presentation\Http\Controller\PublicKeyController;
 
 /*
@@ -40,6 +41,10 @@ return [
         // normal es offline-first (label_id→unit_id ya viene en EmittedLabel y UnitTracking cacheados).
         Route::get('labels/{labelId}/resolve', [LabelController::class, 'resolveUnit'])
             ->name('labels.resolve');
+
+        // Impresoras de red registradas centralmente ("Impresoras de tu sede"): la app no puede descubrirlas
+        // cuando WiFi y cable están en redes separadas. Alcance por nodo del usuario; supervisor/admin, todas.
+        Route::get('printers', PrinterController::class)->name('printers.index');
     },
 
     // Puerta integrations — procesos internos (worker de planificación: pre-emisión al publicar un plan).
