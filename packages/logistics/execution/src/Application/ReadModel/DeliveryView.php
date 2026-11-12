@@ -39,6 +39,7 @@ final readonly class DeliveryView
         public array $unitIds = [],
         public int $unitsLoaded = 0,
         public int $unitsDelivered = 0,
+        public bool $podPhotoPending = false,
     ) {}
 
     /**
@@ -70,6 +71,7 @@ final readonly class DeliveryView
             $unitIds,
             self::distinctUnits($delivery, ScanType::Load),
             self::distinctUnits($delivery, ScanType::ProofOfDelivery),
+            $delivery->isPendingPhoto(),
         );
     }
 
@@ -145,6 +147,8 @@ final readonly class DeliveryView
             'pod_confirmation' => $this->podConfirmation,
             'pod_photo_url' => $this->podPhotoUrl,
             'pod_photo_path' => $this->podPhotoPath,
+            // Opción A: entregado pero la foto todavía no subió (se liga cuando llega por /app/deliveries/photos).
+            'pod_photo_pending' => $this->podPhotoPending,
             'failure_reason' => $this->failureReason,
             'scans' => array_map(static fn (ScanEventView $scan): array => $scan->toArray(), $this->scans),
         ];

@@ -9,6 +9,8 @@ use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRout
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRouteHandler;
 use Logistics\Execution\Application\Command\AssignShelfLocation\AssignShelfLocation;
 use Logistics\Execution\Application\Command\AssignShelfLocation\AssignShelfLocationHandler;
+use Logistics\Execution\Application\Command\AttachDeliveryPhotos\AttachDeliveryPhotos;
+use Logistics\Execution\Application\Command\AttachDeliveryPhotos\AttachDeliveryPhotosHandler;
 use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRoute;
 use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRouteHandler;
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidence;
@@ -129,6 +131,7 @@ final class ExecutionServiceProvider extends ServiceProvider
         MarkShipmentDeparted::class => MarkShipmentDepartedHandler::class,
         RecordUnloadScan::class => RecordUnloadScanHandler::class,
         RecordProofOfDelivery::class => RecordProofOfDeliveryHandler::class,
+        AttachDeliveryPhotos::class => AttachDeliveryPhotosHandler::class,
         RecordFailedDelivery::class => RecordFailedDeliveryHandler::class,
         RecordNodeReception::class => RecordNodeReceptionHandler::class,
         OpenNodeReception::class => OpenNodeReceptionHandler::class,

@@ -15308,6 +15308,11 @@ components:
           type: string
           nullable: true
           description: Referencia durable de la foto en el disco de evidencia (privado)
+        pod_photo_pending:
+          type: boolean
+          description: >-
+            Opción A (POD asíncrono): la entrega se cerró pero la foto todavía no subió. Se liga sola cuando
+            llega por POST /app/deliveries/photos. La foto sigue siendo obligatoria, solo que puede llegar después.
         failure_reason:
           allOf:
           - $ref: '#/components/schemas/FailureReason'
@@ -17583,8 +17588,9 @@ components:
           maxLength: 1024
           nullable: true
           description: >-
-            Durable `path` returned by POST /app/deliveries/photos; it must exist on the evidence disk, else 422
-            errors.photo_path. Required unless photo_paths or evidence_ids are sent.
+            Durable `path` returned by POST /app/deliveries/photos. OPTIONAL (option A, async POD): the delivery
+            is not blocked if the photo has not uploaded yet; it links automatically when it does. If a reference
+            IS sent it must exist on the evidence disk, else 422 errors.photo_path.
         photo_paths:
           type: array
           description: Each entry must exist on the evidence disk (same 422 as photo_path).
@@ -17594,8 +17600,7 @@ components:
         evidence_ids:
           type: array
           description: >-
-            Without photos, at least one id must be evidence already captured for this shipment
-            (POST /app/deliveries/evidence); otherwise 422 on photo_path.
+            Optional anti-fraud evidence already captured for this shipment (POST /app/deliveries/evidence).
           items:
             type: string
             format: uuid

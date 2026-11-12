@@ -79,6 +79,36 @@ final readonly class ProofOfDelivery
         );
     }
 
+    /**
+     * Devuelve una copia con las fotos dadas agregadas (opción A: la foto puede llegar DESPUÉS del POD).
+     * Conserva el orden, no duplica, y fija la foto principal (`photoPath`) si todavía no había ninguna.
+     *
+     * @param list<string> $paths
+     */
+    public function withPhotos(array $paths): self
+    {
+        $merged = self::cleanList([...$this->photoPaths, ...$paths]);
+        $primary = $this->photoPath ?? ($merged[0] ?? null);
+
+        return new self(
+            $this->confirmation,
+            $this->photoUrl,
+            $this->capturedAt,
+            $primary,
+            $merged,
+            $this->evidenceIds,
+        );
+    }
+
+    /**
+     * ¿La entrega todavía no tiene ninguna evidencia de foto (ni path ni evidencia ligada)?
+     * «Pendiente de foto» en la opción A: el POD se cerró y la foto llegará por su cola.
+     */
+    public function lacksPhoto(): bool
+    {
+        return $this->photoPaths === [] && $this->evidenceIds === [];
+    }
+
     public function equals(self $other): bool
     {
         return $this->confirmation === $other->confirmation

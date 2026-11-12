@@ -163,7 +163,7 @@ it('el transportista entrega sin QR del cliente; el resto sigue exigiendo confir
         ->assertJsonPath('data.pod_confirmation', 'CARRIER_HANDOVER');
 });
 
-it('exige la foto también en el POD en lote', function (): void {
+it('cierra el POD en lote sin foto y lo deja pendiente de foto (opción A, POD asíncrono)', function (): void {
     $shipment = Uuid::generate()->value;
     podbLoaded($shipment, ['U-1']);
 
@@ -176,6 +176,7 @@ it('exige la foto también en el POD en lote', function (): void {
         'device_id' => 'dev',
         'user_id' => 'usr',
     ])
-        ->assertStatus(422)
-        ->assertJsonPath('code', 'validation_failed');
+        ->assertOk()
+        ->assertJsonPath('data.status', 'DELIVERED')
+        ->assertJsonPath('data.pod_photo_pending', true);
 });

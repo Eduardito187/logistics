@@ -8,12 +8,15 @@ use App\Http\Middleware\IdempotentRequests;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Logistics\Execution\Application\Command\AttachDeliveryPhotos\AttachDeliveryPhotos;
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidence;
 use Logistics\Execution\Application\Command\RecordLoadScan\RecordLoadScan;
 use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScan;
 use Logistics\Execution\Application\Contract\DeliveryEvidenceReader;
+use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryState;
 use Logistics\Execution\Presentation\Http\Request\ProofOfDeliveryRequest;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
 /**
@@ -108,13 +111,14 @@ it('acepta la referencia que devolvió POST /app/deliveries/photos', function ()
         ->assertJsonPath('data.pod_photo_path', $path);
 });
 
-it('sin foto ni evidencia sigue respondiendo 422 (la foto es obligatoria)', function (): void {
+it('sin foto responde 200 y queda pendiente de foto (opción A, POD asíncrono)', function (): void {
     $shipment = Uuid::generate()->value;
     podxLoaded($shipment);
 
     $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podxBody($shipment, []))
-        ->assertStatus(422)
-        ->assertJsonPath('errors.photo_path.0', fn (string $m): bool => $m !== '');
+        ->assertOk()
+        ->assertJsonPath('data.status', 'DELIVERED')
+        ->assertJsonPath('data.pod_photo_pending', true);
 });
 
 it('evidence_ids de evidencia ya capturada del envío cubren la foto', function (): void {
@@ -137,13 +141,21 @@ it('evidence_ids de evidencia ya capturada del envío cubren la foto', function 
         ->assertJsonPath('data.status', 'DELIVERED');
 });
 
-it('evidence_ids que no son evidencia del envío no cubren la foto', function (): void {
+it('un POD sin foto queda pendiente; la foto subida después se liga sola (opción A)', function (): void {
     $shipment = Uuid::generate()->value;
     podxLoaded($shipment);
 
-    $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podxBody($shipment, ['evidence_ids' => [Uuid::generate()->value]]))
-        ->assertStatus(422)
-        ->assertJsonPath('errors.photo_path.0', ProofOfDeliveryRequest::PHOTO_NOT_UPLOADED);
+    // POD sin foto: entregado, pendiente de foto.
+    $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podxBody($shipment, []))
+        ->assertOk()
+        ->assertJsonPath('data.pod_photo_pending', true);
+
+    // La foto llega después por la subida: se liga al envío y deja de estar pendiente.
+    $path = 'pod/'.$shipment.'/tarde.jpg';
+    Storage::disk('pod')->put($path, 'jpg');
+    app(CommandBus::class)->dispatch(new AttachDeliveryPhotos($shipment, [$path]));
+
+    expect(app(QueryBus::class)->ask(new GetDeliveryState($shipment))?->podPhotoPending)->toBeFalse();
 });
 
 it('el lote offline rechaza el ítem POD con una foto no subida', function (): void {

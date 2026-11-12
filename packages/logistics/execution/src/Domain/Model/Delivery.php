@@ -418,6 +418,39 @@ final class Delivery extends AggregateRoot
         return $this->proofOfDelivery;
     }
 
+    /**
+     * Liga fotos a una entrega YA entregada cuya foto llegó después (opción A: POD asíncrono). Solo tiene
+     * efecto si la entrega está DELIVERED y hay fotos nuevas que agregar; devuelve true si algo cambió, para
+     * que el repositorio guarde solo cuando corresponde. Idempotente: reenviar la misma foto no cambia nada.
+     *
+     * @param list<string> $paths
+     */
+    public function attachPodPhotos(array $paths): bool
+    {
+        if ($this->status !== DeliveryStatus::Delivered || $this->proofOfDelivery === null || $paths === []) {
+            return false;
+        }
+
+        $updated = $this->proofOfDelivery->withPhotos($paths);
+        if ($updated->equals($this->proofOfDelivery)) {
+            return false;
+        }
+
+        $this->proofOfDelivery = $updated;
+
+        return true;
+    }
+
+    /**
+     * ¿La entrega se cerró sin foto y sigue esperándola? (DELIVERED sin path ni evidencia ligada).
+     */
+    public function isPendingPhoto(): bool
+    {
+        return $this->status === DeliveryStatus::Delivered
+            && $this->proofOfDelivery !== null
+            && $this->proofOfDelivery->lacksPhoto();
+    }
+
     public function failureReason(): ?FailureReason
     {
         return $this->failureReason;

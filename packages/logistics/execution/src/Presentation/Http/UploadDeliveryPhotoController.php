@@ -6,10 +6,13 @@ namespace Logistics\Execution\Presentation\Http;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
+use Logistics\Execution\Application\Command\AttachDeliveryPhotos\AttachDeliveryPhotos;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\EvidenceKind;
 use Logistics\Execution\Presentation\Http\Request\UploadPhotoRequest;
+use Logistics\Shared\Application\Command\CommandBus;
+use Throwable;
 
 /**
  * POST /app — sube una foto de evidencia (prueba de entrega o daño) y devuelve su referencia (puerta app).
@@ -30,6 +33,7 @@ final class UploadDeliveryPhotoController
 {
     public function __construct(
         private readonly EvidenceStorage $storage,
+        private readonly CommandBus $commandBus,
     ) {}
 
     public function __invoke(UploadPhotoRequest $request): JsonResponse
@@ -51,6 +55,16 @@ final class UploadDeliveryPhotoController
                     'message' => $exception->getMessage(),
                 ],
             ], 500);
+        }
+
+        // Opción A (POD asíncrono): si la foto de prueba de entrega llegó DESPUÉS del POD, se liga a la
+        // entrega del envío (si ya está entregada sin foto). Tolerante: nunca hace fallar la subida.
+        if ($kind === EvidenceKind::ProofOfDelivery) {
+            try {
+                $this->commandBus->dispatch(new AttachDeliveryPhotos((string) $data['shipment_id'], [$stored->path]));
+            } catch (Throwable $exception) {
+                report($exception);
+            }
         }
 
         return new JsonResponse(['data' => $stored->toArray()], 201);

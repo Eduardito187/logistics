@@ -6,18 +6,17 @@ namespace Logistics\Execution\Presentation\Http\Request;
 
 use Closure;
 use Illuminate\Validation\Validator;
-use Logistics\Execution\Application\Contract\DeliveryEvidenceReader;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
-use Logistics\Execution\Application\ReadModel\DeliveryEvidenceView;
 use Logistics\Execution\Presentation\Http\Support\ScanCommandFactory;
 
 /**
  * Validación de la prueba de entrega (confirmación + foto OBLIGATORIA ya subida).
  *
- * - Foto: toda entrega se cierra con foto, sin excepción. Se acepta `photo_path` (la referencia durable que
- *   devuelve POST /app/deliveries/photos) o `photo_paths:[…]` (varias fotos ya subidas). Cada referencia
- *   DEBE existir en su disco de evidencia: un texto cualquiera ("pendiente") → 422 en `photo_path`. Sin
- *   foto, la cubren `evidence_ids` que apunten a evidencia ya capturada del envío.
+ * - Foto ASÍNCRONA (opción A): la foto sigue siendo obligatoria, pero el POD NO se bloquea si todavía no
+ *   subió (offline-first: nunca espera a la red). Si viene, se acepta `photo_path` (la referencia durable que
+ *   devuelve POST /app/deliveries/photos) o `photo_paths:[…]`, y cada referencia DEBE existir en su disco de
+ *   evidencia (un texto cualquiera como "pendiente" → 422 en `photo_path`). Si NO viene, la entrega se cierra
+ *   igual y queda «pendiente de foto»; la evidencia se liga sola cuando la subida llega después.
  * - Bultos: `unit_id` (uno) o `unit_ids:[…]` (POD en lote, hasta 500, sin repetidos).
  * - GPS OPCIONAL: `lat`/`lng` nullable, o `location:{lat,lng,accuracy_m,captured_at}`. Sin señal no se manda
  *   nada (0,0 se descarta en el dominio: nunca se guarda como posición real).
@@ -66,9 +65,11 @@ final class ProofOfDeliveryRequest extends ScanRequest
                 ? ['nullable', 'string', 'max:512']
                 : ['required', 'string', 'max:512'],
             'photo_url' => ['nullable', 'string', 'url', 'max:2048'],
-            // La foto de entrega es OBLIGATORIA SIEMPRE: falta → 422 (validation_failed), nunca un cierre sin foto.
-            // Sin foto, la cubren evidence_ids de evidencia ya capturada (se verifica en after()).
-            'photo_path' => ['required_without_all:photo_paths,evidence_ids', 'nullable', 'string', 'max:1024'],
+            // Foto ASÍNCRONA (decisión del dueño, opción A): la entrega NO se bloquea si la foto todavía no
+            // subió (offline-first: el POD nunca espera a la red). La foto sigue siendo obligatoria, solo que
+            // puede llegar después por POST /app/deliveries/photos, que la liga al envío; hasta entonces la
+            // entrega queda marcada "pendiente de foto". Si SE manda una referencia, debe existir (ver after()).
+            'photo_path' => ['nullable', 'string', 'max:1024'],
             'photo_paths' => ['sometimes', 'array', 'min:1', 'max:20'],
             'photo_paths.*' => ['required', 'string', 'max:1024'],
             'evidence_ids' => ['sometimes', 'array', 'max:20'],
@@ -81,11 +82,11 @@ final class ProofOfDeliveryRequest extends ScanRequest
      *
      * @return list<Closure(Validator): void>
      */
-    public function after(EvidenceStorage $storage, DeliveryEvidenceReader $evidence): array
+    public function after(EvidenceStorage $storage): array
     {
         return [
-            static function (Validator $validator) use ($storage, $evidence): void {
-                self::verifyPhotoEvidence($validator, $storage, $evidence);
+            static function (Validator $validator) use ($storage): void {
+                self::verifyPhotoEvidence($validator, $storage);
             },
         ];
     }
@@ -94,12 +95,12 @@ final class ProofOfDeliveryRequest extends ScanRequest
      * Verifica que la foto del POD salió de la subida. Corre solo si las reglas de forma pasaron, y la usan
      * por igual el endpoint individual y el ítem `proof_of_delivery` del lote offline (mismas reglas).
      *
-     * - Con fotos (`photo_path` / `photo_paths`): cada referencia debe existir en su disco de evidencia; si
-     *   alguna no existe → 422 en `photo_path`. Si el almacenamiento no responde (no verificable) se acepta:
-     *   rechazar ahí haría que la cola offline descarte una entrega REAL.
-     * - Sin fotos: al menos un `evidence_ids` debe ser evidencia ya capturada de ESTE envío.
+     * Solo valida las fotos que SÍ se mandaron: cada `photo_path` / `photo_paths` debe existir en su disco de
+     * evidencia; si alguna no existe → 422 en `photo_path`. Si el almacenamiento no responde (no verificable)
+     * se acepta, porque rechazar ahí haría que la cola offline descarte una entrega REAL. Sin fotos no hay
+     * error (opción A): la entrega queda "pendiente de foto".
      */
-    public static function verifyPhotoEvidence(Validator $validator, EvidenceStorage $storage, DeliveryEvidenceReader $evidence): void
+    public static function verifyPhotoEvidence(Validator $validator, EvidenceStorage $storage): void
     {
         if ($validator->errors()->isNotEmpty()) {
             return;
@@ -110,10 +111,8 @@ final class ProofOfDeliveryRequest extends ScanRequest
         $paths = self::photoReferences($data);
 
         if ($paths === []) {
-            if (!self::referencesStoredEvidence($data, $evidence)) {
-                $validator->errors()->add('photo_path', self::PHOTO_NOT_UPLOADED);
-            }
-
+            // Opción A: sin foto NO es error; la entrega queda "pendiente de foto" y la evidencia se liga
+            // cuando suba. Solo se verifica una referencia si de verdad la mandaron (abajo).
             return;
         }
 
@@ -151,30 +150,4 @@ final class ProofOfDeliveryRequest extends ScanRequest
         return $paths;
     }
 
-    /**
-     * ¿Alguno de los `evidence_ids` es evidencia ya capturada (POST /app/deliveries/evidence) del envío?
-     *
-     * @param array<string, mixed> $data
-     */
-    private static function referencesStoredEvidence(array $data, DeliveryEvidenceReader $evidence): bool
-    {
-        $ids = $data['evidence_ids'] ?? null;
-        $shipmentId = $data['shipment_id'] ?? null;
-        if (!is_array($ids) || $ids === [] || !is_string($shipmentId)) {
-            return false;
-        }
-
-        $stored = array_map(
-            static fn (DeliveryEvidenceView $view): string => strtolower($view->id),
-            $evidence->forShipment($shipmentId),
-        );
-
-        foreach ($ids as $id) {
-            if (is_string($id) && in_array(strtolower(trim($id)), $stored, true)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }
