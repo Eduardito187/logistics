@@ -20,17 +20,17 @@ function unitWithStatus(UnitStatus $status): UnitTracking
 }
 
 it('exposes label, status and a Spanish message, without internal keys', function (): void {
-    $view = PublicUnitView::fromUnit(unitWithStatus(UnitStatus::Loaded), 'Bulto 1 de 2');
+    $view = PublicUnitView::fromUnit(unitWithStatus(UnitStatus::Loaded), 'Producto 1 de 2');
 
     expect($view->toArray())->toBe([
-        'label' => 'Bulto 1 de 2',
+        'label' => 'Producto 1 de 2',
         'status' => 'LOADED',
         'status_message' => 'Cargado en el camión.',
     ]);
 });
 
 it('phrases a message for every unit status in Spanish', function (): void {
-    $message = fn (UnitStatus $status): string => PublicUnitView::fromUnit(unitWithStatus($status), 'Bulto')->statusMessage;
+    $message = fn (UnitStatus $status): string => PublicUnitView::fromUnit(unitWithStatus($status), 'Producto')->statusMessage;
 
     expect($message(UnitStatus::Registered))->toBe('Registrado.')
         ->and($message(UnitStatus::Prepared))->toBe('Preparado en bodega.')

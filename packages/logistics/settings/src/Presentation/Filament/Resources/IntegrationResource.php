@@ -34,6 +34,9 @@ final class IntegrationResource extends Resource
 
     protected static ?int $navigationSort = 20;
 
+    /** La edición vive en «Configuración» (pestaña Integrations); esta ruta solo redirige. */
+    protected static bool $shouldRegisterNavigation = false;
+
     public static function getNavigationGroup(): string
     {
         return __('Integrations');

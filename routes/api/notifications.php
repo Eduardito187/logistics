@@ -10,6 +10,8 @@ use Logistics\Notifications\Presentation\Http\Controller\ListMessageTemplatesCon
 use Logistics\Notifications\Presentation\Http\Controller\ListMessageTypeRulesController;
 use Logistics\Notifications\Presentation\Http\Controller\ListNotificationsController;
 use Logistics\Notifications\Presentation\Http\Controller\ListShipmentNotificationsController;
+use Logistics\Notifications\Presentation\Http\Controller\MarkAllNotificationsReadController;
+use Logistics\Notifications\Presentation\Http\Controller\MarkNotificationReadController;
 use Logistics\Notifications\Presentation\Http\Controller\QueueNotificationController;
 use Logistics\Notifications\Presentation\Http\Controller\SetMessageTypeRuleController;
 use Logistics\Notifications\Presentation\Http\Controller\SuppressNotificationController;
@@ -31,6 +33,11 @@ return [
             // Log de notificaciones de un envío (shipment_id por query param) y log global.
             Route::get('notifications', ListShipmentNotificationsController::class)->name('index');
             Route::get('notifications/all', ListNotificationsController::class)->name('all');
+
+            // Estado de lectura POR USUARIO (badge de la campana). «Leer todas» se declara antes de las
+            // rutas con {notification} para que el segmento literal nunca se interprete como id.
+            Route::post('notifications/read-all', MarkAllNotificationsReadController::class)->name('read-all');
+            Route::post('notifications/{notification}/read', MarkNotificationReadController::class)->name('read');
             Route::get('notifications/{notification}', GetNotificationController::class)->name('show');
 
             // Suprime una notificación encolada (soporte).

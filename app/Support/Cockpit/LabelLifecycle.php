@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Cockpit;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Logistics\Execution\Presentation\Filament\Support\UserNames;
@@ -54,9 +55,29 @@ final class LabelLifecycle
      */
     public function timeline(string $labelId): array
     {
-        $items = [...$this->baseEvents($labelId), ...$this->auditEvents($labelId), ...$this->scanEvents($labelId)];
+        $unit = $this->resolveUnit($labelId);
+        $truck = $this->truckAssignment($unit?->shipmentId);
+        $scans = $this->scanEvents($unit?->unitId, $truck);
 
-        usort($items, static fn (array $a, array $b): int => strcmp($b['at'], $a['at']));
+        $items = [...$this->baseEvents($labelId), ...$this->auditEvents($labelId), ...$scans];
+
+        // Asignar el envío a un camión ES cargarlo (regla de operación): si no hubo escaneo de carga, la
+        // asignación aparece como «Cargada» con la placa; si lo hubo, la placa ya va en ese escaneo.
+        if ($truck !== null && !$this->hasLoadScan($scans)) {
+            $items[] = [
+                'at' => $truck['at'],
+                'when' => $this->human($truck['at']),
+                'event' => 'Cargada',
+                'label' => 'camión',
+                'actor' => '—',
+                'detail' => 'Asignada al camión '.$truck['plate'],
+                'tone' => 'info',
+            ];
+        }
+
+        // Orden por INSTANTE, no por texto: las fuentes mezclan timestamptz (con offset, que depende de la zona
+        // de la sesión de PostgreSQL) y timestamp sin zona (hora de la app); comparar strings las desordena.
+        usort($items, fn (array $a, array $b): int => $this->instant($b['at']) <=> $this->instant($a['at']));
 
         return $items;
     }
@@ -70,7 +91,7 @@ final class LabelLifecycle
     private function baseEvents(string $labelId): array
     {
         try {
-            $row = DB::table('labels_emitted')->where('label_id', $labelId)->first(['created_at', 'revoked_at', 'revoked_reason']);
+            $row = DB::table('labels_emitted')->where('label_id', $labelId)->first(['created_at']);
         } catch (Throwable) {
             return [];
         }
@@ -78,35 +99,20 @@ final class LabelLifecycle
             return [];
         }
 
-        $out = [];
-        // La emisión puede llevar actor si se registró en la bitácora; si no, queda sin actor (automática).
-        $genActor = $this->actorFor($labelId, 'generated');
-        $out[] = [
+        // Las etiquetas son PERMANENTES: solo el hecho de GENERADA (no hay revocación). La emisión puede
+        // llevar actor si se registró en la bitácora; si no, queda sin actor (automática).
+        return [[
             'at' => (string) ($row->created_at ?? ''),
             'when' => $this->human((string) ($row->created_at ?? '')),
             'event' => 'Generada',
             'label' => 'etiqueta',
-            'actor' => $genActor ?? '—',
+            'actor' => $this->actorFor($labelId, 'generated') ?? '—',
             'detail' => '',
             'tone' => 'ok',
-        ];
-        if (is_string($row->revoked_at ?? null) && $row->revoked_at !== '') {
-            $revActor = $this->actorFor($labelId, 'revoked');
-            $out[] = [
-                'at' => (string) $row->revoked_at,
-                'when' => $this->human((string) $row->revoked_at),
-                'event' => 'Revocada',
-                'label' => 'etiqueta',
-                'actor' => $revActor ?? '—',
-                'detail' => is_string($row->revoked_reason ?? null) ? (string) $row->revoked_reason : '',
-                'tone' => 'danger',
-            ];
-        }
-
-        return $out;
+        ]];
     }
 
-    /** Nombre del actor registrado para un evento puntual (generated/revoked) en la bitácora, o null. */
+    /** Nombre del actor registrado para un evento puntual (generated) en la bitácora, o null. */
     private function actorFor(string $labelId, string $event): ?string
     {
         try {
@@ -150,13 +156,14 @@ final class LabelLifecycle
     }
 
     /**
-     * Escaneos del bulto de la etiqueta (preparación, carga, prueba de entrega, recepción…) con su actor.
+     * Escaneos del bulto de la etiqueta (preparación, carga, prueba de entrega, recepción…) con su actor. El
+     * escaneo de CARGA lleva la placa del camión al que está asignado el envío.
      *
+     * @param  array{at: string, plate: string}|null                                                                            $truck
      * @return list<array{at: string, when: string, event: string, label: string, actor: string, detail: string, tone: string}>
      */
-    private function scanEvents(string $labelId): array
+    private function scanEvents(?string $unitId, ?array $truck): array
     {
-        $unitId = $this->unitIdOf($labelId);
         if ($unitId === null) {
             return [];
         }
@@ -170,13 +177,14 @@ final class LabelLifecycle
         $out = [];
         foreach ($rows as $r) {
             $at = (string) ($r->occurred_at ?? '');
+            $isLoad = strtolower((string) $r->type) === 'load';
             $out[] = [
                 'at' => $at,
                 'when' => $this->human($at),
                 'event' => $this->scanLabel((string) $r->type),
-                'label' => 'escaneo',
+                'label' => $isLoad ? 'carga' : 'escaneo',
                 'actor' => UserNames::label(is_string($r->user_id ?? null) ? $r->user_id : null),
-                'detail' => '',
+                'detail' => $isLoad && $truck !== null ? 'Camión '.$truck['plate'] : '',
                 'tone' => 'info',
             ];
         }
@@ -184,17 +192,58 @@ final class LabelLifecycle
         return $out;
     }
 
-    /** Resuelve el bulto físico de la etiqueta para unir sus escaneos. Tolerante: null si no resuelve. */
-    private function unitIdOf(string $labelId): ?string
+    /** Resuelve el bulto físico (y su envío) de la etiqueta para unir escaneos y camión. Tolerante: null. */
+    private function resolveUnit(string $labelId): ?LabelUnitView
     {
         try {
             /** @var LabelUnitView $view */
             $view = app(QueryBus::class)->ask(new ResolveLabelUnit($labelId));
 
-            return $view->unitId;
+            return $view;
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Camión al que está asignado el envío (parada de un plan de planificación) con su placa y cuándo se asignó.
+     * Si se reasignó, manda la asignación más reciente. Tolerante: null si no hay o si la lectura falla.
+     *
+     * @return array{at: string, plate: string}|null
+     */
+    private function truckAssignment(?string $shipmentId): ?array
+    {
+        try {
+            $row = $shipmentId === null ? null : DB::table('planning_plan_stops as ps')
+                ->join('planning_plans as p', 'p.id', '=', 'ps.plan_id')
+                ->leftJoin('fleet_vehicles as v', 'v.id', '=', 'p.vehicle_id')
+                ->where('ps.shipment_id', $shipmentId)
+                ->orderByDesc('ps.created_at')
+                ->first(['ps.created_at', 'v.plate']);
+        } catch (Throwable) {
+            $row = null;
+        }
+
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'at' => (string) ($row->created_at ?? ''),
+            'plate' => is_string($row->plate ?? null) && $row->plate !== '' ? $row->plate : 'sin placa',
+        ];
+    }
+
+    /** @param list<array{label: string}> $scans */
+    private function hasLoadScan(array $scans): bool
+    {
+        foreach ($scans as $scan) {
+            if ($scan['label'] === 'carga') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param array<string, mixed> $meta */
@@ -250,9 +299,30 @@ final class LabelLifecycle
             return '—';
         }
         try {
-            return (new DateTimeImmutable($iso))->format('d/m/Y H:i');
+            return $this->parse($iso)->format('d/m/Y H:i');
         } catch (Throwable) {
             return $iso;
         }
+    }
+
+    /** Segundos epoch del momento (0 si no se puede leer, queda al final). */
+    private function instant(string $iso): int
+    {
+        try {
+            return $iso === '' ? 0 : $this->parse($iso)->getTimestamp();
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Interpreta el valor en la zona de la app (un timestamp sin zona ya está en hora de la app) y lo lleva a
+     * esa zona, así un timestamptz con cualquier offset se muestra en hora local.
+     */
+    private function parse(string $iso): DateTimeImmutable
+    {
+        $zone = new DateTimeZone((string) config('app.timezone', 'UTC'));
+
+        return (new DateTimeImmutable($iso, $zone))->setTimezone($zone);
     }
 }

@@ -22,6 +22,7 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\ChecklistTemplateModel;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\DriverModel;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\PreTripInspectionModel;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
@@ -150,13 +151,9 @@ final class PreTripChecklistResource extends Resource
                 ])
                 ->columns(2)
                 ->minItems(1)
-                ->default([
-                    ['item' => 'Tires', 'checked' => false],
-                    ['item' => 'Brakes', 'checked' => false],
-                    ['item' => 'Lights', 'checked' => false],
-                    ['item' => 'Fuel level', 'checked' => false],
-                    ['item' => 'Documents on board', 'checked' => false],
-                ]),
+                // Por defecto, las claves de la plantilla activa del servidor (#27): así la evaluación de
+                // criticidad aplica igual que desde la app.
+                ->default(static fn (): array => self::defaultChecklistRows()),
 
             Textarea::make('notes')
                 ->label(__('Notes'))
@@ -188,6 +185,11 @@ final class PreTripChecklistResource extends Resource
                     ->badge()
                     ->color(static fn (bool $state): string => $state ? 'success' : 'danger')
                     ->formatStateUsing(static fn (bool $state): string => $state ? __('Passed') : __('Failed')),
+                TextColumn::make('fit_to_dispatch')
+                    ->label(__('Fit to dispatch'))
+                    ->badge()
+                    ->color(static fn (bool $state): string => $state ? 'success' : 'danger')
+                    ->formatStateUsing(static fn (bool $state): string => $state ? __('Fit') : __('Unfit')),
                 TextColumn::make('performed_on')
                     ->label(__('Performed on'))
                     ->date('Y-m-d')
@@ -196,6 +198,8 @@ final class PreTripChecklistResource extends Resource
             ->filters([
                 TernaryFilter::make('passed')
                     ->label(__('Passed')),
+                TernaryFilter::make('fit_to_dispatch')
+                    ->label(__('Fit to dispatch')),
             ])
             ->recordActions([
                 ViewAction::make(),
@@ -213,6 +217,11 @@ final class PreTripChecklistResource extends Resource
                 ->label(__('Driver'))
                 ->placeholder('—'),
             IconEntry::make('passed')->label(__('Passed'))->boolean(),
+            IconEntry::make('fit_to_dispatch')->label(__('Fit to dispatch'))->boolean(),
+            TextEntry::make('evaluation.failed_critical')
+                ->label(__('Failed critical items'))
+                ->placeholder('—')
+                ->formatStateUsing(static fn ($state): string => is_array($state) ? implode(', ', array_map('strval', $state)) : (string) $state),
             TextEntry::make('performed_on')->label(__('Performed on'))->date('Y-m-d'),
             TextEntry::make('items')
                 ->label(__('Items'))
@@ -230,6 +239,30 @@ final class PreTripChecklistResource extends Resource
                 }),
             TextEntry::make('notes')->label(__('Notes'))->placeholder('—'),
         ]);
+    }
+
+    /**
+     * Filas por defecto del formulario: una por ítem de la plantilla activa por defecto (clave estable),
+     * sin verificar. Sin plantilla, un set mínimo con las mismas claves que usa la app.
+     *
+     * @return list<array{item: string, checked: bool}>
+     */
+    private static function defaultChecklistRows(): array
+    {
+        $template = ChecklistTemplateModel::query()
+            ->where('active', true)
+            ->whereNull('vehicle_type')
+            ->orderByDesc('updated_at')
+            ->first();
+
+        $keys = $template instanceof ChecklistTemplateModel
+            ? array_map(static fn (array $item): string => $item['key'], $template->items)
+            : ['engine', 'brakes', 'tires', 'lights', 'fuel', 'documents'];
+
+        return array_values(array_map(
+            static fn (string $key): array => ['item' => $key, 'checked' => false],
+            $keys,
+        ));
     }
 
     /**

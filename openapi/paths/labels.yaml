@@ -49,7 +49,7 @@ paths:
       operationId: emitShipmentLabels
       summary: Emit the label batch for an order
       description: >
-        Emite una etiqueta por cada bulto físico de cada línea del pedido: arma el payload, lo firma
+        Emite una etiqueta por cada producto físico de cada línea del pedido: arma el payload, lo firma
         y renderiza su ZPL. Reemitir una etiqueta ya emitida es un conflicto (409).
       requestBody:
         required: true
@@ -83,7 +83,7 @@ paths:
       description: >
         Revoca las etiquetas vigentes del pedido (quedan en la base, marcadas como revocadas para
         auditoría) y emite un lote nuevo con identidades nuevas. Se usa cuando una etiqueta se dañó o
-        cambió el contenido del bulto. Requiere un motivo (ADR 004).
+        cambió el contenido del producto. Requiere un motivo (ADR 004).
       requestBody:
         required: true
         content:
@@ -181,13 +181,13 @@ paths:
       operationId: resolveLabelUnit
       summary: Resolve a scanned label to its physical unit (online fallback)
       description: >
-        FALLBACK ONLINE: resuelve una etiqueta escaneada (su id/ULID del QR) al bulto físico (unit_id) y su
+        FALLBACK ONLINE: resuelve una etiqueta escaneada (su id/ULID del QR) al producto físico (unit_id) y su
         envío. El flujo normal es offline-first: la app mapea label_id→unit_id desde lo que ya cacheó
         (EmittedLabel para el preparador, UnitTracking para el chofer). Este endpoint es solo para una
         etiqueta no cacheada.
       responses:
         '200':
-          description: Resolution (resolved=false si no se pudo atar al bulto)
+          description: Resolution (resolved=false si no se pudo atar al producto)
           content:
             application/json:
               schema:
@@ -285,7 +285,7 @@ components:
           type: string
         label_id:
           type: string
-          description: Identidad de negocio (campo `id` del payload), única por bulto físico
+          description: Identidad de negocio (campo `id` del payload), única por producto físico
         key_id:
           type: integer
           description: Clave con la que se firmó (campo `k` del QR)
@@ -360,41 +360,41 @@ components:
           type: string
           nullable: true
           description: >-
-            UUID del BULTO FÍSICO (shipment_units) de esta etiqueta, resuelto por correlación. La app mapea
-            label_id→unit_id localmente (offline) para escanear contra el bulto real. Mismo valor que
+            UUID del PRODUCTO FÍSICO (shipment_units) de esta etiqueta, resuelto por correlación. La app mapea
+            label_id→unit_id localmente (offline) para escanear contra el producto real. Mismo valor que
             UnitTracking.unit_id. null si no se pudo atar (p. ej. la línea del envío no coincide).
         shipment_id:
           type: string
           nullable: true
-          description: UUID del envío del bulto (opaco), o null
+          description: UUID del envío del producto (opaco), o null
         unit:
           type: object
           required: [index, total]
-          description: Índice de unidad del bulto dentro de su línea
+          description: Índice de unidad del producto dentro de su línea
           properties:
             index: { type: integer }
             total: { type: integer }
         piece:
           type: object
           required: [index, total]
-          description: Índice de pieza del bulto dentro de su unidad
+          description: Índice de pieza del producto dentro de su unidad
           properties:
             index: { type: integer }
             total: { type: integer }
 
     LabelUnitResolution:
       type: object
-      description: Resolución de una etiqueta escaneada (ULID) al bulto físico + envío (fallback online).
+      description: Resolución de una etiqueta escaneada (ULID) al producto físico + envío (fallback online).
       required: [label_id, resolved, unit_id, shipment_id, sku, product_name, line_number, unit, piece]
       properties:
         label_id: { type: string }
         resolved:
           type: boolean
-          description: true si se pudo atar al bulto
+          description: true si se pudo atar al producto
         unit_id:
           type: string
           nullable: true
-          description: UUID del bulto físico, o null si no se resolvió
+          description: UUID del producto físico, o null si no se resolvió
         shipment_id: { type: string, nullable: true }
         sku: { type: string, nullable: true }
         product_name: { type: string, nullable: true }
@@ -451,7 +451,7 @@ components:
           type: integer
         pieces_per_unit:
           type: integer
-          description: Bultos por unidad; 1 por defecto si no se conoce
+          description: Productos por unidad; 1 por defecto si no se conoce
         line_number:
           type: integer
           description: Posición 1-based de la línea en la orden

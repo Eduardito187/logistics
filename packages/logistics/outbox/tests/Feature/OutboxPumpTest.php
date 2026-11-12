@@ -49,6 +49,21 @@ it('encola un job por mensaje despachable a la cola de su destino', function ():
     Queue::assertPushedOn('outbox', DispatchOutboxMessageJob::class);
 });
 
+it('encola los mensajes con destino SAP en su propia cola `sap`', function (): void {
+    Queue::fake();
+
+    OutboxMessageRecord::factory()->create([
+        'event_name' => 'sap_connector.stock_transfer_enqueued',
+        'status' => OutboxStatus::Pending->value,
+        'available_at' => now()->subMinute(),
+    ]);
+
+    $this->artisan('logistics:outbox:pump', ['--limit' => 100])->assertExitCode(0);
+
+    Queue::assertPushedOn('sap', DispatchOutboxMessageJob::class);
+    Queue::assertNotPushed(DispatchOutboxMessageJob::class, static fn (DispatchOutboxMessageJob $job): bool => $job->queue === 'outbox');
+});
+
 it('no encola mensajes terminales ni los que aún no están disponibles', function (): void {
     Queue::fake();
 

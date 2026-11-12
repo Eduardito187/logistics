@@ -11,6 +11,7 @@ use Logistics\Shipments\Application\Query\ListLowConfidenceAddresses\ListLowConf
 use Logistics\Shipments\Application\Query\ListLowConfidenceAddresses\ListLowConfidenceAddressesHandler;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipments;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipmentsHandler;
+use Logistics\Shipments\Application\ReadModel\ShipmentListFilter;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
@@ -91,14 +92,14 @@ it('empuja los filtros por estado, fuente y nodo destino a SQL', function (): vo
 
     $reader = app(ShipmentListReader::class);
 
-    $forNodeA = $reader->list(destinationNodeId: $nodeA);
+    $forNodeA = $reader->list(new ShipmentListFilter(destinationNodeId: $nodeA));
     expect($forNodeA)->toHaveCount(2);
     foreach ($forNodeA as $view) {
         expect($view->destinationNodeId)->toBe($nodeA);
     }
 
     // Estado inexistente: nada.
-    expect($reader->list(status: 'DELIVERED', destinationNodeId: $nodeA))->toBe([]);
+    expect($reader->list(new ShipmentListFilter(status: 'DELIVERED', destinationNodeId: $nodeA)))->toBe([]);
 });
 
 it('acota el resultado con limit y offset en SQL', function (): void {
@@ -109,10 +110,10 @@ it('acota el resultado con limit y offset en SQL', function (): void {
 
     $reader = app(ShipmentListReader::class);
 
-    $all = $reader->list(destinationNodeId: $node);
+    $all = $reader->list(new ShipmentListFilter(destinationNodeId: $node));
     expect($all)->toHaveCount(5);
 
-    $page = $reader->list(destinationNodeId: $node, limit: 2, offset: 2);
+    $page = $reader->list(new ShipmentListFilter(destinationNodeId: $node), limit: 2, offset: 2);
     expect($page)->toHaveCount(2)
         // Orden estable por id: la página coincide con el tramo del listado completo.
         ->and($page[0]->id)->toBe($all[2]->id)
@@ -128,25 +129,25 @@ it('pagina por cursor (keyset) sin solapar y termina sin nextCursor', function (
     $reader = app(ShipmentListReader::class);
 
     // Listado completo ordenado por id (UUID v7) como referencia del orden esperado.
-    $all = $reader->list(destinationNodeId: $node);
+    $all = $reader->list(new ShipmentListFilter(destinationNodeId: $node));
     expect($all)->toHaveCount(5);
 
     // Primera página: trae 2 y el cursor apunta al último id visto.
-    $page1 = $reader->listKeyset(limit: 2, destinationNodeId: $node);
+    $page1 = $reader->listKeyset(limit: 2, filter: new ShipmentListFilter(destinationNodeId: $node));
     expect($page1->items)->toHaveCount(2)
         ->and($page1->items[0]->id)->toBe($all[0]->id)
         ->and($page1->items[1]->id)->toBe($all[1]->id)
         ->and($page1->nextCursor)->toBe($all[1]->id);
 
     // Segunda página desde el cursor: continúa sin solapar con la primera.
-    $page2 = $reader->listKeyset(limit: 2, afterId: $page1->nextCursor, destinationNodeId: $node);
+    $page2 = $reader->listKeyset(limit: 2, afterId: $page1->nextCursor, filter: new ShipmentListFilter(destinationNodeId: $node));
     expect($page2->items)->toHaveCount(2)
         ->and($page2->items[0]->id)->toBe($all[2]->id)
         ->and($page2->items[1]->id)->toBe($all[3]->id)
         ->and($page2->nextCursor)->toBe($all[3]->id);
 
     // Última página: el resto y SIN nextCursor (no hay más).
-    $page3 = $reader->listKeyset(limit: 2, afterId: $page2->nextCursor, destinationNodeId: $node);
+    $page3 = $reader->listKeyset(limit: 2, afterId: $page2->nextCursor, filter: new ShipmentListFilter(destinationNodeId: $node));
     expect($page3->items)->toHaveCount(1)
         ->and($page3->items[0]->id)->toBe($all[4]->id)
         ->and($page3->nextCursor)->toBeNull();
@@ -158,7 +159,7 @@ it('filtra las direcciones de confianza baja en SQL', function (): void {
     // Con coordenada queda confianza alta.
     seedReaderOrder('RD-HIGH-'.uniqid());
 
-    $low = app(ShipmentListReader::class)->list(lowConfidenceOnly: true);
+    $low = app(ShipmentListReader::class)->list(new ShipmentListFilter(lowConfidenceOnly: true));
 
     $ids = array_map(static fn (ShipmentView $view): string => $view->id, $low);
     expect($ids)->toContain($lowId);

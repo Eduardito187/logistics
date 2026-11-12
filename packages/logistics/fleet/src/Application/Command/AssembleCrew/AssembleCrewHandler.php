@@ -7,6 +7,7 @@ namespace Logistics\Fleet\Application\Command\AssembleCrew;
 use DateTimeImmutable;
 use Logistics\Fleet\Domain\Contract\CrewRepository;
 use Logistics\Fleet\Domain\Contract\ShiftRulesPolicy;
+use Logistics\Fleet\Domain\Contract\VehicleRepository;
 use Logistics\Fleet\Domain\Model\Crew;
 use Logistics\Fleet\Domain\Service\CrewShiftScheduler;
 use Logistics\Fleet\Domain\ValueObject\DriverId;
@@ -24,6 +25,10 @@ use Logistics\Shared\Application\Command\CommandHandler;
  * tengan otro turno que se solape o viole el descanso mínimo. Si no cumple, se lanza FleetException y no
  * se arma nada.
  *
+ * Tampoco se arma si el vehículo está NO APTO para esa fecha (checklist pre-salida con falla crítica sin
+ * habilitar): FleetException → 422 con el motivo. Un vehículo que no está registrado en flota no se
+ * bloquea acá (compatibilidad: la existencia no se validaba antes).
+ *
  * El save del repositorio y el append al outbox corren dentro de la misma transacción, que abre el
  * decorador transaccional del CommandBus (Infrastructure); por eso acá no hay nada del framework.
  *
@@ -36,6 +41,7 @@ final readonly class AssembleCrewHandler implements CommandHandler
         private RecordDomainEvents $recordEvents,
         private ShiftRulesPolicy $shiftRules,
         private CrewShiftScheduler $scheduler,
+        private VehicleRepository $vehicles,
     ) {}
 
     public function handle(Command $command): void
@@ -43,6 +49,12 @@ final readonly class AssembleCrewHandler implements CommandHandler
         assert($command instanceof AssembleCrew);
 
         $helperIds = array_values($command->helperIds);
+        $assembledFor = new DateTimeImmutable($command->assembledFor);
+
+        // Regla de negocio (#27): un vehículo no apto no se asigna hasta que un supervisor lo habilite.
+        $vehicle = $this->vehicles->findById(VehicleId::fromString($command->vehicleId));
+        $vehicle?->ensureFitToDispatchOn($assembledFor);
+
         $shift = $this->resolveShift($command);
 
         if ($shift instanceof WorkShift) {
@@ -55,7 +67,7 @@ final readonly class AssembleCrewHandler implements CommandHandler
             DriverId::fromString($command->driverId),
             $helperIds,
             VehicleId::fromString($command->vehicleId),
-            new DateTimeImmutable($command->assembledFor),
+            $assembledFor,
             $shift,
         );
 

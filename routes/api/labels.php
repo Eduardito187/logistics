@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Logistics\Labels\Presentation\Http\Controller\LabelController;
 use Logistics\Labels\Presentation\Http\Controller\LabelPreEmissionController;
+use Logistics\Labels\Presentation\Http\Controller\PrinterController;
 use Logistics\Labels\Presentation\Http\Controller\PublicKeyController;
 
 /*
@@ -23,11 +24,11 @@ return [
             Route::get('public-keys', PublicKeyController::class)->name('public-keys');
         });
 
-        // Etiquetas de un pedido: emitir, reimprimir, obtener (offline-friendly) y ZPL para Zebra.
+        // Etiquetas de un pedido: emitir, obtener (offline-friendly, se pueden volver a imprimir tal cual) y
+        // ZPL para Zebra. Las etiquetas son PERMANENTES: no se revocan ni se re-emiten con id nuevo.
         Route::prefix('orders/{orderNumber}/labels')->name('orders.labels.')->group(function (): void {
             Route::get('/', [LabelController::class, 'index'])->name('index');
             Route::post('/', [LabelController::class, 'store'])->name('store');
-            Route::post('reprint', [LabelController::class, 'reprint'])->name('reprint');
             Route::get('zpl', [LabelController::class, 'zpl'])->name('zpl');
         });
 
@@ -40,6 +41,10 @@ return [
         // normal es offline-first (label_id→unit_id ya viene en EmittedLabel y UnitTracking cacheados).
         Route::get('labels/{labelId}/resolve', [LabelController::class, 'resolveUnit'])
             ->name('labels.resolve');
+
+        // Impresoras de red registradas centralmente ("Impresoras de tu sede"): la app no puede descubrirlas
+        // cuando WiFi y cable están en redes separadas. Alcance por nodo del usuario; supervisor/admin, todas.
+        Route::get('printers', PrinterController::class)->name('printers.index');
     },
 
     // Puerta integrations — procesos internos (worker de planificación: pre-emisión al publicar un plan).

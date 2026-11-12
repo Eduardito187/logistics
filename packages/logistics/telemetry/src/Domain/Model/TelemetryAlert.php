@@ -8,6 +8,8 @@ use DateTimeImmutable;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 use Logistics\Telemetry\Domain\Event\AlertAcknowledged;
 use Logistics\Telemetry\Domain\Event\AlertRaised;
+use Logistics\Telemetry\Domain\Event\VehicleRouteDeviated;
+use Logistics\Telemetry\Domain\Event\VehicleSpeedingSustained;
 use Logistics\Telemetry\Domain\Exception\TelemetryException;
 use Logistics\Telemetry\Domain\ValueObject\AlertId;
 use Logistics\Telemetry\Domain\ValueObject\AlertSeverity;
@@ -71,7 +73,44 @@ final class TelemetryAlert extends AggregateRoot
             $detail,
         ));
 
+        // Hechos concretos además del genérico: desvío de ruta y exceso de velocidad sostenido tienen su
+        // propio nombre de evento para que los consumidores (notificaciones, catálogo SAP) se suscriban
+        // sin filtrar por tipo.
+        $iso = $occurredAt->format(DateTimeImmutable::ATOM);
+        if ($type === AlertType::RouteDeviation) {
+            $alert->recordEvent(new VehicleRouteDeviated(
+                $id->toString(),
+                $vehicleId,
+                $point?->lat,
+                $point?->lng,
+                self::floatOf($detail['distance_m'] ?? null),
+                self::intOf($detail['sustained_seconds'] ?? null),
+                $iso,
+            ));
+        } elseif ($type === AlertType::Speeding) {
+            $alert->recordEvent(new VehicleSpeedingSustained(
+                $id->toString(),
+                $vehicleId,
+                $point?->lat,
+                $point?->lng,
+                self::floatOf($detail['speed_kph'] ?? null),
+                self::floatOf($detail['limit_kph'] ?? null),
+                self::intOf($detail['sustained_seconds'] ?? null),
+                $iso,
+            ));
+        }
+
         return $alert;
+    }
+
+    private static function floatOf(mixed $value): ?float
+    {
+        return is_int($value) || is_float($value) ? (float) $value : null;
+    }
+
+    private static function intOf(mixed $value): ?int
+    {
+        return is_int($value) || is_float($value) ? (int) $value : null;
     }
 
     /**

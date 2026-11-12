@@ -6,6 +6,7 @@ namespace Logistics\Execution\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Execution\Domain\Event\DeliveryEvidenceCaptured;
+use Logistics\Execution\Domain\Event\DeliveryEvidenceValidated;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\CustomerIdentitySnapshot;
 use Logistics\Execution\Domain\ValueObject\DeliveryEvidenceId;
@@ -152,12 +153,36 @@ final class DeliveryEvidence extends AggregateRoot
     /**
      * Aplica el resultado de la validación (lo escribe el validador asíncrono). Idempotente en el sentido
      * de que simplemente fija el último estado; no muta nada de la captura (auditoría inmutable).
+     *
+     * Graba DeliveryEvidenceValidated solo cuando el resultado CAMBIA a un estado decidido (ok, review o
+     * mismatch): reenviar el mismo resultado (reintento del validador) no duplica el hecho, y un "pending"
+     * no es una validación. `validatedBy` identifica al validador (integración, usuario de revisión).
      */
-    public function applyValidation(EvidenceValidationStatus $status, ?string $detail, DateTimeImmutable $validatedAt): void
-    {
+    public function applyValidation(
+        EvidenceValidationStatus $status,
+        ?string $detail,
+        DateTimeImmutable $validatedAt,
+        ?string $validatedBy = null,
+    ): void {
+        $previous = $this->validationStatus;
+
         $this->validationStatus = $status;
         $this->validationDetail = self::clean($detail);
         $this->validatedAt = $validatedAt;
+
+        if ($status === $previous || $status === EvidenceValidationStatus::Pending) {
+            return;
+        }
+
+        $this->recordEvent(new DeliveryEvidenceValidated(
+            $this->id->toString(),
+            $this->shipmentId,
+            $this->kind->value,
+            $status->value,
+            $previous->value,
+            self::clean($validatedBy),
+            $validatedAt,
+        ));
     }
 
     public function id(): DeliveryEvidenceId

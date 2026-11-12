@@ -41,8 +41,10 @@ final class GetShipmentUnitsHandler implements QueryHandler
             return [];
         }
 
-        $resolved = $this->resolveUnits(array_map(static fn ($unit): string => $unit->unitId(), $units));
+        $unitIds = array_values(array_map(static fn ($unit): string => $unit->unitId(), $units));
+        $resolved = $this->resolveUnits($unitIds);
         $labelIds = $this->resolveLabelIds($query->shipmentId);
+        $shelf = $this->resolveShelfLocations($unitIds);
 
         return array_values(array_map(
             static fn ($unit): UnitTrackingView => UnitTrackingView::fromUnit(
@@ -50,9 +52,42 @@ final class GetShipmentUnitsHandler implements QueryHandler
                 $resolved[$unit->unitId()]['label'] ?? null,
                 $resolved[$unit->unitId()]['product'] ?? [],
                 $labelIds[$unit->unitId()] ?? null,
+                $shelf[$unit->unitId()] ?? null,
             ),
             $units,
         ));
+    }
+
+    /**
+     * Ubicación en estante VIGENTE de cada bulto dentro del nodo donde se recibió (la registra ejecución
+     * al recibir en tienda/CD), en UNA consulta de solo lectura. Si un bulto pasó por varios nodos gana la
+     * ubicación más reciente. Tolerante: sin tabla o sin datos devuelve [].
+     *
+     * @param  list<string>          $unitIds
+     * @return array<string, string> unit_id => ubicación (p. ej. "A-03-2")
+     */
+    private function resolveShelfLocations(array $unitIds): array
+    {
+        if ($unitIds === []) {
+            return [];
+        }
+
+        try {
+            $out = [];
+            $rows = DB::table('execution_node_reception_unit_locations')
+                ->whereIn('unit_id', $unitIds)
+                ->orderByDesc('located_at')
+                ->get(['unit_id', 'location']);
+            foreach ($rows as $row) {
+                if (is_string($row->location) && $row->location !== '') {
+                    $out[(string) $row->unit_id] ??= $row->location;
+                }
+            }
+
+            return $out;
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     /**
@@ -83,9 +118,9 @@ final class GetShipmentUnitsHandler implements QueryHandler
                 $ordinalByLineId[(string) $lineId] = $n;
             }
 
-            // Mapa (ordinal|unit_index|piece_index) → label_id, prefiriendo la vigente.
+            // Mapa (ordinal|unit_index|piece_index) → label_id. Las etiquetas son PERMANENTES: una por bulto.
             $labelByKey = [];
-            foreach (DB::table('labels_emitted')->where('order_id', $order)->get(['label_id', 'signed_json', 'revoked_at']) as $row) {
+            foreach (DB::table('labels_emitted')->where('order_id', $order)->get(['label_id', 'signed_json']) as $row) {
                 if (!is_string($row->signed_json) || $row->signed_json === '') {
                     continue;
                 }
@@ -95,11 +130,7 @@ final class GetShipmentUnitsHandler implements QueryHandler
                     continue;
                 }
                 $key = $p->lineNumber.'|'.$p->unit->index.'|'.$p->piece->index;
-                $revoked = $row->revoked_at !== null;
-                $existing = $labelByKey[$key] ?? null;
-                if ($existing === null || ($existing['revoked'] && !$revoked)) {
-                    $labelByKey[$key] = ['label_id' => (string) $row->label_id, 'revoked' => $revoked];
-                }
+                $labelByKey[$key] ??= (string) $row->label_id;
             }
 
             // Bultos del envío → su label_id por la clave (ordinal, unit_index, piece_index).
@@ -111,7 +142,7 @@ final class GetShipmentUnitsHandler implements QueryHandler
                 }
                 $key = $ordinal.'|'.((int) $u->unit_index).'|'.((int) $u->piece_index);
                 if (isset($labelByKey[$key])) {
-                    $out[(string) $u->id] = $labelByKey[$key]['label_id'];
+                    $out[(string) $u->id] = $labelByKey[$key];
                 }
             }
 

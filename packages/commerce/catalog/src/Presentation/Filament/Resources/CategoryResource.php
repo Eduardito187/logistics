@@ -7,6 +7,7 @@ namespace Commerce\Catalog\Presentation\Filament\Resources;
 use Commerce\Catalog\Infrastructure\Persistence\Eloquent\Model\CategoryRecord;
 use Commerce\Catalog\Presentation\Filament\Resources\CategoryResource\Pages\CreateCategory;
 use Commerce\Catalog\Presentation\Filament\Resources\CategoryResource\Pages\ListCategories;
+use Commerce\Catalog\Presentation\Filament\Support\PhysicalSpecForm;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
@@ -131,6 +132,17 @@ final class CategoryResource extends Resource
                         ? (self::categoryOptions()[$state] ?? __('Unknown'))
                         : __('Top level'))
                     ->placeholder(__('Top level')),
+                // Medidas por defecto de sus productos (escalón intermedio de la cascada logística).
+                TextColumn::make('logistics_defaults')
+                    ->label(__('Logistics defaults'))
+                    ->state(static fn (CategoryRecord $record): string => PhysicalSpecForm::completeness($record))
+                    ->badge()
+                    ->color(static fn (string $state): string => PhysicalSpecForm::completenessColor($state))
+                    ->formatStateUsing(static fn (string $state): string => PhysicalSpecForm::completenessLabel($state)),
+            ])
+            ->recordActions([
+                // Medidas por defecto: despacha SetCategoryPhysicalDefaults al bus (Fase 2.0).
+                PhysicalSpecForm::categoryAction(),
             ])
             ->defaultSort('name');
     }

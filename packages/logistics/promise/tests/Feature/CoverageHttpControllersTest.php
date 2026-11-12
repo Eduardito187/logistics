@@ -73,6 +73,20 @@ it('devuelve una colección vacía cuando la zona no tiene cobertura', function 
         ->assertJsonPath('meta.count', 0);
 });
 
+it('acepta e ignora los campos de propiedad heredados al calcular la promesa (nunca 422)', function (): void {
+    // La promesa nunca depende del stock ni del tipo de propiedad: un cliente viejo que todavía manda
+    // fulfillment_mode/owner_party_id/seller_sku_ref (incluso con un valor desconocido) no recibe 422.
+    $this->getJson('/api/v1/channels/promises/offers?'.http_build_query([
+        'zone_id' => CVP_UUID,
+        'fulfillment_mode' => 'dropship',
+        'owner_party_id' => 'no-es-uuid',
+        'seller_sku_ref' => 'SKU-1',
+    ]))
+        ->assertOk()
+        ->assertJsonPath('data', [])
+        ->assertJsonPath('meta.count', 0);
+});
+
 // ---------------------------------------------------------------------------
 // ListAvailableSlotsController + ListAvailableSlotsRequest
 // ---------------------------------------------------------------------------

@@ -7,8 +7,10 @@ namespace App\Http\Controllers\App;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
 use Logistics\Tracking\Application\Query\GetPublicTracking\GetPublicTracking;
 use Logistics\Tracking\Application\Query\GetPublicUnits\GetPublicUnits;
+use Logistics\Tracking\Application\ReadModel\PublicLinkState;
 use Logistics\Tracking\Application\ReadModel\PublicTrackingView;
 use Logistics\Tracking\Application\ReadModel\PublicUnitView;
 use Symfony\Component\HttpFoundation\Response;
@@ -31,6 +33,11 @@ final class TrackController
         $view = $this->queryBus->ask(new GetPublicTracking($token));
 
         if (!$view instanceof PublicTrackingView) {
+            // Link vencido (TTL desde la entrega): misma página "link vencido" que la Blade, con 410 y sin datos.
+            if ($this->queryBus->ask(new GetPublicLinkState($token)) === PublicLinkState::Expired) {
+                return new Response(view('tracking::expired')->render(), 410);
+            }
+
             // Mismo criterio que la página Blade: 404 genérico, sin revelar si el token existe.
             return Inertia::render('Track/NotFound')->toResponse(request())->setStatusCode(404);
         }

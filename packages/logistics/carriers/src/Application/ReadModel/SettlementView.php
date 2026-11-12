@@ -31,6 +31,8 @@ final readonly class SettlementView
         // Nombre legible del transportista (tabla carriers.name) resuelto en el QueryHandler.
         // Null si el transportista ya no existe; el UUID crudo se mantiene en carrier_id.
         public ?string $carrierName = null,
+        // Clase de vehículo tarifada (trailer, truck, third_party); null en liquidaciones históricas.
+        public ?string $vehicleClass = null,
     ) {}
 
     public static function fromDomain(Settlement $settlement, ?string $carrierName = null): self
@@ -50,11 +52,12 @@ final readonly class SettlementView
             $settlement->paymentReference(),
             $settlement->documents(),
             $carrierName,
+            $settlement->vehicleClass()?->value,
         );
     }
 
     /**
-     * @return array{id: string, carrier_id: string, carrier_name: string|null, corridor_from: string, corridor_to: string, corridor_type: string, period: string, amount_cents: int, currency: string, reference: string, status: string, dispute_reason: string|null, payment_reference: string|null, documents: list<array{type: string, reference: string}>}
+     * @return array{id: string, carrier_id: string, carrier_name: string|null, corridor_from: string, corridor_to: string, corridor_type: string, period: string, amount_cents: int, currency: string, reference: string, status: string, dispute_reason: string|null, payment_reference: string|null, documents: list<array{type: string, reference: string}>, vehicle_class: string|null}
      */
     public function toArray(): array
     {
@@ -73,6 +76,7 @@ final readonly class SettlementView
             'dispute_reason' => $this->disputeReason,
             'payment_reference' => $this->paymentReference,
             'documents' => $this->documents,
+            'vehicle_class' => $this->vehicleClass,
         ];
     }
 }

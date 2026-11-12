@@ -8,8 +8,10 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use Logistics\Execution\Domain\Model\RouteStop;
 use Logistics\Execution\Domain\Model\VehicleRoute;
+use Logistics\Execution\Domain\ValueObject\ArrivalSource;
 use Logistics\Execution\Domain\ValueObject\RouteDate;
 use Logistics\Execution\Domain\ValueObject\RouteId;
+use Logistics\Execution\Domain\ValueObject\RouteLifecycleSnapshot;
 use Logistics\Execution\Domain\ValueObject\RouteStatus;
 use Logistics\Execution\Domain\ValueObject\RouteStopId;
 use Logistics\Execution\Domain\ValueObject\RouteStopStatus;
@@ -30,6 +32,10 @@ final class VehicleRouteMapper
             'vehicle_id' => $route->vehicleId(),
             'route_date' => $route->date()->toString(),
             'status' => $route->status()->value,
+            'started_at' => $route->startedAt()?->format(DateTimeInterface::ATOM),
+            'closed_at' => $route->closedAt()?->format(DateTimeInterface::ATOM),
+            'start_odometer_km' => $route->startOdometerKm(),
+            'close_odometer_km' => $route->closeOdometerKm(),
         ];
     }
 
@@ -51,6 +57,8 @@ final class VehicleRouteMapper
             'lng' => $stop->lng(),
             'status' => $stop->status()->value,
             'settled_at' => $stop->settledAt()?->format(DateTimeInterface::ATOM),
+            'arrived_at' => $stop->arrivedAt()?->format(DateTimeInterface::ATOM),
+            'arrival_source' => $stop->arrivalSource()?->value,
         ];
     }
 
@@ -70,6 +78,12 @@ final class VehicleRouteMapper
             RouteDate::fromString($record->route_date),
             RouteStatus::from($record->status),
             $stops,
+            new RouteLifecycleSnapshot(
+                self::date($record->started_at),
+                self::date($record->closed_at),
+                $record->start_odometer_km !== null ? (float) $record->start_odometer_km : null,
+                $record->close_odometer_km !== null ? (float) $record->close_odometer_km : null,
+            ),
         );
     }
 
@@ -87,6 +101,13 @@ final class VehicleRouteMapper
             $record->lng !== null ? (float) $record->lng : null,
             RouteStopStatus::from($record->status),
             $record->settled_at !== null ? new DateTimeImmutable($record->settled_at) : null,
+            self::date($record->arrived_at),
+            $record->arrival_source !== null ? ArrivalSource::tryFrom($record->arrival_source) : null,
         );
+    }
+
+    private static function date(?string $value): ?DateTimeImmutable
+    {
+        return $value !== null && $value !== '' ? new DateTimeImmutable($value) : null;
     }
 }

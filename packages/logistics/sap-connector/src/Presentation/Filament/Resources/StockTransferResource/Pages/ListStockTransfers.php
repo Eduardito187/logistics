@@ -12,8 +12,8 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Schemas\Components\Tabs\Tab;
 use Illuminate\Database\Eloquent\Builder;
-use Logistics\SapConnector\Application\Command\DispatchPendingTransfers\DispatchPendingTransfers;
 use Logistics\SapConnector\Application\Command\EnqueueStockTransfer\EnqueueStockTransfer;
+use Logistics\SapConnector\Application\Command\RequestStockTransferDispatch\RequestStockTransferDispatch;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\MaterialMappingRecord;
@@ -116,8 +116,9 @@ final class ListStockTransfers extends ListRecords
     }
 
     /**
-     * Flujo de reconciliación: correr el despacho de todos los traspasos pendientes y fallidos (caso de
-     * uso DispatchPendingTransfers). Es el reintento del panel: toma Pending y Failed y los empuja a SAP.
+     * Flujo de reconciliación: PIDE una corrida (RequestStockTransferDispatch), que solo se encola en la
+     * cola `sap`; el worker reintenta los Failed y los Pending estancados. Nunca habla con SAP dentro del
+     * request ni abre una transacción larga: la acción vuelve al instante.
      */
     private function dispatchPendingAction(): Action
     {
@@ -126,13 +127,13 @@ final class ListStockTransfers extends ListRecords
             ->icon('heroicon-o-paper-airplane')
             ->color('danger')
             ->requiresConfirmation()
-            ->modalDescription(__('Push all pending and failed stock transfers to SAP now. Failed transfers are retried.'))
+            ->modalDescription(__('Queue a reconciliation run: failed and stale pending transfers are pushed to SAP in the background.'))
             ->action(function (CommandBus $commandBus): void {
-                $commandBus->dispatch(new DispatchPendingTransfers);
+                $commandBus->dispatch(new RequestStockTransferDispatch);
 
                 Notification::make()
                     ->title(__('Dispatch requested'))
-                    ->body(__('Pending and failed stock transfers were scheduled for dispatch to SAP.'))
+                    ->body(__('The reconciliation run was queued. SAP is contacted in the background; this screen is never blocked by SAP.'))
                     ->success()
                     ->send();
             });

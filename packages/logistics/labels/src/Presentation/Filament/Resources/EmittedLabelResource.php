@@ -147,22 +147,9 @@ final class EmittedLabelResource extends Resource
                         ($record->origin ?? '—').' → '.($record->destination_label ?? '—'),
                     ))
                     ->toggleable(),
-                TextColumn::make('status')
-                    ->label(__('Status'))
-                    ->badge()
-                    // Estado legible con color semántico en vez del valor crudo revoked_at.
-                    ->state(fn (EmittedLabelRecord $record): string => $record->is_revoked ? 'Revoked' : 'Active')
-                    ->formatStateUsing(fn (string $state): string => __($state))
-                    ->color(fn (string $state): string => $state === 'Revoked' ? 'danger' : 'success'),
                 TextColumn::make('created_at')
                     ->label(__('Emitted at'))
                     ->dateTime()
-                    ->sortable(),
-                TextColumn::make('revoked_at')
-                    ->label(__('Revoked at'))
-                    ->dateTime()
-                    ->placeholder('—')
-                    ->toggleable()
                     ->sortable(),
             ])
             ->filters([
@@ -186,16 +173,6 @@ final class EmittedLabelResource extends Resource
                         return $query;
                     })
                     ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) ? (string) __('Date range') : null),
-                TernaryFilter::make('revoked')
-                    ->label(__('Revocation status'))
-                    ->placeholder(__('All labels'))
-                    ->trueLabel(__('Revoked only'))
-                    ->falseLabel(__('Active only'))
-                    ->queries(
-                        true: fn (Builder $query): Builder => $query->whereNotNull('revoked_at'),
-                        false: fn (Builder $query): Builder => $query->whereNull('revoked_at'),
-                        blank: fn (Builder $query): Builder => $query,
-                    ),
                 // Filtra por si la etiqueta YA se imprimió (bitácora de ciclo de vida): impresas vs pendientes.
                 TernaryFilter::make('printed')
                     ->label(__('Print status'))
@@ -262,11 +239,10 @@ final class EmittedLabelResource extends Resource
                 ])
                     ->label(__('Print'))
                     ->icon('heroicon-o-printer')
-                    ->button()
-                    ->visible(fn (EmittedLabelRecord $record): bool => !$record->is_revoked),
-                // Flujo de lectura: obtener TODAS las etiquetas del pedido de esta fila y su ZPL vigente
-                // concatenado, listo para reimprimir en la Zebra. Se resuelve por el QueryBus (CQRS),
-                // nunca leyendo el Record directo.
+                    ->button(),
+                // Flujo de lectura: obtener TODAS las etiquetas del pedido de esta fila y su ZPL concatenado,
+                // listo para volver a imprimir en la Zebra. Se resuelve por el QueryBus (CQRS), nunca leyendo
+                // el Record directo. Las etiquetas son permanentes: se reimprime la MISMA, no se re-emite.
                 Action::make('orderLabels')
                     ->label(__('Order labels & ZPL'))
                     ->icon('heroicon-o-document-text')
@@ -290,8 +266,7 @@ final class EmittedLabelResource extends Resource
                             ->required(),
                     ])
                     ->action(function (Collection $records, array $data): RedirectResponse {
-                        $ids = $records->reject(fn (EmittedLabelRecord $r): bool => $r->is_revoked)
-                            ->pluck('label_id')->map(fn (mixed $v): string => (string) $v)->all();
+                        $ids = $records->pluck('label_id')->map(fn (mixed $v): string => (string) $v)->all();
 
                         return redirect()->to(route('cockpit.labels.print', [
                             'ids' => implode(',', $ids),
@@ -337,20 +312,7 @@ final class EmittedLabelResource extends Resource
                     TextEntry::make('piece_label')->label(__('Piece (N of M)'))->placeholder('—'),
                     TextEntry::make('origin')->label(__('Origin'))->placeholder('—'),
                     TextEntry::make('destination_label')->label(__('Destination'))->placeholder('—'),
-                    TextEntry::make('status')
-                        ->label(__('Status'))
-                        ->badge()
-                        ->state(fn (EmittedLabelRecord $record): string => $record->is_revoked ? 'Revoked' : 'Active')
-                        ->formatStateUsing(fn (string $state): string => __($state))
-                        ->color(fn (string $state): string => $state === 'Revoked' ? 'danger' : 'success'),
                     TextEntry::make('created_at')->label(__('Emitted at'))->dateTime(),
-                    TextEntry::make('revoked_at')
-                        ->label(__('Revoked at'))
-                        ->dateTime()
-                        ->placeholder(__('Active (not revoked)')),
-                    TextEntry::make('revoked_reason')
-                        ->label(__('Revocation reason'))
-                        ->placeholder('—'),
                 ])
                 ->columns(3),
             Section::make(__('Label preview'))
@@ -361,9 +323,9 @@ final class EmittedLabelResource extends Resource
                         ->view('filament.labels.label-preview')
                         ->columnSpanFull(),
                 ]),
-            // Control total del ciclo de vida: quién generó/imprimió/revocó y cada escaneo (etapa + actor + hora).
+            // Control total del ciclo de vida: quién generó/imprimió y cada escaneo (etapa + actor + hora).
             Section::make(__('Lifecycle'))
-                ->description(__('Full audit trail: who generated, printed, scanned (by stage) and revoked this label, and when.'))
+                ->description(__('Full audit trail: who generated, printed and scanned (by stage) this label, and when.'))
                 ->schema([
                     ViewEntry::make('lifecycle')
                         ->hiddenLabel()
@@ -429,33 +391,27 @@ final class EmittedLabelResource extends Resource
         }
 
         $rows = '';
-        $activeZpl = [];
+        $allZpl = [];
         foreach ($views as $view) {
             $unit = self::qrFractionLabel($view->qrContent, 'u');
-            $status = $view->revoked ? 'Revoked' : 'Active';
             $rows .= '<tr>'
                 .'<td class="py-1 pr-4">'.e((string) $view->lineNumber).'</td>'
                 .'<td class="py-1 pr-4">'.e($view->sku !== '' ? $view->sku : __('Product')).'</td>'
                 .'<td class="py-1 pr-4">'.e($unit ?? '—').'</td>'
-                .'<td class="py-1 pr-4">'.e(__($status)).'</td>'
                 .'</tr>';
 
-            if (!$view->revoked) {
-                $activeZpl[] = $view->zpl;
-            }
+            $allZpl[] = $view->zpl;
         }
 
         $table = '<table class="w-full text-sm mb-4">'
             .'<thead><tr class="text-left border-b">'
             .'<th class="py-1 pr-4">'.e(__('Line')).'</th><th class="py-1 pr-4">'.e(__('SKU')).'</th>'
-            .'<th class="py-1 pr-4">'.e(__('Unit')).'</th><th class="py-1 pr-4">'.e(__('Status')).'</th>'
+            .'<th class="py-1 pr-4">'.e(__('Unit')).'</th>'
             .'</tr></thead><tbody>'.$rows.'</tbody></table>';
 
-        $zplBlock = $activeZpl === []
-            ? '<p class="text-sm text-gray-500">'.e(__('No active labels to print (all revoked).')).'</p>'
-            : '<p class="text-sm font-medium mb-1">'.e(__('Active ZPL (ready for the Zebra printer):')).'</p>'
-                .'<pre class="text-xs p-3 rounded bg-gray-100 dark:bg-gray-800 overflow-auto max-h-80">'
-                .e(implode("\n", $activeZpl)).'</pre>';
+        $zplBlock = '<p class="text-sm font-medium mb-1">'.e(__('ZPL (ready for the Zebra printer):')).'</p>'
+            .'<pre class="text-xs p-3 rounded bg-gray-100 dark:bg-gray-800 overflow-auto max-h-80">'
+            .e(implode("\n", $allZpl)).'</pre>';
 
         return new HtmlString($table.$zplBlock);
     }

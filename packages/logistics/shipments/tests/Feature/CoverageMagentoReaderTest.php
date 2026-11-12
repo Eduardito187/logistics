@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
 use Logistics\Shipments\Application\Command\ReceiveShipment\ReceiveShipment;
+use Logistics\Shipments\Application\Contract\MagentoOrderReader;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Infrastructure\Magento\HttpMagentoOrderReader;
 
@@ -116,4 +117,56 @@ it('devuelve lista vacía cuando la respuesta no trae items', function (): void 
     Http::fake(['*' => Http::response([], 200)]);
 
     expect(fakeMagentoReader()->fetchPendingOrders())->toBe([]);
+});
+
+it('un pedido a domicilio no trae nodo destino', function (): void {
+    Http::fake(['*' => Http::response(['items' => [magentoOrder()]], 200)]);
+
+    expect(fakeMagentoReader()->fetchPendingOrders()[0]->destinationNodeCode)->toBeNull();
+});
+
+it('mapea el punto de retiro de Magento MSI (pickup_location_code) al código de nodo destino', function (): void {
+    $order = magentoOrder(['extension_attributes' => ['pickup_location_code' => ' T-SCZ-01 ']]);
+
+    Http::fake(['*' => Http::response(['items' => [$order]], 200)]);
+
+    expect(fakeMagentoReader()->fetchPendingOrders()[0]->destinationNodeCode)->toBe('T-SCZ-01');
+});
+
+it('traduce el código de retiro con el mapa configurado y también lo lee del envío', function (): void {
+    $order = magentoOrder();
+    $order['extension_attributes']['shipping_assignments'][0]['shipping']['extension_attributes'] = ['store_code' => 'SCZ01'];
+
+    Http::fake(['*' => Http::response(['items' => [$order]], 200)]);
+
+    $reader = new HttpMagentoOrderReader(app(Factory::class), 'https://magento.test/', 'service-token', 'processing', 100, 10, ['SCZ01' => 'T-SCZ-01'], ['pickup_location_code', 'store_code']);
+
+    expect($reader->fetchPendingOrders()[0]->destinationNodeCode)->toBe('T-SCZ-01');
+});
+
+it('reconoce el retiro por método de envío solo si está en el mapa', function (): void {
+    $pickup = magentoOrder();
+    $pickup['extension_attributes']['shipping_assignments'][0]['shipping']['method'] = 'storepickup_SCZ01';
+    $home = magentoOrder(['increment_id' => '100000126', 'shipping_method' => 'flatrate_flatrate']);
+
+    Http::fake(['*' => Http::response(['items' => [$pickup, $home]], 200)]);
+
+    $reader = new HttpMagentoOrderReader(app(Factory::class), 'https://magento.test/', 'service-token', 'processing', 100, 10, ['storepickup_SCZ01' => 'T-SCZ-01']);
+    $commands = $reader->fetchPendingOrders();
+
+    expect($commands[0]->destinationNodeCode)->toBe('T-SCZ-01')
+        ->and($commands[1]->destinationNodeCode)->toBeNull();
+});
+
+it('el contenedor arma el lector con el mapa de retiro de la config', function (): void {
+    config([
+        'logistics-shipments.magento.base_url' => 'https://magento.test',
+        'logistics-shipments.magento.access_token' => 'service-token',
+        'logistics-shipments.magento.pickup_location_map' => ['SCZ01' => 'T-SCZ-01'],
+    ]);
+    app()->forgetInstance(MagentoOrderReader::class);
+
+    Http::fake(['*' => Http::response(['items' => [magentoOrder(['extension_attributes' => ['pickup_location_code' => 'SCZ01']])]], 200)]);
+
+    expect(app(MagentoOrderReader::class)->fetchPendingOrders()[0]->destinationNodeCode)->toBe('T-SCZ-01');
 });

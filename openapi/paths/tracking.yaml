@@ -80,8 +80,8 @@ paths:
       operationId: getPublicUnits
       summary: Public per-parcel breakdown by opaque token (no PII)
       description: >
-        Puerta channels. Devuelve el desglose de bultos del envío (etiqueta humana, estado y un mensaje
-        en español por bulto), sin datos personales ni claves internas. Mismo token que la página
+        Puerta channels. Devuelve el desglose de productos del envío (etiqueta humana, estado y un mensaje
+        en español por producto), sin datos personales ni claves internas. Mismo token que la página
         pública del envío.
       parameters:
         - name: token
@@ -120,13 +120,13 @@ paths:
       operationId: getShipmentUnits
       summary: Internal per-parcel tracking detail by shipment id
       description: >
-        Puerta app (personal interno). Devuelve el detalle per-bulto del seguimiento del envío: estado,
-        última ubicación (nodo) y último escaneo de cada bulto. Alimenta la reconciliación de bultos.
+        Puerta app (personal interno). Devuelve el detalle por producto del seguimiento del envío: estado,
+        última ubicación (nodo) y último escaneo de cada producto. Alimenta la reconciliación de productos.
       parameters:
         - $ref: '#/components/parameters/ShipmentId'
       responses:
         '200':
-          description: Detalle de bultos (la lista puede estar vacía)
+          description: Detalle de productos (la lista puede estar vacía)
           content:
             application/json:
               schema:
@@ -230,24 +230,24 @@ components:
       enum: [REGISTERED, PREPARED, ON_THE_WAY, ARRIVING, DELIVERED, FAILED]
     UnitStatus:
       type: string
-      description: Estado visible de un bulto (unidad física) dentro del seguimiento
+      description: Estado visible de un producto (unidad física) dentro del seguimiento
       enum: [REGISTERED, PREPARED, LOADED, UNLOADED, RECEIVED, DELIVERED, FAILED]
     PublicUnit:
       type: object
-      description: Vista pública de un bulto (sin PII)
+      description: Vista pública de un producto (sin PII)
       required: [label, status, status_message]
       properties:
         label:
           type: string
-          description: Etiqueta humana del bulto, p. ej. "Bulto 1 de 2"
+          description: Etiqueta humana del producto, p. ej. "Producto 1 de 2"
         status:
           $ref: '#/components/schemas/UnitStatus'
         status_message:
           type: string
-          description: Mensaje por bulto en español, p. ej. "Cargado en el camión."
+          description: Mensaje por producto en español, p. ej. "Cargado en el camión."
     UnitTracking:
       type: object
-      description: Vista interna del seguimiento de un bulto
+      description: Vista interna del seguimiento de un producto
       required: [id, unit_id, shipment_id, status, last_location_id, last_seen_at, label]
       properties:
         id:
@@ -263,18 +263,18 @@ components:
           $ref: '#/components/schemas/UnitStatus'
         last_location_id:
           type: [string, 'null']
-          description: Nodo/parada donde se vio por última vez el bulto
+          description: Nodo/parada donde se vio por última vez el producto
         last_seen_at:
           type: [string, 'null']
           format: date-time
         label:
           type: [string, 'null']
-          description: Etiqueta humana del bulto ("N/M")
+          description: Etiqueta humana del producto ("N/M")
         label_id:
           type: [string, 'null']
           description: >-
-            Id (ULID del QR) de la etiqueta de este bulto, para mapear label_id→unit_id offline al escanear.
-            Mismo unit_id que EmittedLabel. null si el bulto aún no tiene etiqueta emitida.
+            Id (ULID del QR) de la etiqueta de este producto, para mapear label_id→unit_id offline al escanear.
+            Mismo unit_id que EmittedLabel. null si el producto aún no tiene etiqueta emitida.
     TruckPosition:
       type: object
       description: Última posición conocida del camión

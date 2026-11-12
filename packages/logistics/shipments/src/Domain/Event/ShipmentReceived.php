@@ -9,6 +9,10 @@ use Logistics\Shared\Domain\Event\BaseDomainEvent;
 /**
  * Un envío fue recibido y normalizado al modelo propio. Es el hecho de ingreso: de acá se alimentan
  * tracking, planificación y, más adelante, el outbox hacia otros contextos.
+ *
+ * Lleva además la carga agregada del envío (Roadmap 02, Fase 2.1): peso (kg) y volumen (m³) totales a
+ * partir de la foto de medidas de cada línea, y si alguna línea cayó al default global. Son null cuando
+ * alguna línea no tiene foto (envíos armados fuera del ingreso estándar).
  */
 final readonly class ShipmentReceived extends BaseDomainEvent
 {
@@ -21,6 +25,9 @@ final readonly class ShipmentReceived extends BaseDomainEvent
         public string $addressConfidenceLevel,
         public int $lineCount,
         public int $unitCount,
+        public ?float $totalWeightKg = null,
+        public ?float $totalVolumeM3 = null,
+        public bool $measurementsDefaulted = false,
     ) {
         parent::__construct($shipmentId);
     }
@@ -41,6 +48,9 @@ final readonly class ShipmentReceived extends BaseDomainEvent
             'address_confidence_level' => $this->addressConfidenceLevel,
             'line_count' => $this->lineCount,
             'unit_count' => $this->unitCount,
+            'total_weight_kg' => $this->totalWeightKg,
+            'total_volume_m3' => $this->totalVolumeM3,
+            'measurements_defaulted' => $this->measurementsDefaulted,
         ];
     }
 }

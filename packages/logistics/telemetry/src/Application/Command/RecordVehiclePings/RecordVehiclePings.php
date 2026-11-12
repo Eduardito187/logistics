@@ -10,7 +10,10 @@ use Logistics\Shared\Application\Command\Command;
  * Intención de ingerir un lote de lecturas GPS de un vehículo (el app agrupa pings para ahorrar
  * batería/datos). Los pings llegan como arrays primitivos para no acoplar la entrada HTTP al dominio.
  *
- * @phpstan-type IncomingPing array{lat: float, lng: float, recorded_at: string, speed_kph?: float|null, heading?: int|null, accuracy_m?: float|null, ignition?: bool|null, odometer_m?: int|null, device_id?: string|null}
+ * `fix_id` (opcional) es el id propio de la lectura en el cliente: hace idempotente el reintento del lote.
+ * Sin él, la idempotencia se deriva de `device_id@recorded_at` (ver FixKey).
+ *
+ * @phpstan-type IncomingPing array{lat: float, lng: float, recorded_at: string, speed_kph?: float|null, heading?: int|null, accuracy_m?: float|null, ignition?: bool|null, odometer_m?: int|null, device_id?: string|null, fix_id?: string|null}
  */
 final readonly class RecordVehiclePings implements Command
 {

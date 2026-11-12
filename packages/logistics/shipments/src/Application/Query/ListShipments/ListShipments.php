@@ -7,8 +7,10 @@ namespace Logistics\Shipments\Application\Query\ListShipments;
 use Logistics\Shared\Application\Query\Query;
 
 /**
- * Lista envíos, opcionalmente filtrados por estado y/o fuente (ambos como el valor del enum, o null) y
- * por nodo destino (UUID de un nodo de red, o null para no filtrar).
+ * Lista envíos, opcionalmente filtrados por estado y/o fuente (ambos como el valor del enum, o null), por
+ * nodo destino (UUID de un nodo de red, o null para no filtrar) y por rango de fecha prometida de entrega
+ * (`delivery_date` entre `$deliveryDateFrom` y `$deliveryDateTo`, inclusive; un envío sin fecha queda
+ * fuera cuando se pide alguna cota).
  *
  * El filtro por nodo destino lo FUERZA la puerta app para el rol Tienda (server-side): acota el listado
  * a los envíos de su propia tienda. Ver ListShipmentsController.
@@ -19,11 +21,23 @@ use Logistics\Shared\Application\Query\Query;
  */
 final readonly class ListShipments implements Query
 {
+    /**
+     * @param list<string>|null $statuses
+     */
     public function __construct(
         public ?string $status = null,
         public ?string $source = null,
         public ?string $destinationNodeId = null,
         public ?int $limit = null,
         public ?int $offset = null,
+        // Rango de fecha prometida de entrega (Y-m-d, ambos inclusive); null = sin cota.
+        public ?string $deliveryDateFrom = null,
+        public ?string $deliveryDateTo = null,
+        // Aditivo: VARIOS estados a la vez (status[]=…), cualquier capitalización; null = sin filtro.
+        public ?array $statuses = null,
+        // Aditivo: modalidad de entrega derivada (home_delivery / store_pickup / transfer); null = sin filtro.
+        public ?string $deliveryMode = null,
+        // Aditivo (#1b): solo envíos asignados (PLANNED / IN_EXECUTION) aún SIN escaneo de preparación.
+        public bool $pendingPreparation = false,
     ) {}
 }

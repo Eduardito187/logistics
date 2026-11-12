@@ -14,7 +14,7 @@ use Logistics\Shared\Application\Command\CommandBus;
  * Un transportista envía una liquidación por un corredor y período (comando SubmitSettlement).
  *
  * El id del transportista llega por la ruta; el corredor, el período, el monto (centavos + moneda),
- * la referencia y los documentos por el cuerpo.
+ * la referencia, los documentos y la clase de vehículo (opcional) por el cuerpo.
  */
 final class SubmitSettlementController extends ApiController
 {
@@ -38,6 +38,7 @@ final class SubmitSettlementController extends ApiController
                 currency: $request->string('currency')->toString(),
                 reference: $request->string('reference')->toString(),
                 documents: $documents,
+                vehicleClass: $request->filled('vehicle_class') ? $request->string('vehicle_class')->toString() : null,
             ));
 
             return $this->accepted(['carrier_id' => $carrierId]);

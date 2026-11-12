@@ -25,9 +25,6 @@ function baseLabelView(string $order, string $sku, string $originCode): EmittedL
         qrContent: '{}',
         zpl: '',
         emittedAt: 1,
-        revoked: false,
-        revokedAt: null,
-        revokedReason: null,
         originCode: $originCode,
     );
 }

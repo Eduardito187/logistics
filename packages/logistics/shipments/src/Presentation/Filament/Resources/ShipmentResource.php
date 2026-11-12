@@ -48,7 +48,7 @@ use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource\Relatio
  * Nota de arquitectura: Filament opera sobre el modelo Eloquent (ShipmentRecord) por diseño del
  * framework. Las ESCRITURAS de negocio (re-geocodificar) se despachan por el CommandBus para
  * respetar el flujo Presentation → Application (transacción + outbox); la edición directa se limita
- * a campos administrativos. Todo texto visible va en inglés (regla CLAUDE.md #5).
+ * a campos administrativos. Cada texto visible va en inglés (regla CLAUDE.md #5).
  */
 final class ShipmentResource extends Resource
 {
@@ -223,10 +223,10 @@ final class ShipmentResource extends Resource
     }
 
     /**
-     * Vista de detalle del pedido: todo legible y enlazado. Resumen del pedido, cliente, dirección
+     * Vista de detalle del pedido: cada dato legible y enlazado. Resumen del pedido, cliente, dirección
      * completa con su score, mapa de la ubicación de entrega (Leaflet + OpenStreetMap), líneas de
-     * producto (con imagen y precio) y el historial de otros pedidos del mismo cliente. Todo el texto
-     * visible en inglés dentro de __() (regla 5 de CLAUDE.md).
+     * producto (con imagen y precio) y el historial de otros pedidos del mismo cliente. El texto
+     * visible completo va en inglés dentro de __() (regla 5 de CLAUDE.md).
      */
     public static function infolist(Schema $schema): Schema
     {

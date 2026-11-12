@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Logistics\Shared\Domain\Exception\DomainException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -82,6 +83,14 @@ final class ProblemExceptionRenderer
             $e instanceof TooManyRequestsHttpException => ProblemDetails::fromCode(
                 ErrorCode::RateLimited,
                 'Request rate limit exceeded; retry later.',
+            ),
+
+            // Una regla de negocio del dominio (precondición de estado, invariante del agregado) es una petición
+            // bien formada que no se puede procesar: 422 con el motivo como detail, nunca 500. Así el cliente
+            // (p. ej. el chofer cerrando el POD) ve QUÉ falta en vez de "se colgó".
+            $e instanceof DomainException => ProblemDetails::fromCode(
+                ErrorCode::BusinessRuleViolation,
+                $this->meaningfulMessage($e) ?? 'The request cannot be processed in the current state.',
             ),
 
             $e instanceof HttpExceptionInterface => $this->fromHttpException($e),

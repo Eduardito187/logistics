@@ -30,9 +30,48 @@ return [
         'alert_minutes' => (int) env('TELEMETRY_IDLE_ALERT_MINUTES', 15),
     ],
 
-    // Exceso de velocidad (km/h) que dispara alerta.
+    // Exceso de velocidad (km/h) que dispara alerta. La alerta se levanta recién cuando el exceso se
+    // SOSTIENE `sustained_seconds` (un pico suelto de GPS no alerta). 0 = alerta instantánea (histórico).
     'speeding' => [
         'limit_kph' => (float) env('TELEMETRY_SPEEDING_LIMIT_KPH', 90.0),
+        'sustained_seconds' => (int) env('TELEMETRY_SPEEDING_SUSTAINED_SECONDS', 20),
+    ],
+
+    // Desvío de ruta: el vehículo se aleja de la geometría de su ruta planificada (plan publicado del día)
+    // más de `max_distance_m` durante al menos `min_seconds` → alerta route_deviation. Sin geometría
+    // planificada (plan sin trazar, o vehículo sin plan) no se evalúa.
+    'deviation' => [
+        'enabled' => (bool) env('TELEMETRY_DEVIATION_ENABLED', true),
+        'max_distance_m' => (float) env('TELEMETRY_DEVIATION_MAX_DISTANCE_M', 300.0),
+        'min_seconds' => (int) env('TELEMETRY_DEVIATION_MIN_SECONDS', 120),
+    ],
+
+    // Migas de pan por envío: traza del vehículo mientras el envío estuvo a bordo, reducida.
+    'breadcrumbs' => [
+        // Distancia mínima entre dos puntos consecutivos de la traza reducida (metros).
+        'min_spacing_m' => (float) env('TELEMETRY_BREADCRUMBS_MIN_SPACING_M', 25.0),
+        // Tope de puntos devueltos (se reduce por paso uniforme si se excede).
+        'max_points' => (int) env('TELEMETRY_BREADCRUMBS_MAX_POINTS', 500),
+        // Ventana máxima hacia atrás desde el fin (horas): acota un envío que quedó "a bordo" sin cerrar.
+        'max_window_hours' => (int) env('TELEMETRY_BREADCRUMBS_MAX_WINDOW_HOURS', 72),
+    ],
+
+    // ETA dinámica por parada restante, recalculada desde la última posición. NO hay fuente de tráfico en
+    // vivo: con OSRM configurado se usan las duraciones viales de OSRM (sin tráfico); sin OSRM, distancia en
+    // línea recta × factor de desvío / velocidad media. El cálculo con OSRM corre SOLO en el comando
+    // programado (nunca dentro de un request); la lectura usa lo guardado o el respaldo en línea recta.
+    'eta' => [
+        // Host OSRM para las duraciones viales. Vacío = sin OSRM (respaldo en línea recta; sirve en docker nuevo).
+        'osrm_host' => (string) env('TELEMETRY_ETA_OSRM_HOST', ''),
+        'osrm_timeout' => (int) env('TELEMETRY_ETA_OSRM_TIMEOUT', 5),
+        // Velocidad media urbana para el respaldo en línea recta (km/h).
+        'average_speed_kph' => (float) env('TELEMETRY_ETA_AVERAGE_SPEED_KPH', 25.0),
+        // Factor de desvío de la línea recta a la distancia vial real (1.3 ≈ trazado urbano típico).
+        'detour_factor' => (float) env('TELEMETRY_ETA_DETOUR_FACTOR', 1.3),
+        // Tiempo de servicio estimado por parada (minutos) que se suma antes de salir a la siguiente.
+        'service_minutes' => (int) env('TELEMETRY_ETA_SERVICE_MINUTES', 5),
+        // Una posición más vieja que esto no recalcula ETA (el vehículo dejó de reportar).
+        'max_position_age_minutes' => (int) env('TELEMETRY_ETA_MAX_POSITION_AGE_MINUTES', 30),
     ],
 
     // Horario laboral: movimiento fuera de esta franja → alerta de uso fuera de horario (posible mal uso).

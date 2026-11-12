@@ -28,9 +28,15 @@ interface DeliveryRepository
     public function findByShipmentId(string $shipmentId): ?Delivery;
 
     /**
-     * Entregas asignadas a un vehículo (su hoja de ruta).
+     * Entregas asignadas a un vehículo (su hoja de ruta), en orden estable. Con $limit, solo esa página
+     * (LIMIT/OFFSET en la base, sin materializar la colección completa).
      *
      * @return list<Delivery>
      */
-    public function findByVehicleId(string $vehicleId): array;
+    public function findByVehicleId(string $vehicleId, ?int $limit = null, int $offset = 0): array;
+
+    /**
+     * Total de entregas asignadas a un vehículo (para la meta de la paginación).
+     */
+    public function countByVehicleId(string $vehicleId): int;
 }

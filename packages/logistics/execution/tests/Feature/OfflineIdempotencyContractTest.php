@@ -6,7 +6,7 @@ use Illuminate\Validation\ValidationException;
 use Logistics\Execution\Presentation\Http\Request\PreparationScanRequest;
 
 /**
- * Contrato OFFLINE-FIRST (C-EXE-02): todo escaneo de escritura exige una clave de idempotencia, venga
+ * Contrato OFFLINE-FIRST (C-EXE-02): cada escaneo de escritura exige una clave de idempotencia, venga
  * por el header `Idempotency-Key` o por el cuerpo. Sin ella no hay forma de deduplicar el reenvío de la
  * cola offline, y una clave vacía colisionaría en el índice único de la base. Se prueba sobre la base de
  * validación común de los escaneos (ScanRequest), que comparten todos los endpoints de escritura.

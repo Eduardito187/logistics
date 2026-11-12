@@ -9,6 +9,8 @@ use Logistics\Shared\Domain\ValueObject\Ownership;
 use Logistics\Shipments\Domain\Event\ShipmentAddressRescored;
 use Logistics\Shipments\Domain\Event\ShipmentCancelled;
 use Logistics\Shipments\Domain\Event\ShipmentDeliverySlotAssigned;
+use Logistics\Shipments\Domain\Event\ShipmentExecutionStarted;
+use Logistics\Shipments\Domain\Event\ShipmentMarkedDelivered;
 use Logistics\Shipments\Domain\Event\ShipmentPlanned;
 use Logistics\Shipments\Domain\Event\ShipmentReceived;
 use Logistics\Shipments\Domain\Event\ShipmentRescheduled;
@@ -109,6 +111,8 @@ final class Shipment extends AggregateRoot
             $orderReference,
         );
 
+        $load = self::loadOf($shipment->lines);
+
         $shipment->recordEvent(new ShipmentReceived(
             $id->toString(),
             $source->value,
@@ -118,9 +122,42 @@ final class Shipment extends AggregateRoot
             $addressConfidence->level->value,
             count($shipment->lines),
             count($shipment->units),
+            $load['totalWeightKg'],
+            $load['totalVolumeM3'],
+            $load['measurementsDefaulted'],
         ));
 
         return $shipment;
+    }
+
+    /**
+     * Carga agregada (kg y m³ totales) a partir de la foto de medidas de las líneas, y si alguna cayó al
+     * default global. Totales null si alguna línea no tiene foto.
+     *
+     * @param  list<ShipmentLine>                                                               $lines
+     * @return array{totalWeightKg: ?float, totalVolumeM3: ?float, measurementsDefaulted: bool}
+     */
+    private static function loadOf(array $lines): array
+    {
+        $weight = 0.0;
+        $volume = 0.0;
+        $defaulted = false;
+
+        foreach ($lines as $line) {
+            $measure = $line->measure();
+            if ($measure === null) {
+                return ['totalWeightKg' => null, 'totalVolumeM3' => null, 'measurementsDefaulted' => true];
+            }
+            $weight += $measure->totalWeightKg($line->quantity());
+            $volume += $measure->totalVolumeM3($line->quantity());
+            $defaulted = $defaulted || $measure->isDefaulted();
+        }
+
+        return [
+            'totalWeightKg' => round($weight, 3),
+            'totalVolumeM3' => round($volume, 6),
+            'measurementsDefaulted' => $defaulted,
+        ];
     }
 
     /**
@@ -204,6 +241,73 @@ final class Shipment extends AggregateRoot
 
         $this->status = ShipmentStatus::Planned;
         $this->recordEvent(new ShipmentPlanned($this->id->toString()));
+    }
+
+    /**
+     * El envío entra en ejecución (preparado, cargado o en camino). Válido desde Received o Planned: un
+     * pedido asignado a mano a un camión puede prepararse sin haber pasado por un plan.
+     */
+    public function startExecution(): void
+    {
+        if ($this->status !== ShipmentStatus::Received && $this->status !== ShipmentStatus::Planned) {
+            throw ShipmentsException::because("transición inválida a InExecution desde {$this->status->value}");
+        }
+
+        $this->status = ShipmentStatus::InExecution;
+        $this->recordEvent(new ShipmentExecutionStarted($this->id->toString()));
+    }
+
+    /**
+     * El envío quedó entregado. Válido desde cualquier estado del avance previo (Received, Planned,
+     * InExecution): los hechos de ejecución pueden llegar desordenados o con alguno perdido.
+     */
+    public function markDelivered(): void
+    {
+        if ($this->status->isClosed()) {
+            throw ShipmentsException::because("transición inválida a Delivered desde {$this->status->value}");
+        }
+
+        $this->status = ShipmentStatus::Delivered;
+        $this->recordEvent(new ShipmentMarkedDelivered($this->id->toString()));
+    }
+
+    /**
+     * AVANCE MONÓTONO e idempotente hacia `$target` (Planned, InExecution o Delivered), alimentado por los
+     * hechos de planificación y ejecución:
+     *
+     *  - nunca retrocede: si el envío ya está en ese rango o más adelante, no hace nada;
+     *  - un envío cerrado (entregado, fallido o anulado) no se toca;
+     *  - salta pasos intermedios si llegan hechos desordenados (p. ej. cargado sin plan → InExecution).
+     *
+     * Devuelve true si cambió el estado (y grabó su hecho), false si fue un no-op. Un destino fuera del
+     * avance (Received, Failed, Cancelled) es un error de programación: esos estados tienen sus propios
+     * flujos (ingreso, cancelación).
+     */
+    public function progressTo(ShipmentStatus $target): bool
+    {
+        $wanted = $target->progressRank();
+        if ($wanted === null || $target === ShipmentStatus::Received) {
+            throw ShipmentsException::because("el estado {$target->value} no es un destino de avance");
+        }
+
+        if ($this->status->isClosed()) {
+            return false;
+        }
+
+        $current = $this->status->progressRank() ?? 0;
+        if ($wanted <= $current) {
+            return false;
+        }
+
+        if ($target === ShipmentStatus::Planned) {
+            $this->markPlanned();
+        } elseif ($target === ShipmentStatus::InExecution) {
+            $this->startExecution();
+        } else {
+            $this->markDelivered();
+        }
+
+        return true;
     }
 
     /**

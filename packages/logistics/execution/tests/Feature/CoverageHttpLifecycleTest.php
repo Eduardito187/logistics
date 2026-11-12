@@ -15,6 +15,10 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  */
 beforeEach(function (): void {
     $this->withoutMiddleware();
+
+    // La foto del POD debe existir en el disco de evidencia (se rechaza una referencia no subida).
+    Storage::fake('pod');
+    Storage::disk('pod')->put('evidence/pod-1.jpg', 'jpg');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',
     'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',
@@ -60,6 +64,7 @@ it('recorre el ciclo de una entrega entregada por sus endpoints', function (): v
 
     $this->postJson('/api/v1/app/deliveries/proof-of-delivery', coverageScanBody($shipment) + [
         'confirmation' => 'QR-OK-1',
+        'photo_path' => 'evidence/pod-1.jpg',
     ])->assertOk()
         ->assertJsonPath('data.status', 'DELIVERED');
 

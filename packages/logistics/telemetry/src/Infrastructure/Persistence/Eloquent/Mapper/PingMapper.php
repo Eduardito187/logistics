@@ -37,11 +37,12 @@ final class PingMapper
             $record->received_at->toDateTimeImmutable(),
             PingSource::from($record->source),
             $record->trip_id === null ? null : TripId::fromString($record->trip_id),
+            $record->fix_key,
         );
     }
 
     /**
-     * @return array{id: string, vehicle_id: string, driver_id: string|null, device_id: string|null, route_id: string|null, lat: float, lng: float, speed_kph: float|null, heading: int|null, accuracy_m: float|null, ignition: bool|null, odometer_m: int|null, recorded_at: DateTimeImmutable, received_at: DateTimeImmutable, source: string, trip_id: string|null}
+     * @return array{id: string, vehicle_id: string, driver_id: string|null, device_id: string|null, route_id: string|null, lat: float, lng: float, speed_kph: float|null, heading: int|null, accuracy_m: float|null, ignition: bool|null, odometer_m: int|null, recorded_at: DateTimeImmutable, received_at: DateTimeImmutable, source: string, trip_id: string|null, fix_key: string|null}
      */
     public function toRow(VehiclePing $ping): array
     {
@@ -62,6 +63,7 @@ final class PingMapper
             'received_at' => $ping->receivedAt(),
             'source' => $ping->source()->value,
             'trip_id' => $ping->tripId()?->toString(),
+            'fix_key' => $ping->fixKey(),
         ];
     }
 }

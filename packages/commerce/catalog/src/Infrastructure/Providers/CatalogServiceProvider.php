@@ -14,9 +14,15 @@ use Commerce\Catalog\Application\Command\DraftProduct\DraftProduct;
 use Commerce\Catalog\Application\Command\DraftProduct\DraftProductHandler;
 use Commerce\Catalog\Application\Command\PublishProduct\PublishProduct;
 use Commerce\Catalog\Application\Command\PublishProduct\PublishProductHandler;
+use Commerce\Catalog\Application\Command\SetCategoryPhysicalDefaults\SetCategoryPhysicalDefaults;
+use Commerce\Catalog\Application\Command\SetCategoryPhysicalDefaults\SetCategoryPhysicalDefaultsHandler;
+use Commerce\Catalog\Application\Command\SetProductPhysicalSpec\SetProductPhysicalSpec;
+use Commerce\Catalog\Application\Command\SetProductPhysicalSpec\SetProductPhysicalSpecHandler;
 use Commerce\Catalog\Application\Contract\ProductAvailabilityReader;
 use Commerce\Catalog\Application\Query\GetProduct\GetProduct;
 use Commerce\Catalog\Application\Query\GetProduct\GetProductHandler;
+use Commerce\Catalog\Application\Query\GetProductBySku\GetProductBySku;
+use Commerce\Catalog\Application\Query\GetProductBySku\GetProductBySkuHandler;
 use Commerce\Catalog\Application\Query\ListCategories\ListCategories;
 use Commerce\Catalog\Application\Query\ListCategories\ListCategoriesHandler;
 use Commerce\Catalog\Application\Query\ListProducts\ListProducts;
@@ -48,7 +54,11 @@ final class CatalogServiceProvider extends ServiceProvider
         ArchiveProduct::class => ArchiveProductHandler::class,
         AddProductVariant::class => AddProductVariantHandler::class,
         CreateCategory::class => CreateCategoryHandler::class,
+        // Medidas físicas (Roadmap 02, Fase 2.0).
+        SetProductPhysicalSpec::class => SetProductPhysicalSpecHandler::class,
+        SetCategoryPhysicalDefaults::class => SetCategoryPhysicalDefaultsHandler::class,
         GetProduct::class => GetProductHandler::class,
+        GetProductBySku::class => GetProductBySkuHandler::class,
         ListProducts::class => ListProductsHandler::class,
         ListCategories::class => ListCategoriesHandler::class,
     ];

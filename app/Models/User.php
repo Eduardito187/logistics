@@ -25,12 +25,13 @@ use Laravel\Sanctum\HasApiTokens;
 /**
  * @property string|null        $driver_id                         UUID del chofer de Fleet vinculado a esta cuenta (null si no es chofer).
  * @property string|null        $node_id                           UUID del nodo de tienda (network_nodes) al que pertenece la cuenta (null si no es tienda).
+ * @property string|null        $carrier_id                        UUID del transportista (carriers) al que pertenece la cuenta (null si no es transportista).
  * @property string|null        $email                             Email de la cuenta (login).
  * @property string|null        $app_authentication_secret         Secreto TOTP cifrado en reposo (cast `encrypted`).
  * @property array<string>|null $app_authentication_recovery_codes Códigos de recuperación cifrados (cast `encrypted:array`).
  * @property Carbon|null        $two_factor_confirmed_at           Momento de confirmación del enrolamiento 2FA.
  */
-#[Fillable(['name', 'email', 'password', 'driver_id', 'node_id'])]
+#[Fillable(['name', 'email', 'password', 'driver_id', 'node_id', 'carrier_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery
 {
@@ -152,6 +153,52 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
     }
 
     /**
+     * Transportista al que pertenece esta cuenta, en forma primitiva (id, name, tax_id).
+     *
+     * Es la identidad SERVER-SIDE del rol transportista: la app la lee de `/app/auth/me` en vez de
+     * elegir "quién soy" de una lista. Solo aplica al rol Transportista: para cualquier otro rol devuelve
+     * null aunque la columna tenga valor. El chequeo de rol usa `roles()` (relación ya cargada por
+     * `abilities()` en el mismo request), así /auth/me no suma una consulta a `user_roles`.
+     *
+     * Enriquecimiento cross-context por lectura directa de `carriers` (contexto Carriers), igual que
+     * {@see assignedNode()} con `network_nodes`. Devuelve null si no hay vínculo o el transportista ya no existe.
+     *
+     * @return array{id: string, name: string, tax_id: string}|null
+     */
+    public function assignedCarrier(): ?array
+    {
+        if (!$this->hasCarrierLink()) {
+            return null;
+        }
+
+        $carrier = DB::table('carriers')
+            ->select('id', 'name', 'tax_id')
+            ->where('id', $this->carrier_id)
+            ->first();
+
+        if ($carrier === null) {
+            return null;
+        }
+
+        return [
+            'id' => (string) $carrier->id,
+            'name' => (string) $carrier->name,
+            'tax_id' => (string) $carrier->tax_id,
+        ];
+    }
+
+    /**
+     * La cuenta tiene transportista vinculado Y el rol Transportista (cortocircuito: sin vínculo no se
+     * consultan los roles).
+     */
+    private function hasCarrierLink(): bool
+    {
+        return $this->carrier_id !== null
+            && $this->carrier_id !== ''
+            && in_array(Role::Transportista, $this->roles(), true);
+    }
+
+    /**
      * Acceso al panel de administración (Filament).
      *
      * El admin es el ÚNICO frontend de la plataforma: cada rol entra y ve SOLO las secciones que le
@@ -163,7 +210,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
      * rol queda fuera por defecto (seguro).
      *
      * Matriz rol → acceso (resumen; el detalle por sección está en cada Resource/Page):
-     *   - Admin ........... TODO el panel, incluida Administration (seguridad, config, infraestructura).
+     *   - Admin ........... el panel COMPLETO, incluida Administration (seguridad, config, infraestructura).
      *   - Supervisor ...... oficina: Operations, Fleet, Network, Commerce (NO Administration).
      *   - Chofer .......... mínimo de campo: entregas, rutas, escaneos, seguimiento, tablero de última milla.
      *   - Preparador ...... mínimo de campo: escaneos de preparación.

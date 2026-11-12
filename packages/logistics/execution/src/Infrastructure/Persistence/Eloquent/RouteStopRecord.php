@@ -26,6 +26,8 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * @property string|null $lng
  * @property string      $status
  * @property string|null $settled_at
+ * @property string|null $arrived_at
+ * @property string|null $arrival_source
  */
 final class RouteStopRecord extends Model
 {

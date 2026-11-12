@@ -18,6 +18,10 @@ use Logistics\Planning\Domain\Exception\PlanningException;
  * que el ruteador usa como restricción para no agendar una parada antes ni después de su franja. Ambas son
  * opcionales: sin franja, el pedido se rutea solo por cercanía (comportamiento de siempre).
  *
+ * `loadEstimated` indica que el kg/m3 del candidato es (al menos en parte) una ESTIMACIÓN: alguna línea
+ * del envío no trae medidas reales del producto y se completó con los valores por defecto por producto.
+ * El motor no cambia de comportamiento por esto; sirve para avisar que la carga no es exacta.
+ *
  * Las coordenadas y la carga las aporta quien conoce el envío; planificación no consulta otros
  * contextos desde el dominio. Es un dato puro, inmutable.
  */
@@ -41,6 +45,7 @@ final readonly class DeliveryCandidate
         public ?string $windowStart,
         public ?string $windowEnd,
         public ShipmentRouteRequirement $requirement,
+        public bool $loadEstimated,
     ) {}
 
     public static function of(
@@ -58,6 +63,7 @@ final readonly class DeliveryCandidate
         ?string $windowStart = null,
         ?string $windowEnd = null,
         ?ShipmentRouteRequirement $requirement = null,
+        bool $loadEstimated = false,
     ): self {
         $trimmedId = trim($shipmentId);
         if ($trimmedId === '') {
@@ -102,6 +108,7 @@ final readonly class DeliveryCandidate
             $resolvedEnd,
             // Sin requisito explícito, el envío no exige nada al camión (comportamiento previo).
             $requirement ?? ShipmentRouteRequirement::none(),
+            $loadEstimated,
         );
     }
 

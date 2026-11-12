@@ -51,11 +51,17 @@ it('rejects malformed fields', function (callable $build, string $reason): void 
         fn () => LabelPayload::forPackage(1, '01JB8ZQ4X7K2M9N5P6R7S8T9VW', 'DM-1', 0, 'SKU', Fraction::single(), Fraction::single(), 'CD-SCZ', 'C', 0),
         'línea',
     ],
-    'zero key id' => [
-        fn () => LabelPayload::forPackage(0, '01JB8ZQ4X7K2M9N5P6R7S8T9VW', 'DM-1', 1, 'SKU', Fraction::single(), Fraction::single(), 'CD-SCZ', 'C', 0),
+    'negative key id' => [
+        fn () => LabelPayload::forPackage(-1, '01JB8ZQ4X7K2M9N5P6R7S8T9VW', 'DM-1', 1, 'SKU', Fraction::single(), Fraction::single(), 'CD-SCZ', 'C', 0),
         'keyId',
     ],
 ]);
+
+it('acepta keyId 0 como etiqueta ABIERTA (sin clave): su autenticidad la da el registro, no una firma', function (): void {
+    $payload = LabelPayload::forPackage(0, '01JB8ZQ4X7K2M9N5P6R7S8T9VW', 'DM-1', 1, 'SKU', Fraction::single(), Fraction::single(), 'CD-SCZ', 'C', 0);
+
+    expect($payload->keyId)->toBe(0);
+});
 
 it('validates fractions', function (): void {
     expect(Fraction::of(2, 3)->toCanonical())->toBe('2/3')

@@ -7,6 +7,7 @@ namespace Commerce\Catalog\Infrastructure\Persistence\Eloquent\Mapper;
 use Commerce\Catalog\Domain\Model\Product;
 use Commerce\Catalog\Domain\ValueObject\CategoryId;
 use Commerce\Catalog\Domain\ValueObject\MediaAsset;
+use Commerce\Catalog\Domain\ValueObject\PhysicalSpec;
 use Commerce\Catalog\Domain\ValueObject\ProductId;
 use Commerce\Catalog\Domain\ValueObject\ProductStatus;
 use Commerce\Catalog\Domain\ValueObject\ProductVariant;
@@ -37,11 +38,17 @@ final class ProductMapper
                 static fn (array $media): MediaAsset => MediaAsset::fromArray($media),
                 $record->media,
             )),
+            PhysicalSpec::fromArray([
+                'weight_kg' => $record->weight_kg,
+                'length_cm' => $record->length_cm,
+                'width_cm' => $record->width_cm,
+                'height_cm' => $record->height_cm,
+            ]),
         );
     }
 
     /**
-     * @return array{id: string, seller_id: ?string, category_id: ?string, name: string, description: ?string, canonical_sku: string, status: string, variants: list<array{sku: string, name: string, attributes: array<string, string>}>, media: list<array{path: string, alt: string, position: int}>}
+     * @return array{id: string, seller_id: ?string, category_id: ?string, name: string, description: ?string, canonical_sku: string, status: string, variants: list<array{sku: string, name: string, attributes: array<string, string>}>, media: list<array{path: string, alt: string, position: int}>, weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float}
      */
     public function toRow(Product $product): array
     {
@@ -61,6 +68,10 @@ final class ProductMapper
                 static fn (MediaAsset $media): array => $media->toArray(),
                 $product->media(),
             )),
+            'weight_kg' => $product->physicalSpec()->weightKg,
+            'length_cm' => $product->physicalSpec()->lengthCm,
+            'width_cm' => $product->physicalSpec()->widthCm,
+            'height_cm' => $product->physicalSpec()->heightCm,
         ];
     }
 }

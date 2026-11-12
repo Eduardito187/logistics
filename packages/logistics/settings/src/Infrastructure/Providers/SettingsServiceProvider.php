@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Logistics\Settings\Infrastructure\Providers;
 
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Settings\Application\Command\SetSetting\SetSettingCommand;
 use Logistics\Settings\Application\Command\SetSetting\SetSettingHandler;
@@ -18,6 +20,11 @@ use Logistics\Settings\Infrastructure\Cache\CachingGetSettingHandler;
 use Logistics\Settings\Infrastructure\Integration\IntegrationRuntimeOverrides;
 use Logistics\Settings\Infrastructure\Persistence\Eloquent\EloquentSettingsRepository;
 use Logistics\Settings\Presentation\Console\GetSettingCommand;
+use Logistics\Settings\Presentation\Filament\Configuration\ConfigurationRegistry;
+use Logistics\Settings\Presentation\Filament\Configuration\Integrations\PushNotificationsSection;
+use Logistics\Settings\Presentation\Filament\Configuration\Integrations\RoutingSection;
+use Logistics\Settings\Presentation\Filament\Configuration\Integrations\SapSection;
+use Logistics\Settings\Presentation\Filament\Configuration\Integrations\StorageSection;
 use Logistics\Shared\Application\HandlerRegistry;
 use Throwable;
 
@@ -32,6 +39,9 @@ final class SettingsServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Catálogo de secciones de la pantalla «Configuración» (estilo Magento): cada contexto registra las suyas.
+        $this->app->singleton(ConfigurationRegistry::class);
+
         // Repositorio de configuración envuelto por el decorador que invalida el cache del valor vigente
         // (frente escala): persiste igual que el Eloquent y, al publicar una versión nueva, olvida el valor
         // cacheado de esa clave. No cachea lecturas (el cálculo de la versión siguiente lee de la base).
@@ -64,11 +74,36 @@ final class SettingsServiceProvider extends ServiceProvider
         $registry->register(GetSettingQuery::class, CachingGetSettingHandler::class);
         $registry->register(GetSettingHistoryQuery::class, GetSettingHistoryHandler::class);
 
+        $configuration = $this->app->make(ConfigurationRegistry::class);
+        $configuration->register(RoutingSection::class);
+        $configuration->register(SapSection::class);
+        $configuration->register(StorageSection::class);
+        $configuration->register(PushNotificationsSection::class);
+
         if ($this->app->runningInConsole()) {
             $this->commands([GetSettingCommand::class]);
         }
 
         $this->applyIntegrationOverrides();
+        $this->refreshIntegrationOverridesInWorkers();
+    }
+
+    /**
+     * Los workers de cola (`queue:work`) viven horas: sin esto, un cambio guardado en el panel (p. ej.
+     * apagar SAP o cambiar su URL/eventos) no les llegaría hasta reciclarse. Antes de cada job se vuelven
+     * a aplicar los overrides, con tope de una vez cada 30 s por proceso (una lectura de cache). Nunca falla.
+     */
+    private function refreshIntegrationOverridesInWorkers(): void
+    {
+        if (!$this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->app->make(Dispatcher::class)->listen(JobProcessing::class, function (): void {
+            IntegrationRuntimeOverrides::refreshForWorker(
+                fn (): IntegrationRuntimeOverrides => $this->app->make(IntegrationRuntimeOverrides::class),
+            );
+        });
     }
 
     /**

@@ -11,6 +11,10 @@ namespace Logistics\Execution\Application\Contract;
  * El contrato es de solo lectura y en primitivos: no expone agregados ni modelos de otro contexto, así la
  * Aplicación de Ejecución no se acopla al dominio de shipments. La implementación (Infrastructure) resuelve
  * los datos por lectura directa de las tablas, EN LOTE, para evitar una consulta por parada.
+ *
+ * @phpstan-type StopItem array{sku: string, name: string, quantity: int, image_url: string|null}
+ * @phpstan-type StopDestination array{type: string, name: string|null, node_code: string|null, node_id?: string|null}
+ * @phpstan-type StopEnrichment array{customer_phone: string|null, address_reference: string|null, items: list<StopItem>, unit_ids: list<string>, units_total?: int, destination?: StopDestination}
  */
 interface StopEnrichmentReader
 {
@@ -19,9 +23,8 @@ interface StopEnrichmentReader
      * el TIPO DE DESTINO de la parada (cliente/domicilio vs hub/tienda/almacén), para que la app muestre la
      * acción correcta: "Entregar" (POD) a domicilio, "Descargar" (escaneo) en un nodo.
      *
-     * @param  list<string>                                                                                                                                                                                                                                         $shipmentIds ids de envío de las paradas de la ruta
-     * @return array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>, destination: array{type: string, name: string|null, node_code: string|null}}>
-     *                                                                                                                                                                                                                                                              mapa id de envío => datos; los envíos no encontrados simplemente no aparecen en el mapa
+     * @param  list<string>                  $shipmentIds ids de envío de las paradas de la ruta
+     * @return array<string, StopEnrichment> mapa id de envío => datos; los envíos no encontrados no aparecen
      */
     public function forShipmentIds(array $shipmentIds): array;
 }

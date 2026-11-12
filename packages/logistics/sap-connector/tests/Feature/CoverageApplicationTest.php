@@ -14,9 +14,11 @@ use Logistics\SapConnector\Application\Query\ListPendingTransfers\ListPendingTra
 use Logistics\SapConnector\Application\ReadModel\MaterialMappingView;
 use Logistics\SapConnector\Application\ReadModel\StockTransferView;
 use Logistics\SapConnector\Domain\Contract\SapClient;
+use Logistics\SapConnector\Domain\Model\SapNotification;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
 use Logistics\SapConnector\Domain\ValueObject\SapCenter;
 use Logistics\SapConnector\Domain\ValueObject\SapMaterial;
+use Logistics\SapConnector\Domain\ValueObject\SapResponse;
 use Logistics\SapConnector\Domain\ValueObject\SapWarehouse;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\MaterialMappingRecord;
@@ -103,6 +105,11 @@ it('importa pedidos de SAP traduciendo material a sku propio', function (): void
                     'quantity' => 2,
                 ]],
             ]];
+        }
+
+        public function notifyEvent(SapNotification $notification): SapResponse
+        {
+            return new SapResponse(204, '');
         }
     };
     app()->instance(SapClient::class, $fakeSap);

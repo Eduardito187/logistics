@@ -21,6 +21,9 @@ use Logistics\Telemetry\Domain\ValueObject\TripId;
  * (un trip que arranca, uno que termina, una alerta) viven en los agregados Trip/TelemetryAlert, no en
  * cada ping. El ping es un dato append-only inmutable.
  *
+ * `fixKey` es la clave de idempotencia de la lectura (ver FixKey): un reintento del mismo lote no la
+ * duplica.
+ *
  * Es `final readonly`: una lectura no cambia una vez tomada. `withTripId` devuelve una copia asociada a
  * un trip, porque el trip se resuelve durante la ingesta (ver TripTracker), después de construir el ping.
  */
@@ -42,6 +45,7 @@ final readonly class VehiclePing
         private DateTimeImmutable $receivedAt,
         private PingSource $source,
         private ?TripId $tripId,
+        private ?string $fixKey = null,
     ) {}
 
     /**
@@ -63,6 +67,7 @@ final readonly class VehiclePing
         DateTimeImmutable $receivedAt,
         PingSource $source,
         ?TripId $tripId = null,
+        ?string $fixKey = null,
     ): self {
         return new self(
             $id,
@@ -80,6 +85,7 @@ final readonly class VehiclePing
             $receivedAt,
             $source,
             $tripId,
+            $fixKey,
         );
     }
 
@@ -102,6 +108,7 @@ final readonly class VehiclePing
         DateTimeImmutable $receivedAt,
         PingSource $source,
         ?TripId $tripId,
+        ?string $fixKey = null,
     ): self {
         return new self(
             $id,
@@ -119,6 +126,7 @@ final readonly class VehiclePing
             $receivedAt,
             $source,
             $tripId,
+            $fixKey,
         );
     }
 
@@ -143,6 +151,7 @@ final readonly class VehiclePing
             $this->receivedAt,
             $this->source,
             $tripId,
+            $this->fixKey,
         );
     }
 
@@ -219,5 +228,13 @@ final readonly class VehiclePing
     public function tripId(): ?TripId
     {
         return $this->tripId;
+    }
+
+    /**
+     * Clave de idempotencia de la lectura (ver FixKey), o null en lecturas históricas sin clave.
+     */
+    public function fixKey(): ?string
+    {
+        return $this->fixKey;
     }
 }

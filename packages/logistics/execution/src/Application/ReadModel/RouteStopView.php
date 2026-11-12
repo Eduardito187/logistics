@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Application\ReadModel;
 
 use DateTimeInterface;
+use Logistics\Execution\Application\Contract\StopEnrichmentReader;
 use Logistics\Execution\Domain\Model\RouteStop;
 
 /**
@@ -15,12 +16,19 @@ use Logistics\Execution\Domain\Model\RouteStop;
  * el teléfono del cliente y la referencia de dirección (indicaciones de portón/piso) para que el chofer
  * contacte y ubique sin otra llamada, y las líneas del pedido (qué baja en esta parada, con miniatura).
  * El enriquecimiento lo resuelve el QueryHandler por lectura directa; el dominio (RouteStop) no lo conoce.
+ *
+ * `units_total` es la cantidad de BULTOS de la parada (cuenta de shipment_units), que es lo que el POD debe
+ * esperar: NUNCA la suma de cantidades de producto. `arrived_at` es la primera llegada informada.
+ *
+ * @phpstan-import-type StopItem from StopEnrichmentReader
+ * @phpstan-import-type StopDestination from StopEnrichmentReader
  */
 final readonly class RouteStopView
 {
     /**
-     * @param list<array{sku: string, name: string, quantity: int, image_url: string|null}> $items
-     * @param array{type: string, name: string|null, node_code: string|null}|null           $destination
+     * @param list<StopItem>       $items
+     * @param StopDestination|null $destination
+     * @param list<string>         $unitIds     ids de los bultos esperados en esta parada (validación offline)
      */
     public function __construct(
         public string $id,
@@ -38,13 +46,17 @@ final readonly class RouteStopView
         public ?string $addressReference = null,
         public array $items = [],
         public ?array $destination = null,
+        public array $unitIds = [],
+        public ?string $arrivedAt = null,
+        public ?string $arrivalSource = null,
     ) {}
 
     /**
      * Construye la vista desde el agregado, con el enriquecimiento cross-context opcional del envío.
      *
-     * @param list<array{sku: string, name: string, quantity: int, image_url: string|null}> $items
-     * @param array{type: string, name: string|null, node_code: string|null}|null           $destination
+     * @param list<StopItem>       $items
+     * @param StopDestination|null $destination
+     * @param list<string>         $unitIds
      */
     public static function fromStop(
         RouteStop $stop,
@@ -52,6 +64,7 @@ final readonly class RouteStopView
         ?string $addressReference = null,
         array $items = [],
         ?array $destination = null,
+        array $unitIds = [],
     ): self {
         return new self(
             $stop->id()->toString(),
@@ -69,7 +82,18 @@ final readonly class RouteStopView
             $addressReference,
             $items,
             $destination,
+            $unitIds,
+            $stop->arrivedAt()?->format(DateTimeInterface::ATOM),
+            $stop->arrivalSource()?->value,
         );
+    }
+
+    /**
+     * Bultos esperados en la parada (cuenta de bultos, no de productos).
+     */
+    public function unitsTotal(): int
+    {
+        return count($this->unitIds);
     }
 
     /**
@@ -89,9 +113,13 @@ final readonly class RouteStopView
             'lng' => $this->lng,
             'status' => $this->status,
             'settled_at' => $this->settledAt,
+            'arrived_at' => $this->arrivedAt,
+            'arrival_source' => $this->arrivalSource,
             'customer_phone' => $this->customerPhone,
             'address_reference' => $this->addressReference,
             'items' => $this->items,
+            'unit_ids' => $this->unitIds,
+            'units_total' => $this->unitsTotal(),
             'destination' => $this->destination,
         ];
     }

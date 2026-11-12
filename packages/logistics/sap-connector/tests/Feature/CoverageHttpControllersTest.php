@@ -2,10 +2,19 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Logistics\SapConnector\Application\Command\ImportSapOrders\ImportSapOrdersHandler;
 use Logistics\SapConnector\Domain\Contract\SapClient;
+use Logistics\SapConnector\Domain\Model\SapNotification;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
+use Logistics\SapConnector\Domain\ValueObject\SapResponse;
+use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\MaterialMappingRecord;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\StockTransferRecord;
+use Logistics\SapConnector\Infrastructure\Queue\DispatchStockTransfersJob;
+use Logistics\SapConnector\Infrastructure\Queue\ImportSapOrdersJob;
+use Psr\Log\LoggerInterface;
 
 /**
  * Cobertura de los controllers HTTP del conector SAP (patrón F del brief W2): las puertas app e
@@ -92,23 +101,37 @@ it('lista los traspasos pendientes y fallidos de reconciliación por la puerta a
         ->assertJsonPath('data.0.status', 'FAILED');
 });
 
-it('dispara una corrida de despacho de pendientes por la puerta app y responde 202', function (): void {
+it('dispara una corrida de despacho por la puerta app: responde 202 y solo ENCOLA (sin HTTP a SAP)', function (): void {
+    Queue::fake();
+    Http::fake();
+    config()->set('logistics-sap-connector.sap.base_url', 'https://sap.example.test');
     StockTransferRecord::factory()->pending()->create();
+    StockTransferRecord::factory()->failed()->create();
 
     $this->postJson('/api/v1/app/sap/stock-transfers/dispatch')
         ->assertStatus(202)
         ->assertJsonPath('data.status', 'DISPATCH_REQUESTED');
+
+    // El request no tocó SAP ni cambió traspasos: el trabajo quedó en la cola dedicada `sap`.
+    Queue::assertPushedOn('sap', DispatchStockTransfersJob::class);
+    Http::assertNothingSent();
+    expect(StockTransferRecord::query()->where('status', TransferStatus::Failed->value)->count())->toBe(1);
 });
 
-it('importa pedidos de SAP por la puerta integrations (stub Null: sin pedidos)', function (): void {
-    // Con el NullSapClient por defecto fetchOrders() devuelve [], así que el controller responde 200
-    // con count 0, ejercitando el envelope y el mapeo de ImportedOrderDto.
+it('pide la importación de pedidos de SAP por la puerta integrations: 202 y solo encola', function (): void {
+    Queue::fake();
+    Http::fake();
+    config()->set('logistics-sap-connector.sap.base_url', 'https://sap.example.test');
+
     $this->postJson('/api/v1/integrations/sap/orders/import')
-        ->assertOk()
-        ->assertJsonPath('meta.count', 0);
+        ->assertStatus(202)
+        ->assertJsonPath('data.status', 'IMPORT_REQUESTED');
+
+    Queue::assertPushedOn('sap', ImportSapOrdersJob::class);
+    Http::assertNothingSent();
 });
 
-it('importa pedidos de SAP traduciendo material a sku con un puerto falso', function (): void {
+it('el job de importación traduce los pedidos de SAP con un puerto falso, fuera del request', function (): void {
     MaterialMappingRecord::factory()->create([
         'sku' => 'SKU-HTTP-IMP',
         'sap_material' => '990001',
@@ -135,13 +158,20 @@ it('importa pedidos de SAP traduciendo material a sku con un puerto falso', func
                 ]],
             ]];
         }
+
+        public function notifyEvent(SapNotification $notification): SapResponse
+        {
+            return new SapResponse(204, '');
+        }
     };
     app()->instance(SapClient::class, $fakeSap);
 
-    $this->postJson('/api/v1/integrations/sap/orders/import')
-        ->assertOk()
-        ->assertJsonPath('meta.count', 1)
-        ->assertJsonPath('data.0.external_id', 'SAP-HTTP-1');
+    $handler = app(ImportSapOrdersHandler::class);
+
+    (new ImportSapOrdersJob)->handle($handler, app(LoggerInterface::class));
+
+    expect($handler->importedOrders())->toHaveCount(1)
+        ->and($handler->importedOrders()[0]->externalId)->toBe('SAP-HTTP-1');
 });
 
 it('confirma un traspaso enviado por el callback de SAP de la puerta integrations', function (): void {

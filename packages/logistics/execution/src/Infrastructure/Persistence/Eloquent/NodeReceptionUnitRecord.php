@@ -13,15 +13,17 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\Factory\NodeReceptio
  * Fila de la tabla `execution_node_reception_units`. Append-only: nunca se modifica ni se borra. PK uuid
  * string. El índice único en idempotency_key respalda la idempotencia offline a nivel de base.
  *
- * @property string $id
- * @property string $node_reception_id
- * @property string $unit_id
- * @property string $lat
- * @property string $lng
- * @property string $device_id
- * @property string $user_id
- * @property string $occurred_at
- * @property string $idempotency_key
+ * @property string      $id
+ * @property string      $node_reception_id
+ * @property string      $unit_id
+ * @property string|null $lat                  null si el escaneo no tuvo GPS (nunca 0,0 inventado)
+ * @property string|null $lng
+ * @property string|null $accuracy_m
+ * @property string|null $location_captured_at
+ * @property string      $device_id
+ * @property string      $user_id
+ * @property string      $occurred_at
+ * @property string      $idempotency_key
  */
 final class NodeReceptionUnitRecord extends Model
 {

@@ -36,11 +36,18 @@ trait IssuesDeviceTokens
 
         $device = Device::query()->firstOrNew(['fingerprint' => $input['fingerprint']]);
 
+        // El nombre que el dueño le puso al equipo (PATCH /devices/{uuid}) sobrevive al re-login: la app
+        // manda siempre el genérico "App interna", que no lo pisa si el equipo sigue siendo del mismo
+        // usuario. Si cambia de usuario (teléfono compartido), el nombre del anterior no se hereda.
+        $incomingName = $input['name'] ?? null;
+        $sameOwner = $device->exists && $device->user_id !== null && (int) $device->user_id === (int) $user->getKey();
+        $keepName = $sameOwner && $device->name !== null && ($incomingName === null || strcasecmp(trim($incomingName), Device::GENERIC_NAME) === 0);
+
         $device->fill([
             'user_id' => $user->getKey(),
             'platform' => $input['platform'] ?? $device->platform,
             'session_bucket' => $bucket,
-            'name' => $input['name'] ?? $device->name,
+            'name' => $keepName ? $device->name : $incomingName,
             'push_token' => $input['push_token'] ?? $device->push_token,
             'last_seen_at' => now(),
             'revoked_at' => null,
@@ -127,6 +134,9 @@ trait IssuesDeviceTokens
             'roles' => array_map(static fn ($role): string => $role->value, $user->roles()),
             // Nodo de tienda al que pertenece la cuenta (o null para roles sin tienda).
             'node' => $user->assignedNode(),
+            // Transportista al que pertenece la cuenta (identidad server-side del rol transportista;
+            // null para el resto de roles). La app lo lee de aquí y deja de elegir "quién soy".
+            'carrier' => $user->assignedCarrier(),
         ];
     }
 

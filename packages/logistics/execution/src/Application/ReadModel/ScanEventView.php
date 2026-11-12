@@ -16,12 +16,13 @@ final readonly class ScanEventView
         public string $deliveryId,
         public string $type,
         public string $unitId,
-        public float $lat,
-        public float $lng,
+        public ?float $lat,
+        public ?float $lng,
         public string $deviceId,
         public string $userId,
         public string $occurredAt,
         public string $idempotencyKey,
+        public ?float $accuracyM = null,
     ) {}
 
     public static function fromScanEvent(ScanEvent $scan): self
@@ -31,12 +32,13 @@ final readonly class ScanEventView
             $scan->deliveryId,
             $scan->type->value,
             $scan->unitId,
-            $scan->geo->lat,
-            $scan->geo->lng,
+            $scan->geo?->lat,
+            $scan->geo?->lng,
             $scan->device->deviceId,
             $scan->device->userId,
             $scan->occurredAt->format(DATE_ATOM),
             $scan->idempotencyKey,
+            $scan->geo?->accuracyM,
         );
     }
 
@@ -56,6 +58,8 @@ final readonly class ScanEventView
             'user_id' => $this->userId,
             'occurred_at' => $this->occurredAt,
             'idempotency_key' => $this->idempotencyKey,
+            // Precisión del fix en metros (null si no se informó). lat/lng null = sin señal.
+            'accuracy_m' => $this->accuracyM,
         ];
     }
 }

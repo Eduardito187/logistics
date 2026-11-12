@@ -7,12 +7,11 @@ namespace Logistics\Fleet\Presentation\Http\Controller;
 use App\Http\Problem\ErrorCode;
 use App\Http\Problem\ProblemDetails;
 use App\Models\User;
-use DateTimeImmutable;
-use DateTimeZone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Logistics\Fleet\Application\Query\GetMyCrew\GetMyCrew;
 use Logistics\Fleet\Application\ReadModel\MyCrewView;
+use Logistics\Fleet\Presentation\Http\Concerns\NormalizesDateParameter;
 use Logistics\Fleet\Presentation\Http\Concerns\RespondsWithEnvelope;
 use Logistics\Shared\Application\Query\QueryBus;
 
@@ -28,6 +27,7 @@ use Logistics\Shared\Application\Query\QueryBus;
  */
 final readonly class MyCrewController
 {
+    use NormalizesDateParameter;
     use RespondsWithEnvelope;
 
     public function __construct(
@@ -39,10 +39,9 @@ final readonly class MyCrewController
      */
     public function show(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            // Fecha de armado a consultar; por defecto hoy en la zona America/La_Paz.
-            'date' => ['sometimes', 'date_format:Y-m-d'],
-        ]);
+        // Fecha de armado a consultar (#29): acepta YYYY-MM-DD o fecha-hora ISO 8601 y la normaliza a fecha
+        // de calendario; por defecto hoy en America/La_Paz. Inválida → 422.
+        $date = $this->operationalDate($request);
 
         $user = $request->user();
         $driverId = $user instanceof User ? $user->driver_id : null;
@@ -53,8 +52,6 @@ final readonly class MyCrewController
                 'La cuenta autenticada no está vinculada a un chofer.',
             )->withInstance($request->getRequestUri())->toResponse($request);
         }
-
-        $date = $validated['date'] ?? (new DateTimeImmutable('now', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
 
         /** @var MyCrewView|null $crew */
         $crew = $this->queryBus->ask(new GetMyCrew($driverId, $date));

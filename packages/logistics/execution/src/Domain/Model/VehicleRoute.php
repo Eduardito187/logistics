@@ -6,13 +6,21 @@ namespace Logistics\Execution\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Execution\Domain\Event\DriverRouteAssembled;
+use Logistics\Execution\Domain\Event\DriverRouteClosed;
+use Logistics\Execution\Domain\Event\DriverRouteStarted;
+use Logistics\Execution\Domain\Event\DriverRouteStopArrived;
+use Logistics\Execution\Domain\Event\DriverRouteStopAttached;
 use Logistics\Execution\Domain\Event\DriverRouteStopCompleted;
 use Logistics\Execution\Domain\Event\DriverRouteStopFailed;
 use Logistics\Execution\Domain\Exception\ExecutionException;
+use Logistics\Execution\Domain\ValueObject\ArrivalSource;
+use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\IncidentSeverity;
 use Logistics\Execution\Domain\ValueObject\RouteDate;
 use Logistics\Execution\Domain\ValueObject\RouteId;
+use Logistics\Execution\Domain\ValueObject\RouteLifecycleSnapshot;
 use Logistics\Execution\Domain\ValueObject\RouteStatus;
+use Logistics\Execution\Domain\ValueObject\RouteStopId;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
 /**
@@ -20,7 +28,7 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  *
  * Es la secuencia ordenada de TODAS las paradas (pedidos) que el chofer debe atender: deja una y procede
  * con la siguiente. Se arma a partir del plan publicado (contexto Planificación) y acompaña la ejecución
- * en terreno exponiendo, en todo momento, la "parada actual" (la primera pendiente) y las "restantes".
+ * en terreno exponiendo, en cada momento, la "parada actual" (la primera pendiente) y las "restantes".
  *
  * No registra escaneos ni prueba de entrega: eso es del agregado Delivery. Esta ruta solo lleva el
  * AVANCE —qué parada se completó o falló— para guiar al chofer y alimentar al seguimiento (tracking) con
@@ -39,6 +47,10 @@ final class VehicleRoute extends AggregateRoot
         private readonly RouteDate $date,
         private RouteStatus $status,
         private array $stops,
+        private ?DateTimeImmutable $startedAt = null,
+        private ?DateTimeImmutable $closedAt = null,
+        private ?float $startOdometerKm = null,
+        private ?float $closeOdometerKm = null,
     ) {}
 
     /**
@@ -72,7 +84,8 @@ final class VehicleRoute extends AggregateRoot
     }
 
     /**
-     * Reconstituye la ruta desde la persistencia, sin grabar eventos (no es un hecho nuevo).
+     * Reconstituye la ruta desde la persistencia, sin grabar eventos (no es un hecho nuevo). Los datos de
+     * inicio/cierre (horas y odómetros) llegan agrupados en la foto del ciclo de vida; sin ella, vacíos.
      *
      * @param list<RouteStop> $stops
      */
@@ -82,8 +95,154 @@ final class VehicleRoute extends AggregateRoot
         RouteDate $date,
         RouteStatus $status,
         array $stops,
+        ?RouteLifecycleSnapshot $lifecycle = null,
     ): self {
-        return new self($id, $vehicleId, $date, $status, self::bySequence($stops));
+        return new self(
+            $id,
+            $vehicleId,
+            $date,
+            $status,
+            self::bySequence($stops),
+            $lifecycle?->startedAt,
+            $lifecycle?->closedAt,
+            $lifecycle?->startOdometerKm,
+            $lifecycle?->closeOdometerKm,
+        );
+    }
+
+    /**
+     * El chofer INICIA la ruta del día: queda en curso y se registra la hora real de salida (y el odómetro,
+     * si lo informó). Idempotente: si ya estaba iniciada, no hace nada y devuelve false (la primera gana).
+     * Una ruta SUSPENDIDA por incidente mayor no se puede iniciar; una ya cerrada tampoco.
+     */
+    public function start(DateTimeImmutable $at, ?float $odometerKm = null, ?GeoPoint $geo = null): bool
+    {
+        if ($this->startedAt !== null) {
+            return false;
+        }
+        if ($this->status === RouteStatus::Suspended) {
+            throw ExecutionException::because('la ruta está suspendida por un incidente del camión: no se puede iniciar');
+        }
+        if ($this->closedAt !== null) {
+            throw ExecutionException::because('la ruta ya está cerrada: no se puede iniciar');
+        }
+        self::guardOdometer($odometerKm);
+
+        $this->startedAt = $at;
+        $this->startOdometerKm = $odometerKm;
+        if ($this->status === RouteStatus::Planned) {
+            $this->status = RouteStatus::InProgress;
+        }
+
+        $this->recordEvent(new DriverRouteStarted(
+            $this->id->toString(),
+            $this->vehicleId,
+            $this->date->toString(),
+            $this->totalStops(),
+            $this->stopsRemaining(),
+            $odometerKm,
+            $geo?->lat,
+            $geo?->lng,
+            $at,
+        ));
+
+        return true;
+    }
+
+    /**
+     * El chofer CIERRA la ruta del día. NO exige que todas las paradas estén atendidas: las pendientes
+     * quedan tal cual (no se fallan ni reprograman acá) y se informan en el evento. La ruta pasa a
+     * Completed (salvo si estaba suspendida, que conserva su estado). Idempotente: si ya estaba cerrada,
+     * no hace nada y devuelve false. Si nunca se inició, el inicio queda vacío (dato real, no se inventa).
+     */
+    public function close(DateTimeImmutable $at, ?float $odometerKm = null, ?GeoPoint $geo = null): bool
+    {
+        if ($this->closedAt !== null) {
+            return false;
+        }
+        self::guardOdometer($odometerKm);
+        if ($odometerKm !== null && $this->startOdometerKm !== null && $odometerKm < $this->startOdometerKm) {
+            throw ExecutionException::because('el odómetro de cierre no puede ser menor que el de salida');
+        }
+
+        $this->closedAt = $at;
+        $this->closeOdometerKm = $odometerKm;
+        if ($this->status !== RouteStatus::Suspended) {
+            $this->status = RouteStatus::Completed;
+        }
+
+        $this->recordEvent(new DriverRouteClosed(
+            $this->id->toString(),
+            $this->vehicleId,
+            $this->date->toString(),
+            $this->totalStops(),
+            $this->settledCount(),
+            $this->stopsRemaining(),
+            $odometerKm,
+            $geo?->lat,
+            $geo?->lng,
+            $at,
+        ));
+
+        return true;
+    }
+
+    /**
+     * El camión LLEGÓ a la parada del envío (geocerca o manual). La primera llegada gana; las siguientes
+     * son no-op (idempotente, sin reemitir). Graba DriverRouteStopArrived.
+     */
+    public function arriveAtStop(string $shipmentId, DateTimeImmutable $at, ArrivalSource $source, ?GeoPoint $geo = null): bool
+    {
+        $stop = $this->requireStop($shipmentId);
+        if (!$stop->markArrived($at, $source)) {
+            return false;
+        }
+
+        $this->recordEvent(new DriverRouteStopArrived(
+            $this->id->toString(),
+            $this->vehicleId,
+            $shipmentId,
+            $stop->sequence(),
+            $source->value,
+            $geo?->lat,
+            $geo?->lng,
+            $stop->etaAt()?->format(DATE_ATOM),
+            $at,
+        ));
+
+        return true;
+    }
+
+    public function startedAt(): ?DateTimeImmutable
+    {
+        return $this->startedAt;
+    }
+
+    public function closedAt(): ?DateTimeImmutable
+    {
+        return $this->closedAt;
+    }
+
+    public function startOdometerKm(): ?float
+    {
+        return $this->startOdometerKm;
+    }
+
+    public function closeOdometerKm(): ?float
+    {
+        return $this->closeOdometerKm;
+    }
+
+    public function isClosed(): bool
+    {
+        return $this->closedAt !== null;
+    }
+
+    private static function guardOdometer(?float $odometerKm): void
+    {
+        if ($odometerKm !== null && $odometerKm < 0.0) {
+            throw ExecutionException::because("odómetro negativo: {$odometerKm}");
+        }
     }
 
     /**
@@ -200,6 +359,50 @@ final class VehicleRoute extends AggregateRoot
     }
 
     /**
+     * Agrega un envío a la ruta como parada pendiente al final de la secuencia (asignación manual desde el
+     * andén: el preparador elige el camión de reparto). Idempotente: si el envío ya es una parada de esta
+     * ruta, no hace nada. Reabre el estado a InProgress si la ruta estaba terminada (reasignación).
+     */
+    public function attachShipment(
+        RouteStopId $stopId,
+        string $shipmentId,
+        ?string $orderReference,
+        ?string $customerName,
+        ?string $address,
+        DateTimeImmutable $at,
+    ): void {
+        if ($this->hasShipment($shipmentId)) {
+            return;
+        }
+
+        // Reasignación sobre una ruta ya cerrada: se reabre (la parada nueva necesita una ruta en curso).
+        $this->closedAt = null;
+
+        $sequence = $this->totalStops() + 1;
+        $this->stops[] = RouteStop::plan(
+            $stopId,
+            $shipmentId,
+            $sequence,
+            $orderReference,
+            $customerName,
+            $address,
+            null,
+            null,
+            null,
+        );
+        $this->refreshStatus();
+
+        $this->recordEvent(new DriverRouteStopAttached(
+            $this->id->toString(),
+            $this->vehicleId,
+            $shipmentId,
+            $sequence,
+            $this->totalStops(),
+            $at,
+        ));
+    }
+
+    /**
      * Paradas en el orden de reparto.
      *
      * @return list<RouteStop>
@@ -285,6 +488,14 @@ final class VehicleRoute extends AggregateRoot
      */
     private function refreshStatus(): void
     {
+        // Una ruta CERRADA por el chofer se queda cerrada: un POD tardío (cola offline) de una parada que
+        // quedó pendiente cierra la parada pero no reabre la ruta.
+        if ($this->closedAt !== null) {
+            $this->status = RouteStatus::Completed;
+
+            return;
+        }
+
         $this->status = $this->stopsRemaining() === 0 ? RouteStatus::Completed : RouteStatus::InProgress;
     }
 

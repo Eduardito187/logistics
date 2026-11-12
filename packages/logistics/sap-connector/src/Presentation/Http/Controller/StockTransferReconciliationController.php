@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Logistics\SapConnector\Presentation\Http\Controller;
 
 use Illuminate\Http\JsonResponse;
-use Logistics\SapConnector\Application\Command\DispatchPendingTransfers\DispatchPendingTransfers;
+use Logistics\SapConnector\Application\Command\RequestStockTransferDispatch\RequestStockTransferDispatch;
 use Logistics\SapConnector\Application\Query\ListFailedTransfers\ListFailedTransfers;
 use Logistics\SapConnector\Application\Query\ListPendingTransfers\ListPendingTransfers;
 use Logistics\SapConnector\Application\ReadModel\StockTransferView;
@@ -14,8 +14,8 @@ use Logistics\Shared\Application\Query\QueryBus;
 
 /**
  * Puerta APP: reconciliación de traspasos de stock hacia SAP para operaciones. Lee por el QueryBus los
- * traspasos pendientes (Pending + Failed) y los fallidos, y permite disparar manualmente una corrida de
- * despacho (reintento) por el CommandBus. Alimenta el mismo caso de uso que el panel Filament.
+ * traspasos pendientes (Pending + Failed) y los fallidos, y permite pedir una corrida de reconciliación
+ * por el CommandBus, que solo la encola en la cola `sap` (nunca HTTP a SAP dentro del request).
  */
 final class StockTransferReconciliationController
 {
@@ -47,18 +47,19 @@ final class StockTransferReconciliationController
     }
 
     /**
-     * POST: dispara una corrida del worker de despacho (reintento de los pendientes/fallidos).
+     * POST: pide una corrida de reconciliación (Failed + Pending estancados). Solo la ENCOLA en la cola
+     * `sap` y responde 202 al instante: SAP nunca se llama dentro de este request.
      */
     public function dispatch(): JsonResponse
     {
-        $this->commandBus->dispatch(new DispatchPendingTransfers);
+        $this->commandBus->dispatch(new RequestStockTransferDispatch);
 
         return new JsonResponse([
             'data' => [
                 'status' => 'DISPATCH_REQUESTED',
             ],
             'meta' => [
-                'message' => 'Pending stock transfers scheduled for dispatch to SAP.',
+                'message' => 'Stock transfer reconciliation queued; SAP is contacted in the background.',
             ],
         ], JsonResponse::HTTP_ACCEPTED);
     }

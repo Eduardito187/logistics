@@ -22,8 +22,10 @@ use Logistics\Shared\Domain\Event\BaseDomainEvent;
 final readonly class NodeReceptionReconciled extends BaseDomainEvent
 {
     /**
-     * @param list<string> $missingUnitIds Bultos esperados que no se recibieron.
-     * @param list<string> $surplusUnitIds Bultos recibidos que no se esperaban.
+     * @param list<string>                                                      $missingUnitIds Bultos esperados que no se recibieron.
+     * @param list<string>                                                      $surplusUnitIds Bultos recibidos que no se esperaban.
+     * @param list<array{unit_id: string, reason: string}>                      $missingUnits   Motivo declarado de cada faltante (aditivo).
+     * @param list<array{unit_id: string, belongs_to_shipment_id: string|null}> $surplusUnits   Envío real declarado de cada sobrante (aditivo).
      */
     public function __construct(
         string $nodeReceptionId,
@@ -37,6 +39,10 @@ final readonly class NodeReceptionReconciled extends BaseDomainEvent
         public array $surplusUnitIds,
         public bool $complete,
         DateTimeImmutable $occurredAt,
+        public array $missingUnits = [],
+        public array $surplusUnits = [],
+        public ?string $notes = null,
+        public ?string $photoPath = null,
     ) {
         parent::__construct($nodeReceptionId, null, $occurredAt);
     }
@@ -59,6 +65,11 @@ final readonly class NodeReceptionReconciled extends BaseDomainEvent
             'missing_unit_ids' => $this->missingUnitIds,
             'surplus_unit_ids' => $this->surplusUnitIds,
             'complete' => $this->complete,
+            // Informe del operador (aditivo): motivo de cada faltante, envío real de cada sobrante, notas y foto.
+            'missing_units' => $this->missingUnits,
+            'surplus_units' => $this->surplusUnits,
+            'notes' => $this->notes,
+            'photo_path' => $this->photoPath,
         ];
     }
 }

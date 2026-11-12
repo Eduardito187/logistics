@@ -43,12 +43,18 @@ final class ReceiveUnitAtNodeHandler implements CommandHandler
             );
         }
 
+        // Sin GPS (o con el 0,0 que algunos clientes mandan como "sin fix") no se inventa una posición.
+        $hasGeo = $command->lat !== null && $command->lng !== null
+            && !($command->lat === 0.0 && $command->lng === 0.0);
+
         $reception->receiveUnit(
             $command->unitId,
-            GeoPoint::of($command->lat, $command->lng),
+            $hasGeo ? GeoPoint::of((float) $command->lat, (float) $command->lng) : null,
             DeviceContext::of($command->deviceId, $command->userId),
             new DateTimeImmutable($command->occurredAt),
             $command->idempotencyKey,
+            $command->accuracyM,
+            $command->locationCapturedAt !== null ? new DateTimeImmutable($command->locationCapturedAt) : null,
         );
 
         $this->receptions->save($reception);

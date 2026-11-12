@@ -29,16 +29,15 @@ final class EloquentLabelUnitResolver implements LabelUnitResolver
     {
         $unresolved = new LabelUnitView($labelId, false, null, null, null, null, null, null, null, null, null);
 
-        // 1) Etiqueta emitida + su payload firmado (y si está anulada, para que la app rechace el Code128).
+        // 1) Etiqueta emitida + su payload firmado. Las etiquetas son PERMANENTES: si existe, resuelve.
         try {
-            $row = DB::table('labels_emitted')->where('label_id', $labelId)->first(['signed_json', 'revoked_at']);
+            $row = DB::table('labels_emitted')->where('label_id', $labelId)->first(['signed_json']);
         } catch (Throwable) {
             return $unresolved;
         }
         if ($row === null || !is_string($row->signed_json) || $row->signed_json === '') {
             return $unresolved;
         }
-        $revoked = ($row->revoked_at ?? null) !== null;
 
         try {
             $payload = SignedLabel::fromQrContent($row->signed_json)->payload;
@@ -66,7 +65,6 @@ final class EloquentLabelUnitResolver implements LabelUnitResolver
             unitTotal: $unitTotal,
             pieceIndex: $pieceIndex,
             pieceTotal: $pieceTotal,
-            revoked: $revoked,
             orderNumber: $orderNumber,
         );
 

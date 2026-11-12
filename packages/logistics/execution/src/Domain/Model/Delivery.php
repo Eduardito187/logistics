@@ -6,8 +6,6 @@ namespace Logistics\Execution\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Execution\Domain\Event\DeliveryFailed;
-use Logistics\Execution\Domain\Event\DropshipDelivered;
-use Logistics\Execution\Domain\Event\DropshipDispatchConfirmed;
 use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
 use Logistics\Execution\Domain\Event\ShipmentDeparted;
@@ -18,7 +16,6 @@ use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\DropshipHandling;
 use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
@@ -39,10 +36,9 @@ use Logistics\Shared\Domain\ValueObject\FulfillmentMode;
  * Referencia a envío y vehículo por id string: no se acopla a shipments ni a fleet.
  *
  * Dimensión de fulfillment (marketplace/dropship, ver docs/marketplace-dropship-roadmap.md §8): la entrega
- * arrastra el `FulfillmentMode` del envío. OWNED y FBD ejecutan EXACTAMENTE igual (flujo de terreno propio).
- * DROPSHIP bifurca según `DropshipHandling`: si Dismac hace la última milla (LastMile) corre el flujo propio
- * como OWNED; si solo trackea o coordina un tercero (TrackOnly/ThirdPartyCarrier) los escaneos propios NO
- * aplican y la entrega se cierra por confirmación del seller (confirmSellerDispatch/confirmSellerDelivery).
+ * arrastra el `FulfillmentMode` del envío solo como dato (reportes/liquidaciones). Decisión de negocio: cada
+ * pedido se despacha igual sin importar la propiedad (OWNED, FBD, DROPSHIP), con un único flujo de escaneos
+ * propios: preparación → carga → salida → entrega/fallo. El modo NO cambia el comportamiento del agregado.
  */
 final class Delivery extends AggregateRoot
 {
@@ -58,32 +54,19 @@ final class Delivery extends AggregateRoot
         private ?ProofOfDelivery $proofOfDelivery,
         private ?FailureReason $failureReason,
         private readonly FulfillmentMode $fulfillmentMode,
-        private readonly ?DropshipHandling $dropshipHandling,
-        private ?string $dispatchConfirmationKey,
-        private ?string $deliveryConfirmationKey,
-    ) {
-        // Invariante estructural: dropship ⇒ hay modo de manejo; no-dropship ⇒ nunca lo hay.
-        if ($fulfillmentMode === FulfillmentMode::Dropship && $dropshipHandling === null) {
-            throw ExecutionException::because('una entrega dropship requiere un modo de manejo (DropshipHandling)');
-        }
-        if ($fulfillmentMode !== FulfillmentMode::Dropship && $dropshipHandling !== null) {
-            throw ExecutionException::because('solo las entregas dropship pueden tener un modo de manejo');
-        }
-    }
+    ) {}
 
     /**
      * Named constructor: abre una entrega nueva en estado Pending, sin escaneos todavía.
      *
-     * Por defecto es OWNED (retail): comportamiento histórico intacto. `$fulfillmentMode` permite abrirla
-     * como FBD (igual que OWNED) o DROPSHIP; en dropship `$dropshipHandling` es obligatorio y define si
-     * Dismac hace la última milla o solo trackea/coordina un tercero.
+     * Por defecto es OWNED (retail). `$fulfillmentMode` permite registrarla como FBD o DROPSHIP; es solo un
+     * dato para reportes: las tres ejecutan exactamente el mismo flujo.
      */
     public static function start(
         DeliveryId $id,
         string $shipmentId,
         string $vehicleId,
         FulfillmentMode $fulfillmentMode = FulfillmentMode::Owned,
-        ?DropshipHandling $dropshipHandling = null,
     ): self {
         if (trim($shipmentId) === '') {
             throw ExecutionException::because('la entrega requiere el id del envío');
@@ -101,9 +84,6 @@ final class Delivery extends AggregateRoot
             null,
             null,
             $fulfillmentMode,
-            $dropshipHandling,
-            null,
-            null,
         );
     }
 
@@ -121,9 +101,6 @@ final class Delivery extends AggregateRoot
         ?ProofOfDelivery $proofOfDelivery,
         ?FailureReason $failureReason,
         FulfillmentMode $fulfillmentMode = FulfillmentMode::Owned,
-        ?DropshipHandling $dropshipHandling = null,
-        ?string $dispatchConfirmationKey = null,
-        ?string $deliveryConfirmationKey = null,
     ): self {
         return new self(
             $id,
@@ -134,9 +111,6 @@ final class Delivery extends AggregateRoot
             $proofOfDelivery,
             $failureReason,
             $fulfillmentMode,
-            $dropshipHandling,
-            $dispatchConfirmationKey,
-            $deliveryConfirmationKey,
         );
     }
 
@@ -151,8 +125,6 @@ final class Delivery extends AggregateRoot
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,
     ): void {
-        $this->guardOwnScansAllowed();
-
         if ($this->isDuplicate($idempotencyKey)) {
             return;
         }
@@ -184,8 +156,6 @@ final class Delivery extends AggregateRoot
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,
     ): void {
-        $this->guardOwnScansAllowed();
-
         if ($this->isDuplicate($idempotencyKey)) {
             return;
         }
@@ -212,8 +182,6 @@ final class Delivery extends AggregateRoot
      */
     public function markDeparted(DateTimeImmutable $occurredAt): void
     {
-        $this->guardOwnScansAllowed();
-
         // Ya en tránsito o resuelta: la salida ya ocurrió (o no aplica). Idempotente, sin reemitir.
         if ($this->status !== DeliveryStatus::Loaded) {
             return;
@@ -230,25 +198,59 @@ final class Delivery extends AggregateRoot
 
     /**
      * Prueba de entrega en el punto del cliente. Transición terminal a Delivered; graba
-     * ShipmentDelivered. El unitId referencia el bulto o el envío entregado.
+     * ShipmentDelivered. El unitId referencia el bulto o el envío entregado. El GPS es opcional (null =
+     * sin señal; nunca 0,0).
      */
     public function recordProofOfDelivery(
         string $unitId,
         ProofOfDelivery $proof,
-        GeoPoint $geo,
+        ?GeoPoint $geo,
         DeviceContext $device,
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,
     ): void {
-        $this->guardOwnScansAllowed();
+        $this->recordProofOfDeliveryForUnits([$unitId], $proof, $geo, $device, $occurredAt, $idempotencyKey);
+    }
 
+    /**
+     * Prueba de entrega en LOTE: una sola confirmación/firma/GPS cierra la entrega con TODOS los bultos
+     * dados (antes, un POST por bulto, y el segundo chocaba con la entrega ya cerrada).
+     *
+     * Deja un escaneo inmutable por bulto: el primero con la clave de idempotencia del lote y los demás con
+     * una clave derivada (`{clave}:{bulto}`), así el índice único de la base sigue respaldando el reintento.
+     * Idempotente por la clave del lote: reenviar el mismo lote no duplica nada ni reemite el evento.
+     *
+     * @param list<string> $unitIds bultos entregados (al menos uno; sin repetidos)
+     */
+    public function recordProofOfDeliveryForUnits(
+        array $unitIds,
+        ProofOfDelivery $proof,
+        ?GeoPoint $geo,
+        DeviceContext $device,
+        DateTimeImmutable $occurredAt,
+        string $idempotencyKey,
+    ): void {
         if ($this->isDuplicate($idempotencyKey)) {
             return;
         }
 
+        $units = [];
+        foreach ($unitIds as $unitId) {
+            $trimmed = trim($unitId);
+            if ($trimmed !== '' && !in_array($trimmed, $units, true)) {
+                $units[] = $trimmed;
+            }
+        }
+        if ($units === []) {
+            throw ExecutionException::because('la prueba de entrega requiere al menos un producto (unitId)');
+        }
+
         $this->guardTransition([DeliveryStatus::Loaded, DeliveryStatus::InTransit], 'Delivered');
 
-        $this->appendScan(ScanType::ProofOfDelivery, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
+        foreach ($units as $index => $unitId) {
+            $key = $index === 0 ? $idempotencyKey : self::derivedKey($idempotencyKey, $unitId);
+            $this->appendScan(ScanType::ProofOfDelivery, $unitId, $geo, $device, $occurredAt, $key);
+        }
 
         $this->status = DeliveryStatus::Delivered;
         $this->proofOfDelivery = $proof;
@@ -258,6 +260,8 @@ final class Delivery extends AggregateRoot
             $proof->confirmation,
             $proof->photoUrl,
             $occurredAt,
+            $units,
+            $proof->evidenceIds,
         ));
     }
 
@@ -273,8 +277,6 @@ final class Delivery extends AggregateRoot
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,
     ): void {
-        $this->guardOwnScansAllowed();
-
         if ($this->isDuplicate($idempotencyKey)) {
             return;
         }
@@ -307,8 +309,6 @@ final class Delivery extends AggregateRoot
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,
     ): void {
-        $this->guardOwnScansAllowed();
-
         if ($this->isDuplicate($idempotencyKey)) {
             return;
         }
@@ -343,8 +343,6 @@ final class Delivery extends AggregateRoot
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,
     ): void {
-        $this->guardOwnScansAllowed();
-
         if ($this->isDuplicate($idempotencyKey)) {
             return;
         }
@@ -368,67 +366,6 @@ final class Delivery extends AggregateRoot
     }
 
     /**
-     * DROPSHIP (sin escaneos propios): el seller —o el transportista tercero— confirma que DESPACHÓ el
-     * envío. Mueve la entrega de Pending a InTransit y graba DropshipDispatchConfirmed. Solo válido cuando
-     * Dismac NO hace la última milla (TrackOnly/ThirdPartyCarrier); si Dismac la hace, el inicio del tránsito
-     * ocurre por los escaneos propios, no por esta confirmación.
-     *
-     * Idempotente por idempotencyKey: la re-confirmación con la misma clave no duplica ni re-emite.
-     */
-    public function confirmSellerDispatch(
-        DateTimeImmutable $occurredAt,
-        string $idempotencyKey,
-        ?string $reference = null,
-    ): void {
-        $this->guardSellerConfirmedDropship('confirmar el despacho del seller');
-
-        if ($this->dispatchConfirmationKey === $idempotencyKey) {
-            return;
-        }
-
-        $this->guardTransition([DeliveryStatus::Pending], 'InTransit');
-
-        $this->dispatchConfirmationKey = $idempotencyKey;
-        $this->status = DeliveryStatus::InTransit;
-        $this->recordEvent(new DropshipDispatchConfirmed(
-            $this->id->toString(),
-            $this->shipmentId,
-            $this->dropshipHandlingValue(),
-            $reference,
-            $occurredAt,
-        ));
-    }
-
-    /**
-     * DROPSHIP (sin escaneos propios): el seller —o el transportista tercero— confirma la ENTREGA al
-     * cliente. Transición terminal a Delivered; graba DropshipDelivered. Reemplaza la prueba de entrega
-     * propia (que no existe en esta rama). Idempotente por idempotencyKey.
-     */
-    public function confirmSellerDelivery(
-        DateTimeImmutable $occurredAt,
-        string $idempotencyKey,
-        ?string $reference = null,
-    ): void {
-        $this->guardSellerConfirmedDropship('confirmar la entrega del seller');
-
-        if ($this->deliveryConfirmationKey === $idempotencyKey) {
-            return;
-        }
-
-        $this->guardTransition([DeliveryStatus::Pending, DeliveryStatus::InTransit], 'Delivered');
-
-        $this->deliveryConfirmationKey = $idempotencyKey;
-        $this->status = DeliveryStatus::Delivered;
-        $this->recordEvent(new DropshipDelivered(
-            $this->id->toString(),
-            $this->shipmentId,
-            $this->dropshipHandlingValue(),
-            $reference,
-            $occurredAt,
-        ));
-    }
-
-    /**
      * Punto GPS de tránsito (breadcrumb): posición del camión en ruta entre paradas. Es TELEMETRÍA pura,
      * no un hito de la máquina de estados: no valida transición, no cambia el estado ni graba evento de
      * negocio; solo agrega el escaneo inmutable para reconstruir el recorrido real en el mapa. Idempotente
@@ -441,8 +378,6 @@ final class Delivery extends AggregateRoot
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,
     ): void {
-        $this->guardOwnScansAllowed();
-
         if ($this->isDuplicate($idempotencyKey)) {
             return;
         }
@@ -483,6 +418,39 @@ final class Delivery extends AggregateRoot
         return $this->proofOfDelivery;
     }
 
+    /**
+     * Liga fotos a una entrega YA entregada cuya foto llegó después (opción A: POD asíncrono). Solo tiene
+     * efecto si la entrega está DELIVERED y hay fotos nuevas que agregar; devuelve true si algo cambió, para
+     * que el repositorio guarde solo cuando corresponde. Idempotente: reenviar la misma foto no cambia nada.
+     *
+     * @param list<string> $paths
+     */
+    public function attachPodPhotos(array $paths): bool
+    {
+        if ($this->status !== DeliveryStatus::Delivered || $this->proofOfDelivery === null || $paths === []) {
+            return false;
+        }
+
+        $updated = $this->proofOfDelivery->withPhotos($paths);
+        if ($updated->equals($this->proofOfDelivery)) {
+            return false;
+        }
+
+        $this->proofOfDelivery = $updated;
+
+        return true;
+    }
+
+    /**
+     * ¿La entrega se cerró sin foto y sigue esperándola? (DELIVERED sin path ni evidencia ligada).
+     */
+    public function isPendingPhoto(): bool
+    {
+        return $this->status === DeliveryStatus::Delivered
+            && $this->proofOfDelivery !== null
+            && $this->proofOfDelivery->lacksPhoto();
+    }
+
     public function failureReason(): ?FailureReason
     {
         return $this->failureReason;
@@ -491,21 +459,6 @@ final class Delivery extends AggregateRoot
     public function fulfillmentMode(): FulfillmentMode
     {
         return $this->fulfillmentMode;
-    }
-
-    public function dropshipHandling(): ?DropshipHandling
-    {
-        return $this->dropshipHandling;
-    }
-
-    public function dispatchConfirmationKey(): ?string
-    {
-        return $this->dispatchConfirmationKey;
-    }
-
-    public function deliveryConfirmationKey(): ?string
-    {
-        return $this->deliveryConfirmationKey;
     }
 
     /**
@@ -533,54 +486,19 @@ final class Delivery extends AggregateRoot
     }
 
     /**
-     * Invariante de la rama dropship: en un envío dropship donde Dismac NO hace la última milla
-     * (TrackOnly/ThirdPartyCarrier) los escaneos propios no aplican. OWNED, FBD y dropship-LastMile pasan.
-     * Se evalúa ANTES de la transición de estado para que el motivo "dropship" prime sobre un posible
-     * "transición inválida".
+     * Clave derivada para el escaneo de cada producto adicional de un POD en lote (cabe en 191 caracteres).
      */
-    private function guardOwnScansAllowed(): void
+    private static function derivedKey(string $idempotencyKey, string $unitId): string
     {
-        if ($this->fulfillmentMode === FulfillmentMode::Dropship
-            && $this->dropshipHandling !== null
-            && !$this->dropshipHandling->usesOwnScans()
-        ) {
-            throw ExecutionException::because(
-                "el escaneo propio no aplica en una entrega dropship con manejo {$this->dropshipHandling->value}",
-            );
-        }
-    }
+        $key = $idempotencyKey.':'.$unitId;
 
-    /**
-     * Las confirmaciones del seller solo existen en dropship sin última milla propia. En OWNED, FBD o
-     * dropship-LastMile el desenlace es por escaneos propios (POD/fallo), no por confirmación.
-     */
-    private function guardSellerConfirmedDropship(string $operation): void
-    {
-        if ($this->fulfillmentMode !== FulfillmentMode::Dropship
-            || $this->dropshipHandling === null
-            || !$this->dropshipHandling->isSellerConfirmed()
-        ) {
-            throw ExecutionException::because("no se puede {$operation} en esta entrega: no es dropship por confirmación");
-        }
-    }
-
-    /**
-     * Valor string del modo de manejo para los eventos. Solo se llama tras guardSellerConfirmedDropship,
-     * así que el modo nunca es null acá.
-     */
-    private function dropshipHandlingValue(): string
-    {
-        if ($this->dropshipHandling === null) {
-            throw ExecutionException::because('estado inconsistente: entrega dropship sin modo de manejo');
-        }
-
-        return $this->dropshipHandling->value;
+        return strlen($key) <= 191 ? $key : $idempotencyKey.':'.substr(hash('sha256', $unitId), 0, 40);
     }
 
     private function appendScan(
         ScanType $type,
         string $unitId,
-        GeoPoint $geo,
+        ?GeoPoint $geo,
         DeviceContext $device,
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,

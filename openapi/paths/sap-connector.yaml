@@ -12,30 +12,18 @@ paths:
     post:
       tags: [sap-connector]
       operationId: importSapOrders
-      summary: Import pending orders from SAP, translated to the platform model
+      summary: Request an asynchronous import of pending orders from SAP
       description: |
-        Lee los pedidos pendientes en SAP y los devuelve ya traducidos al modelo propio (sku propio,
-        no material SAP). No empuja nada a SAP dentro del request.
+        Encola la lectura de pedidos pendientes en SAP (job en la cola `sap`) y responde de inmediato
+        con 202. SAP NUNCA se llama dentro del request: su lentitud o caída no afecta a la plataforma.
+        El worker traduce los pedidos al modelo propio (sku propio, no material SAP).
       responses:
-        '200':
-          description: Orders imported and translated
+        '202':
+          description: Import queued
           content:
             application/json:
               schema:
-                type: object
-                required: [data, meta]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/ImportedSapOrder'
-                  meta:
-                    type: object
-                    required: [count]
-                    properties:
-                      count:
-                        type: integer
-                        example: 3
+                $ref: '#/components/schemas/SapAsyncRequestAccepted'
 
   /integrations/sap/stock-transfers/acknowledge:
     post:
@@ -127,7 +115,7 @@ paths:
       operationId: enqueueStockTransfer
       summary: Enqueue a stock transfer to SAP from a node reception
       description: |
-        Encola un traspaso de stock al recibir un bulto en un nodo. Responde 202 de inmediato: el
+        Encola un traspaso de stock al recibir un producto en un nodo. Responde 202 de inmediato: el
         escaneo nunca espera a SAP. Idempotente por `event_id`.
       requestBody:
         required: true
@@ -193,10 +181,15 @@ paths:
     post:
       tags: [sap-connector]
       operationId: dispatchPendingStockTransfers
-      summary: Trigger a dispatch run for pending and failed stock transfers
+      summary: Queue a reconciliation run for failed and stale pending stock transfers
+      description: |
+        Encola (cola `sap`) una corrida de reconciliación y responde de inmediato con 202: SAP nunca se
+        llama dentro del request. La corrida reintenta los traspasos Failed y los Pending estancados
+        (más viejos que `transfers.stale_pending_minutes`); los traspasos nuevos los empuja solo el
+        reactor del outbox, para no duplicar el envío.
       responses:
         '202':
-          description: Dispatch run requested
+          description: Dispatch run queued
           content:
             application/json:
               schema:
@@ -218,6 +211,24 @@ paths:
 
 components:
   schemas:
+    SapAsyncRequestAccepted:
+      type: object
+      description: Respuesta de un pedido asíncrono hacia SAP (el trabajo quedó encolado en la cola `sap`).
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [IMPORT_REQUESTED]
+        meta:
+          type: object
+          properties:
+            message:
+              type: string
+              example: SAP order import queued.
     EnqueueStockTransferRequest:
       type: object
       required: [event_id, shipment_ref, sku, quantity]

@@ -49,6 +49,8 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
             ->get(['shipment_id', 'sku', 'product_name', 'quantity', 'product_image_url']);
 
         $itemsByShipment = $this->groupItemsByShipment($lines);
+        // Bultos de cada envío: misma fuente que las vistas de la entrega (units_total / unit_ids).
+        $unitIdsByShipment = (new DbShipmentUnitIdsReader($this->connection))->forShipmentIds($ids);
         $nodesById = $this->nodesByIdFor($headers);
 
         $result = [];
@@ -58,6 +60,8 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
                 'customer_phone' => $header->customer_phone !== null ? (string) $header->customer_phone : null,
                 'address_reference' => $header->address_reference !== null ? (string) $header->address_reference : null,
                 'items' => $itemsByShipment[$shipmentId] ?? [],
+                'unit_ids' => $unitIdsByShipment[$shipmentId] ?? [],
+                'units_total' => count($unitIdsByShipment[$shipmentId] ?? []),
                 'destination' => $this->resolveDestination($header, $nodesById),
             ];
         }
@@ -100,8 +104,8 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
      * Tipo de destino de la parada: domicilio (sin nodo) o nodo (store|warehouse) con su nombre y código.
      * Es lo que la app usa para elegir la acción: "Entregar" (POD) vs "Descargar" (escaneo de descarga).
      *
-     * @param  array<string, array{name: string|null, type: string, code: string|null}> $nodesById
-     * @return array{type: string, name: string|null, node_code: string|null}
+     * @param  array<string, array{name: string|null, type: string, code: string|null}>             $nodesById
+     * @return array{type: string, name: string|null, node_code: string|null, node_id: string|null}
      */
     private function resolveDestination(\stdClass $header, array $nodesById): array
     {
@@ -109,7 +113,7 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
         if ($nodeId !== '' && isset($nodesById[$nodeId])) {
             $node = $nodesById[$nodeId];
 
-            return ['type' => $node['type'], 'name' => $node['name'], 'node_code' => $node['code']];
+            return ['type' => $node['type'], 'name' => $node['name'], 'node_code' => $node['code'], 'node_id' => $nodeId];
         }
 
         // Sin nodo destino: entrega a domicilio. El nombre, si lo hay, es el del cliente.
@@ -117,6 +121,7 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
             'type' => 'home',
             'name' => $header->customer_name !== null && trim((string) $header->customer_name) !== '' ? (string) $header->customer_name : null,
             'node_code' => null,
+            'node_id' => null,
         ];
     }
 

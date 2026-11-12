@@ -44,7 +44,7 @@ abstract class ScanRequest extends FormRequest
     }
 
     /**
-     * Reglas comunes a todo escaneo. device_id/user_id se aceptan opcionales porque pueden llegar
+     * Reglas comunes a cada escaneo. device_id/user_id se aceptan opcionales porque pueden llegar
      * inyectados desde el token de Auth. La clave de idempotencia es OBLIGATORIA (header o cuerpo): sin
      * ella no hay forma de deduplicar el reenvío offline, y una clave vacía colisionaría en el índice
      * único de la base. prepareForValidation() ya normaliza el header al cuerpo.

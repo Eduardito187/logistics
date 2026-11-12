@@ -15,7 +15,7 @@ use Logistics\Telemetry\Presentation\Http\ApiController;
  * Devuelve el tráfico agregado de calles para pintar el mapa (consulta GetStreetTraffic).
  *
  * `bbox` (opcional) acota a la zona visible del mapa en el formato `min_lat,min_lng,max_lat,max_lng`;
- * si falta o es inválido, devuelve todo el conjunto.
+ * si falta o es inválido, devuelve el conjunto completo.
  */
 final class GetStreetTrafficController extends ApiController
 {
@@ -39,7 +39,7 @@ final class GetStreetTrafficController extends ApiController
 
     /**
      * Parsea `bbox` en el formato `min_lat,min_lng,max_lat,max_lng` a la caja que espera el query.
-     * Un valor ausente o mal formado devuelve null (= todo el país).
+     * Un valor ausente o mal formado devuelve null (= el país completo).
      *
      * @return ?array{min_lat: float, min_lng: float, max_lat: float, max_lng: float}
      */

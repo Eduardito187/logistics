@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Access\Presentation\Filament\Resources;
 
+use Closure;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Select;
@@ -16,6 +17,8 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 use Logistics\Access\Application\Command\AssignRoleToUser\AssignRoleToUser;
 use Logistics\Access\Application\Command\ChangeUserPassword\ChangeUserPassword;
 use Logistics\Access\Application\Command\ReactivateUser\ReactivateUser;
@@ -360,6 +363,19 @@ final class UserResource extends Resource
                             ->send();
                     }),
             ]);
+    }
+
+    /**
+     * Las cuentas IAM tienen id UUID: un id que no lo es (p. ej. el id numérico de una cuenta del backoffice
+     * en un enlace viejo) es 404, no un 500 de PostgreSQL por «invalid input syntax for type uuid».
+     */
+    public static function resolveRecordRouteBinding(int | string $key, ?Closure $modifyQuery = null): ?Model
+    {
+        if (!Str::isUuid((string) $key)) {
+            return null;
+        }
+
+        return parent::resolveRecordRouteBinding($key, $modifyQuery);
     }
 
     /**

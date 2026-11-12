@@ -63,7 +63,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * ni Domain directo).
  *
  * Datos legibles: el pedido se muestra por su referencia externa (shipment.external_id) y el vehículo
- * por su placa (vehicle.plate), nunca por UUID. Todo el texto visible va en inglés (regla CLAUDE.md #5).
+ * por su placa (vehicle.plate), nunca por UUID. El texto visible completo va en inglés (regla CLAUDE.md #5).
  *
  * @extends resource<DeliveryRecord>
  */
@@ -544,7 +544,7 @@ final class DeliveryResource extends Resource
     }
 
     /**
-     * Campos comunes de todo escaneo: GPS, dispositivo, usuario y hora del hecho.
+     * Campos comunes de cada escaneo: GPS, dispositivo, usuario y hora del hecho.
      *
      * @return array<int, Component>
      */
