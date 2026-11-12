@@ -149,5 +149,4 @@ final class ProofOfDeliveryRequest extends ScanRequest
 
         return $paths;
     }
-
 }

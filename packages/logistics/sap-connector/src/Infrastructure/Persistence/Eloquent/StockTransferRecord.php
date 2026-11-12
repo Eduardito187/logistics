@@ -7,6 +7,7 @@ namespace Logistics\SapConnector\Infrastructure\Persistence\Eloquent;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\Factories\StockTransferRecordFactory;
 
 /**
@@ -15,19 +16,19 @@ use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\Factories\StockTr
  * El índice único sobre `event_id` respalda la idempotencia: una recepción (event_id) encola un solo
  * traspaso. Detalle de Infrastructure; el mapeo a/desde el agregado lo hace StockTransferMapper.
  *
- * @property string                          $id
- * @property string                          $event_id
- * @property string                          $shipment_ref
- * @property string                          $material
- * @property string                          $center
- * @property string                          $warehouse
- * @property int                             $quantity
- * @property string                          $status
- * @property string|null                     $last_error
- * @property string                          $transfer_kind
- * @property string|null                     $owner_party_id
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property string      $id
+ * @property string      $event_id
+ * @property string      $shipment_ref
+ * @property string      $material
+ * @property string      $center
+ * @property string      $warehouse
+ * @property int         $quantity
+ * @property string      $status
+ * @property string|null $last_error
+ * @property string      $transfer_kind
+ * @property string|null $owner_party_id
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  *
  * @use HasFactory<StockTransferRecordFactory>
  */

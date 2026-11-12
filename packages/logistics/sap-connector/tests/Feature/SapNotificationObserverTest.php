@@ -136,6 +136,12 @@ it('envía el aviso con el contrato acordado, marca sent y guarda la respuesta c
     Http::assertSent(static function (Request $request) use ($message): bool {
         /** @var array<string, mixed> $body */
         $body = $request->data();
+        // El payload viaja como objeto JSON y se persiste en una columna jsonb, que normaliza (reordena) las
+        // claves del objeto: se comparan las parejas clave-valor sin depender del orden, que es irrelevante
+        // en el contrato con SAP.
+        /** @var array<string, mixed> $payload */
+        $payload = is_array($body['payload'] ?? null) ? $body['payload'] : [];
+        ksort($payload);
 
         return $request->method() === 'POST'
             && $request->url() === 'https://sap.example.test/events'
@@ -144,7 +150,7 @@ it('envía el aviso con el contrato acordado, marca sent y guarda la respuesta c
             && $body['event_name'] === 'invoicing.invoice_issued'
             && $body['aggregate_id'] === 'INV-AGG-1'
             && is_string($body['occurred_at'])
-            && $body['payload'] === ['invoice_number' => 'F-0001', 'total' => '150.00'];
+            && $payload === ['invoice_number' => 'F-0001', 'total' => '150.00'];
     });
 });
 

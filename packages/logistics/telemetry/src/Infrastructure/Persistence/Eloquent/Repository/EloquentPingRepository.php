@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Support\Facades\Date;
 use Logistics\Telemetry\Domain\Contract\PingRepository;
 use Logistics\Telemetry\Domain\Model\VehiclePing;
@@ -86,9 +87,13 @@ final readonly class EloquentPingRepository implements PingRepository
 
     public function track(string $vehicleId, DateTimeImmutable $from, DateTimeImmutable $to): array
     {
+        // `recorded_at` lo escribe Eloquent en hora de pared local: los extremos de la ventana se llevan a la
+        // zona de la app para caer en el mismo marco (una custodia abierta puede traer el inicio en UTC).
+        $tz = new DateTimeZone(date_default_timezone_get());
+
         return array_values(PingRecord::query()
             ->where('vehicle_id', $vehicleId)
-            ->whereBetween('recorded_at', [$from, $to])
+            ->whereBetween('recorded_at', [$from->setTimezone($tz), $to->setTimezone($tz)])
             ->orderBy('recorded_at')
             ->get()
             ->map(fn (PingRecord $record): VehiclePing => $this->mapper->toDomain($record))

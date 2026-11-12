@@ -27,7 +27,21 @@ final readonly class EloquentVehiclePositionRepository implements VehiclePositio
     public function upsertFromPing(VehiclePing $ping, bool $moving): void
     {
         $row = $this->mapper->toRow($ping, $moving);
-        VehiclePositionRecord::query()->updateOrCreate(['vehicle_id' => $row['vehicle_id']], $row);
+
+        // La posición en vivo conserva SIEMPRE la lectura más nueva por `recorded_at`: una lectura atrasada
+        // que llegó fuera de orden no debe hacer retroceder la posición. setTimezone a la zona de la app
+        // alinea la comparación con la escritura de Eloquent (hora de pared local), igual que `changedSince`.
+        $recordedAt = $ping->recordedAt()->setTimezone(new DateTimeZone(date_default_timezone_get()));
+
+        $affected = VehiclePositionRecord::query()
+            ->whereKey($row['vehicle_id'])
+            ->where('recorded_at', '<', $recordedAt)
+            ->update($row);
+
+        if ($affected === 0) {
+            // No había fila (primera lectura) o la vigente es igual/más nueva: solo se crea si falta.
+            VehiclePositionRecord::query()->firstOrCreate(['vehicle_id' => $row['vehicle_id']], $row);
+        }
     }
 
     public function all(): array

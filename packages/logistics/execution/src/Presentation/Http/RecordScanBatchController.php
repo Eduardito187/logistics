@@ -6,7 +6,6 @@ namespace Logistics\Execution\Presentation\Http;
 
 use App\Http\Problem\ErrorCode;
 use App\Http\Problem\ProblemDetails;
-use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -25,6 +24,7 @@ use Logistics\Execution\Presentation\Http\Support\StoreNodeScope;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Domain\Exception\DomainException;
 use Throwable;
 
 /**

@@ -62,6 +62,8 @@ function podxBody(string $shipment, array $photo): array
         'confirmation' => 'FIRMA_DIGITAL',
         'occurred_at' => PODX_AT,
         'idempotency_key' => 'podx-'.$shipment,
+        'device_id' => 'dev',
+        'user_id' => 'usr',
     ], $photo);
 }
 
@@ -171,7 +173,7 @@ it('el lote offline rechaza el ítem POD con una foto no subida', function (): v
                 'shipment_id' => $shipment,
                 'unit_id' => 'U-1',
                 'confirmation' => 'FIRMA_DIGITAL',
-                'photo_path' => 'pendiente',
+                'photo_path' => 'pod/'.$shipment.'/fantasma.jpg',
             ],
         ]],
     ])

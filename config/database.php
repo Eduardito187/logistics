@@ -120,6 +120,10 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => env('DB_SEARCH_PATH', 'public'),
+            // Zona horaria de la SESIÓN de PG alineada con la app (America/La_Paz): evita el desfase de
+            // comparar fechas guardadas contra instantes reales (Clock). Se refuerza a nivel base con una
+            // migración (ALTER DATABASE … SET timezone), que sobrevive el pooling de PgBouncer.
+            'timezone' => env('DB_TIMEZONE', 'America/La_Paz'),
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             // Compatibilidad con PgBouncer (transaction pooling): ver bloque de arriba. Emular prepares
             // evita dejar prepared statements con estado en el backend. Conexiones persistentes apagadas
@@ -149,6 +153,10 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => env('DB_SEARCH_PATH', 'public'),
+            // Zona horaria de la SESIÓN de PG alineada con la app (America/La_Paz): evita el desfase de
+            // comparar fechas guardadas contra instantes reales (Clock). Se refuerza a nivel base con una
+            // migración (ALTER DATABASE … SET timezone), que sobrevive el pooling de PgBouncer.
+            'timezone' => env('DB_TIMEZONE', 'America/La_Paz'),
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 

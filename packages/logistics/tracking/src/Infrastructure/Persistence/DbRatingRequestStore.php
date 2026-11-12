@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Tracking\Infrastructure\Persistence;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Query\Builder;
@@ -36,14 +37,20 @@ final readonly class DbRatingRequestStore implements RatingRequestStore
 
     public function awaitingRating(DateTimeImmutable $since, DateTimeImmutable $deliveredBefore, int $limit): array
     {
+        // `delivered_at` lo escribe Eloquent en hora de pared local (sin offset): se comparan los cortes en
+        // la misma zona de la app para no desalinearse con esa escritura (mismo criterio que la lectura
+        // incremental de telemetría). Bindear con offset (ATOM) caería en otro marco y dejaría pasar
+        // entregas demasiado recientes.
+        $tz = new DateTimeZone(date_default_timezone_get());
+
         $rows = $this->db()->table(self::TABLE.' as t')
             ->leftJoin('shipments as s', 's.id', '=', 't.shipment_id')
             ->where('t.status', VisibleStatus::Delivered->value)
             ->whereNotNull('t.shipment_id')
             ->whereNotNull('t.customer_email')
             ->whereNull('t.rating_requested_at')
-            ->where('t.delivered_at', '>=', $since->format(DateTimeImmutable::ATOM))
-            ->where('t.delivered_at', '<=', $deliveredBefore->format(DateTimeImmutable::ATOM))
+            ->where('t.delivered_at', '>=', $since->setTimezone($tz))
+            ->where('t.delivered_at', '<=', $deliveredBefore->setTimezone($tz))
             ->whereNotExists(static function (Builder $query): void {
                 $query->selectRaw('1')
                     ->from('tracking_satisfaction_surveys as r')
