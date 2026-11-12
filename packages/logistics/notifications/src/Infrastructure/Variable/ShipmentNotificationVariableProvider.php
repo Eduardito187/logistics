@@ -188,12 +188,12 @@ final readonly class ShipmentNotificationVariableProvider implements Notificatio
     /**
      * Lee la fila del envío (referencia, cliente, dirección). Null si no existe o la consulta falla.
      *
-     * @return object{external_id?: string|null, order_reference?: string|null, customer_name?: string|null, address_text?: string|null, address_reference?: string|null}|null
+     * @return stdClass|null
      */
     private function shipmentRow(string $shipmentId): ?object
     {
         try {
-            /** @var object{external_id?: string|null, order_reference?: string|null, customer_name?: string|null, address_text?: string|null, address_reference?: string|null}|null $row */
+            /** @var stdClass|null $row */
             $row = $this->db->connection()
                 ->table('shipments')
                 ->where('id', $shipmentId)
@@ -209,12 +209,12 @@ final readonly class ShipmentNotificationVariableProvider implements Notificatio
      * Lee la fila de tracking del envío (paradas restantes, ETA, token público, referencia de la orden).
      * Null si no existe o la consulta falla.
      *
-     * @return object{remaining_stops?: int|string|null, eta?: string|null, token?: string|null, order_reference?: string|null}|null
+     * @return stdClass|null
      */
     private function trackingRow(string $shipmentId): ?object
     {
         try {
-            /** @var object{remaining_stops?: int|string|null, eta?: string|null, token?: string|null, order_reference?: string|null}|null $row */
+            /** @var stdClass|null $row */
             $row = $this->db->connection()
                 ->table('tracking_shipments')
                 ->where('shipment_id', $shipmentId)

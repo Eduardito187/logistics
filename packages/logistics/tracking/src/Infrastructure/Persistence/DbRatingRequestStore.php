@@ -9,7 +9,6 @@ use DateTimeZone;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Query\Builder;
-use Illuminate\Support\Carbon;
 use Logistics\Tracking\Application\Contract\RatingRequestStore;
 use Logistics\Tracking\Application\ReadModel\DeliveredAwaitingRatingView;
 use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
@@ -80,12 +79,27 @@ final readonly class DbRatingRequestStore implements RatingRequestStore
                     ?? self::str($row->external_id ?? null),
                 self::str($row->customer_name ?? null),
                 (string) $row->customer_email,
-                Carbon::parse((string) $row->delivered_at)->toIso8601String(),
+                self::wallInstant((string) $row->delivered_at)->format(DateTimeImmutable::ATOM),
                 (string) $row->token,
             );
         }
 
         return $views;
+    }
+
+    /**
+     * Reinterpreta la fecha leída de la base (sesión PG en UTC, escritura naive de Eloquent) como el mismo
+     * reloj de pared en la zona de la app: el instante del view coincide así con el que lee Eloquent (Clock).
+     * Mismo criterio que los mappers de telemetría. Si se alinea la zona de la sesión de PG, quitar esto.
+     */
+    private static function wallInstant(string $raw): DateTimeImmutable
+    {
+        $stored = new DateTimeImmutable($raw);
+
+        return new DateTimeImmutable(
+            $stored->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
+            new DateTimeZone(date_default_timezone_get()),
+        );
     }
 
     public function markRequested(string $shipmentId, DateTimeImmutable $requestedAt): bool
