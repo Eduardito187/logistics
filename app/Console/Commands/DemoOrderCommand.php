@@ -36,6 +36,11 @@ final class DemoOrderCommand extends Command
 
     protected $description = 'Arma una orden de demo coherente para seguir el flujo de 0 a entregada';
 
+    /** Cliente y dirección fijos del pedido de demo (reusados en el envío, la parada y la ruta). */
+    private const string CUSTOMER_NAME = 'Cliente Demo';
+
+    private const string CUSTOMER_ADDRESS = 'Av. Cristo Redentor 2500, Santa Cruz de la Sierra';
+
     public function handle(): int
     {
         $orderNumber = trim((string) $this->option('order')) ?: 'DEMO-FLOW-01';
@@ -77,8 +82,8 @@ final class DemoOrderCommand extends Command
             $this->line("  En «Mi ruta de hoy» del camión: {$vehicle->plate} (id {$vehicle->id})");
             $this->newLine();
             $this->line('Para probar el POD desde el teléfono (chofer):');
-            $this->line("  1. Subir foto: POST /app/deliveries/photos (shipment_id, photo) → devuelve photo_path");
-            $this->line("  2. Entregar: POST /app/deliveries/proof-of-delivery (shipment_id, unit_id, confirmation, photo_path OBLIGATORIO, lat, lng, occurred_at)");
+            $this->line('  1. Subir foto: POST /app/deliveries/photos (shipment_id, photo) → devuelve photo_path');
+            $this->line('  2. Entregar: POST /app/deliveries/proof-of-delivery (shipment_id, unit_id, confirmation, photo_path OBLIGATORIO, lat, lng, occurred_at)');
         } else {
             $this->line('  Estado: PLANNED · 0 etiquetas · entrega a domicilio (Santa Cruz)');
             $this->line("  Planificada en el camión: {$vehicle->plate}");
@@ -110,8 +115,8 @@ final class DemoOrderCommand extends Command
             vehicleId: $vehicleId,
             shipmentId: $shipmentId,
             orderReference: $orderNumber,
-            customerName: 'Cliente Demo',
-            address: 'Av. Cristo Redentor 2500, Santa Cruz de la Sierra',
+            customerName: self::CUSTOMER_NAME,
+            address: self::CUSTOMER_ADDRESS,
         ));
 
         // 3) Preparación + carga de cada bulto → la entrega queda Loaded (abierta), con el vehículo asignado.
@@ -219,8 +224,8 @@ final class DemoOrderCommand extends Command
             'source' => 'demo',
             'external_id' => $orderNumber,
             'order_reference' => $orderNumber,
-            'customer_name' => 'Cliente Demo',
-            'address_text' => 'Av. Cristo Redentor 2500, Santa Cruz de la Sierra',
+            'customer_name' => self::CUSTOMER_NAME,
+            'address_text' => self::CUSTOMER_ADDRESS,
             'address_reference' => 'Portón negro, timbre 2',
             'address_confidence' => 95,
             'address_confidence_level' => 'high',
@@ -294,8 +299,8 @@ final class DemoOrderCommand extends Command
             'shipment_id' => $shipmentId,
             'sequence' => $sequence,
             'order_reference' => $orderNumber,
-            'customer_name' => 'Cliente Demo',
-            'address' => 'Av. Cristo Redentor 2500, Santa Cruz de la Sierra',
+            'customer_name' => self::CUSTOMER_NAME,
+            'address' => self::CUSTOMER_ADDRESS,
             'created_at' => $now,
             'updated_at' => $now,
         ]);

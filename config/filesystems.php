@@ -7,6 +7,16 @@ declare(strict_types=1);
 // sin S3), sin 500. Regla "funciona en docker nuevo": los defaults operan sin depender de infra externa.
 $evidenceDriver = (env('AWS_BUCKET') || env('AWS_ENDPOINT')) ? 's3' : 'local';
 
+// Raíz de un disco de evidencia según el driver: en S3, el prefijo (o '' si tiene bucket propio); en local,
+// una carpeta bajo storage/app. Centralizado para no repetir el ternario en cada disco (sin anidar ternarios).
+$evidenceRoot = static function (string $bucketEnv, string $prefix, string $localBase = 'app/private') use ($evidenceDriver): string {
+    if ($evidenceDriver === 's3') {
+        return env($bucketEnv) ? '' : $prefix;
+    }
+
+    return storage_path($localBase.'/'.$prefix);
+};
+
 return [
 
     /*
@@ -101,7 +111,7 @@ return [
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_POD_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceDriver === 's3' ? (env('AWS_POD_BUCKET') ? '' : 'pod') : storage_path('app/private/pod'),
+            'root' => $evidenceRoot('AWS_POD_BUCKET', 'pod'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -117,7 +127,7 @@ return [
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_CHECKLIST_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceDriver === 's3' ? (env('AWS_CHECKLIST_BUCKET') ? '' : 'checklists') : storage_path('app/private/checklists'),
+            'root' => $evidenceRoot('AWS_CHECKLIST_BUCKET', 'checklists'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -133,7 +143,7 @@ return [
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_DAMAGE_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceDriver === 's3' ? (env('AWS_DAMAGE_BUCKET') ? '' : 'damages') : storage_path('app/private/damages'),
+            'root' => $evidenceRoot('AWS_DAMAGE_BUCKET', 'damages'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -149,7 +159,7 @@ return [
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_SIGNATURE_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceDriver === 's3' ? (env('AWS_SIGNATURE_BUCKET') ? '' : 'signatures') : storage_path('app/private/signatures'),
+            'root' => $evidenceRoot('AWS_SIGNATURE_BUCKET', 'signatures'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -165,7 +175,7 @@ return [
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_ID_DOCUMENT_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceDriver === 's3' ? (env('AWS_ID_DOCUMENT_BUCKET') ? '' : 'id-documents') : storage_path('app/private/id-documents'),
+            'root' => $evidenceRoot('AWS_ID_DOCUMENT_BUCKET', 'id-documents'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -181,7 +191,7 @@ return [
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_COLLAGE_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceDriver === 's3' ? (env('AWS_COLLAGE_BUCKET') ? '' : 'collages') : storage_path('app/public/collages'),
+            'root' => $evidenceRoot('AWS_COLLAGE_BUCKET', 'collages', 'app/public'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
