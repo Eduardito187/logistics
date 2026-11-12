@@ -57,7 +57,7 @@ function aovOrder(string $orderNumber): string
         'address_confidence' => 90,
         'address_confidence_level' => 'high',
         'status' => 'PLANNED',
-        'fulfillment_mode' => 'OWNED',
+        'fulfillment_mode' => 'owned',
         'created_at' => now(),
         'updated_at' => now(),
     ]);
