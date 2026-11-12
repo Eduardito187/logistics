@@ -51,11 +51,12 @@ final class OpenDeliveryHandler implements CommandHandler
             return;
         }
 
-        $delivery = Delivery::start(
+        $delivery = Delivery::open(
             $this->deliveries->nextIdentity(),
             $command->shipmentId,
             $command->vehicleId,
             $this->fulfillment->forShipmentId($command->shipmentId)->mode,
+            new DateTimeImmutable,
         );
 
         $this->deliveries->save($delivery);

@@ -53,6 +53,9 @@ final readonly class ShipmentStatusProgressionDispatcher implements MessageDispa
     /** Hechos que traen el `shipment_id` en el payload, con el estado al que avanzan. */
     private const SHIPMENT_EVENTS = [
         'execution.route_stop_attached' => ShipmentStatus::Planned,
+        // Asignar el vehículo abre la entrega = preparar: el envío entra en ejecución y sale del worklist
+        // "por preparar" (en el flujo viejo lo hacía `shipment_prepared` del escaneo, ya eliminado).
+        'execution.delivery_opened' => ShipmentStatus::InExecution,
         'execution.shipment_prepared' => ShipmentStatus::InExecution,
         'execution.shipment_loaded' => ShipmentStatus::InExecution,
         'execution.shipment_departed' => ShipmentStatus::InExecution,

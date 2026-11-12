@@ -6,6 +6,7 @@ namespace Logistics\Execution\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Execution\Domain\Event\DeliveryFailed;
+use Logistics\Execution\Domain\Event\DeliveryOpened;
 use Logistics\Execution\Domain\Event\DeliveryVehicleReassigned;
 use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
@@ -86,6 +87,30 @@ final class Delivery extends AggregateRoot
             null,
             $fulfillmentMode,
         );
+    }
+
+    /**
+     * Abre la entrega al ASIGNAR el camión de reparto (flujo vigente: asignar vehículo = preparar). Igual
+     * que `start`, pero graba `DeliveryOpened`: el envío entra en ejecución y sale del worklist "por
+     * preparar" (shipments avanza PLANNED/RECEIVED → IN_EXECUTION al consumir ese hecho). El flujo viejo del
+     * escaneo de preparación sigue usando `start` (su `ShipmentPrepared` hace el mismo avance).
+     */
+    public static function open(
+        DeliveryId $id,
+        string $shipmentId,
+        string $vehicleId,
+        FulfillmentMode $fulfillmentMode,
+        DateTimeImmutable $occurredAt,
+    ): self {
+        $delivery = self::start($id, $shipmentId, $vehicleId, $fulfillmentMode);
+        $delivery->recordEvent(new DeliveryOpened(
+            $id->toString(),
+            $delivery->shipmentId,
+            $delivery->vehicleId,
+            $occurredAt,
+        ));
+
+        return $delivery;
     }
 
     /**
