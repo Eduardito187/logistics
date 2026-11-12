@@ -136,9 +136,14 @@ it('reasignar el pedido MUEVE la entrega en curso al camión nuevo', function ()
     expect(DB::table('execution_deliveries')->where('shipment_id', $shipmentId)->count())->toBe(1);
 
     // La RUTA queda consistente: el pedido aparece SOLO en el camión nuevo, no fantasma en el viejo.
+    // La ruta del camión viejo queda sin paradas pendientes → GetDriverRoute (solo rutas abiertas) da null,
+    // que es justamente "el pedido ya no está en ese camión".
     $oldRoute = app(QueryBus::class)->ask(new GetDriverRoute($v1, null));
     $newRoute = app(QueryBus::class)->ask(new GetDriverRoute($v2, null));
-    expect(collect($oldRoute->stops)->pluck('shipmentId')->all())->not->toContain($shipmentId)
+
+    $oldShipmentIds = $oldRoute === null ? [] : collect($oldRoute->stops)->pluck('shipmentId')->all();
+    expect($oldShipmentIds)->not->toContain($shipmentId)
+        ->and($newRoute)->not->toBeNull()
         ->and(collect($newRoute->stops)->pluck('shipmentId')->all())->toContain($shipmentId);
 });
 
