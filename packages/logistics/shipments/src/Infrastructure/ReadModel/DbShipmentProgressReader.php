@@ -104,10 +104,13 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
             $rows = $this->connection->table('execution_deliveries as d')
                 ->leftJoin('execution_scan_events as e', 'e.delivery_id', '=', 'd.id')
                 ->whereIn('d.shipment_id', $ids)
-                ->groupBy('d.id', 'd.shipment_id', 'd.vehicle_id', 'd.status', 'd.pod_captured_at', 'd.updated_at')
+                ->groupBy('d.id', 'd.shipment_id', 'd.vehicle_id', 'd.status', 'd.pod_captured_at', 'd.updated_at', 'd.created_at')
                 ->selectRaw(
                     'd.shipment_id, d.vehicle_id, d.status, d.pod_captured_at, d.updated_at, '
-                    ."MIN(CASE WHEN e.type = 'PREPARATION' THEN e.occurred_at END) AS prepared_at, "
+                    // Preparado: el escaneo de PREPARACIÓN si existe (flujo viejo), o la apertura de la entrega
+                    // (`d.created_at` = cuando se asignó el vehículo, que en el flujo vigente ES preparar). Sin
+                    // el COALESCE, prepared_at siempre sería null porque el escaneo se eliminó del flujo.
+                    ."COALESCE(MIN(CASE WHEN e.type = 'PREPARATION' THEN e.occurred_at END), d.created_at) AS prepared_at, "
                     ."MIN(CASE WHEN e.type = 'LOAD' THEN e.occurred_at END) AS loaded_at, "
                     ."MAX(CASE WHEN e.type = 'PROOF_OF_DELIVERY' THEN e.occurred_at END) AS pod_scan_at",
                 )

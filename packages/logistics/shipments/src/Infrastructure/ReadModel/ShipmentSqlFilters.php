@@ -51,14 +51,17 @@ final class ShipmentSqlFilters
     }
 
     /**
-     * Pendientes de preparar (auditoría app #1b): envíos ASIGNADOS (PLANNED o IN_EXECUTION) cuya entrega en
-     * ejecución no tiene todavía ningún escaneo de PREPARACIÓN. Cubre los que no tienen entrega aún (camión
-     * asignado en planificación, nada escaneado) y los que ya tienen etiquetas emitidas pero no se
-     * prepararon: las etiquetas no cuentan como preparación, solo el escaneo.
+     * Pendientes de preparar: envíos ASIGNADOS (PLANNED o IN_EXECUTION) que todavía NO tienen entrega en
+     * ejecución abierta. En el flujo vigente (decisión del dueño) ASIGNAR EL VEHÍCULO ES PREPARAR: eso abre
+     * la entrega (`execution_deliveries`), así que la existencia de la entrega marca el envío como preparado
+     * y lo saca de esta lista. Cubre los que solo tienen etiquetas emitidas (las etiquetas NO abren entrega,
+     * no cuentan como preparación) y los asignados en planificación sin vehículo de reparto aún.
      *
-     * Lee las tablas de ejecución en solo lectura (sin acoplar su dominio) con un NOT EXISTS correlacionado
-     * que se apoya en `execution_deliveries.shipment_id` (único) y en el índice
-     * `execution_scan_events (delivery_id, type, occurred_at)`: costo acotado por fila candidata.
+     * OJO: antes esto filtraba por "sin escaneo de PREPARACIÓN", pero ese escaneo se eliminó del flujo (ya
+     * no lo hace el app); si se vuelve a condicionar por el scan, ningún envío sale nunca de "por preparar".
+     *
+     * Lee ejecución en solo lectura (sin acoplar su dominio) con un NOT EXISTS correlacionado sobre
+     * `execution_deliveries.shipment_id` (único): costo acotado por fila candidata.
      */
     public static function pendingPreparation(Builder $query, string $idColumn = 'shipments.id', string $statusColumn = 'shipments.status'): void
     {
@@ -66,9 +69,7 @@ final class ShipmentSqlFilters
             ->whereNotExists(static function (Builder $prepared) use ($idColumn): void {
                 $prepared->selectRaw('1')
                     ->from('execution_deliveries as pp_d')
-                    ->join('execution_scan_events as pp_e', 'pp_e.delivery_id', '=', 'pp_d.id')
-                    ->whereColumn('pp_d.shipment_id', $idColumn)
-                    ->where('pp_e.type', 'PREPARATION');
+                    ->whereColumn('pp_d.shipment_id', $idColumn);
             });
     }
 }

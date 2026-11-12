@@ -161,6 +161,9 @@ return [
         'execution.shipment_prepared' => FanOutMessageDispatcher::class,
         'execution.route_stop_attached' => FanOutMessageDispatcher::class,
         'execution.driver_route_assembled' => FanOutMessageDispatcher::class,
+        // Asignar vehículo abre la entrega = preparar: solo avanza el estado del envío a IN_EXECUTION (un
+        // reactor; no necesita abanico ni notificación). El nombre exacto gana al prefijo 'execution.'.
+        'execution.delivery_opened' => ShipmentStatusProgressionDispatcher::class,
         'planning.plan_published' => ShipmentStatusProgressionDispatcher::class,
         // Un solo reactor cada uno (no necesitan abanico): etiqueta generada → «en curso»; devolución → «devuelta».
         'labels.labels_emitted' => InProgressOnLabelsEmitted::class,

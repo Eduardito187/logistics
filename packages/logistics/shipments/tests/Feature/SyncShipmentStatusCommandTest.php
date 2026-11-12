@@ -68,6 +68,10 @@ it('avanza los envíos atascados según la entrega en ejecución, la ruta y el p
     $prepared = syncShipment('PLANNED');
     syncDelivery($prepared, 'PREPARED');
 
+    // Flujo vigente: una entrega PENDING ya tiene el vehículo asignado (asignar = preparar) → IN_EXECUTION.
+    $assigned = syncShipment('PLANNED');
+    syncDelivery($assigned, 'PENDING');
+
     $delivered = syncShipment();
     syncDelivery($delivered, 'DELIVERED');
 
@@ -104,6 +108,7 @@ it('avanza los envíos atascados según la entrega en ejecución, la ruta y el p
     $this->artisan('shipments:sync-status', ['--only' => 'status'])->assertSuccessful();
 
     expect(syncStatus($prepared))->toBe('IN_EXECUTION')
+        ->and(syncStatus($assigned))->toBe('IN_EXECUTION')
         ->and(syncStatus($delivered))->toBe('DELIVERED')
         ->and(syncStatus($failed))->toBe('IN_EXECUTION')
         ->and(syncStatus($onRoute))->toBe('PLANNED')

@@ -77,6 +77,14 @@ it('avanza RECEIVED → PLANNED → IN_EXECUTION → DELIVERED con los hechos de
     expect(sspStatusOf($id))->toBe('DELIVERED');
 });
 
+it('al abrir la entrega (asignar vehículo = preparar) el envío pasa a IN_EXECUTION y sale del worklist', function (): void {
+    $id = sspShipment('PLANNED');
+
+    sspReactor()->dispatch(sspMessage('execution.delivery_opened', ['shipment_id' => $id]));
+
+    expect(sspStatusOf($id))->toBe('IN_EXECUTION');
+});
+
 it('nunca retrocede: hechos atrasados sobre un envío entregado o anulado no cambian nada', function (string $closed): void {
     $id = sspShipment($closed);
     $reactor = sspReactor();
