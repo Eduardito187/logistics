@@ -9,11 +9,16 @@ use Logistics\Fleet\Application\Command\ConductPreTripChecklist\ConductPreTripCh
 use Logistics\Fleet\Application\Command\DefineChecklistTemplate\DefineChecklistTemplate;
 use Logistics\Fleet\Application\Command\RegisterDriver\RegisterDriver;
 use Logistics\Fleet\Application\Command\RegisterVehicle\RegisterVehicle;
+use Logistics\Fleet\Domain\Exception\FleetException;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\DriverModel;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleFitnessLogModel;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
+
+const FLEET_FITNESS_TEST_DAY = '2026-11-12';
+
+const FLEET_FITNESS_TEST_CREWS_URL = '/api/v1/app/fleet/crews';
 
 /**
  * Auditoría #27 / #20 / #29: plantilla del checklist servida por el backend, bloqueo de un vehículo NO APTO
@@ -118,7 +123,7 @@ it('rechaza con 422 una plantilla con claves repetidas', function (): void {
             ['key' => 'brakes', 'label' => 'Frenos', 'category' => 'safety', 'criticality' => 'critical'],
             ['key' => 'BRAKES', 'label' => 'Frenos 2', 'category' => 'safety', 'criticality' => 'major'],
         ],
-    )))->toThrow(Logistics\Fleet\Domain\Exception\FleetException::class);
+    )))->toThrow(FleetException::class);
 });
 
 it('una falla CRÍTICA deja el vehículo no apto: bloquea tripulación y salida (422) hasta que un supervisor lo habilita', function (): void {
@@ -131,12 +136,12 @@ it('una falla CRÍTICA deja el vehículo no apto: bloquea tripulación y salida 
         'vehicle_id' => $vehicleId,
         'driver_id' => $driverId,
         'items' => ['engine' => true, 'brakes' => false, 'tires' => true, 'fuel' => false],
-        'performed_on' => '2026-11-12',
+        'performed_on' => FLEET_FITNESS_TEST_DAY,
     ])->assertStatus(201)
         ->assertJsonPath('data.fit_to_dispatch', false)
         ->assertJsonPath('data.failed_critical', ['brakes'])
         ->assertJsonPath('data.vehicle_fitness.fit_to_dispatch', false)
-        ->assertJsonPath('data.vehicle_fitness.unfit_since', '2026-11-12');
+        ->assertJsonPath('data.vehicle_fitness.unfit_since', FLEET_FITNESS_TEST_DAY);
 
     $this->getJson("/api/v1/app/fleet/vehicles/{$vehicleId}/fitness?date=2026-11-13")
         ->assertOk()
@@ -144,7 +149,7 @@ it('una falla CRÍTICA deja el vehículo no apto: bloquea tripulación y salida 
         ->assertJsonPath('data.unfit_items', ['brakes']);
 
     // Asignación: 422 regla de negocio (ese día y los siguientes).
-    $this->postJson('/api/v1/app/fleet/crews', [
+    $this->postJson(FLEET_FITNESS_TEST_CREWS_URL, [
         'driver_id' => $driverId,
         'vehicle_id' => $vehicleId,
         'assembled_for' => '2026-11-13',
@@ -183,7 +188,7 @@ it('una falla CRÍTICA deja el vehículo no apto: bloquea tripulación y salida 
         ->toBe('Supervisor Test');
 
     // Restaurado: se arma la tripulación y se registra la salida.
-    $this->postJson('/api/v1/app/fleet/crews', [
+    $this->postJson(FLEET_FITNESS_TEST_CREWS_URL, [
         'driver_id' => $driverId,
         'vehicle_id' => $vehicleId,
         'assembled_for' => '2026-11-13',
@@ -209,16 +214,16 @@ it('una falla NO crítica no bloquea al vehículo', function (): void {
         'vehicle_id' => $vehicleId,
         'driver_id' => $driverId,
         'items' => ['engine' => true, 'brakes' => true, 'tires' => false],
-        'performed_on' => '2026-11-12',
+        'performed_on' => FLEET_FITNESS_TEST_DAY,
     ])->assertStatus(201)
         ->assertJsonPath('data.fit_to_dispatch', true)
         ->assertJsonPath('data.failed_critical', [])
         ->assertJsonPath('data.missing_critical', []);
 
-    $this->postJson('/api/v1/app/fleet/crews', [
+    $this->postJson(FLEET_FITNESS_TEST_CREWS_URL, [
         'driver_id' => $driverId,
         'vehicle_id' => $vehicleId,
-        'assembled_for' => '2026-11-12',
+        'assembled_for' => FLEET_FITNESS_TEST_DAY,
     ])->assertStatus(201);
 });
 
@@ -226,7 +231,7 @@ it('pagina el listado de checklists con el meta estándar, más recientes primer
     $vehicleId = registrarVehiculoFitness();
     $driverId = registrarChoferFitness();
 
-    foreach (['2026-11-10', '2026-11-11', '2026-11-12'] as $day) {
+    foreach (['2026-11-10', '2026-11-11', FLEET_FITNESS_TEST_DAY] as $day) {
         app(CommandBus::class)->dispatch(new ConductPreTripChecklist(
             vehicleId: $vehicleId,
             driverId: $driverId,
@@ -238,7 +243,7 @@ it('pagina el listado de checklists con el meta estándar, más recientes primer
     $this->getJson("/api/v1/app/fleet/pre-trip-checklists?vehicle_id={$vehicleId}&per_page=2&page=1")
         ->assertOk()
         ->assertJsonCount(2, 'data')
-        ->assertJsonPath('data.0.performed_on', '2026-11-12')
+        ->assertJsonPath('data.0.performed_on', FLEET_FITNESS_TEST_DAY)
         ->assertJsonPath('meta.page', 1)
         ->assertJsonPath('meta.per_page', 2)
         ->assertJsonPath('meta.total', 3)
@@ -257,7 +262,7 @@ it('pagina el listado de checklists con el meta estándar, más recientes primer
 
     $this->getJson("/api/v1/app/fleet/pre-trip-checklists/latest?vehicle_id={$vehicleId}")
         ->assertOk()
-        ->assertJsonPath('data.performed_on', '2026-11-12');
+        ->assertJsonPath('data.performed_on', FLEET_FITNESS_TEST_DAY);
 
     $this->getJson('/api/v1/app/fleet/pre-trip-checklists/latest?vehicle_id='.Uuid::generate()->value)
         ->assertNotFound();

@@ -63,8 +63,7 @@ final readonly class ListAlertsHandler implements QueryHandler
     }
 
     /**
-     * @param list<AlertView> $views
-     *
+     * @param  list<AlertView> $views
      * @return list<AlertView>
      */
     private function enrich(array $views): array

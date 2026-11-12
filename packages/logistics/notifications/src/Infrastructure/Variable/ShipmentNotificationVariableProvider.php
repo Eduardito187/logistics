@@ -135,20 +135,39 @@ final readonly class ShipmentNotificationVariableProvider implements Notificatio
      */
     private function trackingUrl(string $token): ?string
     {
-        try {
-            $urls = $this->urls ?? Container::getInstance()->make(UrlGenerator::class);
-        } catch (Throwable) {
+        $urls = $this->urlGenerator();
+        if ($urls === null) {
             return null;
         }
 
         try {
             return $urls->route('tracking.public.page', ['token' => $token], true);
         } catch (Throwable) {
-            try {
-                return $urls->to('/t/'.rawurlencode($token));
-            } catch (Throwable) {
-                return null;
-            }
+            return $this->fallbackTrackingUrl($urls, $token);
+        }
+    }
+
+    /**
+     * Generador de URLs inyectado o, si no hay, el del contenedor. Null si no se puede resolver.
+     */
+    private function urlGenerator(): ?UrlGenerator
+    {
+        try {
+            return $this->urls ?? Container::getInstance()->make(UrlGenerator::class);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Ruta conocida `/t/{token}` cuando la ruta con nombre no está registrada. Null si tampoco se puede armar.
+     */
+    private function fallbackTrackingUrl(UrlGenerator $urls, string $token): ?string
+    {
+        try {
+            return $urls->to('/t/'.rawurlencode($token));
+        } catch (Throwable) {
+            return null;
         }
     }
 

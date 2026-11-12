@@ -390,7 +390,7 @@ final class ShipmentTracking extends AggregateRoot
      * Vencimiento del ENLACE PÚBLICO de seguimiento (/t/{token} y sus endpoints públicos).
      *
      * Regla: el TTL (`tracking.public_link_ttl_hours`) se cuenta DESDE LA ENTREGA (`deliveredAt`). Mientras
-     * el pedido no se entregó, el enlace NO vence: el cliente lo necesita durante todo el ciclo (un pedido
+     * el pedido no se entregó, el enlace NO vence: el cliente lo necesita durante el ciclo entero (un pedido
      * agendado a 5 días no puede perder su seguimiento a las 72 h de creado). Una devolución posterior a la
      * entrega conserva `deliveredAt`, así que sigue contando desde la entrega. Un TTL ≤ 0 desactiva el
      * vencimiento. Devuelve null cuando el enlace no vence.

@@ -5,16 +5,22 @@ declare(strict_types=1);
 namespace Logistics\Execution\Application\ReadModel;
 
 use Logistics\Execution\Domain\Model\Delivery;
+use Logistics\Execution\Domain\ValueObject\ScanType;
 
 /**
  * Modelo de lectura de la entrega: forma plana en primitivos para APIs, listados y la app del chofer.
  *
  * Se arma desde el agregado con fromDelivery(); las consultas nunca exponen el objeto de dominio.
+ *
+ * Conteo en BULTOS (shipment_units), no en cantidades de producto: `units_total` (esperados), `unit_ids`,
+ * `units_loaded` (bultos distintos con escaneo de carga) y `units_delivered` (bultos con POD). Es lo que
+ * la app usa para el POD y la pantalla de carga.
  */
 final readonly class DeliveryView
 {
     /**
      * @param list<ScanEventView> $scans
+     * @param list<string>        $unitIds
      */
     public function __construct(
         public string $id,
@@ -30,12 +36,16 @@ final readonly class DeliveryView
         public ?string $orderReference = null,
         public ?string $customerName = null,
         public ?string $address = null,
+        public array $unitIds = [],
+        public int $unitsLoaded = 0,
+        public int $unitsDelivered = 0,
     ) {}
 
     /**
      * @param array{order_reference: string|null, customer_name: string|null, address: string|null}|null $reference
+     * @param list<string>                                                                               $unitIds   bultos del envío (orden estable)
      */
-    public static function fromDelivery(Delivery $delivery, ?array $reference = null): self
+    public static function fromDelivery(Delivery $delivery, ?array $reference = null, array $unitIds = []): self
     {
         $scans = [];
         foreach ($delivery->scans() as $scan) {
@@ -57,7 +67,43 @@ final readonly class DeliveryView
             $reference['order_reference'] ?? null,
             $reference['customer_name'] ?? null,
             $reference['address'] ?? null,
+            $unitIds,
+            self::distinctUnits($delivery, ScanType::Load),
+            self::distinctUnits($delivery, ScanType::ProofOfDelivery),
         );
+    }
+
+    /**
+     * Bultos DISTINTOS con al menos un escaneo del tipo dado (reescanear el mismo bulto no suma).
+     */
+    private static function distinctUnits(Delivery $delivery, ScanType $type): int
+    {
+        $units = [];
+        foreach ($delivery->scans() as $scan) {
+            if ($scan->type === $type) {
+                $units[$scan->unitId] = true;
+            }
+        }
+
+        return count($units);
+    }
+
+    /**
+     * Dirección corta para la tarjeta (pantalla chica): el primer tramo antes de la coma, recortado a 60
+     * caracteres. Null si no hay dirección.
+     */
+    public function shortAddress(): ?string
+    {
+        if ($this->address === null || trim($this->address) === '') {
+            return null;
+        }
+
+        $first = trim(explode(',', $this->address)[0]);
+        if ($first === '') {
+            $first = trim($this->address);
+        }
+
+        return mb_strlen($first) > 60 ? rtrim(mb_substr($first, 0, 59)).'…' : $first;
     }
 
     /**
@@ -90,6 +136,12 @@ final readonly class DeliveryView
             'order_reference' => $this->orderReference,
             'customer_name' => $this->customerName,
             'address' => $this->address,
+            'short_address' => $this->shortAddress(),
+            // Bultos (no productos): total esperado, ids, cargados y entregados.
+            'units_total' => count($this->unitIds),
+            'unit_ids' => $this->unitIds,
+            'units_loaded' => $this->unitsLoaded,
+            'units_delivered' => $this->unitsDelivered,
             'pod_confirmation' => $this->podConfirmation,
             'pod_photo_url' => $this->podPhotoUrl,
             'pod_photo_path' => $this->podPhotoPath,

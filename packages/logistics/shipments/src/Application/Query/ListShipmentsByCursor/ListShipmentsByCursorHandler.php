@@ -6,6 +6,7 @@ namespace Logistics\Shipments\Application\Query\ListShipmentsByCursor;
 
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Query\ShipmentListSupport;
@@ -24,6 +25,7 @@ final class ListShipmentsByCursorHandler implements QueryHandler
     public function __construct(
         private readonly ShipmentListReader $reader,
         private readonly ShipmentProgressReader $progress,
+        private readonly DeliveryModeReader $deliveryModes,
     ) {}
 
     public function handle(Query $query): ShipmentPage
@@ -35,6 +37,8 @@ final class ListShipmentsByCursorHandler implements QueryHandler
         // Se valida/normaliza vía el enum (lanza ante un valor inválido), igual que ListShipments.
         $status = $query->status !== null ? ShipmentListSupport::status($query->status) : null;
         $source = $query->source !== null ? OrderSource::from($query->source)->value : null;
+        $statuses = ShipmentListSupport::statuses($query->statuses);
+        $deliveryMode = ShipmentListSupport::deliveryMode($query->deliveryMode);
 
         $page = $this->reader->listKeyset(
             limit: $query->limit,
@@ -44,9 +48,13 @@ final class ListShipmentsByCursorHandler implements QueryHandler
             destinationNodeId: $query->destinationNodeId,
             deliveryDateFrom: $query->deliveryDateFrom,
             deliveryDateTo: $query->deliveryDateTo,
+            statuses: $statuses,
+            deliveryMode: $deliveryMode,
         );
 
         // Avance operativo de la página entera en lote (mismo enriquecimiento que el listado por offset).
-        return new ShipmentPage(ShipmentListSupport::withProgress($page->items, $this->progress), $page->nextCursor);
+        $items = ShipmentListSupport::withDeliveryMode(ShipmentListSupport::withProgress($page->items, $this->progress), $this->deliveryModes);
+
+        return new ShipmentPage($items, $page->nextCursor);
     }
 }

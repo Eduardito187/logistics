@@ -22,9 +22,9 @@ use Logistics\Telemetry\Application\Command\DeleteGeofence\DeleteGeofenceHandler
 use Logistics\Telemetry\Application\Command\RecordVehiclePings\RecordVehiclePings;
 use Logistics\Telemetry\Application\Command\RecordVehiclePings\RecordVehiclePingsHandler;
 use Logistics\Telemetry\Application\Command\RedrawGeofence\RedrawGeofence;
+use Logistics\Telemetry\Application\Command\RedrawGeofence\RedrawGeofenceHandler;
 use Logistics\Telemetry\Application\Command\RefreshVehicleEtas\RefreshVehicleEtas;
 use Logistics\Telemetry\Application\Command\RefreshVehicleEtas\RefreshVehicleEtasHandler;
-use Logistics\Telemetry\Application\Command\RedrawGeofence\RedrawGeofenceHandler;
 use Logistics\Telemetry\Application\Command\RenameGeofence\RenameGeofence;
 use Logistics\Telemetry\Application\Command\RenameGeofence\RenameGeofenceHandler;
 use Logistics\Telemetry\Application\Contract\ActiveRouteReader;

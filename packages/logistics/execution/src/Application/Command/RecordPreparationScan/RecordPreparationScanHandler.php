@@ -19,7 +19,7 @@ use Logistics\Shared\Application\Command\CommandHandler;
  * Abre la entrega del envío si hace falta y registra el escaneo de preparación.
  *
  * Al abrir una entrega nueva lee el `fulfillment_mode` del envío solo para REGISTRARLO (reportes y
- * liquidaciones): todo pedido —OWNED, FBD o DROPSHIP— se despacha con el mismo flujo de escaneos propios.
+ * liquidaciones): cada pedido —OWNED, FBD o DROPSHIP— se despacha con el mismo flujo de escaneos propios.
  *
  * Idempotente: el agregado descarta el escaneo si ya existe su idempotencyKey; en ese caso no se
  * graba ningún evento nuevo.

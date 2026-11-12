@@ -31,7 +31,7 @@ final readonly class ListPlansByDateHandler implements QueryHandler
     /**
      * @return list<PlanView>|Page<PlanView>
      */
-    public function handle(Query $query): array|Page
+    public function handle(Query $query): array | Page
     {
         if (!$query instanceof ListPlansByDate) {
             throw PlanningException::because('ListPlansByDateHandler solo maneja ListPlansByDate');

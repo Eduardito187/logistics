@@ -16,11 +16,10 @@ use Logistics\Shipments\Application\ReadModel\ShipmentProgressView;
 interface ShipmentProgressReader
 {
     /**
-     * Avance de cada envío pedido, indexado por id. Todo envío pedido aparece en el resultado (con campos
+     * Avance de cada envío pedido, indexado por id. Cada envío pedido aparece en el resultado (con campos
      * null si no hay rastros). Tolerante: si una fuente no está disponible, sus campos quedan null.
      *
-     * @param list<string> $shipmentIds
-     *
+     * @param  list<string>                        $shipmentIds
      * @return array<string, ShipmentProgressView>
      */
     public function forShipmentIds(array $shipmentIds): array;

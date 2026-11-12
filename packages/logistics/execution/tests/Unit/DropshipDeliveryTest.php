@@ -17,7 +17,7 @@ use Logistics\Execution\Domain\ValueObject\ScanType;
 use Logistics\Shared\Domain\ValueObject\FulfillmentMode;
 
 /**
- * Flujo único de ejecución (decisión de negocio): todo pedido se despacha igual sin importar la propiedad.
+ * Flujo único de ejecución (decisión de negocio): cada pedido se despacha igual sin importar la propiedad.
  * OWNED, FBD y DROPSHIP recorren preparación → carga → salida → entrega con escaneos propios; el
  * `FulfillmentMode` queda registrado en la entrega solo como dato (reportes/liquidaciones).
  * Helpers con prefijo uniformFlow* para no colisionar con los globales de DeliveryTest (Pest un solo proceso).

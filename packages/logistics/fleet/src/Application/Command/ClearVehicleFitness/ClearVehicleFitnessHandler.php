@@ -16,7 +16,7 @@ use Logistics\Shared\Domain\Clock\Clock;
 /**
  * Habilita un vehículo NO APTO: el dominio valida que estuviera bloqueado y que haya nota de reparación;
  * se persiste el vehículo, se deja constancia en la bitácora de aptitud y se publica
- * `fleet.vehicle_cleared` al outbox, todo en la misma transacción (decorador del CommandBus).
+ * `fleet.vehicle_cleared` al outbox, cada paso en la misma transacción (decorador del CommandBus).
  *
  * @implements CommandHandler<ClearVehicleFitness>
  */

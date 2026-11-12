@@ -134,8 +134,7 @@ final class Shipment extends AggregateRoot
      * Carga agregada (kg y m³ totales) a partir de la foto de medidas de las líneas, y si alguna cayó al
      * default global. Totales null si alguna línea no tiene foto.
      *
-     * @param list<ShipmentLine> $lines
-     *
+     * @param  list<ShipmentLine>                                                               $lines
      * @return array{totalWeightKg: ?float, totalVolumeM3: ?float, measurementsDefaulted: bool}
      */
     private static function loadOf(array $lines): array

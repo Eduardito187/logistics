@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-// Configuración del contexto Recepción de envíos. Todo el geocoding es open-source y self-host
+// Configuración del contexto Recepción de envíos. El geocoding completo es open-source y self-host
 // (Nominatim/OpenStreetMap): sin Google, sin servicios de pago ni claves de API.
 return [
     // Geocodificador: resuelve una dirección a coordenada + confianza (contrato Geocoder).
@@ -117,5 +117,14 @@ return [
 
         // Timeout por request en segundos. Traer pedidos nunca debe colgar un worker.
         'timeout' => (int) env('SHIPMENTS_MAGENTO_TIMEOUT', 10),
+    ],
+
+    // Caché CORTA de las lecturas agregadas de tablero (resumen de envíos, conteos por estado y KPIs del
+    // día): absorbe el repolling de muchos teléfonos sin pegarle a la base en cada request. Se cachea la
+    // forma PRIMITIVA (array), nunca el objeto. TTL en segundos; 0 desactiva la caché. Store vacío = el
+    // store por defecto de la app (funciona en cualquier entorno, sin depender del .env local).
+    'read_cache' => [
+        'ttl' => (int) env('SHIPMENTS_READ_CACHE_TTL', 45),
+        'store' => env('SHIPMENTS_READ_CACHE_STORE'),
     ],
 ];

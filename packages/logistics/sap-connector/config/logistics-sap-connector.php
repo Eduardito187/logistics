@@ -7,7 +7,7 @@ use Logistics\SapConnector\Application\Notification\SapNotifiableEvents;
 // Configuración del conector SAP (capa anti-corrupción, ADR 002). Los secretos (credenciales de SAP)
 // van en .env / gestor de secretos, nunca en el repo ni en settings editables (P1-INFRA-04).
 return [
-    // Cola dedicada a TODO lo que habla con SAP (avisos, reconciliación, importación y los mensajes del
+    // Cola dedicada a CADA trabajo que habla con SAP (avisos, reconciliación, importación y los mensajes del
     // outbox con prefijo `sap_connector.`). Tiene sus propios workers: un SAP lento no frena a nadie más.
     'queue' => env('SAP_CONNECTOR_QUEUE', 'sap'),
 
@@ -38,9 +38,9 @@ return [
     // Avisos fire-and-forget a SAP (principio del dueño: a SAP le importan stock y registros; a nuestro
     // despacho, no). Tras cada hecho de la lista se registra el aviso en `sap_notifications`, se envía
     // async por la cola `sap` y se guarda la respuesta cruda. Errores, lentitud o caída de SAP NUNCA
-    // afectan nada de nuestro lado. Todo esto es editable desde Configuración → Integrations → SAP.
+    // afectan nada de nuestro lado. Esta sección es editable íntegramente desde Configuración → Integrations → SAP.
     'notifications' => [
-        // Eventos que se avisan (event_name exacto del outbox). Por defecto, todo el catálogo.
+        // Eventos que se avisan (event_name exacto del outbox). Por defecto, el catálogo completo.
         'events' => SapNotifiableEvents::defaults(),
 
         // Catálogo de eventos avisables (event_name => etiqueta), opciones del panel de Configuración.

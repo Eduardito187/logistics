@@ -201,7 +201,7 @@ final class TelemetryDemoSeeder extends Seeder
             'end_lng' => $lastLng,
             'distance_m' => round($distanceM, 2),
             'duration_s' => $durationS,
-            'moving_s' => $durationS, // todo el recorrido fue en movimiento
+            'moving_s' => $durationS, // el recorrido completo fue en movimiento
             'idle_s' => 0,
             'max_speed_kph' => $maxSpeed,
             'ping_count' => $pointCount,

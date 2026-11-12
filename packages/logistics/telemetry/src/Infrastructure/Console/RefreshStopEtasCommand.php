@@ -14,7 +14,7 @@ use Throwable;
 
 /**
  * Recalcula la ETA dinámica por parada de todos los vehículos con ruta del día abierta (o de uno solo). Corre
- * en el scheduler cada minuto; es el ÚNICO lugar donde se consulta OSRM para ETAs (fuera de todo request).
+ * en el scheduler cada minuto; es el ÚNICO lugar donde se consulta OSRM para ETAs (fuera de cualquier request).
  *
  * Un comando por vehículo (transacción corta por vehículo); un fallo de un vehículo no corta el resto.
  * Texto visible en inglés (regla de admin/consola); comentarios en español.

@@ -107,7 +107,7 @@ it('marca todas como leídas, respetando up_to', function (): void {
         ->assertOk()
         ->assertJsonPath('data.unread_count', 1);
 
-    // Sin up_to: todo lo existente queda leído.
+    // Sin up_to: lo existente queda leído íntegramente.
     $this->postJson('/api/v1/app/notifications/read-all')
         ->assertOk()
         ->assertJsonPath('data.unread_count', 0);

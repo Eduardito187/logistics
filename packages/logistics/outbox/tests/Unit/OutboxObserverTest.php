@@ -12,6 +12,8 @@ use Logistics\Outbox\Domain\ValueObject\OutboxStatus;
 use Logistics\Shared\Domain\Event\DomainEvent;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
+const OUTBOX_OBSERVER_REACTOR_DOWN = 'reactor down';
+
 /**
  * Punto de extensión de observadores del outbox: un observador que lanza NUNCA cambia el desenlace del
  * despacho, los reintentos ni el dead-letter, y no impide que los demás observadores se ejecuten.
@@ -125,7 +127,10 @@ it('un observador que lanza no cambia un despacho exitoso y no frena a los demá
         $store,
         new class implements MessageDispatcher
         {
-            public function dispatch(OutboxMessage $message): void {}
+            public function dispatch(OutboxMessage $message): void
+            {
+                // Despacho exitoso a propósito: la prueba solo observa a los observadores, no al destino.
+            }
         },
         observers: [$exploding, $recording],
     );
@@ -149,7 +154,7 @@ it('un observador que lanza no cambia el backoff de un despacho fallido', functi
         {
             public function dispatch(OutboxMessage $message): void
             {
-                throw new RuntimeException('reactor down');
+                throw new RuntimeException(OUTBOX_OBSERVER_REACTOR_DOWN);
             }
         },
         observers: [explodingObserver()],
@@ -161,7 +166,7 @@ it('un observador que lanza no cambia el backoff de un despacho fallido', functi
     expect($outcome)->toBe(Outcome::Failed)
         ->and($message->status())->toBe(OutboxStatus::Failed)
         ->and($message->attempts())->toBe(1)
-        ->and($message->lastError())->toBe('reactor down')
+        ->and($message->lastError())->toBe(OUTBOX_OBSERVER_REACTOR_DOWN)
         ->and($message->availableAt())->toEqual($now->add(new DateInterval('PT1M')));
 });
 
@@ -175,7 +180,7 @@ it('un observador que lanza no evita el dead-letter al agotar los intentos', fun
         {
             public function dispatch(OutboxMessage $message): void
             {
-                throw new RuntimeException('reactor down');
+                throw new RuntimeException(OUTBOX_OBSERVER_REACTOR_DOWN);
             }
         },
         maxAttempts: 1,

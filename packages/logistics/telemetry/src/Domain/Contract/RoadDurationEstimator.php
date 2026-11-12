@@ -17,8 +17,7 @@ interface RoadDurationEstimator
     /**
      * Un tramo por cada par consecutivo de `$waypoints` (n puntos → n-1 tramos), o null si no se pudo.
      *
-     * @param list<GeoPoint> $waypoints
-     *
+     * @param  list<GeoPoint>                                         $waypoints
      * @return list<array{distance_m: float, duration_s: float}>|null
      */
     public function legs(array $waypoints): ?array;

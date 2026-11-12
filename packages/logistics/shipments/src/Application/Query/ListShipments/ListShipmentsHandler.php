@@ -7,6 +7,7 @@ namespace Logistics\Shipments\Application\Query\ListShipments;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shared\Application\ReadModel\Page;
+use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Query\ShipmentListSupport;
@@ -33,6 +34,7 @@ final class ListShipmentsHandler implements QueryHandler
     public function __construct(
         private readonly ShipmentListReader $reader,
         private readonly ShipmentProgressReader $progress,
+        private readonly DeliveryModeReader $deliveryModes,
     ) {}
 
     /**
@@ -49,6 +51,8 @@ final class ListShipmentsHandler implements QueryHandler
         // en cualquier capitalización (planned/PLANNED).
         $status = $query->status !== null ? ShipmentListSupport::status($query->status) : null;
         $source = $query->source !== null ? OrderSource::from($query->source)->value : null;
+        $statuses = ShipmentListSupport::statuses($query->statuses);
+        $deliveryMode = ShipmentListSupport::deliveryMode($query->deliveryMode);
 
         $views = $this->reader->list(
             status: $status,
@@ -58,9 +62,11 @@ final class ListShipmentsHandler implements QueryHandler
             offset: $query->offset,
             deliveryDateFrom: $query->deliveryDateFrom,
             deliveryDateTo: $query->deliveryDateTo,
+            statuses: $statuses,
+            deliveryMode: $deliveryMode,
         );
 
-        $views = ShipmentListSupport::withProgress($views, $this->progress);
+        $views = ShipmentListSupport::withDeliveryMode(ShipmentListSupport::withProgress($views, $this->progress), $this->deliveryModes);
 
         if ($query->limit === null) {
             return $views;
@@ -72,6 +78,8 @@ final class ListShipmentsHandler implements QueryHandler
             destinationNodeId: $query->destinationNodeId,
             deliveryDateFrom: $query->deliveryDateFrom,
             deliveryDateTo: $query->deliveryDateTo,
+            statuses: $statuses,
+            deliveryMode: $deliveryMode,
         ));
     }
 }

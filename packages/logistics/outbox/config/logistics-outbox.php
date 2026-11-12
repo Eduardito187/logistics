@@ -24,6 +24,7 @@ use Logistics\Shipments\Infrastructure\Dispatch\ShipmentStatusProgressionDispatc
 use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
 use Logistics\Tracking\Infrastructure\Outbox\CancelOnOrderCancelled;
 use Logistics\Tracking\Infrastructure\Outbox\InProgressOnLabelsEmitted;
+use Logistics\Tracking\Infrastructure\Outbox\TruckPositionOnVehicleReport;
 use Logistics\Tracking\Infrastructure\Outbox\OpenTrackingOnOrderPlaced;
 use Logistics\Tracking\Infrastructure\Outbox\ProcessingOnOrderPaid;
 use Logistics\Tracking\Infrastructure\Outbox\ProjectExecutionTracking;
@@ -163,6 +164,8 @@ return [
         'planning.plan_published' => ShipmentStatusProgressionDispatcher::class,
         // Un solo reactor cada uno (no necesitan abanico): etiqueta generada → «en curso»; devolución → «devuelta».
         'labels.labels_emitted' => InProgressOnLabelsEmitted::class,
+        // Lote de telemetría → posición del camión en el seguimiento de cada envío a bordo.
+        'telemetry.vehicle_position_reported' => TruckPositionOnVehicleReport::class,
         'returns.return_initiated' => ReturnedOnReturnInitiated::class,
     ],
 

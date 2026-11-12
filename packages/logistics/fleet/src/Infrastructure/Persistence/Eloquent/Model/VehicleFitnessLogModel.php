@@ -11,15 +11,15 @@ use Illuminate\Support\Carbon;
 /**
  * Modelo Eloquent de la bitácora `fleet_vehicle_fitness_log` (append-only). Detalle de infraestructura.
  *
- * @property string                 $id
- * @property string                 $vehicle_id
- * @property string                 $action
- * @property Carbon                 $occurred_at
- * @property string|null            $reason
- * @property list<string>|null      $failed_items
- * @property string|null            $inspection_id
- * @property string|null            $actor_id
- * @property string|null            $actor_label
+ * @property string            $id
+ * @property string            $vehicle_id
+ * @property string            $action
+ * @property Carbon            $occurred_at
+ * @property string|null       $reason
+ * @property list<string>|null $failed_items
+ * @property string|null       $inspection_id
+ * @property string|null       $actor_id
+ * @property string|null       $actor_label
  * @property-read VehicleModel|null $vehicle
  */
 final class VehicleFitnessLogModel extends Model

@@ -16,6 +16,9 @@ use Logistics\Execution\Domain\ValueObject\GeoPoint;
 // Agregado de evidencia anti-fraude: la captura es inmutable (con hash de integridad + auditoría) y graba
 // el evento que dispara la validación asíncrona; solo evoluciona el estado de validación.
 
+// Instante de validación usado en varios casos (un solo literal por archivo).
+const DEVIDENCE_VALIDATED_AT = '2026-11-05T13:00:00+00:00';
+
 function captureEvidence(?string $hash = null): DeliveryEvidence
 {
     return DeliveryEvidence::capture(
@@ -52,7 +55,7 @@ it('rechaza un hash que no es SHA-256 (64 hex)', function (): void {
 it('aplica el resultado de validación sin tocar la captura', function (): void {
     $evidence = captureEvidence();
 
-    $evidence->applyValidation(EvidenceValidationStatus::Mismatch, 'número no coincide', new DateTimeImmutable('2026-11-05T13:00:00+00:00'));
+    $evidence->applyValidation(EvidenceValidationStatus::Mismatch, 'número no coincide', new DateTimeImmutable(DEVIDENCE_VALIDATED_AT));
 
     expect($evidence->validationStatus())->toBe(EvidenceValidationStatus::Mismatch)
         ->and($evidence->validationDetail())->toBe('número no coincide')
@@ -64,7 +67,7 @@ it('graba DeliveryEvidenceValidated al cambiar el resultado de validación, una 
     $evidence = captureEvidence();
     $evidence->releaseEvents();
 
-    $at = new DateTimeImmutable('2026-11-05T13:00:00+00:00');
+    $at = new DateTimeImmutable(DEVIDENCE_VALIDATED_AT);
     $evidence->applyValidation(EvidenceValidationStatus::Ok, null, $at, 'evidence-sidecar');
 
     $events = $evidence->releaseEvents();
@@ -79,7 +82,7 @@ it('graba DeliveryEvidenceValidated al cambiar el resultado de validación, una 
             'validation_status' => 'ok',
             'previous_status' => 'pending',
             'validated_by' => 'evidence-sidecar',
-            'occurred_at' => '2026-11-05T13:00:00+00:00',
+            'occurred_at' => DEVIDENCE_VALIDATED_AT,
         ]);
 
     // Mismo resultado reenviado (reintento del validador): no se duplica el hecho.

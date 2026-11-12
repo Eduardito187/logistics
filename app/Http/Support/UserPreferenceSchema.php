@@ -61,8 +61,7 @@ final class UserPreferenceSchema
      * Valida un mapa clave→valor entrante. `null` como valor significa "borrar la clave" y siempre es
      * válido para una clave aceptada. Devuelve errores por campo (`preferences.<clave>`), vacío si es válido.
      *
-     * @param array<array-key, mixed> $preferences
-     *
+     * @param  array<array-key, mixed>     $preferences
      * @return array<string, list<string>>
      */
     public static function validate(array $preferences): array
@@ -96,12 +95,32 @@ final class UserPreferenceSchema
         return match ($type) {
             'number' => is_numeric($value) ? (float) $value : $value,
             'string' => is_string($value) ? trim($value) : $value,
-            'string_list' => is_array($value) ? array_values(array_unique(array_map(
-                static fn (mixed $item): string => trim(is_string($item) ? $item : ''),
-                $value,
-            ))) : $value,
+            'string_list' => is_array($value) ? self::normalizeList($value) : $value,
             default => $value,
         };
+    }
+
+    /**
+     * Lista de strings recortados y sin duplicados (un ítem no string queda como cadena vacía).
+     *
+     * @param  array<array-key, mixed> $value
+     * @return list<string>
+     */
+    private static function normalizeList(array $value): array
+    {
+        return array_values(array_unique(array_map(
+            static fn (mixed $item): string => trim(self::stringOrEmpty($item)),
+            $value,
+        )));
+    }
+
+    private static function stringOrEmpty(mixed $item): string
+    {
+        if (is_string($item)) {
+            return $item;
+        }
+
+        return '';
     }
 
     private static function errorFor(string $key, mixed $value): ?string

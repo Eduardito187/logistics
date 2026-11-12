@@ -22,7 +22,7 @@ use Throwable;
  * Lee tablas de otros contextos (network_nodes, shipments, shipment_lines, shipment_units) en SOLO
  * lectura y sin importar sus clases: el acoplamiento es al esquema de lectura, no al dominio ajeno.
  *
- * Regla de producto (dueño): nombre + SKU siempre; si falta el nombre se usa el SKU; si falta todo,
+ * Regla de producto (dueño): nombre + SKU siempre; si falta el nombre se usa el SKU; si faltan ambos,
  * "Producto". Nunca null/vacío ni "bulto".
  *
  * @phpstan-import-type ShipmentShape from CarrierAssignmentView
@@ -174,7 +174,7 @@ final readonly class DbCarrierAssignmentReader implements CarrierAssignmentReade
     /**
      * Cabeceras de envío por id.
      *
-     * @param  list<string>                                                                                                                  $shipmentIds
+     * @param  list<string>                                                                                                                     $shipmentIds
      * @return array<string, array{external_id: string, order_reference: string|null, customer_name: string, destination_node_id: string|null}>
      */
     private function shipments(array $shipmentIds): array
@@ -218,31 +218,41 @@ final readonly class DbCarrierAssignmentReader implements CarrierAssignmentReade
                 ->get(['u.id', 'u.shipment_id', 'u.piece_index', 'u.piece_total', 'l.sku', 'l.product_name']);
 
             foreach ($rows as $row) {
-                $sku = trim(self::str($row->sku));
-                $name = trim(self::str($row->product_name));
-                if ($name === '') {
-                    $name = $sku !== '' ? $sku : self::PRODUCT_FALLBACK;
-                }
-                $pieceIndex = (int) $row->piece_index;
-                $pieceTotal = max(1, (int) $row->piece_total);
-
-                $label = $sku !== '' && $sku !== $name ? "{$name} · {$sku}" : $name;
-                if ($pieceTotal > 1) {
-                    $label .= " ({$pieceIndex} de {$pieceTotal})";
-                }
-
-                $out[self::str($row->shipment_id)][] = [
-                    'unit_id' => self::str($row->id),
-                    'sku' => $sku,
-                    'product_name' => $name,
-                    'product_label' => $label,
-                    'piece_index' => $pieceIndex,
-                    'piece_total' => $pieceTotal,
-                ];
+                $out[self::str($row->shipment_id)][] = self::unitShape($row);
             }
         }
 
         return $out;
+    }
+
+    /**
+     * Forma primitiva de un producto físico (unidad + línea): nombre + SKU siempre, nunca vacío.
+     *
+     * @return UnitShape
+     */
+    private static function unitShape(object $row): array
+    {
+        $sku = trim(self::str($row->sku));
+        $name = trim(self::str($row->product_name));
+        if ($name === '') {
+            $name = $sku !== '' ? $sku : self::PRODUCT_FALLBACK;
+        }
+        $pieceIndex = (int) $row->piece_index;
+        $pieceTotal = max(1, (int) $row->piece_total);
+
+        $label = $sku !== '' && $sku !== $name ? "{$name} · {$sku}" : $name;
+        if ($pieceTotal > 1) {
+            $label .= " ({$pieceIndex} de {$pieceTotal})";
+        }
+
+        return [
+            'unit_id' => self::str($row->id),
+            'sku' => $sku,
+            'product_name' => $name,
+            'product_label' => $label,
+            'piece_index' => $pieceIndex,
+            'piece_total' => $pieceTotal,
+        ];
     }
 
     /**
@@ -299,7 +309,11 @@ final readonly class DbCarrierAssignmentReader implements CarrierAssignmentReade
 
     private static function str(mixed $value): string
     {
-        return \is_string($value) ? $value : (\is_scalar($value) ? (string) $value : '');
+        if (\is_string($value)) {
+            return $value;
+        }
+
+        return \is_scalar($value) ? (string) $value : '';
     }
 
     private static function nullableStr(mixed $value): ?string

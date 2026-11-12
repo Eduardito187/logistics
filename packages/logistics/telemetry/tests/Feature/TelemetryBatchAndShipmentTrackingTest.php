@@ -15,6 +15,9 @@ use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\PingRecord;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\TripRecord;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\VehiclePositionRecord;
 
+// Desplazamiento relativo usado por varias lecturas/entregas del lote.
+const TBT_THIRTY_MINUTES_AGO = '-30 minutes';
+
 /**
  * Pedidos de la auditoría de la app (#12, #17, #20 y seguimiento por envío) contra el stack completo:
  *
@@ -262,7 +265,7 @@ it('returns the breadcrumbs of a shipment only within its on-board window', func
     tbtPost($this, $vehicleId, [
         ['lat' => -16.40, 'lng' => -68.10, 'recorded_at' => tbtAt('-90 minutes'), 'device_id' => 'd'],
         ['lat' => -16.50, 'lng' => -68.150, 'recorded_at' => tbtAt('-50 minutes'), 'device_id' => 'd'],
-        ['lat' => -16.51, 'lng' => -68.150, 'recorded_at' => tbtAt('-30 minutes'), 'device_id' => 'd'],
+        ['lat' => -16.51, 'lng' => -68.150, 'recorded_at' => tbtAt(TBT_THIRTY_MINUTES_AGO), 'device_id' => 'd'],
         ['lat' => -16.52, 'lng' => -68.150, 'recorded_at' => tbtAt('-10 minutes'), 'device_id' => 'd'],
     ])->assertStatus(202);
 
@@ -289,7 +292,7 @@ it('raises a route deviation alert with its outbox event when the loaded vehicle
     config()->set('logistics-telemetry.deviation.min_seconds', 60);
 
     $vehicleId = Uuid::generate()->value;
-    tbtDelivery(Uuid::generate()->value, $vehicleId, 'IN_TRANSIT', tbtAt('-30 minutes'));
+    tbtDelivery(Uuid::generate()->value, $vehicleId, 'IN_TRANSIT', tbtAt(TBT_THIRTY_MINUTES_AGO));
     DB::table('planning_plans')->insert([
         'id' => Uuid::generate()->value,
         'plan_date' => tbtToday(),
@@ -380,7 +383,7 @@ it('computes a dynamic ETA per remaining stop with the straight-line fallback an
             'lat' => -16.50, 'lng' => $lng, 'status' => 'PENDING', 'created_at' => now(), 'updated_at' => now(),
         ]);
     }
-    tbtDelivery($second, $vehicleId, 'IN_TRANSIT', tbtAt('-30 minutes'));
+    tbtDelivery($second, $vehicleId, 'IN_TRANSIT', tbtAt(TBT_THIRTY_MINUTES_AGO));
 
     tbtPost($this, $vehicleId, [['lat' => -16.50, 'lng' => -68.15, 'recorded_at' => tbtAt('-1 minute'), 'speed_kph' => 20.0]])
         ->assertStatus(202);

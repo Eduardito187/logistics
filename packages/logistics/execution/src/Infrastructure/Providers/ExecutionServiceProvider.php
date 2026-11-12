@@ -7,12 +7,18 @@ namespace Logistics\Execution\Infrastructure\Providers;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRoute;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRouteHandler;
+use Logistics\Execution\Application\Command\AssignShelfLocation\AssignShelfLocation;
+use Logistics\Execution\Application\Command\AssignShelfLocation\AssignShelfLocationHandler;
 use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRoute;
 use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRouteHandler;
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidence;
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidenceHandler;
+use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRoute;
+use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRouteHandler;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDeparted;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDepartedHandler;
+use Logistics\Execution\Application\Command\MarkStopArrived\MarkStopArrived;
+use Logistics\Execution\Application\Command\MarkStopArrived\MarkStopArrivedHandler;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReception;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReceptionHandler;
 use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNode;
@@ -37,24 +43,39 @@ use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIs
 use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIssueHandler;
 use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleIncident;
 use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleIncidentHandler;
+use Logistics\Execution\Application\Command\StartDriverRoute\StartDriverRoute;
+use Logistics\Execution\Application\Command\StartDriverRoute\StartDriverRouteHandler;
 use Logistics\Execution\Application\Contract\DeliveryEvidenceReader;
 use Logistics\Execution\Application\Contract\DeliveryReferenceReader;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
+use Logistics\Execution\Application\Contract\NodeReceptionListReader;
+use Logistics\Execution\Application\Contract\NodeReceptionTargetReader;
 use Logistics\Execution\Application\Contract\PlannedRouteStopsProvider;
 use Logistics\Execution\Application\Contract\RouteGeometryReader;
+use Logistics\Execution\Application\Contract\ScanBatchLedger;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
+use Logistics\Execution\Application\Contract\ShipmentUnitIdsReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitProductReader;
 use Logistics\Execution\Application\Contract\StopEnrichmentReader;
+use Logistics\Execution\Application\Contract\VehicleFitnessReader;
 use Logistics\Execution\Application\Query\GetDeliveryEvidence\GetDeliveryEvidence;
 use Logistics\Execution\Application\Query\GetDeliveryEvidence\GetDeliveryEvidenceHandler;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryState;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryStateHandler;
 use Logistics\Execution\Application\Query\GetDriverRoute\GetDriverRoute;
 use Logistics\Execution\Application\Query\GetDriverRoute\GetDriverRouteHandler;
+use Logistics\Execution\Application\Query\GetDriverRouteLifecycle\GetDriverRouteLifecycle;
+use Logistics\Execution\Application\Query\GetDriverRouteLifecycle\GetDriverRouteLifecycleHandler;
 use Logistics\Execution\Application\Query\GetNodeReception\GetNodeReception;
 use Logistics\Execution\Application\Query\GetNodeReception\GetNodeReceptionHandler;
+use Logistics\Execution\Application\Query\GetRouteStop\GetRouteStop;
+use Logistics\Execution\Application\Query\GetRouteStop\GetRouteStopHandler;
 use Logistics\Execution\Application\Query\ListDeliveriesByVehicle\ListDeliveriesByVehicle;
 use Logistics\Execution\Application\Query\ListDeliveriesByVehicle\ListDeliveriesByVehicleHandler;
+use Logistics\Execution\Application\Query\ListNodeReceptions\ListNodeReceptions;
+use Logistics\Execution\Application\Query\ListNodeReceptions\ListNodeReceptionsHandler;
+use Logistics\Execution\Application\Query\ResolveNodeReceptionTarget\ResolveNodeReceptionTarget;
+use Logistics\Execution\Application\Query\ResolveNodeReceptionTarget\ResolveNodeReceptionTargetHandler;
 use Logistics\Execution\Application\Query\VerifyLabel\VerifyLabel;
 use Logistics\Execution\Application\Query\VerifyLabel\VerifyLabelHandler;
 use Logistics\Execution\Domain\Contract\DeliveryEvidenceRepository;
@@ -74,11 +95,16 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentNodeReceptio
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleIncidentRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleRouteRepository;
 use Logistics\Execution\Infrastructure\ReadModel\DbDeliveryReferenceReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbNodeReceptionListReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbNodeReceptionTargetReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbPlannedRouteStopsProvider;
 use Logistics\Execution\Infrastructure\ReadModel\DbRouteGeometryReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbScanBatchLedger;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentFulfillmentReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitIdsReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitProductReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbStopEnrichmentReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbVehicleFitnessReader;
 use Logistics\Execution\Infrastructure\ReadModel\EloquentDeliveryEvidenceReader;
 use Logistics\Execution\Infrastructure\Storage\FilesystemEvidenceStorage;
 use Logistics\Outbox\Application\RecordDomainEvents;
@@ -122,6 +148,30 @@ final class ExecutionServiceProvider extends ServiceProvider
         VerifyLabel::class => VerifyLabelHandler::class,
     ];
 
+    // ── Bloque field-flow: ciclo de la ruta del día, llegada a parada (KPIs) ──────────────────────────
+    /**
+     * @var array<class-string, class-string>
+     */
+    private const array FIELD_FLOW_HANDLERS = [
+        StartDriverRoute::class => StartDriverRouteHandler::class,
+        CloseDriverRoute::class => CloseDriverRouteHandler::class,
+        MarkStopArrived::class => MarkStopArrivedHandler::class,
+        GetDriverRouteLifecycle::class => GetDriverRouteLifecycleHandler::class,
+        GetRouteStop::class => GetRouteStopHandler::class,
+    ];
+    // ── fin bloque field-flow ──
+
+    // ── Bloque node-receptions: apertura derivada, listado, estante, conciliación con motivos ─────────
+    /**
+     * @var array<class-string, class-string>
+     */
+    private const array NODE_RECEPTION_HANDLERS = [
+        ResolveNodeReceptionTarget::class => ResolveNodeReceptionTargetHandler::class,
+        ListNodeReceptions::class => ListNodeReceptionsHandler::class,
+        AssignShelfLocation::class => AssignShelfLocationHandler::class,
+    ];
+    // ── fin bloque node-receptions ──
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-execution.php', 'logistics-execution');
@@ -148,6 +198,20 @@ final class ExecutionServiceProvider extends ServiceProvider
         $this->app->bind(DeliveryReferenceReader::class, static function ($app): DeliveryReferenceReader {
             return new DbDeliveryReferenceReader($app->make('db')->connection());
         });
+
+        // ── Bloque field-flow ──────────────────────────────────────────────────────────────────────────
+        // Bultos de cada envío (units_total / unit_ids) para paradas y entregas; libro de idempotencia por
+        // ítem del lote de escaneos; aptitud del vehículo (checklist pre-viaje de Flota).
+        $this->app->bind(ShipmentUnitIdsReader::class, static function ($app): ShipmentUnitIdsReader {
+            return new DbShipmentUnitIdsReader($app->make('db')->connection());
+        });
+        $this->app->bind(ScanBatchLedger::class, static function ($app): ScanBatchLedger {
+            return new DbScanBatchLedger($app->make('db')->connection());
+        });
+        $this->app->bind(VehicleFitnessReader::class, static function ($app): VehicleFitnessReader {
+            return new DbVehicleFitnessReader($app->make('db')->connection());
+        });
+        // ── fin bloque field-flow ──
         $this->app->bind(RouteGeometryReader::class, static function ($app): RouteGeometryReader {
             // Si el plan existe sin geometría, se le pide a Planificación (su servicio de aplicación) que la
             // calcule y persista; Ejecución no escribe sobre Planning por sí misma.
@@ -222,7 +286,26 @@ final class ExecutionServiceProvider extends ServiceProvider
 
             return new StubLabelVerificationGateway(array_values(array_map('intval', $knownKeyIds)));
         });
+
+        // Bloque node-receptions (ver registerNodeReceptionReaders()).
+        $this->registerNodeReceptionReaders();
     }
+
+    // ── Bloque node-receptions ─────────────────────────────────────────────────────────────────────
+    /**
+     * Lecturas cross-context de la recepción en nodo (read-only, query builder): derivar destino/origen/
+     * manifiesto al abrir con solo el envío, y el listado paginado por nodo y estado sin N+1.
+     */
+    private function registerNodeReceptionReaders(): void
+    {
+        $this->app->bind(NodeReceptionTargetReader::class, static function ($app): NodeReceptionTargetReader {
+            return new DbNodeReceptionTargetReader($app->make('db')->connection());
+        });
+        $this->app->bind(NodeReceptionListReader::class, static function ($app): NodeReceptionListReader {
+            return new DbNodeReceptionListReader($app->make('db')->connection());
+        });
+    }
+    // ── fin bloque node-receptions ──
 
     /**
      * Decodifica las claves públicas de etiquetas de base64 a bytes crudos. Descarta las que no decodifican
@@ -259,6 +342,14 @@ final class ExecutionServiceProvider extends ServiceProvider
         /** @var HandlerRegistry $registry */
         $registry = $this->app->make(HandlerRegistry::class);
         foreach (self::HANDLERS as $message => $handler) {
+            $registry->register($message, $handler);
+        }
+        // Bloque field-flow (ver FIELD_FLOW_HANDLERS).
+        foreach (self::FIELD_FLOW_HANDLERS as $message => $handler) {
+            $registry->register($message, $handler);
+        }
+        // Bloque node-receptions (ver NODE_RECEPTION_HANDLERS).
+        foreach (self::NODE_RECEPTION_HANDLERS as $message => $handler) {
             $registry->register($message, $handler);
         }
 

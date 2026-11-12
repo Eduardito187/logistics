@@ -140,7 +140,7 @@ final class PromiseServiceProvider extends ServiceProvider
         $this->app->bind(MunicipalitySlotReserver::class, CapacityBackedMunicipalitySlotReserver::class);
 
         // Regla de negocio: la promesa nunca depende del stock ni del tipo de propiedad
-        // (OWNED/FBD/DROPSHIP). La plataforma hace despacho; todo pedido se promete igual, así que no
+        // (OWNED/FBD/DROPSHIP). La plataforma hace despacho; cada pedido se promete igual, así que no
         // hay puerto de lead time por modo de fulfillment.
     }
 

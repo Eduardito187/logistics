@@ -34,8 +34,7 @@ interface ShipmentListReader
      * `$deliveryMode` (home_delivery / store_pickup) filtra por la modalidad derivada del tipo del nodo
      * destino (ver DeliveryMode).
      *
-     * @param list<string>|null $statuses
-     *
+     * @param  list<string>|null  $statuses
      * @return list<ShipmentView>
      */
     public function list(

@@ -7,7 +7,7 @@ namespace Logistics\SapConnector\Application\Contract;
 use Logistics\SapConnector\Domain\ValueObject\SapNotificationId;
 
 /**
- * Puerto de encolado del trabajo que habla con SAP. TODO lo que toca SAP corre en la cola dedicada `sap`
+ * Puerto de encolado del trabajo que habla con SAP. CADA trabajo que toca SAP corre en la cola dedicada `sap`
  * (workers propios), nunca dentro de un request de usuario ni en la cola `outbox` compartida: así la
  * lentitud o caída de SAP no frena a nadie más. Infrastructure lo implementa con jobs de Laravel.
  */

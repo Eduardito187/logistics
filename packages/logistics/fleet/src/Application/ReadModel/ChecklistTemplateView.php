@@ -29,7 +29,7 @@ final readonly class ChecklistTemplateView
     {
         $items = [];
         foreach ($template->items() as $position => $item) {
-            $items[] =$item->toArray() + ['position' => $position + 1];
+            $items[] = $item->toArray() + ['position' => $position + 1];
         }
 
         return new self(

@@ -7,11 +7,14 @@ namespace Logistics\Execution\Application\Query\ListDeliveriesByVehicle;
 use Logistics\Shared\Application\Query\Query;
 
 /**
- * Devuelve las entregas asignadas a un vehículo: la hoja de ruta del chofer.
+ * Devuelve las entregas asignadas a un vehículo: la hoja de ruta del chofer. Con $limit pagina en la base
+ * (LIMIT/OFFSET); sin él, la colección completa (comportamiento histórico).
  */
 final readonly class ListDeliveriesByVehicle implements Query
 {
     public function __construct(
         public string $vehicleId,
+        public ?int $limit = null,
+        public int $offset = 0,
     ) {}
 }

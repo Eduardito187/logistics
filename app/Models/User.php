@@ -167,11 +167,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
      */
     public function assignedCarrier(): ?array
     {
-        if ($this->carrier_id === null || $this->carrier_id === '') {
-            return null;
-        }
-
-        if (!in_array(Role::Transportista, $this->roles(), true)) {
+        if (!$this->hasCarrierLink()) {
             return null;
         }
 
@@ -192,6 +188,17 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
     }
 
     /**
+     * La cuenta tiene transportista vinculado Y el rol Transportista (cortocircuito: sin vínculo no se
+     * consultan los roles).
+     */
+    private function hasCarrierLink(): bool
+    {
+        return $this->carrier_id !== null
+            && $this->carrier_id !== ''
+            && in_array(Role::Transportista, $this->roles(), true);
+    }
+
+    /**
      * Acceso al panel de administración (Filament).
      *
      * El admin es el ÚNICO frontend de la plataforma: cada rol entra y ve SOLO las secciones que le
@@ -203,7 +210,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
      * rol queda fuera por defecto (seguro).
      *
      * Matriz rol → acceso (resumen; el detalle por sección está en cada Resource/Page):
-     *   - Admin ........... TODO el panel, incluida Administration (seguridad, config, infraestructura).
+     *   - Admin ........... el panel COMPLETO, incluida Administration (seguridad, config, infraestructura).
      *   - Supervisor ...... oficina: Operations, Fleet, Network, Commerce (NO Administration).
      *   - Chofer .......... mínimo de campo: entregas, rutas, escaneos, seguimiento, tablero de última milla.
      *   - Preparador ...... mínimo de campo: escaneos de preparación.

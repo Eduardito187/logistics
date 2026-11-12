@@ -207,9 +207,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Carrier'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
         '403':
           $ref: '#/components/responses/CarrierScopeForbidden'
       security:
@@ -256,9 +254,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/CarrierAssignment'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
         '403':
           $ref: '#/components/responses/CarrierScopeForbidden'
         '422':
@@ -414,9 +410,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Settlement'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
         '403':
           $ref: '#/components/responses/CarrierScopeForbidden'
       security:
@@ -920,6 +914,100 @@ paths:
           $ref: '#/components/responses/ExecutionValidationError'
       security:
       - appBearer: []
+  /app/deliveries/{shipmentId}/complete:
+    post:
+      tags:
+      - execution
+      operationId: completeDelivery
+      summary: Alias of proof-of-delivery for a whole shipment (unit_ids), one confirmation/photo/GPS
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProofOfDeliveryRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '422':
+          $ref: '#/components/responses/ExecutionValidationError'
+      security:
+      - appBearer: []
+  /app/deliveries/{shipmentId}/arrived:
+    post:
+      tags:
+      - execution
+      operationId: markStopArrived
+      summary: Report arrival at the stop (geofence or manual); first arrival wins
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StopArrivedRequest'
+      responses:
+        '200':
+          description: The stop with arrived_at
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DriverRouteStop'
+        '422':
+          description: The shipment is on no route
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/deliveries/scans/batch:
+    post:
+      tags:
+      - execution
+      operationId: recordScanBatch
+      summary: Drain the offline queue in one request (per-item result, 207)
+      description: >-
+        Each item goes through the same command as its single endpoint. Idempotent per item key (also against
+        keys already applied by the single endpoints). A rejected item can be retried with the same key.
+        429 responses carry Retry-After.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanBatchRequest'
+      responses:
+        '207':
+          description: Per-item results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanBatchResponse'
+        '422':
+          $ref: '#/components/responses/ExecutionValidationError'
+      security:
+      - appBearer: []
   /app/deliveries/scans/load:
     post:
       tags:
@@ -981,6 +1069,131 @@ paths:
       responses:
         '201':
           $ref: '#/components/responses/NodeReceptionState'
+        '403':
+          description: Store user on another node
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ExecutionValidationError'
+      security:
+      - appBearer: []
+    get:
+      tags:
+      - execution
+      operationId: listNodeReceptions
+      summary: List node receptions with their reception status (no N+1)
+      parameters:
+      - name: node_id
+        in: query
+        required: false
+        description: Store users default to (and are limited to) their own node.
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - open
+          - reconciled
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Receptions
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NodeReceptionSummary'
+                  meta:
+                    $ref: '#/components/schemas/ListMeta'
+        '403':
+          description: Store user on another node
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ExecutionValidationError'
+      security:
+      - appBearer: []
+  /app/node-receptions/{shipmentId}/units/{unitId}/location:
+    post:
+      tags:
+      - execution
+      operationId: assignShelfLocation
+      summary: Assign the shelf location of a received product (idempotent)
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: unitId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignShelfLocationRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/NodeReceptionState'
+        '403':
+          description: Store user on another node
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ExecutionValidationError'
+      security:
+      - appBearer: []
+  /app/node-receptions/{shipmentId}/units/location:
+    post:
+      tags:
+      - execution
+      operationId: assignShelfLocationBatch
+      summary: Assign one shelf location to many received products (atomic batch, unit_ids required)
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignShelfLocationRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/NodeReceptionState'
+        '403':
+          description: Store user on another node
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
       security:
@@ -1410,10 +1623,13 @@ paths:
       - name: date
         in: query
         required: false
-        description: Assembly date to query (Y-m-d). Defaults to today in America/La_Paz.
+        description: >-
+          Assembly date (YYYY-MM-DD). Defaults to today in America/La_Paz. A full ISO 8601 date-time is tolerated
+          and normalized to the calendar date as written by the client.
         schema:
           type: string
           format: date
+          example: '2026-11-12'
       responses:
         '200':
           description: The authenticated driver's crew assignment for the date
@@ -1450,9 +1666,24 @@ paths:
         required: false
         schema:
           type: boolean
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: Collection of pre-trip checklists
+          description: Collection of pre-trip checklists (newest first)
           content:
             application/json:
               schema:
@@ -1463,7 +1694,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/PreTripChecklist'
                   meta:
-                    $ref: '#/components/schemas/CollectionMeta'
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - appBearer: []
     post:
@@ -1479,7 +1710,163 @@ paths:
               $ref: '#/components/schemas/ConductPreTripChecklistRequest'
       responses:
         '201':
-          description: Pre-trip checklist recorded
+          description: >-
+            Pre-trip checklist recorded. A failed CRITICAL item marks the vehicle unfit to dispatch until a
+            supervisor clears it (crews/departures/assignments then answer 422).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PreTripChecklistResult'
+        '422':
+          $ref: '#/components/responses/FleetValidationError'
+      security:
+      - appBearer: []
+  /app/fleet/pre-trip-checklists/latest:
+    get:
+      tags:
+      - Fleet
+      summary: Latest pre-trip checklist of a vehicle
+      operationId: fleetGetLatestPreTripChecklist
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Latest checklist
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PreTripChecklist'
+        '404':
+          description: No checklist for the vehicle
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/fleet/checklist-template:
+    get:
+      tags:
+      - Fleet
+      summary: Get the active pre-trip checklist template
+      operationId: fleetGetChecklistTemplate
+      parameters:
+      - name: vehicle_type
+        in: query
+        required: false
+        description: Specific template for this vehicle type; falls back to the default template.
+        schema:
+          type: string
+          maxLength: 40
+      - name: vehicle_id
+        in: query
+        required: false
+        description: Adds vehicle_fitness (today, America/La_Paz).
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Active template
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    allOf:
+                    - $ref: '#/components/schemas/ChecklistTemplate'
+                    - type: object
+                      properties:
+                        vehicle_fitness:
+                          oneOf:
+                          - $ref: '#/components/schemas/VehicleFitness'
+                          - type: 'null'
+        '404':
+          description: No active template
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/fleet/vehicles/{vehicleId}/fitness:
+    get:
+      tags:
+      - Fleet
+      summary: Vehicle fitness to dispatch on a date
+      operationId: fleetGetVehicleFitness
+      parameters:
+      - name: vehicleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: date
+        in: query
+        required: false
+        description: Defaults to today (America/La_Paz). A full ISO 8601 date-time is also accepted.
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Fitness
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VehicleFitness'
+        '404':
+          description: Unknown vehicle
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/fleet/vehicles/{vehicleId}/clear-fitness:
+    post:
+      tags:
+      - Fleet
+      summary: Clear an unfit vehicle for dispatch after repair (supervisor/admin)
+      operationId: fleetClearVehicleFitness
+      parameters:
+      - name: vehicleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearVehicleFitnessRequest'
+      responses:
+        '200':
+          description: Vehicle cleared
           content:
             application/json:
               schema:
@@ -1494,14 +1881,18 @@ paths:
                       vehicle_id:
                         type: string
                         format: uuid
-                      driver_id:
-                        type: string
-                        format: uuid
-                      performed_on:
-                        type: string
-                        format: date
+                      fitness:
+                        oneOf:
+                        - $ref: '#/components/schemas/VehicleFitness'
+                        - type: 'null'
+        '403':
+          description: Not a supervisor/admin
         '422':
-          $ref: '#/components/responses/FleetValidationError'
+          description: Vehicle already fit or missing repair note (business_rule_violation / validation_failed)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/fleet/vehicles:
@@ -1700,9 +2091,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Refuel'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - appBearer: []
     post:
@@ -1811,6 +2200,22 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/MaintenanceStatus'
+      - name: from
+        in: query
+        required: false
+        description: Filter on scheduled_at (inclusive).
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Maintenance order list
@@ -1969,6 +2374,9 @@ paths:
         schema:
           type: string
           format: uuid
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Maintenance plan list
@@ -2130,9 +2538,27 @@ paths:
       - Fleet Ops
       summary: List due or overdue preventive maintenance
       operationId: listFleetDueMaintenance
+      parameters:
+      - name: vehicle_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: urgency
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - overdue
+          - due_soon
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: Due maintenance list
+          description: Due maintenance list (most urgent first)
           content:
             application/json:
               schema:
@@ -2143,7 +2569,10 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
+                      $ref: '#/components/schemas/DueMaintenanceItem'
+                  meta:
+                    description: Present only when pagination parameters are sent.
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - appBearer: []
   /app/fleetops/departures:
@@ -2176,6 +2605,9 @@ paths:
         schema:
           type: string
           format: date
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: Departure list
@@ -2316,9 +2748,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/OdometerReading'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - appBearer: []
     post:
@@ -2379,7 +2809,7 @@ paths:
                 - data
                 properties:
                   data:
-                    type: object
+                    $ref: '#/components/schemas/VehicleUtilization'
       security:
       - appBearer: []
   /app/fleetops/vehicle-profiles:
@@ -2533,9 +2963,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Expense'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - appBearer: []
     post:
@@ -3009,9 +3437,7 @@ paths:
                       $ref: '#/components/schemas/NotificationView'
                   meta:
                     allOf:
-                    - oneOf:
-                      - $ref: '#/components/schemas/PaginationMeta'
-                      - $ref: '#/components/schemas/CursorMeta'
+                    - $ref: '#/components/schemas/ListMeta'
                     - type: object
                       properties:
                         unread_count:
@@ -3493,10 +3919,7 @@ paths:
                           format: date
                         count:
                           type: integer
-                    - anyOf:
-                      - type: object
-                      - $ref: '#/components/schemas/PaginationMeta'
-                      - $ref: '#/components/schemas/CursorMeta'
+                    - $ref: '#/components/schemas/ListMeta'
         '422':
           $ref: '#/components/responses/PlanningValidationError'
       security:
@@ -3939,6 +4362,114 @@ paths:
                 $ref: '#/components/schemas/SettingHistoryEnvelope'
       security:
       - appBearer: []
+  /app/shipments/summary:
+    get:
+      tags:
+      - shipments
+      operationId: getShipmentSummary
+      summary: Aggregated shipment board summary (SQL aggregates, cached ~45 s)
+      parameters:
+      - name: date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: destination_node_id
+        in: query
+        required: false
+        description: Forced to the own node for the Store role.
+        schema:
+          type: string
+          format: uuid
+      - name: delivery_mode
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/DeliveryMode'
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ShipmentSummary'
+        '422':
+          $ref: '#/components/responses/AppAuthValidationError'
+      security:
+      - appBearer: []
+  /app/kpis/daily:
+    get:
+      tags:
+      - shipments
+      operationId: getDailyKpis
+      summary: Operational KPIs of one day, scoped server-side by role (driver / fleet / node)
+      parameters:
+      - name: date
+        in: query
+        required: false
+        description: Defaults to today (America/La_Paz).
+        schema:
+          type: string
+          format: date
+      - name: node_id
+        in: query
+        required: false
+        description: Supervisor/admin only.
+        schema:
+          type: string
+          format: uuid
+      - name: vehicle_id
+        in: query
+        required: false
+        description: Supervisor/admin only.
+        schema:
+          type: string
+          format: uuid
+      - name: driver_id
+        in: query
+        required: false
+        description: Supervisor/admin only (fleet driver id).
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: KPIs
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DailyKpis'
+        '403':
+          description: Role without access (problem+json, insufficient_role)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
   /app/shipments:
     get:
       tags:
@@ -3955,10 +4486,30 @@ paths:
       - name: status
         in: query
         required: false
-        description: Shipment status, case-insensitive (planned / PLANNED). Unknown values return 422.
+        description: >-
+          One or more statuses, case-insensitive. Repeat `status[]=` or comma-separate (planned,received).
+          Unknown values return 422.
+        style: form
+        explode: true
+        schema:
+          oneOf:
+          - type: string
+            example: planned,received
+          - type: array
+            items:
+              $ref: '#/components/schemas/ShipmentStatus'
+      - name: delivery_mode
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/DeliveryMode'
+      - name: include
+        in: query
+        required: false
+        description: Comma-separated extras. `count_by_status` adds meta.count_by_status (same filters except status).
         schema:
           type: string
-          example: PLANNED
+          example: count_by_status
       - name: source
         in: query
         required: false
@@ -4005,9 +4556,12 @@ paths:
                     items:
                       $ref: '#/components/schemas/Shipment'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    allOf:
+                    - $ref: '#/components/schemas/ListMeta'
+                    - type: object
+                      properties:
+                        count_by_status:
+                          $ref: '#/components/schemas/ShipmentStatusCounts'
       security:
       - appBearer: []
   /app/shipments/low-confidence-addresses:
@@ -4038,9 +4592,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Shipment'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - appBearer: []
   /app/shipments/{shipment}:
@@ -4209,6 +4761,9 @@ paths:
       summary: Driver route sheet — deliveries assigned to a vehicle
       parameters:
       - $ref: '#/components/parameters/VehicleId'
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
           description: The vehicle deliveries
@@ -4225,12 +4780,75 @@ paths:
                     items:
                       $ref: '#/components/schemas/Delivery'
                   meta:
-                    type: object
-                    required:
-                    - count
-                    properties:
-                      count:
-                        type: integer
+                    $ref: '#/components/schemas/ListMeta'
+      security:
+      - appBearer: []
+  /app/vehicles/{vehicleId}/route/start:
+    post:
+      tags:
+      - execution
+      operationId: startDriverRoute
+      summary: Open the driver route of the day (idempotent; first call wins)
+      parameters:
+      - $ref: '#/components/parameters/VehicleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteLifecycleRequest'
+      responses:
+        '200':
+          description: Route state
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DriverRouteLifecycle'
+        '422':
+          description: No route for the vehicle/day, or route suspended/closed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/vehicles/{vehicleId}/route/close:
+    post:
+      tags:
+      - execution
+      operationId: closeDriverRoute
+      summary: Close the driver route of the day (idempotent; pending stops stay as they are)
+      parameters:
+      - $ref: '#/components/parameters/VehicleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteLifecycleRequest'
+      responses:
+        '200':
+          description: Route state
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DriverRouteLifecycle'
+        '422':
+          description: No route for the vehicle/day, or closing odometer below the starting one
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/vehicles/{vehicleId}/incidents:
@@ -6120,9 +6738,7 @@ paths:
                       $ref: '#/components/schemas/User'
                   meta:
                     description: Present only when pagination parameters are sent.
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
         '422':
           $ref: '#/components/responses/AppAuthValidationError'
       security:
@@ -6761,15 +7377,25 @@ paths:
                 pings:
                   type: array
                   minItems: 1
+                  maxItems: 500
                   items:
                     $ref: '#/components/schemas/VehiclePing'
       responses:
         '202':
-          description: Pings accepted
+          description: >-
+            All fixes accepted or duplicate. Idempotent per fix (fix_id, else device_id + recorded_at); out-of-order
+            fixes are stored for the trace without moving the live position. Feeds live position, trips, alerts,
+            breadcrumbs/ETA and the per-shipment tracking position.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AcceptedEnvelope'
+                $ref: '#/components/schemas/PingBatchResultEnvelope'
+        '207':
+          description: Partial success (some fixes rejected; see results[].errors)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingBatchResultEnvelope'
         '422':
           $ref: '#/components/responses/DomainError'
       security:
@@ -6780,9 +7406,26 @@ paths:
       - telemetry
       summary: Live positions of the whole fleet
       operationId: getLiveFleetPositions
+      parameters:
+      - name: since
+        in: query
+        required: false
+        description: Only vehicles whose position changed at/after this server time (pass meta.server_time of the previous call).
+        schema:
+          type: string
+          format: date-time
+      - name: If-None-Match
+        in: header
+        required: false
+        schema:
+          type: string
       responses:
         '200':
           description: Live fleet positions
+          headers:
+            ETag:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -6794,6 +7437,22 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/VehicleLive'
+                  meta:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                      since:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      server_time:
+                        type: string
+                        format: date-time
+        '304':
+          description: Not modified (ETag matched)
+        '422':
+          $ref: '#/components/responses/DomainError'
       security:
       - appBearer: []
   /app/telemetry/vehicles/{vehicleId}/track:
@@ -6910,9 +7569,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Trip'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - appBearer: []
   /app/telemetry/alerts:
@@ -6937,6 +7594,18 @@ paths:
         required: false
         schema:
           type: boolean
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
       - $ref: '#/components/parameters/PageNumber'
       - $ref: '#/components/parameters/PerPage'
       - $ref: '#/components/parameters/Cursor'
@@ -6955,9 +7624,96 @@ paths:
                     items:
                       $ref: '#/components/schemas/Alert'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    allOf:
+                    - $ref: '#/components/schemas/ListMeta'
+                    - type: object
+                      properties:
+                        unacknowledged_total:
+                          type: integer
+      security:
+      - appBearer: []
+  /app/telemetry/shipments/{shipmentId}/breadcrumbs:
+    get:
+      tags:
+      - telemetry
+      summary: Vehicle track while the shipment was on board (downsampled)
+      operationId: getShipmentBreadcrumbs
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Breadcrumbs
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ShipmentBreadcrumbs'
+        '404':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: []
+  /app/telemetry/shipments/{shipmentId}/eta:
+    get:
+      tags:
+      - telemetry
+      summary: Dynamic ETA of the shipment stop (no live traffic)
+      operationId: getShipmentEta
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: ETA
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VehicleEta'
+        '404':
+          $ref: '#/components/responses/DomainError'
+      security:
+      - appBearer: []
+  /app/telemetry/vehicles/{vehicleId}/etas:
+    get:
+      tags:
+      - telemetry
+      summary: Dynamic ETA of every remaining stop of the vehicle route today (no live traffic)
+      operationId: getVehicleEtas
+      parameters:
+      - name: vehicleId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ETAs
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VehicleEta'
       security:
       - appBearer: []
   /app/telemetry/alerts/{alertId}/acknowledge:
@@ -7910,15 +8666,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/MunicipalitySlot'
                   meta:
-                    anyOf:
-                    - type: object
-                      required:
-                      - count
-                      properties:
-                        count:
-                          type: integer
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
         '404':
           $ref: '#/components/responses/PromiseNotFound'
         '422':
@@ -8872,9 +9620,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/CommerceProduct'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
         '422':
           description: Validation error in the query parameters
           content:
@@ -9225,9 +9971,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/CommercePriceView'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - channelApiKey: []
 
@@ -9260,9 +10004,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/CommercePriceList'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - serviceCredential: []
     post:
@@ -9697,9 +10439,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/CommercePromotionView'
                   meta:
-                    oneOf:
-                    - $ref: '#/components/schemas/PaginationMeta'
-                    - $ref: '#/components/schemas/CursorMeta'
+                    $ref: '#/components/schemas/ListMeta'
       security:
       - serviceCredential: []
     post:
@@ -10325,6 +11065,694 @@ components:
       description: Token de integración de la plataforma (prefix.secret) enviado como Bearer y validado por
         el middleware access.token. Convive con serviceCredential en la puerta /integrations/*.
   schemas:
+    MissingUnitReason:
+      type: string
+      enum:
+      - not_arrived
+      - damaged
+      - wrong_store
+      - other
+    AssignShelfLocationRequest:
+      type: object
+      required:
+      - node_id
+      - location
+      - occurred_at
+      properties:
+        node_id:
+          type: string
+          format: uuid
+        location:
+          type: string
+          minLength: 1
+          maxLength: 64
+        occurred_at:
+          type: string
+          format: date-time
+        unit_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          description: Required on the batch route.
+          items:
+            type: string
+    NodeReceptionSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        shipment_id:
+          type: string
+          format: uuid
+        order_reference:
+          type: string
+          nullable: true
+        customer_name:
+          type: string
+          nullable: true
+        origin_node_id:
+          type: string
+          format: uuid
+        destination_node_id:
+          type: string
+          format: uuid
+        corridor:
+          type: string
+        reception:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+              - OPEN
+              - RECONCILED
+            expected_count:
+              type: integer
+            received_count:
+              type: integer
+            missing_count:
+              type: integer
+            surplus_count:
+              type: integer
+            opened_at:
+              type: string
+              format: date-time
+            reconciled_at:
+              type: string
+              format: date-time
+              nullable: true
+    ListMeta:
+      type: object
+      description: >-
+        Single, named meta of every list response (snake_case). `count` is always present. Offset pagination
+        adds page/per_page/total/total_pages/next_page/prev_page; cursor pagination adds per_page/has_more/
+        next_cursor. Absent pagination fields mean the caller did not paginate (full collection). Endpoints may
+        add their own keys (e.g. unread_count, count_by_status, date).
+      required:
+      - count
+      properties:
+        count:
+          type: integer
+          description: Number of items in this response.
+        page:
+          type: integer
+          description: 1-based page number (offset pagination).
+        per_page:
+          type: integer
+          description: Page size used.
+        total:
+          type: integer
+          description: Total items across all pages (offset pagination).
+        total_pages:
+          type: integer
+        next_page:
+          type:
+          - integer
+          - 'null'
+          description: Next page number, or null on the last page.
+        prev_page:
+          type:
+          - integer
+          - 'null'
+        has_more:
+          type: boolean
+          description: Whether more items remain (cursor pagination).
+        next_cursor:
+          type:
+          - string
+          - 'null'
+          description: Opaque cursor for the next page, or null when exhausted.
+      additionalProperties: true
+    DeliveryMode:
+      type: string
+      enum:
+      - home_delivery
+      - store_pickup
+      description: Derived from the destination node type (store/pickup_point → store_pickup; none/CD/unknown → home_delivery).
+    ShipmentAddressParts:
+      type: object
+      description: Best-effort parse of the free-text address (no ingest source sends a structured address yet).
+      required:
+      - street
+      - number
+      - neighborhood
+      - reference
+      - city
+      properties:
+        street:
+          type: string
+          nullable: true
+        number:
+          type: string
+          nullable: true
+        neighborhood:
+          type: string
+          nullable: true
+        reference:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+    ShipmentStatusCounts:
+      type: object
+      description: Shipment status → count (every ShipmentStatus key present, 0 when none).
+      additionalProperties:
+        type: integer
+    ShipmentSummary:
+      type: object
+      required:
+      - date_from
+      - date_to
+      - total
+      - by_status
+      - by_execution_status
+      - active_plans
+      - open_alerts
+      - units_total
+      - generated_at
+      properties:
+        date_from:
+          type: string
+          format: date
+          nullable: true
+        date_to:
+          type: string
+          format: date
+          nullable: true
+        total:
+          type: integer
+        by_status:
+          $ref: '#/components/schemas/ShipmentStatusCounts'
+        by_execution_status:
+          type: object
+          additionalProperties:
+            type: integer
+        active_plans:
+          type: integer
+          description: PUBLISHED plans in the period (default today).
+        open_alerts:
+          type: integer
+          description: Unacknowledged telemetry alerts in the period.
+        units_total:
+          type: integer
+        generated_at:
+          type: string
+          format: date-time
+    DailyKpis:
+      type: object
+      required:
+      - date
+      - scope
+      - deliveries_total
+      - delivered
+      - failed
+      - rescheduled
+      - pending
+      - on_time_rate
+      - first_attempt_success_rate
+      - avg_stop_minutes
+      - km
+      - failed_by_reason
+      - generated_at
+      properties:
+        date:
+          type: string
+          format: date
+        scope:
+          type: string
+          enum:
+          - driver
+          - fleet
+          - node
+        deliveries_total:
+          type: integer
+        delivered:
+          type: integer
+        failed:
+          type: integer
+        rescheduled:
+          type: integer
+        pending:
+          type: integer
+        on_time_rate:
+          type: number
+          nullable: true
+          description: 0..1, closed before the promised window end (La Paz).
+        first_attempt_success_rate:
+          type: number
+          nullable: true
+          description: 0..1 over delivered+failed.
+        avg_stop_minutes:
+          type: number
+          nullable: true
+          description: Arrival to close; null until stops record arrived_at.
+        km:
+          type: integer
+          nullable: true
+          description: Odometer delta of the day's departures; null without readings or for node scope.
+        failed_by_reason:
+          type: array
+          items:
+            type: object
+            required:
+            - reason
+            - count
+            properties:
+              reason:
+                type: string
+              count:
+                type: integer
+        generated_at:
+          type: string
+          format: date-time
+    PingBatchResultEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: object
+          required:
+          - accepted
+          - vehicle_id
+          - source
+          - count
+          - accepted_count
+          - duplicate_count
+          - rejected_count
+          - results
+          properties:
+            accepted:
+              type: boolean
+            vehicle_id:
+              type: string
+            source:
+              type: string
+              enum:
+              - app
+              - integration
+            count:
+              type: integer
+            accepted_count:
+              type: integer
+            duplicate_count:
+              type: integer
+            rejected_count:
+              type: integer
+            results:
+              type: array
+              items:
+                type: object
+                required:
+                - index
+                - status
+                properties:
+                  index:
+                    type: integer
+                  fix_id:
+                    type: string
+                    nullable: true
+                  status:
+                    type: string
+                    enum:
+                    - accepted
+                    - duplicate
+                    - rejected
+                  errors:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: string
+    ShipmentBreadcrumbs:
+      type: object
+      properties:
+        shipment_id:
+          type: string
+        vehicle_id:
+          type: string
+        plate:
+          type: string
+          nullable: true
+        delivery_status:
+          type: string
+        window:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date-time
+              nullable: true
+            to:
+              type: string
+              format: date-time
+              nullable: true
+            open:
+              type: boolean
+        points_total:
+          type: integer
+        points_returned:
+          type: integer
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              lat:
+                type: number
+              lng:
+                type: number
+              speed_kph:
+                type: number
+                nullable: true
+              heading:
+                type: integer
+                nullable: true
+              recorded_at:
+                type: string
+                format: date-time
+    VehicleEta:
+      type: object
+      description: Dynamic ETA from the latest position. No live traffic source exists (traffic_aware is always false).
+      properties:
+        shipment_id:
+          type: string
+          description: Only in the per-shipment endpoint
+        vehicle_id:
+          type: string
+        plate:
+          type: string
+          nullable: true
+        traffic_aware:
+          type: boolean
+        position:
+          type: object
+          nullable: true
+          properties:
+            lat:
+              type: number
+            lng:
+              type: number
+            recorded_at:
+              type: string
+              format: date-time
+        position_stale:
+          type: boolean
+        generated_at:
+          type: string
+          format: date-time
+        stops:
+          type: array
+          items:
+            type: object
+            properties:
+              shipment_id:
+                type: string
+              sequence:
+                type: integer
+              order_reference:
+                type: string
+                nullable: true
+              customer_name:
+                type: string
+                nullable: true
+              lat:
+                type: number
+                nullable: true
+              lng:
+                type: number
+                nullable: true
+              planned_eta:
+                type: string
+                format: date-time
+                nullable: true
+              eta:
+                type: string
+                format: date-time
+                nullable: true
+              remaining_distance_m:
+                type: integer
+                nullable: true
+              remaining_duration_s:
+                type: integer
+                nullable: true
+              method:
+                type: string
+                nullable: true
+                enum:
+                - osrm
+                - straight_line
+                - null
+              computed_at:
+                type: string
+                format: date-time
+                nullable: true
+    ChecklistTemplateItem:
+      type: object
+      required:
+      - key
+      - label
+      - category
+      - criticality
+      - requires_photo
+      - position
+      properties:
+        key:
+          type: string
+          pattern: '^[a-z0-9_.-]{1,64}$'
+          description: Stable key sent back in the checklist POST items map
+        label:
+          type: string
+        category:
+          type: string
+          enum:
+          - mechanical
+          - fluids
+          - safety
+          - tires
+          - electrical
+          - documents
+          - cabin
+          - cargo
+          - other
+        criticality:
+          type: string
+          enum:
+          - critical
+          - major
+          - minor
+        requires_photo:
+          type: boolean
+        position:
+          type: integer
+          minimum: 1
+    ChecklistTemplate:
+      type: object
+      required:
+      - id
+      - name
+      - vehicle_type
+      - active
+      - items
+      - critical_keys
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        vehicle_type:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChecklistTemplateItem'
+        critical_keys:
+          type: array
+          items:
+            type: string
+    VehicleFitness:
+      type: object
+      required:
+      - vehicle_id
+      - plate
+      - date
+      - fit_to_dispatch
+      - unfit_since
+      - unfit_reason
+      - unfit_items
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        plate:
+          type: string
+        date:
+          type: string
+          format: date
+        fit_to_dispatch:
+          type: boolean
+        unfit_since:
+          type: string
+          format: date
+          nullable: true
+        unfit_reason:
+          type: string
+          nullable: true
+        unfit_items:
+          type: array
+          items:
+            type: string
+    ClearVehicleFitnessRequest:
+      type: object
+      required:
+      - note
+      properties:
+        note:
+          type: string
+          minLength: 3
+          maxLength: 1000
+          description: What was repaired (audited)
+    PreTripChecklistResult:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        vehicle_id:
+          type: string
+          format: uuid
+        driver_id:
+          type: string
+          format: uuid
+        performed_on:
+          type: string
+          format: date
+        inspection_id:
+          type: string
+          format: uuid
+          nullable: true
+        passed:
+          type: boolean
+          nullable: true
+        fit_to_dispatch:
+          type: boolean
+          description: No failed critical item AND the vehicle is fit on that date
+        failed_critical:
+          type: array
+          items:
+            type: string
+        missing_critical:
+          type: array
+          items:
+            type: string
+        vehicle_fitness:
+          oneOf:
+          - $ref: '#/components/schemas/VehicleFitness'
+          - type: 'null'
+    DueMaintenanceItem:
+      type: object
+      required:
+      - vehicle_id
+      - vehicle_plate
+      - plan_id
+      - service_kind
+      - next_due_km
+      - next_due_at
+      - current_odometer_km
+      - remaining_km
+      - days_remaining
+      - overdue
+      - urgency
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        vehicle_plate:
+          type: string
+          nullable: true
+        plan_id:
+          type: string
+          format: uuid
+          nullable: true
+        service_kind:
+          type: string
+          enum:
+          - oil_change
+          - tires
+          - brakes
+          - filters
+          - battery
+          - general
+          - inspection
+        next_due_km:
+          type: integer
+          nullable: true
+        next_due_at:
+          type: string
+          format: date-time
+          nullable: true
+        current_odometer_km:
+          type: integer
+          nullable: true
+        remaining_km:
+          type: integer
+          nullable: true
+          description: next_due_km - current_odometer_km (negative when overdue)
+        days_remaining:
+          type: integer
+          nullable: true
+          description: Calendar days to next_due_at (negative when overdue)
+        overdue:
+          type: boolean
+        urgency:
+          type: string
+          enum:
+          - overdue
+          - due_soon
+    VehicleUtilization:
+      type: object
+      required:
+      - vehicle_id
+      - vehicle_plate
+      - from
+      - to
+      - departures_count
+      - km_traveled
+      - hours_on_road
+      - last_odometer_km
+      - last_odometer_read_at
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        vehicle_plate:
+          type: string
+          nullable: true
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        departures_count:
+          type: integer
+        km_traveled:
+          type: integer
+        hours_on_road:
+          type: number
+        last_odometer_km:
+          type: integer
+          nullable: true
+        last_odometer_read_at:
+          type: string
+          format: date-time
+          nullable: true
     CarrierTripStatus:
       type: string
       enum:
@@ -10583,7 +12011,7 @@ components:
           items:
             $ref: '#/components/schemas/Seller'
         meta:
-          $ref: '#/components/schemas/PaginationMeta'
+          $ref: '#/components/schemas/ListMeta'
     RegisterSellerRequest:
       type: object
       required:
@@ -10740,9 +12168,7 @@ components:
           items:
             $ref: '#/components/schemas/Asn'
         meta:
-          oneOf:
-          - $ref: '#/components/schemas/PaginationMeta'
-          - $ref: '#/components/schemas/CursorMeta'
+          $ref: '#/components/schemas/ListMeta'
     ReceivingDockSlot:
       type: object
       required:
@@ -11021,9 +12447,7 @@ components:
           items:
             $ref: '#/components/schemas/Lot'
         meta:
-          oneOf:
-          - $ref: '#/components/schemas/PaginationMeta'
-          - $ref: '#/components/schemas/CursorMeta'
+          $ref: '#/components/schemas/ListMeta'
     SellerSettlementStatus:
       type: string
       description: Estado del ciclo de vida de una liquidación de seller.
@@ -11144,9 +12568,7 @@ components:
           items:
             $ref: '#/components/schemas/SellerSettlement'
         meta:
-          oneOf:
-          - $ref: '#/components/schemas/PaginationMeta'
-          - $ref: '#/components/schemas/CursorMeta'
+          $ref: '#/components/schemas/ListMeta'
     DraftSellerSettlementRequest:
       type: object
       required:
@@ -12526,6 +13948,7 @@ components:
       - PENDING
       - COMPLETED
       - FAILED
+      - RESCHEDULED
     DriverRouteStatus:
       type: string
       description: Driver route state across the day
@@ -12533,6 +13956,7 @@ components:
       - PLANNED
       - IN_PROGRESS
       - COMPLETED
+      - SUSPENDED
     DriverRouteStop:
       type: object
       description: A stop of the driver route — what the driver drops at one point
@@ -12605,6 +14029,25 @@ components:
           type: string
           format: date-time
           nullable: true
+        arrived_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: First reported arrival at the stop (POST /app/deliveries/{shipmentId}/arrived).
+        arrival_source:
+          type: string
+          nullable: true
+          enum:
+          - geofence
+          - manual
+          - null
+        units_total:
+          type: integer
+          description: Number of physical products (shipment units) of the stop; the POD expects this many, not the sum of quantities.
+        unit_ids:
+          type: array
+          items:
+            type: string
         destination:
           type: object
           nullable: true
@@ -12625,6 +14068,10 @@ components:
             node_code:
               type: string
               nullable: true
+            node_id:
+              type: string
+              format: uuid
+              nullable: true
     DriverRoute:
       type: object
       description: The driver route sheet of a vehicle for a day, with its ordered stops
@@ -12638,6 +14085,14 @@ components:
       - stops_remaining
       - stops
       properties:
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
         id:
           type: string
           format: uuid
@@ -13464,6 +14919,19 @@ components:
       - reference
       - scans
       properties:
+        short_address:
+          type: string
+          nullable: true
+        units_total:
+          type: integer
+        unit_ids:
+          type: array
+          items:
+            type: string
+        units_loaded:
+          type: integer
+        units_delivered:
+          type: integer
         id:
           type: string
           format: uuid
@@ -14682,14 +16150,12 @@ components:
             format: uuid
     OpenNodeReceptionRequest:
       type: object
-      description: Abre la recepción de un envío en un nodo destino por un corredor interno.
+      description: >-
+        Abre la recepción de un envío en un nodo destino por un corredor interno. Basta {shipment_id, occurred_at}:
+        el servidor deriva origen, destino (destination_node_id del envío o el nodo del usuario), tipos de nodo y
+        expected_unit_ids. El cuerpo completo anterior sigue aceptándose.
       required:
       - shipment_id
-      - origin_node_id
-      - destination_node_id
-      - origin_node_kind
-      - destination_node_kind
-      - expected_unit_ids
       - occurred_at
       properties:
         shipment_id:
@@ -14698,9 +16164,11 @@ components:
         origin_node_id:
           type: string
           format: uuid
+          nullable: true
         destination_node_id:
           type: string
           format: uuid
+          nullable: true
           description: Debe ser distinto del nodo de origen
         origin_node_kind:
           type: string
@@ -14714,6 +16182,7 @@ components:
           - STORE
         expected_unit_ids:
           type: array
+          nullable: true
           minItems: 1
           items:
             type: string
@@ -14723,16 +16192,48 @@ components:
           type: string
           format: date-time
     ReceiveUnitAtNodeRequest:
-      allOf:
-      - $ref: '#/components/schemas/GeoScanBase'
-      - type: object
-        required:
-        - destination_node_id
-        properties:
-          destination_node_id:
-            type: string
-            format: uuid
-            description: Nodo destino donde se recibe el producto
+      type: object
+      description: Recepción de un producto en el nodo. Sin señal se omite la posición (nunca 0,0).
+      required:
+      - shipment_id
+      - unit_id
+      - destination_node_id
+      - occurred_at
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        unit_id:
+          type: string
+          maxLength: 64
+        destination_node_id:
+          type: string
+          format: uuid
+          description: Nodo destino donde se recibe el producto
+        lat:
+          type: number
+          format: double
+          nullable: true
+          description: Se manda junto con lng.
+        lng:
+          type: number
+          format: double
+          nullable: true
+        location:
+          $ref: '#/components/schemas/CapturedLocation'
+        occurred_at:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+          maxLength: 128
+        user_id:
+          type: string
+          maxLength: 128
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
     ReconcileNodeReceptionRequest:
       type: object
       description: Cierra la recepción conciliando lo recibido contra lo esperado.
@@ -14750,6 +16251,41 @@ components:
         occurred_at:
           type: string
           format: date-time
+        notes:
+          type: string
+          maxLength: 2000
+          nullable: true
+        photo_path:
+          type: string
+          maxLength: 1024
+          nullable: true
+        missing:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            required:
+            - unit_id
+            - reason
+            properties:
+              unit_id:
+                type: string
+              reason:
+                $ref: '#/components/schemas/MissingUnitReason'
+        surplus:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            required:
+            - unit_id
+            properties:
+              unit_id:
+                type: string
+              belongs_to_shipment_id:
+                type: string
+                format: uuid
+                nullable: true
         device_id:
           type: string
           maxLength: 128
@@ -14833,6 +16369,48 @@ components:
           type: string
           format: date-time
           nullable: true
+        missing_count:
+          type: integer
+        surplus_count:
+          type: integer
+        reconciliation:
+          type: object
+          nullable: true
+          description: Null while the reception is open.
+          properties:
+            notes:
+              type: string
+              nullable: true
+            photo_path:
+              type: string
+              nullable: true
+            missing:
+              type: array
+              items:
+                type: object
+                properties:
+                  unit_id:
+                    type: string
+                  reason:
+                    type: string
+                    nullable: true
+                    enum:
+                    - not_arrived
+                    - damaged
+                    - wrong_store
+                    - other
+                    - null
+            surplus:
+              type: array
+              items:
+                type: object
+                properties:
+                  unit_id:
+                    type: string
+                  belongs_to_shipment_id:
+                    type: string
+                    format: uuid
+                    nullable: true
         units:
           type: array
           description: Detalle de cada producto de la recepción (esperados ∪ recibidos ∪ sobrantes); campos null si el id no es un producto conocido
@@ -14851,6 +16429,14 @@ components:
       - piece_index
       - piece_total
       properties:
+        location:
+          type: string
+          nullable: true
+          description: Shelf location at the node (e.g. A-03-2).
+        located_at:
+          type: string
+          format: date-time
+          nullable: true
         unit_id:
           type: string
         sku:
@@ -15404,6 +16990,20 @@ components:
     PreTripChecklist:
       type: object
       properties:
+        fit_to_dispatch:
+          type: boolean
+        failed_critical:
+          type: array
+          items:
+            type: string
+        missing_critical:
+          type: array
+          items:
+            type: string
+        checklist_template_id:
+          type: string
+          format: uuid
+          nullable: true
         id:
           type: string
           format: uuid
@@ -15565,27 +17165,276 @@ components:
             message:
               type: string
     ProofOfDeliveryRequest:
-      allOf:
-      - $ref: '#/components/schemas/GeoScanBase'
-      - type: object
-        required:
-        - confirmation
-        properties:
-          confirmation:
+      type: object
+      description: >-
+        One proof of delivery for one or many products of the shipment (unit_id or unit_ids), with a single
+        confirmation/signature/GPS. Idempotent. A photo is mandatory (photo_path or photo_paths).
+      required:
+      - shipment_id
+      - occurred_at
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        unit_id:
+          type: string
+          maxLength: 64
+          description: Single product; optional when unit_ids is sent.
+        unit_ids:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items:
             type: string
-            maxLength: 512
-            description: QR del cliente o firma
-          photo_url:
-            type: string
-            format: uri
-            maxLength: 2048
-            nullable: true
-            description: URL de acceso devuelta por el endpoint de subida de fotos (conveniencia)
-          photo_path:
+            maxLength: 64
+        lat:
+          type: number
+          format: double
+          nullable: true
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: double
+          nullable: true
+          minimum: -180
+          maximum: 180
+        location:
+          $ref: '#/components/schemas/CapturedLocation'
+        occurred_at:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+          maxLength: 128
+        user_id:
+          type: string
+          maxLength: 128
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+        confirmation:
+          type: string
+          maxLength: 512
+          nullable: true
+          description: >-
+            Signature/confirmation. Optional for carrier users (CARRIER_HANDOVER) and the store counter
+            (STORE_PICKUP_HANDOVER); the customer QR is never required.
+        photo_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          nullable: true
+          description: URL de acceso devuelta por el endpoint de subida de fotos (conveniencia)
+        photo_path:
+          type: string
+          maxLength: 1024
+          nullable: true
+          description: Referencia durable devuelta por la subida de fotos. Requerida si no se manda photo_paths.
+        photo_paths:
+          type: array
+          items:
             type: string
             maxLength: 1024
-            nullable: true
-            description: Referencia durable (path en el disco de evidencia) devuelta por la subida de fotos; es la que se guarda en la prueba de entrega
+        evidence_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+    CapturedLocation:
+      type: object
+      description: Optional device location; (0,0) is treated as no position.
+      required:
+      - lat
+      - lng
+      properties:
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        accuracy_m:
+          type: number
+          nullable: true
+        captured_at:
+          type: string
+          format: date-time
+          nullable: true
+    DriverRouteLifecycle:
+      type: object
+      required:
+      - id
+      - vehicle_id
+      - route_date
+      - status
+      - started_at
+      - closed_at
+      - total_stops
+      - completed_stops
+      - stops_remaining
+      - pending_stops
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        route_date:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/DriverRouteStatus'
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        start_odometer_km:
+          type: number
+          nullable: true
+        close_odometer_km:
+          type: number
+          nullable: true
+        total_stops:
+          type: integer
+        completed_stops:
+          type: integer
+        stops_remaining:
+          type: integer
+        pending_stops:
+          type: integer
+    RouteLifecycleRequest:
+      type: object
+      required:
+      - occurred_at
+      properties:
+        occurred_at:
+          type: string
+          format: date-time
+        route_date:
+          type: string
+          format: date
+        odometer_km:
+          type: number
+          nullable: true
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+    StopArrivedRequest:
+      type: object
+      required:
+      - occurred_at
+      - source
+      properties:
+        occurred_at:
+          type: string
+          format: date-time
+        source:
+          type: string
+          enum:
+          - geofence
+          - manual
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+        accuracy_m:
+          type: number
+          nullable: true
+    ScanBatchRequest:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            required:
+            - idempotency_key
+            - kind
+            - occurred_at
+            - payload
+            properties:
+              idempotency_key:
+                type: string
+                maxLength: 128
+              kind:
+                type: string
+                enum:
+                - preparation
+                - load
+                - unload
+                - departure
+                - arrival
+                - proof_of_delivery
+                - failed
+              occurred_at:
+                type: string
+                format: date-time
+              payload:
+                type: object
+                additionalProperties: true
+                description: Same body as the single endpoint of that kind.
+    ScanBatchResponse:
+      type: object
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required:
+            - index
+            - idempotency_key
+            - kind
+            - result
+            properties:
+              index:
+                type: integer
+              idempotency_key:
+                type: string
+              kind:
+                type: string
+              shipment_id:
+                type: string
+                nullable: true
+              result:
+                type: string
+                enum:
+                - accepted
+                - duplicate
+                - rejected
+              problem:
+                nullable: true
+                allOf:
+                - $ref: '#/components/schemas/Problem'
+        meta:
+          type: object
+          properties:
+            count:
+              type: integer
+            accepted:
+              type: integer
+            duplicate:
+              type: integer
+            rejected:
+              type: integer
     PublicKey:
       type: object
       required:
@@ -16199,9 +18048,15 @@ components:
         lat:
           type: number
           format: double
+          nullable: true
+          description: Null when the device had no position (never stored as 0,0).
         lng:
           type: number
           format: double
+          nullable: true
+        accuracy_m:
+          type: number
+          nullable: true
         device_id:
           type: string
         user_id:
@@ -16515,6 +18370,13 @@ components:
       properties:
         progress:
           $ref: '#/components/schemas/ShipmentProgress'
+        delivery_mode:
+          $ref: '#/components/schemas/DeliveryMode'
+        address_parts:
+          $ref: '#/components/schemas/ShipmentAddressParts'
+        short_address:
+          type: string
+          description: Street + number plus neighborhood or city, at most 80 chars, never empty.
         id:
           type: string
           format: uuid
@@ -16977,6 +18839,20 @@ components:
     Vehicle:
       type: object
       properties:
+        fit_to_dispatch:
+          type: boolean
+          description: False while a failed critical pre-trip item is not cleared by a supervisor.
+        unfit_since:
+          type: string
+          format: date
+          nullable: true
+        unfit_reason:
+          type: string
+          nullable: true
+        unfit_items:
+          type: array
+          items:
+            type: string
         id:
           type: string
           format: uuid
@@ -17085,6 +18961,10 @@ components:
       - last_seen_at
       - label
       properties:
+        location:
+          type: string
+          nullable: true
+          description: Current shelf location at the node, if assigned.
         id:
           type: string
           format: uuid
@@ -17174,6 +19054,7 @@ components:
       - geofence_violation
       - unauthorized_use
       - speeding
+      - route_deviation
     VehiclePing:
       type: object
       description: Una lectura GPS de un vehículo. Posición e instante obligatorios; el resto de la telemetría es opcional.
@@ -17217,6 +19098,11 @@ components:
         device_id:
           type: string
           nullable: true
+        fix_id:
+          type: string
+          maxLength: 128
+          nullable: true
+          description: Client id of the fix; makes retries idempotent (fallback device_id + recorded_at).
     VehicleLive:
       type: object
       description: Posición en vivo de un vehículo (última lectura conocida).
@@ -17227,6 +19113,20 @@ components:
       - moving
       - recorded_at
       properties:
+        plate:
+          type: string
+          nullable: true
+        driver_id:
+          type: string
+          nullable: true
+        driver_name:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Server time the position changed (cursor for ?since).
         vehicle_id:
           type: string
         lat:
@@ -17392,6 +19292,12 @@ components:
       - detail
       - occurred_at
       properties:
+        plate:
+          type: string
+          nullable: true
+        driver_name:
+          type: string
+          nullable: true
         id:
           type: string
           format: uuid
@@ -17569,9 +19475,7 @@ components:
           items:
             $ref: '#/components/schemas/ReturnOrder'
         meta:
-          oneOf:
-          - $ref: '#/components/schemas/PaginationMeta'
-          - $ref: '#/components/schemas/CursorMeta'
+          $ref: '#/components/schemas/ListMeta'
     InitiateReturnRequest:
       type: object
       required:

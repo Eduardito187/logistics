@@ -78,7 +78,7 @@ final class CreateDeparture extends CreateRecord
     /**
      * Despacha RegisterDeparture por el CommandBus con los datos del formulario.
      *
-     * @param array<string, mixed>                                                                             $data
+     * @param array<string, mixed>                                                                               $data
      * @param array{description: string|null, weight_kg: float|null, items: list<array{name: string, qty: int}>} $load
      */
     private function dispatchDeparture(string $vehicleId, array $data, array $load): void

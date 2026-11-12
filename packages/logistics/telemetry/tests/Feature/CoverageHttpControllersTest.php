@@ -178,6 +178,6 @@ it('activa, desactiva y borra una geocerca por sus endpoints', function (): void
 it('devuelve el tráfico agregado de calles con y sin bbox', function (): void {
     $this->getJson('/api/v1/app/telemetry/streets')->assertOk();
     $this->getJson('/api/v1/app/telemetry/streets?bbox=-17.0,-68.3,-16.0,-68.0')->assertOk();
-    // bbox mal formado: el controller lo ignora y devuelve todo.
+    // bbox mal formado: el controller lo ignora y devuelve el conjunto completo.
     $this->getJson('/api/v1/app/telemetry/streets?bbox=invalido')->assertOk();
 });

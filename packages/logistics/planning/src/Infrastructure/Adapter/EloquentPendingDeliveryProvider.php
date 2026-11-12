@@ -38,7 +38,7 @@ use Throwable;
  *
  * Carga: kg/m3 reales desde las medidas por línea (ShipmentLoadReader), con fallback a los defaults por
  * producto y marca de "carga estimada" en el candidato. Requisitos de ruteo (R-04): leídos solo para los
- * envíos del lote. Todo se lee en LOTES (chunkById + whereIn por lote), sin N+1, para escalar a miles de
+ * envíos del lote. Cada lectura va en LOTES (chunkById + whereIn por lote), sin N+1, para escalar a miles de
  * pedidos sin cargarlos todos de golpe. La franja se lee de la ventana horaria del envío
  * (delivery_window_start/end) si la trae.
  */

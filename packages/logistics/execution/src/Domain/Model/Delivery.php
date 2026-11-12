@@ -36,7 +36,7 @@ use Logistics\Shared\Domain\ValueObject\FulfillmentMode;
  * Referencia a envío y vehículo por id string: no se acopla a shipments ni a fleet.
  *
  * Dimensión de fulfillment (marketplace/dropship, ver docs/marketplace-dropship-roadmap.md §8): la entrega
- * arrastra el `FulfillmentMode` del envío solo como dato (reportes/liquidaciones). Decisión de negocio: todo
+ * arrastra el `FulfillmentMode` del envío solo como dato (reportes/liquidaciones). Decisión de negocio: cada
  * pedido se despacha igual sin importar la propiedad (OWNED, FBD, DROPSHIP), con un único flujo de escaneos
  * propios: preparación → carga → salida → entrega/fallo. El modo NO cambia el comportamiento del agregado.
  */
@@ -198,12 +198,34 @@ final class Delivery extends AggregateRoot
 
     /**
      * Prueba de entrega en el punto del cliente. Transición terminal a Delivered; graba
-     * ShipmentDelivered. El unitId referencia el bulto o el envío entregado.
+     * ShipmentDelivered. El unitId referencia el bulto o el envío entregado. El GPS es opcional (null =
+     * sin señal; nunca 0,0).
      */
     public function recordProofOfDelivery(
         string $unitId,
         ProofOfDelivery $proof,
-        GeoPoint $geo,
+        ?GeoPoint $geo,
+        DeviceContext $device,
+        DateTimeImmutable $occurredAt,
+        string $idempotencyKey,
+    ): void {
+        $this->recordProofOfDeliveryForUnits([$unitId], $proof, $geo, $device, $occurredAt, $idempotencyKey);
+    }
+
+    /**
+     * Prueba de entrega en LOTE: una sola confirmación/firma/GPS cierra la entrega con TODOS los bultos
+     * dados (antes, un POST por bulto, y el segundo chocaba con la entrega ya cerrada).
+     *
+     * Deja un escaneo inmutable por bulto: el primero con la clave de idempotencia del lote y los demás con
+     * una clave derivada (`{clave}:{bulto}`), así el índice único de la base sigue respaldando el reintento.
+     * Idempotente por la clave del lote: reenviar el mismo lote no duplica nada ni reemite el evento.
+     *
+     * @param list<string> $unitIds bultos entregados (al menos uno; sin repetidos)
+     */
+    public function recordProofOfDeliveryForUnits(
+        array $unitIds,
+        ProofOfDelivery $proof,
+        ?GeoPoint $geo,
         DeviceContext $device,
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,
@@ -212,9 +234,23 @@ final class Delivery extends AggregateRoot
             return;
         }
 
+        $units = [];
+        foreach ($unitIds as $unitId) {
+            $trimmed = trim($unitId);
+            if ($trimmed !== '' && !in_array($trimmed, $units, true)) {
+                $units[] = $trimmed;
+            }
+        }
+        if ($units === []) {
+            throw ExecutionException::because('la prueba de entrega requiere al menos un producto (unitId)');
+        }
+
         $this->guardTransition([DeliveryStatus::Loaded, DeliveryStatus::InTransit], 'Delivered');
 
-        $this->appendScan(ScanType::ProofOfDelivery, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
+        foreach ($units as $index => $unitId) {
+            $key = $index === 0 ? $idempotencyKey : self::derivedKey($idempotencyKey, $unitId);
+            $this->appendScan(ScanType::ProofOfDelivery, $unitId, $geo, $device, $occurredAt, $key);
+        }
 
         $this->status = DeliveryStatus::Delivered;
         $this->proofOfDelivery = $proof;
@@ -224,6 +260,8 @@ final class Delivery extends AggregateRoot
             $proof->confirmation,
             $proof->photoUrl,
             $occurredAt,
+            $units,
+            $proof->evidenceIds,
         ));
     }
 
@@ -414,10 +452,20 @@ final class Delivery extends AggregateRoot
         }
     }
 
+    /**
+     * Clave derivada para el escaneo de cada bulto adicional de un POD en lote (cabe en 191 caracteres).
+     */
+    private static function derivedKey(string $idempotencyKey, string $unitId): string
+    {
+        $key = $idempotencyKey.':'.$unitId;
+
+        return strlen($key) <= 191 ? $key : $idempotencyKey.':'.sha1($unitId);
+    }
+
     private function appendScan(
         ScanType $type,
         string $unitId,
-        GeoPoint $geo,
+        ?GeoPoint $geo,
         DeviceContext $device,
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,

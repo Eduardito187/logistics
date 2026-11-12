@@ -9,7 +9,6 @@ use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Logistics\Notifications\Application\Contract\NotificationInboxReader;
-use Logistics\Notifications\Domain\Model\Notification;
 use Psr\Log\LoggerInterface;
 use Throwable;
 

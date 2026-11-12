@@ -18,6 +18,11 @@ use Logistics\Shared\Domain\Event\BaseDomainEvent;
 use Logistics\Shared\Domain\Event\DomainEvent;
 
 /**
+ * Fallo simulado del caso de uso del observador SAP (p. ej. la tabla de avisos no disponible).
+ */
+final class SapObserverRecorderUnavailable extends RuntimeException {}
+
+/**
  * Avisos fire-and-forget a SAP de punta a punta contra PostgreSQL (logistics_test): el observador del
  * outbox registra el aviso (idempotente por event_id), el job de la cola `sap` lo envía por el cliente
  * HTTP real contra Http::fake, guarda la respuesta cruda y, si SAP falla, reintenta hasta 3 veces y se
@@ -172,7 +177,7 @@ it('si SAP falla nunca lanza, reintenta con backoff y se detiene a los 3 intento
 it('una excepción del observador SAP no altera el procesamiento del mensaje del outbox', function (): void {
     // El caso de uso del observador explota (p. ej. base caída para esa tabla).
     app()->bind(RecordSapNotification::class, static function (): never {
-        throw new RuntimeException('sap_notifications unavailable');
+        throw new SapObserverRecorderUnavailable('sap_notifications unavailable');
     });
     $message = sapObservedMessage();
 

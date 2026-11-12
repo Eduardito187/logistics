@@ -17,10 +17,9 @@ use Logistics\Shipments\Domain\ValueObject\DeliveryMode;
 interface DeliveryModeReader
 {
     /**
-     * Modalidad por id de nodo destino. Todo id pedido aparece en el resultado (desconocido → domicilio).
+     * Modalidad por id de nodo destino. Cada id pedido aparece en el resultado (desconocido → domicilio).
      *
-     * @param list<string> $nodeIds
-     *
+     * @param  list<string>                $nodeIds
      * @return array<string, DeliveryMode>
      */
     public function forDestinationNodes(array $nodeIds): array;

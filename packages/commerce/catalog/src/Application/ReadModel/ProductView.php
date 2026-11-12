@@ -14,8 +14,8 @@ use Commerce\Catalog\Domain\ValueObject\ProductVariant;
 final readonly class ProductView
 {
     /**
-     * @param list<array{sku: string, name: string, attributes: array<string, string>}> $variants
-     * @param list<array{path: string, alt: string, position: int}>                     $media
+     * @param list<array{sku: string, name: string, attributes: array<string, string>}>                           $variants
+     * @param list<array{path: string, alt: string, position: int}>                                               $media
      * @param array{weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float, volume_m3: ?float} $physicalSpec
      */
     private function __construct(

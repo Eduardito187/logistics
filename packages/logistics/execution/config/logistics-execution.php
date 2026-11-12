@@ -75,4 +75,10 @@ return [
         'chunk' => (int) env('EXECUTION_PRUNE_CHUNK', 5000),
         'pause_ms' => (int) env('EXECUTION_PRUNE_PAUSE_MS', 100),
     ],
+
+    // Lote de escaneos offline (POST /app/deliveries/scans/batch): tope de ítems por request. Un día sin
+    // señal se drena en pocos requests en vez de cientos; más de este tope → 422 (partir el lote).
+    'scan_batch' => [
+        'max_items' => (int) env('EXECUTION_SCAN_BATCH_MAX_ITEMS', 200),
+    ],
 ];

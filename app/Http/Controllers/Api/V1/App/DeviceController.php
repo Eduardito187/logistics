@@ -59,9 +59,11 @@ final class DeviceController
         $user = $request->user();
         $currentId = $this->currentDeviceId($user);
 
-        $device = $uuid === 'current'
-            ? ($currentId === null ? null : $user->devices()->whereKey($currentId)->first())
-            : $user->devices()->where('uuid', $uuid)->first();
+        if ($uuid === 'current') {
+            $device = $currentId === null ? null : $user->devices()->whereKey($currentId)->first();
+        } else {
+            $device = $user->devices()->where('uuid', $uuid)->first();
+        }
 
         if (!$device instanceof Device) {
             return ProblemDetails::fromCode(ErrorCode::NotFound, 'Device not found.')->toResponse($request);

@@ -23,9 +23,8 @@ final class SafeRead
     /**
      * @template T
      *
-     * @param callable(): T $read
-     * @param T             $fallback
-     *
+     * @param  callable(): T $read
+     * @param  T             $fallback
      * @return T
      */
     public static function run(ConnectionInterface $connection, callable $read, mixed $fallback): mixed
@@ -55,8 +54,7 @@ final class SafeRead
     /**
      * Filtra los ids con forma de UUID, sin repetir.
      *
-     * @param list<string> $ids
-     *
+     * @param  list<string> $ids
      * @return list<string>
      */
     public static function uuids(array $ids): array

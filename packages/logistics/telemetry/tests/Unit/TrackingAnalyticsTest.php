@@ -12,6 +12,9 @@ use Logistics\Telemetry\Domain\ValueObject\GeoPoint;
 use Logistics\Telemetry\Domain\ValueObject\PingId;
 use Logistics\Telemetry\Domain\ValueObject\PingSource;
 
+// Instante base de las trazas y salidas de los tests de ETA.
+const TRACKING_ANALYTICS_T0 = '2026-11-12T10:00:00Z';
+
 // Servicios de dominio puros del seguimiento: idempotencia por lectura, condiciones sostenidas, desvío de
 // ruta, reducción de traza y ETA dinámica (respaldo en línea recta vs duraciones viales). PHP puro.
 
@@ -48,7 +51,7 @@ it('derives the same fix key for a retried reading and prefers the client fix id
 
 it('fires a sustained condition only after the minimum seconds and resets when it stops holding', function (): void {
     $condition = new SustainedCondition;
-    $t0 = new DateTimeImmutable('2026-11-12T10:00:00Z');
+    $t0 = new DateTimeImmutable(TRACKING_ANALYTICS_T0);
 
     $s1 = $condition->step(null, true, $t0, 20);
     $s2 = $condition->step($s1['since'], true, $t0->modify('+10 seconds'), 20);
@@ -95,7 +98,7 @@ it('downsamples a track by spacing and caps the number of points keeping first a
 
 it('estimates chained stop ETAs by straight line when there are no road durations', function (): void {
     $estimator = new EtaEstimator;
-    $departure = new DateTimeImmutable('2026-11-12T10:00:00Z');
+    $departure = new DateTimeImmutable(TRACKING_ANALYTICS_T0);
     $stops = [
         ['shipment_id' => 's-1', 'sequence' => 1, 'point' => GeoPoint::of(-16.50, -68.14)],
         ['shipment_id' => 's-2', 'sequence' => 2, 'point' => null],
@@ -115,7 +118,7 @@ it('estimates chained stop ETAs by straight line when there are no road duration
 
 it('uses road durations for the ETA when they match the located stops', function (): void {
     $estimator = new EtaEstimator;
-    $departure = new DateTimeImmutable('2026-11-12T10:00:00Z');
+    $departure = new DateTimeImmutable(TRACKING_ANALYTICS_T0);
     $stops = [
         ['shipment_id' => 's-1', 'sequence' => 1, 'point' => GeoPoint::of(-16.50, -68.14)],
         ['shipment_id' => 's-2', 'sequence' => 2, 'point' => GeoPoint::of(-16.50, -68.12)],

@@ -14,7 +14,7 @@ use Logistics\Execution\Presentation\Http\Request\ReportIncidentRequest;
  * POST /app/vehicles/{vehicleId}/incidents — el chofer reporta un incidente (avería o accidente) con su
  * camión (puerta app). Despacha ReportVehicleIncident, que deja constancia inmutable del hecho y aplica
  * la reacción automática: reprograma SOLO las paradas pendientes (MAJOR → día siguiente; MINOR → empuja
- * ETAs), deja el camión fuera de servicio en flota y avisa a clientes y supervisor, todo por el outbox.
+ * ETAs), deja el camión fuera de servicio en flota y avisa a clientes y supervisor, siempre por el outbox.
  *
  * Idempotente por `Idempotency-Key`. Devuelve la ruta del chofer ya actualizada para que la app offline
  * reconcilie su vista local en una sola llamada.

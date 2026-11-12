@@ -20,8 +20,7 @@ interface CatalogMeasurementsReader
      * Medidas del producto y de su categoría para cada SKU encontrado, indexadas por la clave
      * normalizada del SKU ({@see CatalogMeasurements::keyOf()}).
      *
-     * @param list<string> $skus
-     *
+     * @param  list<string>                       $skus
      * @return array<string, CatalogMeasurements>
      */
     public function forSkus(array $skus): array;

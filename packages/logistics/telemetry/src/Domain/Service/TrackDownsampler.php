@@ -17,8 +17,7 @@ use Logistics\Telemetry\Domain\Model\VehiclePing;
 final readonly class TrackDownsampler
 {
     /**
-     * @param list<VehiclePing> $track traza ordenada por recorded_at ascendente
-     *
+     * @param  list<VehiclePing> $track traza ordenada por recorded_at ascendente
      * @return list<VehiclePing>
      */
     public function downsample(array $track, float $minSpacingM, int $maxPoints): array

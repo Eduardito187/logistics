@@ -14,7 +14,7 @@ use Throwable;
  * builder, sin acoplar el dominio de `network`) en una consulta por lote. La tabla de nodos es chica
  * (decenas/cientos de filas), así que el costo es constante por página.
  *
- * Tolerante: si la red no está disponible, todo envío con nodo queda como domicilio (el caso seguro: el
+ * Tolerante: si la red no está disponible, cada envío con nodo queda como domicilio (el caso seguro: el
  * mostrador de tienda nunca ofrece entregar algo que reparte un chofer).
  */
 final readonly class DbDeliveryModeReader implements DeliveryModeReader

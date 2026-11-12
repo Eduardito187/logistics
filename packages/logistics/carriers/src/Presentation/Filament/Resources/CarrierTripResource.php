@@ -68,6 +68,9 @@ final class CarrierTripResource extends Resource
         'cancelled' => 'Cancelled',
     ];
 
+    /** Formato de fecha y hora de las columnas e infolists del viaje. */
+    private const DATETIME_FORMAT = 'Y-m-d H:i';
+
     public static function shouldRegisterNavigation(): bool
     {
         return false;
@@ -115,7 +118,7 @@ final class CarrierTripResource extends Resource
         $carrier = $record->carrier->name ?? __('Carrier');
         $route = TripLookups::nodeName($record->corridor_from).' → '.TripLookups::nodeName($record->corridor_to);
 
-        return "{$carrier} · {$route} · ".$record->scheduled_at->format('Y-m-d H:i');
+        return "{$carrier} · {$route} · ".$record->scheduled_at->format(self::DATETIME_FORMAT);
     }
 
     /**
@@ -227,7 +230,7 @@ final class CarrierTripResource extends Resource
                     ->formatStateUsing(static fn (?string $state): string => TripLookups::nodeName($state)),
                 TextColumn::make('scheduled_at')
                     ->label(__('Scheduled departure'))
-                    ->dateTime('Y-m-d H:i')
+                    ->dateTime(self::DATETIME_FORMAT)
                     ->sortable(),
                 TextColumn::make('shipments_count')
                     ->label(__('Shipments'))
@@ -281,17 +284,17 @@ final class CarrierTripResource extends Resource
                         ->formatStateUsing(static fn (?string $state): string => TripLookups::nodeName($state)),
                     TextEntry::make('scheduled_at')
                         ->label(__('Scheduled departure'))
-                        ->dateTime('Y-m-d H:i'),
+                        ->dateTime(self::DATETIME_FORMAT),
                     TextEntry::make('reference')
                         ->label(__('Reference'))
                         ->placeholder('—'),
                     TextEntry::make('started_at')
                         ->label(__('Started at'))
-                        ->dateTime('Y-m-d H:i')
+                        ->dateTime(self::DATETIME_FORMAT)
                         ->placeholder(__('Not started yet')),
                     TextEntry::make('closed_at')
                         ->label(__('Closed at'))
-                        ->dateTime('Y-m-d H:i')
+                        ->dateTime(self::DATETIME_FORMAT)
                         ->placeholder(__('Not closed yet')),
                 ])
                 ->columns(2),

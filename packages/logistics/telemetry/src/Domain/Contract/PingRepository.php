@@ -29,8 +29,7 @@ interface PingRepository
      * De las claves de lectura dadas, cuáles YA están persistidas para el vehículo (acotado por el rango de
      * `recorded_at` del lote, que aprovecha la poda de particiones).
      *
-     * @param list<string> $fixKeys
-     *
+     * @param  list<string> $fixKeys
      * @return list<string>
      */
     public function existingFixKeys(string $vehicleId, array $fixKeys, DateTimeImmutable $from, DateTimeImmutable $to): array;

@@ -111,8 +111,7 @@ final class DbShipmentListReader implements ShipmentListReader
      * Query base con los filtros calientes empujados a SQL (predicados indexables), combinados con AND.
      * Compartida por list()/count()/listKeyset() para no duplicar la forma del WHERE.
      *
-     * @param list<string>|null $statuses
-     *
+     * @param  list<string>|null       $statuses
      * @return Builder<ShipmentRecord>
      */
     private function filtered(

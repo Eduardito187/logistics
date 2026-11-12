@@ -30,8 +30,7 @@ final class ShipmentListSupport
      * Adjunta a cada vista su avance operativo (camión, preparado, cargado, entregado, etiquetas), leído
      * en UN lote para toda la página (sin N+1).
      *
-     * @param list<ShipmentView> $views
-     *
+     * @param  list<ShipmentView> $views
      * @return list<ShipmentView>
      */
     public static function withProgress(array $views, ShipmentProgressReader $reader): array
@@ -52,8 +51,7 @@ final class ShipmentListSupport
      * Normaliza una lista de estados (cualquier capitalización) a valores del enum, sin repetidos. Lista
      * vacía o null → null (sin filtro). Ante un estado desconocido lanza ValueError, como status().
      *
-     * @param list<string>|null $values
-     *
+     * @param  list<string>|null $values
      * @return list<string>|null
      */
     public static function statuses(?array $values): ?array
@@ -79,8 +77,7 @@ final class ShipmentListSupport
      * Adjunta a cada vista su modalidad de entrega (domicilio / recojo en tienda), resuelta en UN lote por
      * el tipo de los nodos destino de la página (sin N+1). Sin nodo destino = domicilio.
      *
-     * @param list<ShipmentView> $views
-     *
+     * @param  list<ShipmentView> $views
      * @return list<ShipmentView>
      */
     public static function withDeliveryMode(array $views, DeliveryModeReader $reader): array

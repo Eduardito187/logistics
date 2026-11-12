@@ -33,7 +33,7 @@ use Throwable;
  * pedido manual despacha ReceiveShipment por el CommandBus y la carga masiva pasa por el coordinador
  * de importación (ImportShipments), que a su vez despacha un ReceiveShipment por fila. Presentation
  * nunca escribe el Record directo: toda escritura de negocio va por el caso de uso (invariantes +
- * outbox transaccional). Todo texto visible va en inglés (regla 5 de CLAUDE.md).
+ * outbox transaccional). Cada texto visible va en inglés (regla 5 de CLAUDE.md).
  */
 final class ListShipments extends ListRecords
 {

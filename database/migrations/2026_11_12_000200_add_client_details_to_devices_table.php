@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
  * Datos del cliente por dispositivo para distinguir teléfonos en `GET /app/devices` (auditoría app #28):
  * modelo del equipo, versión del sistema operativo y versión/build de la app instalada.
  *
- * Los llena la guarda de la puerta app ({@see \App\Http\Middleware\EnsureDeviceToken}) a partir de las
+ * Los llena la guarda de la puerta app (middleware `EnsureDeviceToken`) a partir de las
  * cabeceras que envía la app (`X-App-Version`, `X-App-Build`, `X-Device-Model`, `X-Device-Os-Version`),
  * en el mismo UPDATE de `last_seen_at` (sin escrituras extra en el camino caliente).
  *

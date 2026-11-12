@@ -1,7 +1,7 @@
 {{--
     Hub 360 de envío/pedido — cockpit de detalle (DisTrack OS, Fase 2). Agrega: nº de pedido + cliente +
     estado, seguimiento en vivo (ETA/posición), ventana comprometida, dirección con confianza, entrega
-    (vehículo + prueba de entrega) y productos/bultos. Datos reales y tolerantes vía
+    (vehículo + prueba de entrega) y productos. Datos reales y tolerantes vía
     App\Support\Cockpit\ShipmentHub ($this->hub). Capa `.distrack-cockpit`. Español; NUNCA UUID visible.
     Conserva el chrome de página Filament (cabecera + acción Editar).
 --}}
@@ -159,7 +159,7 @@
                             </dd>
                             <dt>ETA</dt><dd>{{ $tr && $tr['eta'] ? $tr['eta'] : '—' }}</dd>
                             <dt>Paradas restantes</dt><dd>{{ $tr ? $tr['remaining_stops'] : '—' }}</dd>
-                            <dt>Bultos</dt><dd>{{ count($units) ?: '—' }}</dd>
+                            <dt>Productos</dt><dd>{{ count($units) ?: '—' }}</dd>
                         </dl>
                     </div>
                 </div>
@@ -187,7 +187,7 @@
 
                 @if(count($units))
                     <div class="ck-card ck-section">
-                        <div class="ck-card__eyebrow">Bultos físicos</div>
+                        <div class="ck-card__eyebrow">Productos físicos</div>
                         <div class="ck-events" style="margin-top:.6rem">
                             @foreach($units as $unit)
                                 <div class="ck-event">

@@ -7,6 +7,8 @@ use App\Models\PersonalAccessToken;
 use App\Models\User;
 use App\Models\UserPreference;
 
+const USER_PREFS_URL = '/api/v1/app/me/preferences';
+
 // GET/PUT /api/v1/app/me/preferences (auditoría app #8): roundtrip, merge, borrado con null,
 // last-write-wins por clave y validación por allow-list + espacio libre app.*.
 
@@ -33,7 +35,7 @@ function prefsBearer(): array
 it('devuelve un objeto vacío y updated_at nulo si el usuario no tiene preferencias', function (): void {
     [$token] = prefsBearer();
 
-    $response = $this->withToken($token)->getJson('/api/v1/app/me/preferences');
+    $response = $this->withToken($token)->getJson(USER_PREFS_URL);
 
     $response->assertOk()->assertJsonPath('data.updated_at', null);
     expect($response->getContent())->toContain('"preferences":{}');
@@ -42,7 +44,7 @@ it('devuelve un objeto vacío y updated_at nulo si el usuario no tiene preferenc
 it('guarda y devuelve las preferencias (roundtrip) y hace merge en el PUT', function (): void {
     [$token, $user] = prefsBearer();
 
-    $this->withToken($token)->putJson('/api/v1/app/me/preferences', [
+    $this->withToken($token)->putJson(USER_PREFS_URL, [
         'preferences' => [
             'ui.theme' => 'dark',
             'scan.vibrate' => false,
@@ -52,11 +54,11 @@ it('guarda y devuelve las preferencias (roundtrip) y hace merge en el PUT', func
     ])->assertOk()->assertJsonPath('data.ignored_keys', []);
 
     // Segundo PUT: agrega una clave y borra otra; las demás se conservan (merge).
-    $this->withToken($token)->putJson('/api/v1/app/me/preferences', [
+    $this->withToken($token)->putJson(USER_PREFS_URL, [
         'preferences' => ['ui.high_contrast' => true, 'scan.vibrate' => null],
     ])->assertOk();
 
-    $data = $this->withToken($token)->getJson('/api/v1/app/me/preferences')->assertOk()->json('data');
+    $data = $this->withToken($token)->getJson(USER_PREFS_URL)->assertOk()->json('data');
 
     // toEqual (no toBe): jsonb de Postgres reordena las claves de los objetos anidados.
     expect($data['preferences'])->toEqual([
@@ -72,13 +74,13 @@ it('guarda y devuelve las preferencias (roundtrip) y hace merge en el PUT', func
 it('ignora un cambio más viejo que el último aceptado para esa clave (last-write-wins)', function (): void {
     [$token] = prefsBearer();
 
-    $this->withToken($token)->putJson('/api/v1/app/me/preferences', [
+    $this->withToken($token)->putJson(USER_PREFS_URL, [
         'preferences' => ['ui.theme' => 'dark'],
         'updated_at' => now()->subMinute()->toIso8601String(),
     ])->assertOk();
 
     // Un teléfono que estuvo offline manda un cambio de hace una hora: no pisa al más nuevo.
-    $response = $this->withToken($token)->putJson('/api/v1/app/me/preferences', [
+    $response = $this->withToken($token)->putJson(USER_PREFS_URL, [
         'preferences' => ['ui.theme' => 'light', 'scan.sound' => true],
         'updated_at' => now()->subHour()->toIso8601String(),
     ]);
@@ -94,7 +96,7 @@ it('ignora un cambio más viejo que el último aceptado para esa clave (last-wri
 it('rechaza claves desconocidas y tipos inválidos con 422 problem+json', function (): void {
     [$token] = prefsBearer();
 
-    $response = $this->withToken($token)->putJson('/api/v1/app/me/preferences', [
+    $response = $this->withToken($token)->putJson(USER_PREFS_URL, [
         'preferences' => [
             'ui.theme' => 'purple',
             'scan.vibrate' => 'yes',
@@ -115,11 +117,11 @@ it('rechaza claves desconocidas y tipos inválidos con 422 problem+json', functi
 it('rechaza un valor app.* demasiado grande', function (): void {
     [$token] = prefsBearer();
 
-    $this->withToken($token)->putJson('/api/v1/app/me/preferences', [
+    $this->withToken($token)->putJson(USER_PREFS_URL, [
         'preferences' => ['app.blob' => str_repeat('x', 5000)],
     ])->assertStatus(422);
 });
 
 it('exige autenticación', function (): void {
-    $this->getJson('/api/v1/app/me/preferences')->assertUnauthorized();
+    $this->getJson(USER_PREFS_URL)->assertUnauthorized();
 });

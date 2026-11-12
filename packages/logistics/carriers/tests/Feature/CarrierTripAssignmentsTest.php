@@ -9,8 +9,13 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Logistics\Carriers\Application\Command\ScheduleCarrierTrip\ScheduleCarrierTrip;
+use Logistics\Carriers\Domain\Exception\CarriersException;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Factory\CarrierFactory;
 use Logistics\Shared\Application\Command\CommandBus;
+
+const CARRIER_TRIP_FEATURE_CD_SCZ = 'CD Santa Cruz';
+
+const CARRIER_TRIP_FEATURE_CD_LPZ = 'CD La Paz';
 
 /**
  * Carga asignada al transportista (auditoría app #4): GET /app/carriers/me/assignments y
@@ -86,7 +91,7 @@ function carrierTripFeatureShipment(string $externalId, string $customer, ?strin
         'created_at' => now(),
         'updated_at' => now(),
     ]);
-    for ($i = 1; $i <= $units; ++$i) {
+    for ($i = 1; $i <= $units; $i++) {
         DB::table('shipment_units')->insert([
             'id' => Str::uuid7()->toString(),
             'shipment_id' => $shipmentId,
@@ -127,8 +132,8 @@ function carrierTripFeatureSchedule(string $carrierId, string $from, string $to,
 it('el transportista ve SOLO los viajes de su transportista, con la forma del contrato', function (): void {
     $mine = CarrierFactory::new()->create(['name' => 'Transportes Propios']);
     $other = CarrierFactory::new()->create(['name' => 'Transportes Ajenos']);
-    $from = carrierTripFeatureNode('CD-SCZ', 'CD Santa Cruz');
-    $to = carrierTripFeatureNode('CD-LPZ', 'CD La Paz');
+    $from = carrierTripFeatureNode('CD-SCZ', CARRIER_TRIP_FEATURE_CD_SCZ);
+    $to = carrierTripFeatureNode('CD-LPZ', CARRIER_TRIP_FEATURE_CD_LPZ);
     $store = carrierTripFeatureNode('T-LPZ-01', 'Tienda El Prado');
 
     $shipment = carrierTripFeatureShipment('EXT-1', 'Juan Pérez', $store, 'SKU-RD-1', 'Heladera Samsung', 2);
@@ -146,8 +151,8 @@ it('el transportista ve SOLO los viajes de su transportista, con la forma del co
         ->assertJsonPath('data.0.trip_id', $tripId)
         ->assertJsonPath('data.0.carrier_id', $mine->id)
         ->assertJsonPath('data.0.carrier_name', 'Transportes Propios')
-        ->assertJsonPath('data.0.corridor_from', 'CD Santa Cruz')
-        ->assertJsonPath('data.0.corridor_to', 'CD La Paz')
+        ->assertJsonPath('data.0.corridor_from', CARRIER_TRIP_FEATURE_CD_SCZ)
+        ->assertJsonPath('data.0.corridor_to', CARRIER_TRIP_FEATURE_CD_LPZ)
         ->assertJsonPath('data.0.status', 'scheduled')
         ->assertJsonPath('data.0.expected_units_count', 2)
         ->assertJsonPath('data.0.shipments.0.shipment_id', $shipment)
@@ -178,7 +183,7 @@ it('el transportista ve SOLO los viajes de su transportista, con la forma del co
 it('oficina ve los viajes de todos los transportistas', function (): void {
     $a = CarrierFactory::new()->create();
     $b = CarrierFactory::new()->create();
-    $from = carrierTripFeatureNode('CD-SCZ', 'CD Santa Cruz');
+    $from = carrierTripFeatureNode('CD-SCZ', CARRIER_TRIP_FEATURE_CD_SCZ);
     $to = carrierTripFeatureNode('CD-CBB', 'CD Cochabamba');
 
     carrierTripFeatureSchedule($a->id, $from, $to, [carrierTripFeatureShipment('EXT-A', 'Cliente A', null, 'SKU-A', 'Lavadora', 1)]);
@@ -198,8 +203,8 @@ it('oficina ve los viajes de todos los transportistas', function (): void {
 
 it('iniciar y cerrar son idempotentes y devuelven started_at / closed_at / status', function (): void {
     $carrier = CarrierFactory::new()->create();
-    $from = carrierTripFeatureNode('CD-SCZ', 'CD Santa Cruz');
-    $to = carrierTripFeatureNode('CD-LPZ', 'CD La Paz');
+    $from = carrierTripFeatureNode('CD-SCZ', CARRIER_TRIP_FEATURE_CD_SCZ);
+    $to = carrierTripFeatureNode('CD-LPZ', CARRIER_TRIP_FEATURE_CD_LPZ);
     $tripId = carrierTripFeatureSchedule($carrier->id, $from, $to, [
         carrierTripFeatureShipment('EXT-3', 'Cliente', null, 'SKU-3', 'Microondas', 1),
     ]);
@@ -242,7 +247,7 @@ it('cerrar un viaje programado (sin iniciar) es 422', function (): void {
     $carrier = CarrierFactory::new()->create();
     $tripId = carrierTripFeatureSchedule(
         $carrier->id,
-        carrierTripFeatureNode('CD-SCZ', 'CD Santa Cruz'),
+        carrierTripFeatureNode('CD-SCZ', CARRIER_TRIP_FEATURE_CD_SCZ),
         carrierTripFeatureNode('CD-TJA', 'CD Tarija'),
         [carrierTripFeatureShipment('EXT-4', 'Cliente', null, 'SKU-4', 'Licuadora', 1)],
     );
@@ -261,8 +266,8 @@ it('otro transportista no puede iniciar ni cerrar un viaje ajeno (403)', functio
     $intruder = CarrierFactory::new()->create();
     $tripId = carrierTripFeatureSchedule(
         $owner->id,
-        carrierTripFeatureNode('CD-SCZ', 'CD Santa Cruz'),
-        carrierTripFeatureNode('CD-LPZ', 'CD La Paz'),
+        carrierTripFeatureNode('CD-SCZ', CARRIER_TRIP_FEATURE_CD_SCZ),
+        carrierTripFeatureNode('CD-LPZ', CARRIER_TRIP_FEATURE_CD_LPZ),
         [carrierTripFeatureShipment('EXT-5', 'Cliente', null, 'SKU-5', 'Freezer', 1)],
     );
 
@@ -284,8 +289,8 @@ it('oficina puede iniciar el viaje de cualquier transportista; viaje inexistente
     $carrier = CarrierFactory::new()->create();
     $tripId = carrierTripFeatureSchedule(
         $carrier->id,
-        carrierTripFeatureNode('CD-SCZ', 'CD Santa Cruz'),
-        carrierTripFeatureNode('CD-LPZ', 'CD La Paz'),
+        carrierTripFeatureNode('CD-SCZ', CARRIER_TRIP_FEATURE_CD_SCZ),
+        carrierTripFeatureNode('CD-LPZ', CARRIER_TRIP_FEATURE_CD_LPZ),
         [carrierTripFeatureShipment('EXT-6', 'Cliente', null, 'SKU-6', 'Horno', 1)],
     );
 
@@ -309,12 +314,12 @@ it('un transportista sin vínculo y otros roles reciben 403', function (): void 
 
 it('un envío no puede estar en dos viajes vigentes a la vez', function (): void {
     $carrier = CarrierFactory::new()->create();
-    $from = carrierTripFeatureNode('CD-SCZ', 'CD Santa Cruz');
-    $to = carrierTripFeatureNode('CD-LPZ', 'CD La Paz');
+    $from = carrierTripFeatureNode('CD-SCZ', CARRIER_TRIP_FEATURE_CD_SCZ);
+    $to = carrierTripFeatureNode('CD-LPZ', CARRIER_TRIP_FEATURE_CD_LPZ);
     $shipment = carrierTripFeatureShipment('EXT-7', 'Cliente', null, 'SKU-7', 'Aire acondicionado', 1);
 
     carrierTripFeatureSchedule($carrier->id, $from, $to, [$shipment]);
 
     expect(fn () => carrierTripFeatureSchedule($carrier->id, $from, $to, [$shipment]))
-        ->toThrow(Logistics\Carriers\Domain\Exception\CarriersException::class);
+        ->toThrow(CarriersException::class);
 });

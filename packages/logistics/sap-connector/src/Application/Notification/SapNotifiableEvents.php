@@ -27,12 +27,27 @@ final class SapNotifiableEvents
         'execution.shipment_departed' => 'Shipment departed',
         'execution.shipment_delivered' => 'Shipment delivered',
         'execution.delivery_failed' => 'Delivery failed',
+        'execution.route_stop_attached' => 'Shipment assigned to vehicle',
+        'execution.stop_arrived' => 'Vehicle arrived at stop',
+        'execution.driver_route_started' => 'Driver route started',
+        'execution.driver_route_closed' => 'Driver route closed',
+        'execution.delivery_evidence_validated' => 'Delivery evidence validated',
+        'execution.node_reception_opened' => 'Node reception opened',
+        'execution.node_reception_reconciled' => 'Node reception reconciled',
+        'carriers.carrier_trip_started' => 'Carrier trip started',
+        'carriers.carrier_trip_closed' => 'Carrier trip closed',
+        'fleet.vehicle_marked_unfit' => 'Vehicle marked unfit',
+        'fleet.vehicle_cleared' => 'Vehicle cleared for dispatch',
+        'telemetry.vehicle_route_deviated' => 'Vehicle route deviation',
+        'telemetry.vehicle_speeding_sustained' => 'Vehicle sustained speeding',
+        'catalog.product_physical_spec_changed' => 'Product measurements changed',
+        // `telemetry.vehicle_position_reported` NO va: es de alto volumen (un aviso por lote de GPS).
         'orders.order_cancelled' => 'Order cancelled',
         'invoicing.invoice_issued' => 'Invoice issued',
     ];
 
     /**
-     * Eventos avisados por defecto (todo el catálogo).
+     * Eventos avisados por defecto (el catálogo completo).
      *
      * @return list<string>
      */

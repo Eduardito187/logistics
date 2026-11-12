@@ -45,7 +45,7 @@ final class ShipmentLoadReader
      * Carga por envío para los ids dados. Siempre devuelve una entrada por cada id pedido (los que no
      * tienen líneas o fallan, con los defaults y marcados como estimados).
      *
-     * @param  list<string>                                                    $shipmentIds
+     * @param  list<string>                                                $shipmentIds
      * @return array<string, array{kg: float, m3: float, estimated: bool}>
      */
     public function loadsFor(array $shipmentIds): array
@@ -77,10 +77,10 @@ final class ShipmentLoadReader
     }
 
     /**
-     * Agregado por envío de un lote de ids. Tolerante: si la consulta falla, devuelve vacío (todo cae a
+     * Agregado por envío de un lote de ids. Tolerante: si la consulta falla, devuelve vacío (cada envío cae a
      * los defaults estimados) para que planificar nunca se caiga por la lectura de carga.
      *
-     * @param  list<string>                                                                                                                     $ids
+     * @param  list<string>                                                                                                                           $ids
      * @return array<string, array{qty: int, qty_without_weight: int, qty_without_volume: int, known_kg: float, known_m3: float, approximated: bool}>
      */
     private function aggregate(array $ids): array

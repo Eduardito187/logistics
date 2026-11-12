@@ -148,11 +148,13 @@ final class TripLookups
         foreach ($units as $unit) {
             $sku = trim(self::str($unit->sku));
             $name = trim(self::str($unit->product_name));
-            $name = $name !== '' ? $name : ($sku !== '' ? $sku : 'Product');
+            if ($name === '') {
+                $name = $sku !== '' ? $sku : 'Product';
+            }
             $label = $sku !== '' && $sku !== $name ? "{$name} · {$sku}" : $name;
             $shipmentId = self::str($unit->shipment_id);
             $products[$shipmentId][$label] ??= ['label' => $label, 'count' => 0];
-            ++$products[$shipmentId][$label]['count'];
+            $products[$shipmentId][$label]['count']++;
         }
 
         $out = [];
@@ -193,6 +195,10 @@ final class TripLookups
 
     private static function str(mixed $value): string
     {
-        return \is_string($value) ? $value : (\is_scalar($value) ? (string) $value : '');
+        if (\is_string($value)) {
+            return $value;
+        }
+
+        return \is_scalar($value) ? (string) $value : '';
     }
 }

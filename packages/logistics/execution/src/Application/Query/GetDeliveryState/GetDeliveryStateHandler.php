@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Application\Query\GetDeliveryState;
 
 use Logistics\Execution\Application\Contract\DeliveryReferenceReader;
+use Logistics\Execution\Application\Contract\ShipmentUnitIdsReader;
 use Logistics\Execution\Application\ReadModel\DeliveryView;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
@@ -19,6 +20,7 @@ final class GetDeliveryStateHandler implements QueryHandler
     public function __construct(
         private readonly DeliveryRepository $deliveries,
         private readonly ?DeliveryReferenceReader $references = null,
+        private readonly ?ShipmentUnitIdsReader $units = null,
     ) {}
 
     public function handle(Query $query): ?DeliveryView
@@ -37,6 +39,9 @@ final class GetDeliveryStateHandler implements QueryHandler
         // un texto genérico; misma fuente que la hoja de ruta del vehículo.
         $reference = $this->references?->forShipmentIds([$delivery->shipmentId()])[$delivery->shipmentId()] ?? null;
 
-        return DeliveryView::fromDelivery($delivery, $reference);
+        // Bultos del envío (units_total / unit_ids): el POD espera bultos, no cantidades de producto.
+        $unitIds = $this->units?->forShipmentIds([$delivery->shipmentId()])[$delivery->shipmentId()] ?? [];
+
+        return DeliveryView::fromDelivery($delivery, $reference, $unitIds);
     }
 }

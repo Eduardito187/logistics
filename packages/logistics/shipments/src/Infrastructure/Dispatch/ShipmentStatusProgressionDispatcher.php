@@ -16,7 +16,7 @@ use Throwable;
 
 /**
  * Reactor planificación/ejecución → envíos: hace AVANZAR `shipments.status` a partir de los hechos de
- * otros contextos, que antes nunca lo movían (todo quedaba en RECEIVED/PLANNED para siempre).
+ * otros contextos, que antes nunca lo movían (cada envío quedaba en RECEIVED/PLANNED para siempre).
  *
  * Tabla de avance (monótono: nunca retrocede; idempotente: reentregas y hechos atrasados son no-op):
  *
@@ -40,7 +40,7 @@ use Throwable;
  *
  * NUNCA lanza: va ÚLTIMO en el abanico de cada evento y el FanOutMessageDispatcher corta a los siguientes
  * si uno lanza; además, un envío desconocido o un error puntual no debe mandar el mensaje a dead-letter.
- * Todo fallo se registra en el log y se sigue; `shipments:sync-status` repara lo que haya quedado atrás.
+ * Cada fallo se registra en el log y se sigue; `shipments:sync-status` repara lo que haya quedado atrás.
  */
 final readonly class ShipmentStatusProgressionDispatcher implements MessageDispatcher
 {

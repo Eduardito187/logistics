@@ -21,6 +21,9 @@ use Logistics\Shared\Application\Query\Query;
  */
 final readonly class ListShipments implements Query
 {
+    /**
+     * @param list<string>|null $statuses
+     */
     public function __construct(
         public ?string $status = null,
         public ?string $source = null,
@@ -30,5 +33,9 @@ final readonly class ListShipments implements Query
         // Rango de fecha prometida de entrega (Y-m-d, ambos inclusive); null = sin cota.
         public ?string $deliveryDateFrom = null,
         public ?string $deliveryDateTo = null,
+        // Aditivo: VARIOS estados a la vez (status[]=…), cualquier capitalización; null = sin filtro.
+        public ?array $statuses = null,
+        // Aditivo: modalidad de entrega derivada (home_delivery / store_pickup); null = sin filtro.
+        public ?string $deliveryMode = null,
     ) {}
 }

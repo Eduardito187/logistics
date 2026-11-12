@@ -36,9 +36,11 @@ use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentLineRecordFactory;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRecordFactory;
 
+const PLANNING_FIX_DATE = '2026-10-20';
+
 // Correcciones de base (Ola 0) del auto-planificador: filtro por fecha prometida, consumo del backlog de
 // replanificación, lecturas filtradas de requisitos/restricciones, ventana de turno de la tripulación y
-// carga real (kg/m3) por línea con fallback a defaults. OSRM falseado: todo offline y determinista.
+// carga real (kg/m3) por línea con fallback a defaults. OSRM falseado: íntegramente offline y determinista.
 
 beforeEach(function (): void {
     Http::fake(['*' => Http::response(null, 500)]);
@@ -104,7 +106,7 @@ function planningFixBackend(array $etaMinutes = []): RoutingBackend
             }
 
             $etas = [];
-            foreach ($candidates as $index => $candidate) {
+            foreach ($candidates as $index => $candidate) { // NOSONAR — FP de data-flow: $candidates/$this->etaMinutes vienen inicializados por el stub de prueba.
                 $minutes = $this->etaMinutes[$index] ?? 10 * ($index + 1);
                 $etas[$candidate->shipmentId] = Eta::at($departAt->modify("+{$minutes} minutes"), $minutes);
             }
@@ -192,14 +194,14 @@ it('un plan del día X solo toma envíos prometidos para X (y, si X es hoy, los 
     $pending = planningFixPending(planningFixClock('2026-10-20 06:00:00'));
     $coords = ['status' => 'RECEIVED', 'lat' => -16.4955, 'lng' => -68.1336];
 
-    $today = ShipmentRecordFactory::new()->withDeliverySlot('2026-10-20', '09:00', '12:00')->create($coords);
+    $today = ShipmentRecordFactory::new()->withDeliverySlot(PLANNING_FIX_DATE, '09:00', '12:00')->create($coords);
     $tomorrow = ShipmentRecordFactory::new()->withDeliverySlot('2026-10-21', '09:00', '12:00')->create($coords);
     $overdue = ShipmentRecordFactory::new()->withDeliverySlot('2026-10-19', '09:00', '12:00')->create($coords);
     $undated = ShipmentRecordFactory::new()->create($coords);
     // Otro estado: nunca entra por la regla de fecha.
-    ShipmentRecordFactory::new()->withDeliverySlot('2026-10-20', '09:00', '12:00')->create([...$coords, 'status' => 'DELIVERED']);
+    ShipmentRecordFactory::new()->withDeliverySlot(PLANNING_FIX_DATE, '09:00', '12:00')->create([...$coords, 'status' => 'DELIVERED']);
 
-    $forToday = planningFixIds($pending->pendingFor(PlanDate::fromString('2026-10-20')));
+    $forToday = planningFixIds($pending->pendingFor(PlanDate::fromString(PLANNING_FIX_DATE)));
     $expectedToday = [(string) $today->getKey(), (string) $overdue->getKey(), (string) $undated->getKey()];
     sort($expectedToday);
 
@@ -259,8 +261,8 @@ it('un envío del backlog ya entregado no se replanifica', function (): void {
 // ──────────────────────────── 3. Lecturas filtradas de requisitos y restricciones ────────────────────────────
 
 it('lee requisitos de envío y restricciones de camión solo de los ids en alcance', function (): void {
-    $date = PlanDate::fromString('2026-10-20');
-    $shipment = ShipmentRecordFactory::new()->withDeliverySlot('2026-10-20', '09:00', '12:00')
+    $date = PlanDate::fromString(PLANNING_FIX_DATE);
+    $shipment = ShipmentRecordFactory::new()->withDeliverySlot(PLANNING_FIX_DATE, '09:00', '12:00')
         ->create(['status' => 'RECEIVED', 'lat' => -16.4955, 'lng' => -68.1336]);
 
     // Requisito del envío en alcance y otro de un envío ajeno (no debe leerse).
@@ -303,10 +305,10 @@ it('lee requisitos de envío y restricciones de camión solo de los ids en alcan
 // ──────────────────────────── 4. Ventana de turno de la tripulación ────────────────────────────
 
 it('la salida no se planifica antes del inicio del turno y se quitan las paradas que exceden la ventana', function (): void {
-    $date = PlanDate::fromString('2026-10-20');
+    $date = PlanDate::fromString(PLANNING_FIX_DATE);
     $coords = ['status' => 'RECEIVED', 'lat' => -16.4955, 'lng' => -68.1336];
     foreach (range(1, 3) as $ignored) {
-        ShipmentRecordFactory::new()->withDeliverySlot('2026-10-20', '09:00', '18:00')->create($coords);
+        ShipmentRecordFactory::new()->withDeliverySlot(PLANNING_FIX_DATE, '09:00', '18:00')->create($coords);
     }
 
     // Turno 08:00–12:00 (240 min desde las 08:00), jornada máxima 600: la 3.ª parada (ETA 300) excede.
@@ -386,7 +388,7 @@ it('con medidas reales por línea suma cantidad × medida y completa con default
         ->and($loads[(string) $mixed->getKey()]['estimated'])->toBeTrue();
 
     // El candidato del planificador expone la carga real y la marca de estimada.
-    $candidates = planningFixPending(planningFixClock('2026-10-20 06:00:00'))->pendingFor(PlanDate::fromString('2026-10-20'));
+    $candidates = planningFixPending(planningFixClock('2026-10-20 06:00:00'))->pendingFor(PlanDate::fromString(PLANNING_FIX_DATE));
     $byId = [];
     foreach ($candidates as $candidate) {
         $byId[$candidate->shipmentId] = $candidate;

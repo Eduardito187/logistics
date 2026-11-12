@@ -27,7 +27,7 @@ use Throwable;
  *
  * Matriz por rol:
  *   - Oficina (admin / supervisor): acceso cross-transportista, pasa directo.
- *   - Transportista: acotado a SU transportista (`users.carrier_id`). Sin vínculo → 403 en todo.
+ *   - Transportista: acotado a SU transportista (`users.carrier_id`). Sin vínculo → 403 en cualquier endpoint.
  *   - Cualquier otro rol (chofer, preparador, tienda) o sin usuario: 403 (seguro por defecto).
  *
  * Modos (parámetro del middleware en la ruta):
@@ -70,17 +70,37 @@ final class EnsureCarrierScope
     {
         $user = $request->user();
 
-        if (!$user instanceof User) {
-            return $this->forbidden($request, 'This action requires an office or carrier account.');
-        }
-
         // Oficina opera cross-transportista (revisión, aprobación y pago de liquidaciones).
-        if ($user->hasAnyRole(Role::Admin, Role::Supervisor)) {
+        if ($user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor)) {
             return $next($request);
         }
 
+        $denied = $this->carrierDenial($request, $user, $mode);
+        if ($denied !== null) {
+            return $denied;
+        }
+
+        // Llegar acá implica usuario transportista con vínculo (carrierDenial ya lo verificó).
+        $carrierId = $user instanceof User ? (string) $user->carrier_id : '';
+
+        if ($mode === self::MODE_LIST) {
+            // Se ignora cualquier carrier_id del cliente: el filtro es SIEMPRE el del usuario.
+            $request->query->set('carrier_id', $carrierId);
+        }
+
+        $request->attributes->set(self::ATTRIBUTE, $carrierId);
+
+        return $next($request);
+    }
+
+    /**
+     * Respuesta 403 si el usuario (no oficina) no puede operar en este modo; null si está permitido.
+     * Mismo orden de chequeos que antes: sin usuario/rol → sin vínculo → alcance por modo.
+     */
+    private function carrierDenial(Request $request, mixed $user, string $mode): ?Response
+    {
         // Fuera de oficina, solo el rol transportista llega a estos endpoints.
-        if (!$user->hasRole(Role::Transportista)) {
+        if (!$user instanceof User || !$user->hasRole(Role::Transportista)) {
             return $this->forbidden($request, 'This action requires an office or carrier account.');
         }
 
@@ -91,6 +111,14 @@ final class EnsureCarrierScope
             return $this->forbidden($request, 'Your account is not linked to a carrier.');
         }
 
+        return $this->modeDenial($request, $carrierId, $mode);
+    }
+
+    /**
+     * Respuesta 403 si el recurso de la ruta no es del transportista del usuario; null si está permitido.
+     */
+    private function modeDenial(Request $request, string $carrierId, string $mode): ?Response
+    {
         $allowed = match ($mode) {
             self::MODE_LIST => true,
             self::MODE_SETTLEMENT => $this->settlementCarrierId($request) === $carrierId,
@@ -100,23 +128,16 @@ final class EnsureCarrierScope
             default => false,
         };
 
-        if (!$allowed) {
-            return $this->forbidden(
-                $request,
-                $mode === self::MODE_OFFICE
-                    ? 'This action is reserved to office roles.'
-                    : 'This action is restricted to your own carrier.',
-            );
+        if ($allowed) {
+            return null;
         }
 
-        if ($mode === self::MODE_LIST) {
-            // Se ignora cualquier carrier_id del cliente: el filtro es SIEMPRE el del usuario.
-            $request->query->set('carrier_id', $carrierId);
-        }
-
-        $request->attributes->set(self::ATTRIBUTE, $carrierId);
-
-        return $next($request);
+        return $this->forbidden(
+            $request,
+            $mode === self::MODE_OFFICE
+                ? 'This action is reserved to office roles.'
+                : 'This action is restricted to your own carrier.',
+        );
     }
 
     /**

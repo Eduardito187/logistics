@@ -73,11 +73,11 @@ final class PreferencesController
     }
 
     /**
-     * Aplica el merge last-write-wins por clave sobre la fila bloqueada y la guarda.
+     * Aplica el merge last-write-wins por clave sobre la fila bloqueada y la guarda. Devuelve las claves
+     * ignoradas por ser más viejas que el último cambio aceptado.
      *
-     * @param array<array-key, mixed> $incoming
-     *
-     * @return list<string> claves ignoradas por ser más viejas que el último cambio aceptado
+     * @param  array<array-key, mixed> $incoming
+     * @return list<string>
      */
     private function merge(UserPreference $row, array $incoming, Carbon $changedAt): array
     {

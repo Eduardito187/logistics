@@ -51,8 +51,7 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
     }
 
     /**
-     * @param list<string> $ids
-     *
+     * @param  list<string>                        $ids
      * @return array<string, ShipmentProgressView>
      */
     private function forBatch(array $ids): array
@@ -96,8 +95,7 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
     /**
      * Entrega en ejecución de cada envío, con las horas de sus escaneos clave (una consulta agregada).
      *
-     * @param list<string> $ids
-     *
+     * @param  list<string>                                                                                                                                    $ids
      * @return array<string, array{vehicle_id: string|null, status: string|null, prepared_at: string|null, loaded_at: string|null, delivered_at: string|null}>
      */
     private function deliveries(array $ids): array
@@ -149,8 +147,7 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
     /**
      * Última asignación del envío a la ruta de un camión (manual o armada desde el plan).
      *
-     * @param list<string> $ids
-     *
+     * @param  list<string>                                                            $ids
      * @return array<string, array{vehicle_id: string|null, assigned_at: string|null}>
      */
     private function routeAssignments(array $ids): array
@@ -184,8 +181,7 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
     /**
      * Camión del plan PUBLICADO más reciente que incluye al envío (antes de armarse la ruta del chofer).
      *
-     * @param list<string> $ids
-     *
+     * @param  list<string>                                                            $ids
      * @return array<string, array{vehicle_id: string|null, assigned_at: string|null}>
      */
     private function planAssignments(array $ids): array
@@ -219,8 +215,7 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
     /**
      * Referencia de la orden de cada envío (order_reference, o external_id en filas viejas).
      *
-     * @param list<string> $ids
-     *
+     * @param  list<string>          $ids
      * @return array<string, string>
      */
     private function orderReferences(array $ids): array
@@ -249,8 +244,7 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
     /**
      * Etiquetas emitidas (no revocadas) por pedido. Null si la fuente no está disponible (desconocido).
      *
-     * @param list<string> $orderRefs
-     *
+     * @param  list<string>            $orderRefs
      * @return array<string, int>|null
      */
     private function labelCounts(array $orderRefs): ?array
@@ -285,8 +279,7 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
     /**
      * Patente de cada camión (fleet_vehicles.plate) por id.
      *
-     * @param list<string> $vehicleIds
-     *
+     * @param  list<string>          $vehicleIds
      * @return array<string, string>
      */
     private function plates(array $vehicleIds): array

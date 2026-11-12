@@ -21,6 +21,10 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
  * @property list<string>|null $helper_ids
  * @property string            $route_date
  * @property string            $status
+ * @property string|null       $started_at
+ * @property string|null       $closed_at
+ * @property string|null       $start_odometer_km
+ * @property string|null       $close_odometer_km
  */
 final class VehicleRouteRecord extends Model
 {

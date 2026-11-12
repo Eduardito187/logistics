@@ -37,7 +37,7 @@ use Logistics\Shipments\Domain\ValueObject\SourceReference;
  * el id del existente en lastShipmentId() y no vuelve a grabar eventos.
  *
  * Foto de medidas (Roadmap 02, Fase 2.1): cada línea nace con su peso y volumen por unidad resueltos
- * UNA vez acá (producto → categoría → default global, una sola lectura al catálogo para todo el pedido)
+ * UNA vez acá (producto → categoría → default global, una sola lectura al catálogo para el pedido entero)
  * y no se recalculan después. Medidas faltantes nunca bloquean el ingreso: caen al default y se marcan.
  *
  * @implements CommandHandler<ReceiveShipment>

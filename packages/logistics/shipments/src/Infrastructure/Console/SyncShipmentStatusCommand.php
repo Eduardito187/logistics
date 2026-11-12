@@ -154,8 +154,7 @@ final class SyncShipmentStatusCommand extends Command
     /**
      * Estado al que debería estar cada envío según ejecución y planificación (el de mayor avance).
      *
-     * @param list<string> $ids
-     *
+     * @param  list<string>                  $ids
      * @return array<string, ShipmentStatus>
      */
     private function derivedTargets(ConnectionInterface $connection, array $ids): array
@@ -295,17 +294,19 @@ final class SyncShipmentStatusCommand extends Command
     /** Nodo de retiro del id externo (misma regla del ingreso), o null si no aplica. */
     private static function pickupNodeOf(mixed $source, mixed $externalId): ?string
     {
-        if (!is_string($source) || !is_string($externalId)) {
+        $orderSource = is_string($source) ? OrderSource::tryFrom($source) : null;
+        if ($orderSource === null || !is_string($externalId)) {
             return null;
         }
 
-        $orderSource = OrderSource::tryFrom($source);
-        if ($orderSource === null) {
-            return null;
-        }
+        return self::pickupNodeFromReference($orderSource, $externalId);
+    }
 
+    /** Sufijo de nodo de retiro del id externo; null si la referencia es inválida (nunca lanza). */
+    private static function pickupNodeFromReference(OrderSource $source, string $externalId): ?string
+    {
         try {
-            return SourceReference::of($orderSource, $externalId)->pickupNodeId();
+            return SourceReference::of($source, $externalId)->pickupNodeId();
         } catch (Throwable) {
             return null;
         }
@@ -314,8 +315,7 @@ final class SyncShipmentStatusCommand extends Command
     /**
      * Ejecuta una lectura cruzada tolerante: si la tabla de otro contexto no está disponible, no hay filas.
      *
-     * @param callable(): iterable<int, mixed> $read
-     *
+     * @param  callable(): iterable<int, mixed> $read
      * @return list<\stdClass>
      */
     private function safeRows(callable $read): array

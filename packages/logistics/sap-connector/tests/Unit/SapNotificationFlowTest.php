@@ -153,7 +153,10 @@ function sapNotifClient(int $status = 200, string $body = '{"ok":true}', bool $t
             private readonly bool $throws,
         ) {}
 
-        public function pushStockTransfer(StockTransfer $transfer): void {}
+        public function pushStockTransfer(StockTransfer $transfer): void
+        {
+            // Sin efecto: este flujo solo ejercita notifyEvent; los traspasos de stock no se usan aquí.
+        }
 
         public function fetchOrders(): array
         {

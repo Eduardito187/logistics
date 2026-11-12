@@ -30,9 +30,8 @@ final readonly class EtaEstimator
     public const string METHOD_STRAIGHT_LINE = 'straight_line';
 
     /**
-     * @param list<StopInput>    $stops    paradas restantes en orden de visita
-     * @param list<RoadLeg>|null $roadLegs un tramo por cada parada CON coordenadas (origen→1ª, 1ª→2ª…), o null
-     *
+     * @param  list<StopInput>    $stops    paradas restantes en orden de visita
+     * @param  list<RoadLeg>|null $roadLegs un tramo por cada parada CON coordenadas (origen→1ª, 1ª→2ª…), o null
      * @return list<StopEta>
      */
     public function estimate(

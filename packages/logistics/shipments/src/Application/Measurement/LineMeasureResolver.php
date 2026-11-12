@@ -50,11 +50,10 @@ final readonly class LineMeasureResolver
     }
 
     /**
-     * Foto de medidas para cada SKU (una sola lectura al catálogo para todo el lote), indexada por la
-     * clave normalizada ({@see CatalogMeasurements::keyOf()}). Todo SKU pedido tiene resultado.
+     * Foto de medidas para cada SKU (una sola lectura al catálogo para el lote entero), indexada por la
+     * clave normalizada ({@see CatalogMeasurements::keyOf()}). Cada SKU pedido tiene resultado.
      *
-     * @param list<string> $skus
-     *
+     * @param  list<string>               $skus
      * @return array<string, LineMeasure>
      */
     public function resolveMany(array $skus): array

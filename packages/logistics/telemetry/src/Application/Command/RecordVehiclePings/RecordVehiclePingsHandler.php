@@ -41,7 +41,7 @@ use Logistics\Telemetry\Domain\ValueObject\Speed;
  * Ingiere un lote de lecturas GPS: persiste los pings (append-only, en bloque), mantiene el trip activo
  * del vehículo vía TripTracker, actualiza su posición en vivo, evalúa alertas y avisa al seguimiento por envío.
  *
- * Es el camino RECOMENDADO para la app (un POST por lote, no por lectura) y alimenta TODO lo que alimenta la
+ * Es el camino RECOMENDADO para la app (un POST por lote, no por lectura) y alimenta CADA cosa que alimenta la
  * ingesta: pings (migas de pan por envío), trips, posición en vivo + fan-out, geocercas/alertas de mal uso,
  * desvío de ruta y exceso sostenido, y el seguimiento por envío vía `telemetry.vehicle_position_reported`.
  *
@@ -55,7 +55,7 @@ use Logistics\Telemetry\Domain\ValueObject\Speed;
  *
  * Alto volumen: NO se emite un evento por ping. Al outbox van los hechos del trip ('telemetry.trip'), las
  * alertas ('telemetry.alert') y, como mucho, UN aviso de posición por lote ('telemetry.vehicle') si hay
- * envíos a bordo. Todo dentro de la transacción que abre el decorador del CommandBus.
+ * envíos a bordo. El proceso entero corre dentro de la transacción que abre el decorador del CommandBus.
  *
  * @implements CommandHandler<RecordVehiclePings>
  */
@@ -97,7 +97,7 @@ final readonly class RecordVehiclePingsHandler implements CommandHandler
 
         $fresh = $this->newPings($command, PingSource::from($command->source), $this->clock->now());
         if ($fresh === []) {
-            // Todo el lote ya estaba persistido (reintento): idempotente, no hay nada más que hacer.
+            // El lote entero ya estaba persistido (reintento): idempotente, no hay nada más que hacer.
             return;
         }
 

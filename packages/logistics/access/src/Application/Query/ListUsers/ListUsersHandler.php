@@ -29,7 +29,7 @@ final readonly class ListUsersHandler implements QueryHandler
     /**
      * @return list<UserView>|Page<UserView>
      */
-    public function handle(Query $query): array|Page
+    public function handle(Query $query): array | Page
     {
         assert($query instanceof ListUsers);
 

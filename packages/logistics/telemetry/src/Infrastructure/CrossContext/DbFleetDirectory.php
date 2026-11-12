@@ -58,8 +58,7 @@ final readonly class DbFleetDirectory implements FleetDirectory
     /**
      * Mapa id→columna de una tabla de otro contexto, con null para lo no encontrado.
      *
-     * @param list<string> $ids
-     *
+     * @param  list<string>               $ids
      * @return array<string, string|null>
      */
     private function pluck(string $table, string $column, array $ids): array

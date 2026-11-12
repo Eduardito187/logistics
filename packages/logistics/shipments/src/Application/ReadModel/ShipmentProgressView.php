@@ -26,7 +26,7 @@ final readonly class ShipmentProgressView
     ) {}
 
     /**
-     * Avance vacío (todo null): envío sin rastros todavía fuera de su recepción.
+     * Avance vacío (campos en null): envío sin rastros todavía fuera de su recepción.
      */
     public static function unknown(): self
     {

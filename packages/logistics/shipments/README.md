@@ -38,7 +38,7 @@ Dominio, aplicación (CQRS) e infraestructura (Eloquent) implementados.
   `ShipmentView`/`ShipmentLineView`/`ShipmentProductView`.
 - **Infrastructure**: `EloquentShipmentRepository` + mapper, records `shipments`/`shipment_lines`/
   `shipment_units`, `NullAddressConfidenceScorer` (confianza media fija; la integración de
-  geocodificación real llega después) y el `ShipmentsServiceProvider` que cablea todo.
+  geocodificación real llega después) y el `ShipmentsServiceProvider` que cablea el contexto completo.
 - **Presentation**: comando `logistics:shipments:receive-manual` para ingesta manual. Sin Filament ni
   endpoints HTTP todavía.
 

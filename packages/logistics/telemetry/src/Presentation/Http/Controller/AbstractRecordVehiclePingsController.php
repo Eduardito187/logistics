@@ -25,9 +25,11 @@ use Logistics\Telemetry\Presentation\Http\Request\RecordVehiclePingsRequest;
  *  - `duplicate` → ya recibida (mismo `fix_id`, o mismo `device_id` + `recorded_at`): idempotente, no se repite;
  *  - `rejected`  → mal formada (con `errors`); no se ingiere, el resto del lote sí.
  * Estado: 202 si no hubo rechazos; 207 (Multi-Status) si hubo rechazos y algo se aceptó o era duplicado; 422 si
- * se rechazó todo. El orden de las lecturas no importa (se ordenan por `recorded_at`).
+ * se rechazó el lote entero. El orden de las lecturas no importa (se ordenan por `recorded_at`).
  *
  * El `source` (app vs integración) lo fija cada subclase según la puerta, no el cuerpo.
+ *
+ * @phpstan-type PingItem array{lat: float, lng: float, recorded_at: string, speed_kph?: float, heading?: int, accuracy_m?: float, ignition?: bool, odometer_m?: int, device_id?: string, fix_id?: string}
  */
 abstract class AbstractRecordVehiclePingsController extends ApiController
 {
@@ -51,46 +53,19 @@ abstract class AbstractRecordVehiclePingsController extends ApiController
 
             [$valid, $rejected] = $this->validateItems($items);
 
-            $fixes = [];
-            foreach ($valid as $index => $ping) {
-                $fix = ['index' => $index, 'recorded_at' => $ping['recorded_at']];
-                if (isset($ping['fix_id'])) {
-                    $fix['fix_id'] = $ping['fix_id'];
-                }
-                if (isset($ping['device_id'])) {
-                    $fix['device_id'] = $ping['device_id'];
-                }
-                $fixes[] = $fix;
-            }
-
-            /** @var array<int, string> $statuses */
-            $statuses = $fixes === [] ? [] : $this->queries->ask(new ClassifyPingFixes($vehicleId, $fixes));
+            $statuses = $this->classify($vehicleId, $valid);
 
             if ($valid !== []) {
                 $this->commands->dispatch(new RecordVehiclePings(
                     vehicleId: $vehicleId,
-                    driverId: is_string($driverId) && $driverId !== '' ? $driverId : null,
-                    routeId: is_string($routeId) && $routeId !== '' ? $routeId : null,
+                    driverId: $this->optionalId($driverId),
+                    routeId: $this->optionalId($routeId),
                     source: $this->source(),
                     pings: array_values($valid),
                 ));
             }
 
-            $results = [];
-            $counts = ['accepted' => 0, 'duplicate' => 0, 'rejected' => 0];
-            foreach ($items as $index => $raw) {
-                $fixId = is_array($raw) && is_scalar($raw['fix_id'] ?? null) ? (string) $raw['fix_id'] : null;
-                if (isset($rejected[$index])) {
-                    $results[] = ['index' => $index, 'fix_id' => $fixId, 'status' => 'rejected', 'errors' => $rejected[$index]];
-                    $counts['rejected']++;
-
-                    continue;
-                }
-
-                $status = $statuses[$index] ?? 'accepted';
-                $results[] = ['index' => $index, 'fix_id' => $fixId, 'status' => $status];
-                $counts[$status === 'duplicate' ? 'duplicate' : 'accepted']++;
-            }
+            [$results, $counts] = $this->buildResults($items, $rejected, $statuses);
 
             $body = [
                 'vehicle_id' => $vehicleId,
@@ -102,23 +77,107 @@ abstract class AbstractRecordVehiclePingsController extends ApiController
                 'results' => $results,
             ];
 
-            if ($counts['rejected'] === count($items)) {
-                return $this->error('pings_rejected', 'Every ping in the batch was rejected.', 422, $body);
+            return $this->respond($body, $counts['rejected'], count($items));
+        });
+    }
+
+    /**
+     * Clasifica las lecturas válidas (nueva / duplicada) por `fix_id` o `device_id` + `recorded_at`.
+     *
+     * @param  array<int, PingItem> $valid
+     * @return array<int, string>
+     */
+    private function classify(string $vehicleId, array $valid): array
+    {
+        $fixes = [];
+        foreach ($valid as $index => $ping) {
+            $fix = ['index' => $index, 'recorded_at' => $ping['recorded_at']];
+            if (isset($ping['fix_id'])) {
+                $fix['fix_id'] = $ping['fix_id'];
             }
-            if ($counts['rejected'] > 0) {
-                return new JsonResponse(['data' => ['accepted' => true] + $body], 207);
+            if (isset($ping['device_id'])) {
+                $fix['device_id'] = $ping['device_id'];
+            }
+            $fixes[] = $fix;
+        }
+
+        if ($fixes === []) {
+            return [];
+        }
+
+        /** @var array<int, string> $statuses */
+        $statuses = $this->queries->ask(new ClassifyPingFixes($vehicleId, $fixes));
+
+        return $statuses;
+    }
+
+    /**
+     * Id opcional de la petición: solo un string no vacío; cualquier otra cosa es null.
+     */
+    private function optionalId(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * Resultado por ítem (en el orden del lote) y conteo por estado.
+     *
+     * @param  list<mixed>                                                                                  $items
+     * @param  array<int, array<string, list<string>>>                                                      $rejected
+     * @param  array<int, string>                                                                           $statuses
+     * @return array{0: list<array<string, mixed>>, 1: array{accepted: int, duplicate: int, rejected: int}}
+     */
+    private function buildResults(array $items, array $rejected, array $statuses): array
+    {
+        $results = [];
+        $counts = ['accepted' => 0, 'duplicate' => 0, 'rejected' => 0];
+        foreach ($items as $index => $raw) {
+            $fixId = $this->fixIdOf($raw);
+            if (isset($rejected[$index])) {
+                $results[] = ['index' => $index, 'fix_id' => $fixId, 'status' => 'rejected', 'errors' => $rejected[$index]];
+                $counts['rejected']++;
+
+                continue;
             }
 
-            return $this->accepted($body);
-        });
+            $status = $statuses[$index] ?? 'accepted';
+            $results[] = ['index' => $index, 'fix_id' => $fixId, 'status' => $status];
+            $counts[$status === 'duplicate' ? 'duplicate' : 'accepted']++;
+        }
+
+        return [$results, $counts];
+    }
+
+    /**
+     * `fix_id` crudo del ítem para devolverlo en su resultado (null si no vino o no es escalar).
+     */
+    private function fixIdOf(mixed $raw): ?string
+    {
+        return is_array($raw) && is_scalar($raw['fix_id'] ?? null) ? (string) $raw['fix_id'] : null;
+    }
+
+    /**
+     * Código de estado del lote: 422 si se rechazó el lote entero, 207 si hubo rechazos parciales, 202 si no.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function respond(array $body, int $rejectedCount, int $total): JsonResponse
+    {
+        if ($rejectedCount === $total) {
+            return $this->error('pings_rejected', 'Every ping in the batch was rejected.', 422, $body);
+        }
+        if ($rejectedCount > 0) {
+            return new JsonResponse(['data' => ['accepted' => true] + $body], 207);
+        }
+
+        return $this->accepted($body);
     }
 
     /**
      * Valida cada lectura por separado y la normaliza a la forma primitiva que espera el comando.
      *
-     * @param list<mixed> $items
-     *
-     * @return array{0: array<int, array{lat: float, lng: float, recorded_at: string, speed_kph?: float, heading?: int, accuracy_m?: float, ignition?: bool, odometer_m?: int, device_id?: string, fix_id?: string}>, 1: array<int, array<string, list<string>>>}
+     * @param  list<mixed>                                                                $items
+     * @return array{0: array<int, PingItem>, 1: array<int, array<string, list<string>>>}
      */
     private function validateItems(array $items): array
     {
@@ -151,9 +210,8 @@ abstract class AbstractRecordVehiclePingsController extends ApiController
     /**
      * Posición e instante obligatorios; el resto de la telemetría solo si vino en la petición.
      *
-     * @param array<mixed> $row
-     *
-     * @return array{lat: float, lng: float, recorded_at: string, speed_kph?: float, heading?: int, accuracy_m?: float, ignition?: bool, odometer_m?: int, device_id?: string, fix_id?: string}
+     * @param  array<mixed> $row
+     * @return PingItem
      */
     private function normalize(array $row): array
     {

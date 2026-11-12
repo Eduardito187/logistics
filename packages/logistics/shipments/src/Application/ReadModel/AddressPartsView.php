@@ -20,6 +20,9 @@ namespace Logistics\Shipments\Application\ReadModel;
  */
 final readonly class AddressPartsView
 {
+    /** Espacios consecutivos (se colapsan a uno solo). */
+    private const WHITESPACE = '/\s+/u';
+
     /** Largo máximo de `short_address` (una línea de pantalla de teléfono). */
     private const SHORT_MAX_LENGTH = 80;
 
@@ -71,7 +74,7 @@ final readonly class AddressPartsView
     private const COUNTRY_SEGMENTS = ['bolivia', 'bo'];
 
     /** Prefijos que identifican un barrio/zona. */
-    private const NEIGHBORHOOD_PREFIX = '/^(barrio|b\/|zona|urb\.?|urbanizaci[oó]n|villa|condominio|residencial|plan\s+\d+)\b/iu';
+    private const NEIGHBORHOOD_PREFIX = '/^(?:(?:barrio|zona|urb|urbanizaci[oó]n|villa|condominio|residencial)\b|b\/|urb\.|plan\s+\d+\b)/iu';
 
     /** Segmentos que NO son barrio aunque estén en el medio (anillos, UV, manzanas, entre-calles, km). */
     private const NOT_NEIGHBORHOOD = '/(anillo|^u\.?\s?v\.?\b|^mz|^manzana|^calle|^c\/|^entre|^km|^lote|^piso|^dpto|^depto|^edif)/iu';
@@ -100,7 +103,7 @@ final readonly class AddressPartsView
     public static function fromText(string $text, ?string $reference = null): self
     {
         $reference = $reference !== null && trim($reference) !== '' ? trim($reference) : null;
-        $original = trim((string) preg_replace('/\s+/u', ' ', $text));
+        $original = trim((string) preg_replace(self::WHITESPACE, ' ', $text));
 
         $segments = array_values(array_filter(
             array_map(static fn (string $segment): string => trim($segment), explode(',', $original)),
@@ -168,7 +171,7 @@ final readonly class AddressPartsView
     {
         if (preg_match(self::EXPLICIT_NUMBER, $segment, $match) === 1) {
             $street = trim((string) preg_replace(self::EXPLICIT_NUMBER, ' ', $segment, 1));
-            $street = trim((string) preg_replace('/\s+/u', ' ', $street));
+            $street = trim((string) preg_replace(self::WHITESPACE, ' ', $street));
 
             return [$street !== '' ? $street : null, $match[1]];
         }
@@ -220,7 +223,7 @@ final readonly class AddressPartsView
         $lower = mb_strtolower(trim($value));
         $plain = strtr($lower, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n']);
 
-        return trim((string) preg_replace('/\s+/u', ' ', rtrim($plain, '.')));
+        return trim((string) preg_replace(self::WHITESPACE, ' ', rtrim($plain, '.')));
     }
 
     private static function truncate(string $value): string

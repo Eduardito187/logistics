@@ -6,6 +6,7 @@ namespace Logistics\SapConnector\Application\Notification;
 
 use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Contract\SapNotificationRepository;
+use Logistics\SapConnector\Domain\Model\SapNotification;
 use Logistics\SapConnector\Domain\ValueObject\SapNotificationId;
 use Logistics\SapConnector\Domain\ValueObject\SapNotificationStatus;
 use Logistics\Shared\Domain\Clock\Clock;
@@ -41,13 +42,23 @@ final readonly class DeliverSapNotification
             return $notification?->status();
         }
 
-        if (!$this->policy->deliveryEnabled) {
+        if ($this->policy->deliveryEnabled) {
+            $this->attempt($notification);
+        } else {
             $notification->skip();
-            $this->notifications->save($notification);
-
-            return $notification->status();
         }
 
+        $this->notifications->save($notification);
+
+        return $notification->status();
+    }
+
+    /**
+     * Un intento de envío: asienta éxito o fallo (excepción de transporte o respuesta no 2xx) sobre el
+     * aviso, sin guardarlo (lo guarda quien llama). Nunca lanza.
+     */
+    private function attempt(SapNotification $notification): void
+    {
         try {
             $response = $this->sap->notifyEvent($notification);
         } catch (Throwable $exception) {
@@ -58,25 +69,22 @@ final readonly class DeliverSapNotification
                 $this->policy->attempts(),
                 $this->policy->backoffMinutes,
             );
-            $this->notifications->save($notification);
 
-            return $notification->status();
+            return;
         }
 
         if ($response->successful()) {
             $notification->recordSuccess($response, $this->clock->now());
-        } else {
-            $notification->recordFailure(
-                "SAP respondió {$response->status}",
-                $response,
-                $this->clock->now(),
-                $this->policy->attempts(),
-                $this->policy->backoffMinutes,
-            );
+
+            return;
         }
 
-        $this->notifications->save($notification);
-
-        return $notification->status();
+        $notification->recordFailure(
+            "SAP respondió {$response->status}",
+            $response,
+            $this->clock->now(),
+            $this->policy->attempts(),
+            $this->policy->backoffMinutes,
+        );
     }
 }

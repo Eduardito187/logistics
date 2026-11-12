@@ -17,9 +17,8 @@ final readonly class RouteDeviationMeter
     private const float EARTH_RADIUS_M = 6_371_000.0;
 
     /**
-     * @param list<GeoPoint> $polyline geometría de la ruta en orden
-     *
-     * @return float|null distancia en metros, o null si la polilínea está vacía
+     * @param  list<GeoPoint> $polyline geometría de la ruta en orden
+     * @return float|null     distancia en metros, o null si la polilínea está vacía
      */
     public function distanceToRoute(GeoPoint $point, array $polyline): ?float
     {

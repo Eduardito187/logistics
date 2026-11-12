@@ -9,6 +9,7 @@ use App\Http\Problem\ProblemDetails;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRoute;
+use Logistics\Execution\Application\Contract\VehicleFitnessReader;
 use Logistics\Execution\Presentation\Http\Request\AssignOrderVehicleRequest;
 
 /**
@@ -17,7 +18,8 @@ use Logistics\Execution\Presentation\Http\Request\AssignOrderVehicleRequest;
  * pedido aparece en «Mi ruta de hoy» del chofer del camión y queda listo para el POD.
  *
  * Valida (cross-context, lectura directa fuera del dominio como el resto del admin): que el pedido exista
- * (404) y que el vehículo exista y esté OPERATIVO (422 si no, nunca 500). Una orden puede tener varios
+ * (404) y que el vehículo exista y esté OPERATIVO (422 si no, nunca 500). Un vehículo NO APTO (checklist
+ * pre-viaje con ítem crítico fallido y no liberado) se RECHAZA con 422 explícito; no se filtra en silencio. Una orden puede tener varios
  * envíos (multidestino): se asignan todos al mismo camión. Idempotente; permite reasignar.
  */
 final class AssignOrderVehicleController extends ExecutionController
@@ -44,6 +46,14 @@ final class AssignOrderVehicleController extends ExecutionController
             return ProblemDetails::fromCode(
                 ErrorCode::BusinessRuleViolation,
                 'The selected vehicle does not exist or is not available for dispatch.',
+            )->toResponse($request);
+        }
+
+        // Aptitud del pre-viaje (Flota): un vehículo no apto se rechaza con su motivo, nunca se omite.
+        if (app(VehicleFitnessReader::class)->isUnfit($vehicleId)) {
+            return ProblemDetails::fromCode(
+                ErrorCode::BusinessRuleViolation,
+                VehicleFitnessReader::UNFIT_DETAIL,
             )->toResponse($request);
         }
 

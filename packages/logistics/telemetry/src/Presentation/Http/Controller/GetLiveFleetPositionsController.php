@@ -53,7 +53,7 @@ final class GetLiveFleetPositionsController extends ApiController
             $positions = $this->queries->ask(new GetLiveFleetPositions($since));
             $data = array_map(static fn (VehicleLiveView $view): array => $view->toArray(), $positions);
 
-            $etag = 'W/"'.sha1(($since?->format(DATE_ATOM) ?? '').'|'.(string) json_encode($data)).'"';
+            $etag = 'W/"'.hash('sha256', ($since?->format(DATE_ATOM) ?? '').'|'.(string) json_encode($data)).'"';
 
             if ($this->matches($request, $etag)) {
                 $notModified = new JsonResponse(null, Response::HTTP_NOT_MODIFIED);

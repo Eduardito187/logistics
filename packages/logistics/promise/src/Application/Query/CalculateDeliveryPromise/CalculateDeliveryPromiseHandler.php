@@ -25,7 +25,7 @@ use Logistics\Shared\Domain\Clock\Clock;
  * nada: es una consulta de solo lectura.
  *
  * Regla de negocio: la promesa nunca depende del stock ni del tipo de propiedad (OWNED/FBD/DROPSHIP).
- * La plataforma hace despacho y todo pedido se promete igual; los campos de propiedad de la consulta se
+ * La plataforma hace despacho y cada pedido se promete igual; los campos de propiedad de la consulta se
  * aceptan por compatibilidad y se ignoran.
  *
  * @implements QueryHandler<CalculateDeliveryPromise, list<PromiseOptionView>>

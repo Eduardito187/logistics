@@ -64,8 +64,7 @@ function seedCatalogProductMeasures(string $sku, array $measures, ?array $catego
 /**
  * Recibe un pedido por el caso de uso de ingreso y devuelve sus líneas persistidas indexadas por SKU.
  *
- * @param list<ShipmentLineInput> $lines
- *
+ * @param  list<ShipmentLineInput>           $lines
  * @return array<string, ShipmentLineRecord>
  */
 function receiveAndLoadLines(string $externalId, array $lines): array

@@ -23,15 +23,24 @@ use Logistics\Shipments\Application\Command\RescheduleShipmentDelivery\Reschedul
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlot;
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlotHandler;
 use Logistics\Shipments\Application\Contract\CatalogMeasurementsReader;
+use Logistics\Shipments\Application\Contract\DailyKpisReader;
+use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\MagentoOrderReader;
 use Logistics\Shipments\Application\Contract\NetworkNodeLookup;
 use Logistics\Shipments\Application\Contract\ReturnsWarehouseResolver;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Contract\ShipmentSpreadsheetParser;
+use Logistics\Shipments\Application\Contract\ShipmentSummaryReader;
 use Logistics\Shipments\Application\Measurement\LineMeasureResolver;
+use Logistics\Shipments\Application\Query\CountShipmentsByStatus\CountShipmentsByStatus;
+use Logistics\Shipments\Application\Query\CountShipmentsByStatus\CountShipmentsByStatusHandler;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipment;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipmentHandler;
+use Logistics\Shipments\Application\Query\GetDailyKpis\GetDailyKpis;
+use Logistics\Shipments\Application\Query\GetDailyKpis\GetDailyKpisHandler;
+use Logistics\Shipments\Application\Query\GetShipmentSummary\GetShipmentSummary;
+use Logistics\Shipments\Application\Query\GetShipmentSummary\GetShipmentSummaryHandler;
 use Logistics\Shipments\Application\Query\ListLowConfidenceAddresses\ListLowConfidenceAddresses;
 use Logistics\Shipments\Application\Query\ListLowConfidenceAddresses\ListLowConfidenceAddressesHandler;
 use Logistics\Shipments\Application\Query\ListShipmentProducts\ListShipmentProducts;
@@ -56,10 +65,14 @@ use Logistics\Shipments\Infrastructure\Magento\HttpMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Magento\NullMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\EloquentShipmentRepository;
 use Logistics\Shipments\Infrastructure\ReadModel\CatalogTablesMeasurementsReader;
+use Logistics\Shipments\Infrastructure\ReadModel\DbDailyKpisReader;
+use Logistics\Shipments\Infrastructure\ReadModel\DbDeliveryModeReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbNetworkNodeLookup;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentListReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentProgressReader;
+use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentSummaryReader;
 use Logistics\Shipments\Infrastructure\ReadModel\NetworkReturnsWarehouseResolver;
+use Logistics\Shipments\Infrastructure\ReadModel\ShortReadCache;
 use Logistics\Shipments\Presentation\Console\PullMagentoOrdersCommand;
 use Logistics\Shipments\Presentation\Console\ReceiveManualShipmentCommand;
 
@@ -88,6 +101,9 @@ final class ShipmentsServiceProvider extends ServiceProvider
         ListShipmentsByCursor::class => ListShipmentsByCursorHandler::class,
         ListShipmentProducts::class => ListShipmentProductsHandler::class,
         ListLowConfidenceAddresses::class => ListLowConfidenceAddressesHandler::class,
+        GetShipmentSummary::class => GetShipmentSummaryHandler::class,
+        CountShipmentsByStatus::class => CountShipmentsByStatusHandler::class,
+        GetDailyKpis::class => GetDailyKpisHandler::class,
     ];
 
     public function register(): void
@@ -104,6 +120,34 @@ final class ShipmentsServiceProvider extends ServiceProvider
         // de la app: lectura cruzada de solo lectura de ejecución/planificación/flota/etiquetas, en lote.
         $this->app->bind(ShipmentProgressReader::class, function ($app): ShipmentProgressReader {
             return new DbShipmentProgressReader($app->make(ConnectionInterface::class));
+        });
+
+        // Modalidad de entrega (domicilio / recojo en tienda) derivada del tipo del nodo destino: lectura de
+        // la red en solo lectura, en lote por página.
+        $this->app->bind(DeliveryModeReader::class, function ($app): DeliveryModeReader {
+            return new DbDeliveryModeReader($app->make(ConnectionInterface::class));
+        });
+
+        // Lecturas agregadas de tablero (resumen de envíos, conteo por estado, KPIs del día): SQL de solo
+        // lectura + caché CORTA de la forma primitiva (store por defecto si no se configura otro).
+        $this->app->bind(ShortReadCache::class, function ($app): ShortReadCache {
+            /** @var Config $config */
+            $config = $app->make(Config::class);
+            $store = $config->get('logistics-shipments.read_cache.store');
+
+            /** @var CacheFactory $cacheFactory */
+            $cacheFactory = $app->make(CacheFactory::class);
+
+            return new ShortReadCache(
+                $cacheFactory->store(is_string($store) && $store !== '' ? $store : null),
+                (int) $config->get('logistics-shipments.read_cache.ttl', 45),
+            );
+        });
+        $this->app->bind(ShipmentSummaryReader::class, function ($app): ShipmentSummaryReader {
+            return new DbShipmentSummaryReader($app->make(ConnectionInterface::class), $app->make(ShortReadCache::class));
+        });
+        $this->app->bind(DailyKpisReader::class, function ($app): DailyKpisReader {
+            return new DbDailyKpisReader($app->make(ConnectionInterface::class), $app->make(ShortReadCache::class));
         });
 
         // Código de tienda/CD → id de nodo (regla del nodo destino del ingreso): lectura de la red.
