@@ -23,7 +23,7 @@ final class RouteStop
     private function __construct(
         private readonly RouteStopId $id,
         private readonly string $shipmentId,
-        private readonly int $sequence,
+        private int $sequence,
         private readonly ?string $orderReference,
         private readonly ?string $customerName,
         private readonly ?string $address,
@@ -185,6 +185,19 @@ final class RouteStop
     public function sequence(): int
     {
         return $this->sequence;
+    }
+
+    /**
+     * Reasigna el número de secuencia (para recompactar 1..n cuando una parada sale de la ruta). Solo lo usa
+     * el agregado VehicleRoute; el orden de la ruta sigue siendo su responsabilidad.
+     */
+    public function resequence(int $sequence): void
+    {
+        if ($sequence < 1) {
+            throw ExecutionException::because("la secuencia de parada debe ser >= 1: {$sequence}");
+        }
+
+        $this->sequence = $sequence;
     }
 
     public function orderReference(): ?string
