@@ -10,6 +10,7 @@ use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Database\ConnectionResolverInterface;
 use Logistics\Notifications\Domain\Contract\NotificationVariableProvider;
 use Logistics\Notifications\Domain\ValueObject\MessageType;
+use stdClass;
 use Throwable;
 
 /**
@@ -103,10 +104,9 @@ final readonly class ShipmentNotificationVariableProvider implements Notificatio
      * Referencia humana de la orden (agrupa los envíos del multishipping): la del envío, la del
      * seguimiento o la parte de external_id antes de '#n:'. Null si no hay ninguna que no sea un UUID.
      *
-     * @param object{external_id: string|null, order_reference: string|null}|null $shipment
-     * @param object{order_reference: string|null}|null                           $tracking
+     * Los rows salen de `->first([columnas])` (stdClass): el acceso a sus propiedades está exento en PHPStan.
      */
-    private function humanReference(?object $shipment, ?object $tracking): ?string
+    private function humanReference(?stdClass $shipment, ?stdClass $tracking): ?string
     {
         $candidates = [
             $shipment !== null ? $shipment->order_reference : null,

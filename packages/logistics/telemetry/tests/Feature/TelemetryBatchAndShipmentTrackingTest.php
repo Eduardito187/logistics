@@ -158,18 +158,19 @@ it('produces the same pings, trip and live position as sending the readings one 
     // El lote llega desordenado: se ordena por recorded_at.
     tbtPost($this, $batch, [$pings[2], $pings[0], $pings[1]])->assertStatus(202);
 
-    $tripOf = static fn (string $v): array => [
-        round((float) TripRecord::query()->where('vehicle_id', $v)->value('distance_m'), 1),
-        (int) TripRecord::query()->where('vehicle_id', $v)->value('ping_count'),
-    ];
+    $distanceOf = static fn (string $v): float => (float) TripRecord::query()->where('vehicle_id', $v)->value('distance_m');
+    $countOf = static fn (string $v): int => (int) TripRecord::query()->where('vehicle_id', $v)->value('ping_count');
     $liveOf = static function (string $v): array {
         $p = VehiclePositionRecord::query()->findOrFail($v);
 
         return [$p->lat, $p->lng, $p->recorded_at->toIso8601String()];
     };
 
+    // La distancia del viaje se compara con tolerancia: el de a uno guarda y relee el trip 3 veces (redondeo
+    // intermedio de la columna decimal) y el lote lo calcula de una, así que difieren por debajo del metro.
     expect(PingRecord::query()->where('vehicle_id', $batch)->count())->toBe(PingRecord::query()->where('vehicle_id', $single)->count())
-        ->and($tripOf($batch))->toBe($tripOf($single))
+        ->and($countOf($batch))->toBe($countOf($single))
+        ->and($distanceOf($batch))->toEqualWithDelta($distanceOf($single), 1.0)
         ->and($liveOf($batch))->toBe($liveOf($single));
 });
 

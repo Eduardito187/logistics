@@ -12,6 +12,8 @@ use Logistics\Shared\Application\Command\CommandHandler;
 /**
  * Liga la(s) foto(s) a la entrega del envío si llegaron después del POD (opción A). Tolerante: si no hay
  * entrega, no está entregada o la foto ya estaba, no hace nada y no lanza (salvo que no sea su comando).
+ *
+ * @implements CommandHandler<AttachDeliveryPhotos>
  */
 final class AttachDeliveryPhotosHandler implements CommandHandler
 {

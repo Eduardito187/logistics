@@ -9,6 +9,7 @@ use DateTimeZone;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Carbon;
 use Logistics\Tracking\Application\Contract\RatingRequestStore;
 use Logistics\Tracking\Application\ReadModel\DeliveredAwaitingRatingView;
 use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
@@ -79,7 +80,7 @@ final readonly class DbRatingRequestStore implements RatingRequestStore
                     ?? self::str($row->external_id ?? null),
                 self::str($row->customer_name ?? null),
                 (string) $row->customer_email,
-                (new DateTimeImmutable((string) $row->delivered_at))->format(DateTimeImmutable::ATOM),
+                Carbon::parse((string) $row->delivered_at)->toIso8601String(),
                 (string) $row->token,
             );
         }

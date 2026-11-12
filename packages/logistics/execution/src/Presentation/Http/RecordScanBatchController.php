@@ -114,12 +114,12 @@ final class RecordScanBatchController extends ExecutionController
         $shipmentId = null;
 
         try {
-            /** @var array<string, mixed> $validated */
             $validator = Validator::make($data, $this->rulesFor($kind, $request));
             if ($kind === 'proof_of_delivery') {
                 // Igual que el endpoint individual: la foto debe existir en el disco de evidencia.
                 $validator->after(fn (LaravelValidator $v) => ProofOfDeliveryRequest::verifyPhotoEvidence($v, $this->evidenceStorage));
             }
+            /** @var array<string, mixed> $validated */
             $validated = $validator->validate();
             $shipmentId = is_string($validated['shipment_id'] ?? null) ? $validated['shipment_id'] : null;
 
