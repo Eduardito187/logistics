@@ -184,6 +184,30 @@ No pipear `pest` a `tail -N` en background: trunca el resumen "Tests: N passed".
 migraciones no crean la extensión; solo el init de la imagen la puso en `logistics_test`) → ~1.000 fallas
 falsas `type "geography" does not exist`. La suite válida es la serial (igual que CI): `./vendor/bin/pest`.
 
+### Gotchas de Pest que rompen al escribir tests nuevos (arreglar a mano, sin adivinar)
+
+- **`UniqueConstraintViolationException` en un campo único derivado de un UUID v7** (p. ej.
+  `fleet_vehicles_plate_unique` al crear 2 vehículos en un test): el UUID v7 lleva el timestamp en el PREFIJO,
+  así que `substr($id, 0, N)` colisiona entre entidades creadas en el mismo milisegundo. Usar la COLA
+  aleatoria: `strtoupper(substr(str_replace('-', '', $id), -6))`. Vale para plate/external_id/cualquier
+  derivado. (Ver [[testing-coverage-filament-gotchas]].)
+- **Lecturas que degradan a `null`**: varias queries devuelven `null` en el caso legítimo "no hay nada"
+  (p. ej. `GetDriverRoute` solo retorna rutas ABIERTAS → null si la ruta quedó sin paradas pendientes). El
+  test debe tratar `null` como el caso esperado, no asumir el objeto (si no: "read property X on null").
+- **`fulfillment_mode` y enums string en minúscula**: el valor canónico es minúscula (`owned`/`fbd`/`dropship`);
+  sembrar `'OWNED'` en un test revienta con `ValueError ... not a valid backing value`. Sembrar en minúscula.
+- **Floats por acumulación** (distancias): comparar con `toEqualWithDelta($esperado, 1.0)`, no `===`.
+- **`assertSent`/payload `(object)`**: un payload enviado como `(object)` es stdClass, no array; castear
+  `(array) ($body['payload'] ?? [])` antes de leerlo.
+
+### Pint a mano (el dueño suele prohibir docker)
+
+Reglas reales en [[pint-rules-by-hand]]. Las que más fallan al escribir docblocks: `phpdoc_align` es
+**vertical** → con `@param` y `@return` en el mismo grupo, `@param` lleva **dos** espacios (`@param  tipo $var`)
+para alinear la columna de tipo con `@return`, y la variable se alinea a la columna del tipo más ancho del
+grupo. `@param`/`@return` van JUNTOS (sin línea ` *` en blanco entre ellos). Verificar contra un archivo de
+`origin/production` que ya pase, columna por columna.
+
 ## Mapa de workflows (`.github/workflows/`)
 
 | Workflow | Cuándo | Runner | Qué valida |

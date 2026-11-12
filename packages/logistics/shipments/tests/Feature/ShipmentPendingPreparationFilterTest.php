@@ -11,9 +11,10 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 /**
- * GET /app/shipments?pending_preparation=true (auditoría app #1b): solo los envíos ASIGNADOS (PLANNED /
- * IN_EXECUTION) cuya entrega aún no tiene escaneo de PREPARACIÓN, aunque ya tengan etiquetas emitidas.
- * Filtro SQL (NOT EXISTS), aditivo y combinable con los demás. Contra PostgreSQL (base logistics_test).
+ * GET /app/shipments?pending_preparation=true: solo los envíos ASIGNADOS (PLANNED / IN_EXECUTION) que aún
+ * NO tienen entrega en ejecución abierta. Flujo vigente: asignar el vehículo abre la entrega = preparar, así
+ * que la existencia de la entrega saca al envío de la lista (las etiquetas emitidas NO abren entrega, no
+ * preparan). Filtro SQL (NOT EXISTS), aditivo y combinable. Contra PostgreSQL (base logistics_test).
  */
 beforeEach(function (): void {
     $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
@@ -50,11 +51,11 @@ function pendingPrepDelivery(string $shipmentId, array $scanTypes): void
     }
 }
 
-it('lista solo los asignados sin escaneo de preparación (con o sin etiquetas emitidas)', function (): void {
+it('lista solo los asignados SIN entrega abierta (etiquetas no preparan; asignar vehículo sí)', function (): void {
     $node = Uuid::generate()->value;
     $order = 'ORD-PREP-'.strtoupper(substr(Uuid::generate()->value, -6));
 
-    // Pendientes: asignado sin entrega; asignado con etiquetas emitidas pero sin preparar; en ejecución solo con otro escaneo.
+    // PENDIENTES: asignado sin entrega; con etiquetas emitidas pero SIN entrega (las etiquetas no preparan).
     $planned = ShipmentRecord::factory()->forNode($node)->create(['status' => 'PLANNED'])->id;
     $labelled = ShipmentRecord::factory()->forNode($node)->create([
         'status' => 'PLANNED', 'external_id' => $order, 'order_reference' => $order,
@@ -63,13 +64,13 @@ it('lista solo los asignados sin escaneo de preparación (con o sin etiquetas em
         'id' => Uuid::generate()->value, 'order_id' => $order, 'label_id' => 'LBL-'.$order.'-1',
         'key_id' => 0, 'zpl' => '^XA^XZ', 'signed_json' => '{}', 'created_at' => now(),
     ]);
-    pendingPrepDelivery($labelled, []);
+
+    // NO pendientes: con entrega abierta (vehículo asignado = preparado, aunque siga PENDING sin escanear);
+    // en ejecución con entrega; recibido (sin asignar); entregado.
+    $assigned = ShipmentRecord::factory()->forNode($node)->create(['status' => 'PLANNED'])->id;
+    pendingPrepDelivery($assigned, []);
     $inExecution = ShipmentRecord::factory()->forNode($node)->create(['status' => 'IN_EXECUTION'])->id;
     pendingPrepDelivery($inExecution, ['LOAD']);
-
-    // NO pendientes: ya preparado; recibido (sin asignar); entregado.
-    $prepared = ShipmentRecord::factory()->forNode($node)->create(['status' => 'PLANNED'])->id;
-    pendingPrepDelivery($prepared, ['PREPARATION']);
     ShipmentRecord::factory()->forNode($node)->create(['status' => 'RECEIVED']);
     ShipmentRecord::factory()->forNode($node)->create(['status' => 'DELIVERED']);
 
@@ -77,18 +78,19 @@ it('lista solo los asignados sin escaneo de preparación (con o sin etiquetas em
         $this->getJson("/api/v1/app/shipments?destination_node_id={$node}&{$query}")->assertOk()->json('data'),
     )->pluck('id')->all();
 
-    expect($ids('pending_preparation=true'))->toEqualCanonicalizing([$planned, $labelled, $inExecution])
-        ->and($ids('pending_preparation=TRUE'))->toEqualCanonicalizing([$planned, $labelled, $inExecution])
-        ->and($ids('pending_preparation=1&status=IN_EXECUTION'))->toBe([$inExecution])
+    expect($ids('pending_preparation=true'))->toEqualCanonicalizing([$planned, $labelled])
+        ->and($ids('pending_preparation=TRUE'))->toEqualCanonicalizing([$planned, $labelled])
+        // IN_EXECUTION siempre tiene entrega abierta (así entró en ejecución) → nunca pendiente de preparar.
+        ->and($ids('pending_preparation=1&status=IN_EXECUTION'))->toBe([])
         ->and($ids('pending_preparation=false'))->toHaveCount(6);
 
     // Paginado (offset y cursor) usa el mismo filtro.
     $this->getJson("/api/v1/app/shipments?destination_node_id={$node}&pending_preparation=true&page=1&per_page=10")
         ->assertOk()
-        ->assertJsonPath('meta.total', 3);
+        ->assertJsonPath('meta.total', 2);
     $this->getJson("/api/v1/app/shipments?destination_node_id={$node}&pending_preparation=true&cursor=")
         ->assertOk()
-        ->assertJsonCount(3, 'data');
+        ->assertJsonCount(2, 'data');
 });
 
 it('rechaza con 422 un valor que no es booleano', function (): void {
