@@ -67,15 +67,26 @@ final class EloquentDeliveryRepository implements DeliveryRepository
     /**
      * @return list<Delivery>
      */
-    public function findByVehicleId(string $vehicleId): array
+    public function findByVehicleId(string $vehicleId, ?int $limit = null, int $offset = 0): array
     {
-        return DeliveryRecord::query()
+        $query = DeliveryRecord::query()
             ->with(['scans'])
             ->where('vehicle_id', $vehicleId)
-            ->orderBy('id')
+            ->orderBy('id');
+
+        if ($limit !== null) {
+            $query->limit(max(1, $limit))->offset(max(0, $offset));
+        }
+
+        return $query
             ->get()
             ->map(fn (DeliveryRecord $record): Delivery => $this->mapper->toDomain($record))
             ->values()
             ->all();
+    }
+
+    public function countByVehicleId(string $vehicleId): int
+    {
+        return DeliveryRecord::query()->where('vehicle_id', $vehicleId)->count();
     }
 }

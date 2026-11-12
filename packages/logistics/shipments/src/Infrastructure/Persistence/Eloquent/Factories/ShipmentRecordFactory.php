@@ -33,10 +33,11 @@ final class ShipmentRecordFactory extends Factory
 
         return [
             'id' => Uuid::generate()->value,
-            'source' => $this->faker->randomElement(array_map(
+            // Pedidos de CLIENTE: el traspaso interno cambia la modalidad (transfer), se pide con transfer().
+            'source' => $this->faker->randomElement(array_values(array_map(
                 fn (OrderSource $source): string => $source->value,
-                OrderSource::cases(),
-            )),
+                array_filter(OrderSource::cases(), fn (OrderSource $source): bool => !$source->isInternalTransfer()),
+            ))),
             'external_id' => (string) $this->faker->unique()->numberBetween(100000, 999999),
             'customer_name' => $name,
             'customer_document_id' => (string) $this->faker->numberBetween(1000000, 9999999).' '.$extension,
@@ -65,6 +66,16 @@ final class ShipmentRecordFactory extends Factory
     {
         return $this->state(fn (): array => [
             'destination_node_id' => $destinationNodeId,
+        ]);
+    }
+
+    /**
+     * Traspaso interno de mercadería (reposición CD → tienda): fuente TRANSFER, sin cliente final.
+     */
+    public function transfer(): self
+    {
+        return $this->state(fn (): array => [
+            'source' => OrderSource::Transfer->value,
         ]);
     }
 

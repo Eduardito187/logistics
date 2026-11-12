@@ -15,15 +15,18 @@ use Logistics\Planning\Application\Command\ReoptimizeRoute\ReoptimizeStopInput;
 use Logistics\Planning\Application\Service\DailyPlanRunner;
 use Logistics\Planning\Database\Factories\PlanRecordFactory;
 use Logistics\Planning\Domain\Contract\AutoPlanRunRepository;
+use Logistics\Planning\Domain\Contract\CrewShiftRulesProvider;
 use Logistics\Planning\Domain\Contract\FleetAvailabilityProvider;
 use Logistics\Planning\Domain\Contract\PendingDeliveryProvider;
 use Logistics\Planning\Domain\Contract\PlanningOriginLocator;
 use Logistics\Planning\Domain\Contract\PlanRepository;
+use Logistics\Planning\Domain\Contract\ReplanBacklogRepository;
 use Logistics\Planning\Domain\Contract\RoutingBackend;
 use Logistics\Planning\Domain\Model\AutoPlanRun;
 use Logistics\Planning\Domain\ValueObject\AutoPlanParameters;
 use Logistics\Planning\Domain\ValueObject\AutoPlanRunId;
 use Logistics\Planning\Domain\ValueObject\AutoPlanRunStatus;
+use Logistics\Planning\Domain\ValueObject\CrewShiftWindow;
 use Logistics\Planning\Domain\ValueObject\DeliveryCandidate;
 use Logistics\Planning\Domain\ValueObject\Eta;
 use Logistics\Planning\Domain\ValueObject\GeoPoint;
@@ -257,6 +260,14 @@ it('DailyPlanRunner procesa una corrida encolada y la cierra con su resumen', fu
         $plans,
         app(RecordDomainEvents::class),
         app(Clock::class),
+        app(ReplanBacklogRepository::class),
+        new class implements CrewShiftRulesProvider
+        {
+            public function windowFor(PlanDate $date): ?CrewShiftWindow
+            {
+                return null;
+            }
+        },
     );
 
     $date = PlanDate::fromString((new DateTimeImmutable('today'))->format('Y-m-d'));

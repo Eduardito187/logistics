@@ -78,6 +78,9 @@ it('expone el producto de cada bulto en el GET de la recepción', function (): v
         'unit_total' => 1,
         'piece_index' => 2,
         'piece_total' => 2,
+        // Ubicación en estante (aditiva): todavía no se ubicó.
+        'location' => null,
+        'located_at' => null,
     ])->and($units['LBL-967df6'])->toBe([
         // Id que no es una unidad conocida: nombre y SKU SIEMPRE legibles (fallback "Producto"/""),
         // nunca null; la foto y los índices sí pueden faltar.
@@ -89,6 +92,8 @@ it('expone el producto de cada bulto en el GET de la recepción', function (): v
         'unit_total' => null,
         'piece_index' => null,
         'piece_total' => null,
+        'location' => null,
+        'located_at' => null,
     ]);
 });
 

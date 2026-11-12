@@ -4,15 +4,17 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Infrastructure\Adapter;
 
-use Illuminate\Contracts\Config\Repository as Config;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Logistics\Coverage\Domain\Contract\DepartmentLocator;
 use Logistics\Coverage\Domain\ValueObject\GeoPoint;
 use Logistics\Planning\Domain\Contract\PendingDeliveryProvider;
+use Logistics\Planning\Domain\Contract\ReplanBacklogRepository;
 use Logistics\Planning\Domain\ValueObject\DeliveryCandidate;
 use Logistics\Planning\Domain\ValueObject\PlanDate;
 use Logistics\Planning\Domain\ValueObject\ShipmentRouteRequirement;
+use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 use Throwable;
 
@@ -22,48 +24,92 @@ use Throwable;
  * detalles de otros contextos (de solo lectura, nunca los modifica) y los traduce al contrato de
  * dominio DeliveryCandidate.
  *
- * Pendientes = envíos en estado RECEIVED (todavía sin plan) con coordenadas. Lee en LOTES (chunkById)
- * para escalar a miles de pedidos sin cargarlos todos de golpe. El peso y el volumen se estiman por la
- * cantidad de bultos del pedido por los valores por bulto configurables (settings/config), hasta que
- * Envíos publique peso/volumen reales. La franja se lee de la ventana horaria del envío
- * (delivery_window_start/end) si la trae, y alimenta tanto el agrupamiento por slots como la restricción
- * de ventanas del ruteador.
+ * Qué entra en el plan del día X (regla de fecha):
  *
- * Nota: hoy no se filtra por fecha porque el envío aún no lleva fecha prometida; cuando la lleve, el
- * filtro por $date entra acá sin tocar el resto del motor.
+ *  1. Envíos RECEIVED (todavía sin plan) con coordenadas y `delivery_date = X` (la fecha prometida).
+ *  2. SOLO si X es HOY (reloj del negocio): además los RECEIVED sin fecha prometida (`delivery_date`
+ *     null) y los atrasados (`delivery_date < hoy`). Así no se pierden: un envío sin fecha o cuya fecha
+ *     ya pasó sin plan se reparte en la primera planificación del día en curso, y nunca se adelanta a un
+ *     plan futuro (un plan de mañana no "roba" envíos sin fecha ni de otro día).
+ *  3. Los envíos del BACKLOG de replanificación pendientes para X (p. ej. los que quedaron sin entregar
+ *     por un incidente MAYOR del camión), sin importar su `delivery_date`, siempre que no estén en un
+ *     estado terminal (entregado/fallido/anulado). El auto-planificador los marca consumidos cuando un
+ *     plan generado los incluye.
+ *
+ * Carga: kg/m3 reales desde las medidas por línea (ShipmentLoadReader), con fallback a los defaults por
+ * producto y marca de "carga estimada" en el candidato. Requisitos de ruteo (R-04): leídos solo para los
+ * envíos del lote. Cada lectura va en LOTES (chunkById + whereIn por lote), sin N+1, para escalar a miles de
+ * pedidos sin cargarlos todos de golpe. La franja se lee de la ventana horaria del envío
+ * (delivery_window_start/end) si la trae.
  */
 final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryProvider
 {
     /** Estado de envío recién recibido y aún sin planificar. */
     private const PENDING_STATUS = 'RECEIVED';
 
+    /**
+     * Estados NO terminales en los que un envío del backlog de replanificación puede volver a planificarse
+     * (tras un incidente puede seguir figurando como planificado o en ejecución).
+     */
+    private const REPLANNABLE_STATUSES = ['RECEIVED', 'PLANNED', 'IN_EXECUTION'];
+
     /** Tamaño del lote de lectura: acota la memoria con grandes volúmenes. */
     private const CHUNK_SIZE = 500;
 
     public function __construct(
         private DepartmentLocator $locator,
-        private Config $config,
+        private ShipmentLoadReader $loads,
+        private ReplanBacklogRepository $backlog,
+        private Clock $clock,
     ) {}
 
     public function pendingFor(PlanDate $date): array
     {
-        $defaultWeight = $this->floatConfig('default_weight_kg_per_package', 10.0);
-        $defaultVolume = $this->floatConfig('default_volume_m3_per_package', 0.05);
-        $requirements = $this->shipmentRequirements();
+        $day = $date->toString();
+        $isToday = $day === $this->clock->now()->format('Y-m-d');
+        $replanIds = $this->backlog->pendingShipmentIdsFor($date);
 
         /** @var list<DeliveryCandidate> $candidates */
         $candidates = [];
 
         ShipmentRecord::query()
-            ->where('status', self::PENDING_STATUS)
             ->whereNotNull('lat')
             ->whereNotNull('lng')
-            ->withSum('lines', 'quantity')
+            ->where(function (Builder $query) use ($day, $isToday, $replanIds): void {
+                // (1) y (2): recibidos para el día del plan (y, si es hoy, sin fecha o atrasados).
+                $query->where(function (Builder $received) use ($day, $isToday): void {
+                    $received->where('status', self::PENDING_STATUS)
+                        ->where(function (Builder $byDate) use ($day, $isToday): void {
+                            $byDate->where('delivery_date', $day);
+                            if ($isToday) {
+                                $byDate->orWhereNull('delivery_date')
+                                    ->orWhere('delivery_date', '<', $day);
+                            }
+                        });
+                });
+
+                // (3): backlog de replanificación pendiente para el día, en estado no terminal.
+                if ($replanIds !== []) {
+                    $query->orWhere(function (Builder $replan) use ($replanIds): void {
+                        $replan->whereIn('id', $replanIds)
+                            ->whereIn('status', self::REPLANNABLE_STATUSES);
+                    });
+                }
+            })
             ->orderBy('id')
-            ->chunkById(self::CHUNK_SIZE, function (Collection $chunk) use (&$candidates, $defaultWeight, $defaultVolume, $requirements): void {
+            ->chunkById(self::CHUNK_SIZE, function (Collection $chunk) use (&$candidates): void {
                 /** @var Collection<int, ShipmentRecord> $chunk */
+                $ids = [];
                 foreach ($chunk as $record) {
-                    $candidate = $this->toCandidate($record, $defaultWeight, $defaultVolume, $requirements);
+                    $ids[] = (string) $record->id;
+                }
+
+                // Carga y requisitos EN LOTE, solo de los envíos de este lote (whereIn, sin N+1).
+                $loads = $this->loads->loadsFor($ids);
+                $requirements = $this->shipmentRequirements($ids);
+
+                foreach ($chunk as $record) {
+                    $candidate = $this->toCandidate($record, $loads, $requirements);
                     if ($candidate !== null) {
                         $candidates[] = $candidate;
                     }
@@ -74,12 +120,13 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
     }
 
     /**
-     * Traduce una fila de envío a un candidato, resolviendo departamento y estimando la carga. Devuelve
-     * null si el envío no tiene coordenadas numéricas (no se puede rutear ni ubicar).
+     * Traduce una fila de envío a un candidato, resolviendo departamento y su carga. Devuelve null si el
+     * envío no tiene coordenadas numéricas (no se puede rutear ni ubicar).
      *
-     * @param array<string, ShipmentRouteRequirement> $requirements requisitos de ruteo (R-04) por envío
+     * @param array<string, array{kg: float, m3: float, estimated: bool}> $loads        carga por envío
+     * @param array<string, ShipmentRouteRequirement>                     $requirements requisitos (R-04) por envío
      */
-    private function toCandidate(ShipmentRecord $record, float $defaultWeight, float $defaultVolume, array $requirements): ?DeliveryCandidate
+    private function toCandidate(ShipmentRecord $record, array $loads, array $requirements): ?DeliveryCandidate
     {
         if (!is_numeric($record->lat) || !is_numeric($record->lng)) {
             return null;
@@ -87,14 +134,14 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
 
         $lat = (float) $record->lat;
         $lng = (float) $record->lng;
+        $shipmentId = (string) $record->id;
 
         $location = $this->locator->locate(GeoPoint::of($lat, $lng));
         $departmentId = $location?->departmentId;
         $zoneKey = $location->cityId ?? $location?->departmentId;
 
-        // Cantidad de bultos: suma de cantidades de las líneas (agregada en la consulta), mínimo 1.
-        $packagesRaw = $record->getAttribute('lines_sum_quantity');
-        $packages = is_numeric($packagesRaw) ? max(1, (int) $packagesRaw) : 1;
+        // El lector siempre devuelve una entrada por id; el default defensivo replica "un producto estimado".
+        $load = $loads[$shipmentId] ?? null;
 
         // La franja viaja en la ventana horaria del envío (delivery_window_start/end, 'HH:MM'). La clave de
         // agrupamiento del modo slots se deriva de esa misma ventana para que un camión sirva una sola franja.
@@ -103,11 +150,11 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
         $slot = $windowStart !== null && $windowEnd !== null ? "{$windowStart}-{$windowEnd}" : null;
 
         return DeliveryCandidate::of(
-            shipmentId: (string) $record->id,
+            shipmentId: $shipmentId,
             latitude: $lat,
             longitude: $lng,
-            weightKg: $packages * $defaultWeight,
-            volumeM3: $packages * $defaultVolume,
+            weightKg: $load['kg'] ?? 0.0,
+            volumeM3: $load['m3'] ?? 0.0,
             departmentId: $departmentId,
             zoneKey: $zoneKey,
             deliverySlot: $slot,
@@ -116,21 +163,27 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
             address: $record->address_text,
             windowStart: $windowStart,
             windowEnd: $windowEnd,
-            requirement: $requirements[(string) $record->id] ?? null,
+            requirement: $requirements[$shipmentId] ?? null,
+            loadEstimated: $load['estimated'] ?? true,
         );
     }
 
     /**
-     * Requisitos de ruteo (R-04) por envío, leídos EN LOTE del read-side propio de Planificación
-     * (planning_shipment_requirements). Tolerante: si la tabla aún no existe (migración sin aplicar),
-     * degrada a sin requisitos para no romper la planificación.
+     * Requisitos de ruteo (R-04) de los envíos dados, leídos EN LOTE (whereIn) del read-side propio de
+     * Planificación (planning_shipment_requirements). Tolerante: si la tabla aún no existe (migración sin
+     * aplicar), degrada a sin requisitos para no romper la planificación.
      *
+     * @param  list<string>                            $shipmentIds
      * @return array<string, ShipmentRouteRequirement>
      */
-    private function shipmentRequirements(): array
+    private function shipmentRequirements(array $shipmentIds): array
     {
+        if ($shipmentIds === []) {
+            return [];
+        }
+
         try {
-            $rows = DB::table('planning_shipment_requirements')->get();
+            $rows = DB::table('planning_shipment_requirements')->whereIn('shipment_id', $shipmentIds)->get();
         } catch (Throwable) {
             return [];
         }
@@ -138,7 +191,7 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
         $requirements = [];
         foreach ($rows as $row) {
             $data = (array) $row;
-            $shipmentId = isset($data['shipment_id']) ? (string) $data['shipment_id'] : '';
+            $shipmentId = isset($data['shipment_id']) && is_scalar($data['shipment_id']) ? (string) $data['shipment_id'] : '';
             if ($shipmentId === '') {
                 continue;
             }
@@ -152,12 +205,5 @@ final readonly class EloquentPendingDeliveryProvider implements PendingDeliveryP
         }
 
         return $requirements;
-    }
-
-    private function floatConfig(string $key, float $default): float
-    {
-        $value = $this->config->get("logistics-planning.auto_planner.{$key}");
-
-        return is_numeric($value) ? (float) $value : $default;
     }
 }

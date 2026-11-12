@@ -65,7 +65,8 @@ return [
             Route::post('roles/{roleId}/permissions/revoke', RevokePermissionFromRoleController::class)
                 ->name('roles.permissions.revoke');
 
-            // Usuarios: listado (filtro opcional ?status=), alta y detalle.
+            // Usuarios: listado (filtros opcionales ?status=&role=&search=, paginación page/per_page|cursor),
+            // alta y detalle.
             Route::get('users', ListUsersController::class)->name('users.index');
             Route::post('users', CreateUserController::class)->name('users.store');
             Route::get('users/{userId}', GetUserController::class)->name('users.show');

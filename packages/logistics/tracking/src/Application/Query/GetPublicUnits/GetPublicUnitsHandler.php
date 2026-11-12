@@ -8,6 +8,7 @@ use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Tracking\Application\ReadModel\PublicUnitView;
+use Logistics\Tracking\Application\Service\PublicLinkGuard;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Contract\UnitTrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
@@ -27,6 +28,7 @@ final class GetPublicUnitsHandler implements QueryHandler
     public function __construct(
         private readonly TrackingRepository $trackings,
         private readonly UnitTrackingRepository $units,
+        private readonly PublicLinkGuard $guard,
     ) {}
 
     /**
@@ -45,7 +47,8 @@ final class GetPublicUnitsHandler implements QueryHandler
         }
 
         $tracking = $this->trackings->findByToken($token);
-        if ($tracking === null) {
+        if ($tracking === null || $this->guard->isExpired($tracking)) {
+            // Inexistente o enlace vencido: sin datos (ver GetPublicLinkState para distinguirlos).
             return null;
         }
 

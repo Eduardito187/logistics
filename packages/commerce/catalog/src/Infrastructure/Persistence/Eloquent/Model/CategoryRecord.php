@@ -15,6 +15,10 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $parent_id
  * @property string      $name
  * @property string      $slug
+ * @property string|null $weight_kg medidas por defecto de sus productos (Fase 2.0)
+ * @property string|null $length_cm
+ * @property string|null $width_cm
+ * @property string|null $height_cm
  */
 final class CategoryRecord extends Model
 {
@@ -28,6 +32,16 @@ final class CategoryRecord extends Model
     public $incrementing = false;
 
     protected $guarded = [];
+
+    /**
+     * @var array<string, string>
+     */
+    protected $casts = [
+        'weight_kg' => 'decimal:3',
+        'length_cm' => 'decimal:2',
+        'width_cm' => 'decimal:2',
+        'height_cm' => 'decimal:2',
+    ];
 
     protected static function newFactory(): CategoryFactory
     {

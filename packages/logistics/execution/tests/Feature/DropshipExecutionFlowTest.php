@@ -3,22 +3,21 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
-use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDropshipDelivery;
-use Logistics\Execution\Application\Command\ConfirmDropshipDispatch\ConfirmDropshipDispatch;
+use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDeparted;
+use Logistics\Execution\Application\Command\RecordLoadScan\RecordLoadScan;
 use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScan;
-use Logistics\Execution\Domain\Exception\ExecutionException;
+use Logistics\Execution\Application\Command\RecordProofOfDelivery\RecordProofOfDelivery;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\DeliveryRecord;
-use Logistics\Outbox\Infrastructure\Persistence\Eloquent\OutboxMessageRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
 /**
- * Flujo dropship de punta a punta contra PostgreSQL (logistics_test): el envío es DROPSHIP (seller
- * despacha), la ejecución se cierra por confirmación del seller SIN escaneos propios, y el agregado
- * rechaza un escaneo propio sobre una entrega dropship de solo-tracking. La bifurcación la decide el
- * fulfillment_mode persistido del envío (leído read-only desde shipments). Requiere PostgreSQL.
+ * Flujo único de punta a punta contra PostgreSQL (logistics_test): un envío DROPSHIP se despacha
+ * exactamente igual que uno OWNED —preparación → carga → salida → entrega con escaneos propios—. El
+ * `fulfillment_mode` del envío (leído read-only desde shipments) solo queda registrado en la entrega.
+ * Requiere PostgreSQL.
  */
-function dropshipBus(): CommandBus
+function dropshipFlowBus(): CommandBus
 {
     return app(CommandBus::class);
 }
@@ -26,12 +25,12 @@ function dropshipBus(): CommandBus
 /**
  * Inserta un envío con el fulfillment_mode dado (y dueño seller si corresponde), para que el reader lo lea.
  */
-function seedShipment(string $id, string $fulfillmentMode, ?string $ownerPartyId): void
+function dropshipFlowSeedShipment(string $id, string $fulfillmentMode, ?string $ownerPartyId): void
 {
     DB::table('shipments')->insert([
         'id' => $id,
         'source' => 'test',
-        'external_id' => 'EXT-'.substr($id, 0, 8),
+        'external_id' => 'EXT-'.$id,
         'customer_name' => 'Cliente Demo',
         'address_text' => 'Av. Siempre Viva 123',
         'address_confidence' => 80,
@@ -44,89 +43,12 @@ function seedShipment(string $id, string $fulfillmentMode, ?string $ownerPartyId
     ]);
 }
 
-it('closes a dropship shipment by seller confirmation without any own scan', function (): void {
-    $shipment = Uuid::generate()->value;
-    $seller = Uuid::generate()->value;
-    $carrier = Uuid::generate()->value;
-    seedShipment($shipment, 'dropship', $seller);
-
-    dropshipBus()->dispatch(new ConfirmDropshipDispatch(
-        shipmentId: $shipment,
-        carrierTransportId: $carrier,
-        handling: 'track_only',
-        occurredAt: '2026-10-16T08:00:00+00:00',
-        idempotencyKey: 'disp-1',
-        reference: 'SELLER-GUIDE-1',
-    ));
-
-    $afterDispatch = DeliveryRecord::query()->where('shipment_id', $shipment)->firstOrFail();
-    expect($afterDispatch->status)->toBe('IN_TRANSIT')
-        ->and($afterDispatch->fulfillment_mode)->toBe('dropship')
-        ->and($afterDispatch->dropship_handling)->toBe('track_only')
-        ->and($afterDispatch->scans()->count())->toBe(0);
-
-    dropshipBus()->dispatch(new ConfirmDropshipDelivery(
-        shipmentId: $shipment,
-        occurredAt: '2026-10-16T18:00:00+00:00',
-        idempotencyKey: 'deliv-1',
-        reference: 'POD-SELLER-1',
-    ));
-
-    $afterDelivery = DeliveryRecord::query()->where('shipment_id', $shipment)->firstOrFail();
-    expect($afterDelivery->status)->toBe('DELIVERED')
-        ->and($afterDelivery->scans()->count())->toBe(0);
-
-    expect(OutboxMessageRecord::query()->where('event_name', 'execution.dropship_dispatch_confirmed')->exists())->toBeTrue()
-        ->and(OutboxMessageRecord::query()->where('event_name', 'execution.dropship_delivered')->exists())->toBeTrue();
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
-
-it('rejects an own preparation scan on a track-only dropship delivery', function (): void {
-    $shipment = Uuid::generate()->value;
-    $seller = Uuid::generate()->value;
-    $carrier = Uuid::generate()->value;
-    seedShipment($shipment, 'dropship', $seller);
-
-    dropshipBus()->dispatch(new ConfirmDropshipDispatch(
-        shipmentId: $shipment,
-        carrierTransportId: $carrier,
-        handling: 'track_only',
-        occurredAt: '2026-10-16T08:00:00+00:00',
-        idempotencyKey: 'disp-2',
-    ));
-
-    expect(fn () => dropshipBus()->dispatch(new RecordPreparationScan(
-        shipmentId: $shipment,
-        vehicleId: $carrier,
-        unitId: 'U-1',
-        lat: -16.5,
-        lng: -68.15,
-        deviceId: 'device-01',
-        userId: 'user-07',
-        occurredAt: '2026-10-16T09:00:00+00:00',
-        idempotencyKey: 'prep-x',
-    )))->toThrow(ExecutionException::class, 'no aplica en una entrega dropship');
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
-
-it('refuses a dropship dispatch for a non-dropship (owned) shipment', function (): void {
-    $shipment = Uuid::generate()->value;
-    $carrier = Uuid::generate()->value;
-    seedShipment($shipment, 'owned', null);
-
-    expect(fn () => dropshipBus()->dispatch(new ConfirmDropshipDispatch(
-        shipmentId: $shipment,
-        carrierTransportId: $carrier,
-        handling: 'track_only',
-        occurredAt: '2026-10-16T08:00:00+00:00',
-        idempotencyKey: 'disp-3',
-    )))->toThrow(ExecutionException::class, 'no es dropship');
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
-
-it('keeps an owned shipment on the own-scan flow when a preparation scan opens the delivery', function (): void {
-    $shipment = Uuid::generate()->value;
-    $vehicle = Uuid::generate()->value;
-    seedShipment($shipment, 'owned', null);
-
-    dropshipBus()->dispatch(new RecordPreparationScan(
+/**
+ * Corre el flujo propio completo (preparación, carga, salida, POD) para el envío dado.
+ */
+function dropshipFlowRun(string $shipment, string $vehicle): void
+{
+    dropshipFlowBus()->dispatch(new RecordPreparationScan(
         shipmentId: $shipment,
         vehicleId: $vehicle,
         unitId: 'U-1',
@@ -134,12 +56,60 @@ it('keeps an owned shipment on the own-scan flow when a preparation scan opens t
         lng: -68.15,
         deviceId: 'device-01',
         userId: 'user-07',
-        occurredAt: '2026-10-16T09:00:00+00:00',
-        idempotencyKey: 'prep-owned',
+        occurredAt: '2026-10-16T08:00:00+00:00',
+        idempotencyKey: 'prep-'.$shipment,
     ));
 
-    $record = DeliveryRecord::query()->where('shipment_id', $shipment)->firstOrFail();
-    expect($record->status)->toBe('PREPARED')
-        ->and($record->fulfillment_mode)->toBe('owned')
-        ->and($record->dropship_handling)->toBeNull();
+    dropshipFlowBus()->dispatch(new RecordLoadScan(
+        shipmentId: $shipment,
+        unitId: 'U-1',
+        lat: -16.5,
+        lng: -68.15,
+        deviceId: 'device-01',
+        userId: 'user-07',
+        occurredAt: '2026-10-16T09:00:00+00:00',
+        idempotencyKey: 'load-'.$shipment,
+    ));
+
+    dropshipFlowBus()->dispatch(new MarkShipmentDeparted(
+        shipmentId: $shipment,
+        occurredAt: '2026-10-16T10:00:00+00:00',
+    ));
+
+    dropshipFlowBus()->dispatch(new RecordProofOfDelivery(
+        shipmentId: $shipment,
+        unitId: 'U-1',
+        confirmation: 'QR-OK-1',
+        photoUrl: null,
+        photoPath: null,
+        lat: -16.5,
+        lng: -68.15,
+        deviceId: 'device-01',
+        userId: 'user-07',
+        occurredAt: '2026-10-16T12:00:00+00:00',
+        idempotencyKey: 'pod-'.$shipment,
+    ));
+}
+
+it('dispatches a dropship shipment with own scans exactly like an owned one', function (): void {
+    $vehicle = Uuid::generate()->value;
+
+    $owned = Uuid::generate()->value;
+    dropshipFlowSeedShipment($owned, 'owned', null);
+    dropshipFlowRun($owned, $vehicle);
+
+    $dropship = Uuid::generate()->value;
+    dropshipFlowSeedShipment($dropship, 'dropship', Uuid::generate()->value);
+    dropshipFlowRun($dropship, $vehicle);
+
+    $ownedRecord = DeliveryRecord::query()->where('shipment_id', $owned)->firstOrFail();
+    $dropshipRecord = DeliveryRecord::query()->where('shipment_id', $dropship)->firstOrFail();
+
+    expect($dropshipRecord->status)->toBe('DELIVERED')
+        ->and($dropshipRecord->fulfillment_mode)->toBe('dropship')
+        ->and($dropshipRecord->scans()->count())->toBe(3)
+        ->and($dropshipRecord->dropship_handling)->toBeNull()
+        ->and($ownedRecord->status)->toBe('DELIVERED')
+        ->and($ownedRecord->fulfillment_mode)->toBe('owned')
+        ->and($ownedRecord->scans()->count())->toBe(3);
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');

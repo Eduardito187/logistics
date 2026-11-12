@@ -45,21 +45,21 @@ final class DriverDeliveryController
     }
 
     /**
-     * Registra la prueba de entrega del primer bulto del envío por el dominio y devuelve el flash a mostrar.
+     * Registra la prueba de entrega del primer producto del envío por el dominio y devuelve el flash a mostrar.
      *
      * @param  array<string, mixed>        $data
      * @return array{0: string, 1: string}
      */
     private function record(string $shipment, User $user, array $data): array
     {
-        // Primer bulto del envío (la prueba de entrega se ancla a una unidad del envío).
+        // Primer producto del envío (la prueba de entrega se ancla a una unidad del envío).
         $unitId = DB::table('shipment_units')
             ->where('shipment_id', $shipment)
             ->orderBy('line_id')->orderBy('unit_index')->orderBy('piece_index')
             ->value('id');
 
         if (!is_string($unitId) || $unitId === '') {
-            return ['error', 'No se encontraron bultos para este pedido.'];
+            return ['error', 'No se encontraron productos para este pedido.'];
         }
 
         try {
@@ -69,8 +69,9 @@ final class DriverDeliveryController
                 confirmation: is_string($data['confirmation'] ?? null) ? $data['confirmation'] : '',
                 photoUrl: null,
                 photoPath: null,
-                lat: (float) ($data['lat'] ?? 0.0),
-                lng: (float) ($data['lng'] ?? 0.0),
+                // Sin señal no hay posición: null, nunca 0,0 (contaminaría la auditoría geográfica).
+                lat: is_numeric($data['lat'] ?? null) ? (float) $data['lat'] : null,
+                lng: is_numeric($data['lng'] ?? null) ? (float) $data['lng'] : null,
                 deviceId: 'field-app',
                 userId: (string) $user->getKey(),
                 occurredAt: (new DateTimeImmutable('now'))->format(DATE_ATOM),

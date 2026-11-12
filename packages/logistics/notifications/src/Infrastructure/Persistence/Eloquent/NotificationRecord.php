@@ -7,6 +7,7 @@ namespace Logistics\Notifications\Infrastructure\Persistence\Eloquent;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 use Logistics\Notifications\Database\Factories\NotificationRecordFactory;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
@@ -26,6 +27,8 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * @property string|null         $email
  * @property string|null         $phone
  * @property string|null         $telegram_chat_id
+ * @property Carbon|null         $created_at
+ * @property Carbon|null         $updated_at
  */
 final class NotificationRecord extends Model
 {

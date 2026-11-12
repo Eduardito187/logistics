@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Logistics\Outbox\Application\RelayOutbox;
 
 use Logistics\Outbox\Application\Contract\MessageDispatcher;
+use Logistics\Outbox\Application\Contract\OutboxObserver;
 use Logistics\Outbox\Domain\Contract\OutboxStore;
 use Logistics\Shared\Domain\Clock\Clock;
+use Psr\Log\LoggerInterface;
 
 /**
  * Despacha un lote del outbox de forma SINCRÓNICA (pull + despacho en el mismo proceso). Lo usa el
@@ -26,8 +28,9 @@ final readonly class RelayOutboxBatch
     private ProcessOutboxMessage $processor;
 
     /**
-     * @param int|null             $maxAttempts    Intentos totales; null usa el valor por defecto.
-     * @param array<int, int>|null $backoffMinutes Tabla de backoff; null usa la por defecto.
+     * @param int|null                 $maxAttempts    Intentos totales; null usa el valor por defecto.
+     * @param array<int, int>|null     $backoffMinutes Tabla de backoff; null usa la por defecto.
+     * @param iterable<OutboxObserver> $observers      Observadores del procesamiento (ver OutboxObserver).
      */
     public function __construct(
         private OutboxStore $store,
@@ -35,8 +38,10 @@ final readonly class RelayOutboxBatch
         private Clock $clock,
         ?int $maxAttempts = null,
         ?array $backoffMinutes = null,
+        iterable $observers = [],
+        ?LoggerInterface $logger = null,
     ) {
-        $this->processor = new ProcessOutboxMessage($store, $dispatcher, $maxAttempts, $backoffMinutes);
+        $this->processor = new ProcessOutboxMessage($store, $dispatcher, $maxAttempts, $backoffMinutes, $observers, $logger);
     }
 
     /**

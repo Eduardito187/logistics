@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\IdempotentRequests;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use Logistics\Execution\Application\Command\RecordLoadScan\RecordLoadScan;
 use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScan;
 use Logistics\Shared\Application\Command\CommandBus;
@@ -21,6 +22,10 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  */
 beforeEach(function (): void {
     $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+
+    // La foto del POD debe existir en el disco de evidencia (se rechaza una referencia no subida).
+    Storage::fake('pod');
+    Storage::disk('pod')->put('evidence/pod-scope.jpg', 'jpg');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',
     'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',

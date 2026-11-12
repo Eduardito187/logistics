@@ -80,7 +80,7 @@ Impacto: campo aditivo `ownership_*` (owner_party_id nullable + fulfillment_mode
 | `capacity` | tocado (aditivo) | Espejo de recepción: cupos de andén por día/almacén (hoy solo despacho). |
 | `labels` | sin cambios | Punto de convergencia (QR Dismac). |
 | `sap-connector` | tocado | Dimensión de propiedad: consignación ≠ material propio; mapeo por-seller. |
-| `promise` | tocado | Lead time de inbound en la fecha prometida (dropship/FBD sin stock). |
+| `promise` | sin cambios | **Revisado por ADR 022:** la promesa es igual para todo tipo de propiedad; no hay lead time por FBD/dropship ni dependencia de stock. |
 | `planning` / `execution` / `telemetry` / última milla | sin cambios | Solo arrastran el tag de propiedad para reportería. |
 
 ---
@@ -249,11 +249,11 @@ autoservicio.
 
 **Punto por punto:**
 
-1. **`promise` (tocado):** la fecha prometida incorpora el **lead time** del seller (dropship) o del
-   inbound (FBD sin stock disponible). Regla en el motor de promesa, por seller/sku.
-2. **Flujo dropship en `execution`:** el seller confirma despacho; Dismac puede (a) solo trackear, (b)
-   etiquetar y hacer la última milla, o (c) coordinar transportista tercero (`carriers`). El tag
-   `fulfillment_mode = DROPSHIP` rutea el flujo.
+1. **`promise` (revisado por ADR 022):** la fecha prometida es la misma para OWNED, FBD y DROPSHIP. Se
+   eliminó el lead time por tipo de propiedad y nunca depende del stock.
+2. **Flujo dropship en `execution` (revisado por ADR 022):** un único flujo para todo pedido: preparar →
+   cargar → salir → entregar o fallar, con escaneos propios. Se eliminaron los modos "solo seguimiento" y
+   "transportista tercero" y la confirmación del seller. `fulfillment_mode` queda solo como dato.
 3. **Portal / API del seller (puerta `integrations`):**
    - Autoservicio: crear ASN, ver citas, ver recepciones y discrepancias, ver stock on-hand propio, ver
      liquidaciones, iniciar devoluciones. Todo por API tokeni­zada con permisos seleccionables (reusa el
@@ -261,7 +261,7 @@ autoservicio.
    - Webhooks de eventos del seller (vía outbox): `goods_received`, `settlement_confirmed`, etc.
 4. **Observabilidad del seller:** ReadModels optimizados y cacheados (forma primitiva, nunca objeto de
    dominio) para el portal, separados del lado de escritura (CQRS puro).
-5. **DoD Fase 5:** Pest verde (promesa con lead time; dropship de punta a punta; API del seller con
+5. **DoD Fase 5:** Pest verde (promesa igual para todo tipo de propiedad; dropship de punta a punta por el flujo único; API del seller con
    permisos) + PHPStan 8 + Pint + render 200 + contrato OpenAPI del portal del seller completo.
 
 **Dependencias:** Fases 1–4. **Riesgo:** medio.

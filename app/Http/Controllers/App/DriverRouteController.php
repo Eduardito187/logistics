@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDeparted;
+use Logistics\Execution\Application\Command\StartDriverRoute\StartDriverRoute;
 use Logistics\Shared\Application\Command\CommandBus;
 use Throwable;
 
@@ -78,6 +79,18 @@ final class DriverRouteController
         }
 
         $now = (new DateTimeImmutable('now'))->format(DATE_ATOM);
+
+        // Abre la ruta del día (started_at/estado) con el mismo comando que la API de la app; idempotente.
+        try {
+            $this->bus->dispatch(new StartDriverRoute(
+                vehicleId: (string) $route->vehicle_id,
+                occurredAt: $now,
+                routeDate: $today,
+            ));
+        } catch (Throwable) {
+            // Ruta suspendida o ya cerrada: igual se intenta marcar la salida de cada envío abajo.
+        }
+
         $shipmentIds = DB::table('execution_driver_route_stops')
             ->where('route_id', $route->id)
             ->pluck('shipment_id');

@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Logistics\Fleet\Presentation\Filament\Resources\CrewResource\Pages;
 
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Filament\Support\Exceptions\Halt;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Fleet\Application\Command\AssembleCrew\AssembleCrew;
+use Logistics\Fleet\Domain\Exception\FleetException;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\CrewModel;
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource;
 use Logistics\Shared\Application\Command\CommandBus;
@@ -36,14 +39,25 @@ final class CreateCrew extends CreateRecord
             ? (string) $data['shift_ends_at']
             : null;
 
-        app(CommandBus::class)->dispatch(new AssembleCrew(
-            driverId: (string) $data['driver_id'],
-            helperIds: $helperIds,
-            vehicleId: (string) $data['vehicle_id'],
-            assembledFor: (string) $data['assembled_for'],
-            shiftStartsAt: $shiftStartsAt,
-            shiftEndsAt: $shiftEndsAt,
-        ));
+        try {
+            app(CommandBus::class)->dispatch(new AssembleCrew(
+                driverId: (string) $data['driver_id'],
+                helperIds: $helperIds,
+                vehicleId: (string) $data['vehicle_id'],
+                assembledFor: (string) $data['assembled_for'],
+                shiftStartsAt: $shiftStartsAt,
+                shiftEndsAt: $shiftEndsAt,
+            ));
+        } catch (FleetException $e) {
+            // Regla de negocio (vehículo no apto, turno inválido): se muestra el motivo y no se arma nada.
+            Notification::make()
+                ->title(__('Could not assemble the crew'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+
+            throw new Halt;
+        }
 
         return CrewModel::query()
             ->where('driver_id', $data['driver_id'])

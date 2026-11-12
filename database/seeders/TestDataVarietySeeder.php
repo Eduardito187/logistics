@@ -324,6 +324,15 @@ final class TestDataVarietySeeder extends Seeder
                 ->createOne();
 
         $carrierId = (string) $carrier->getKey();
+
+        // Cuenta de prueba del rol transportista ↔ este transportista (identidad server-side que leen
+        // /auth/me y el alcance de liquidaciones). Solo si aún no tiene vínculo: respeta uno ya fijado.
+        $carrierUser = User::query()->where('email', 'transportista@dismac.test')->first();
+        if ($carrierUser !== null && $carrierUser->carrier_id === null) {
+            $carrierUser->carrier_id = $carrierId;
+            $carrierUser->save();
+        }
+
         $period = $this->now->format('Y-m');
         $from = 'cd-santa-cruz';
         $to = 'store-scz-centro';

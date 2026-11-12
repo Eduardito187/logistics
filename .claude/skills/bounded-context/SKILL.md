@@ -107,6 +107,12 @@ checks puntuales no-test (autoload `php -r 'class_exists(...)'`, `php artisan ro
 una query/endpoint concreto) + `openapi/v1.yaml` actualizado si se tocó un endpoint. "100%/check" es
 ambiguo: ante la duda, preguntar antes de correr la suite, no asumir que piden la DoD completa con pest.
 
+**SIN DOCKER salvo pedido explícito (2026-11-12, prima sobre lo anterior)** ([[no-docker-unless-asked]]):
+tampoco correr phpstan/pint/artisan por iniciativa propia. Escribir código + tests y verificar por lectura
+y con scripts locales (Python) que no necesiten contenedores; al cerrar, darle al dueño la lista exacta:
+`make pint-fix` → `phpstan analyse --memory-limit=1G` → `migrate` → reiniciar pgbouncer → `pest` → backfills.
+Escribir Pint-clean desde el principio con las reglas reales de la skill `ci-quality-gates` (Paso 3b).
+
 **NO operaciones destructivas de DB** ([[no-destructive-db-ops]]): jamás `migrate:fresh`/`refresh`/`db:wipe`/
 `TRUNCATE`/`DROP` sobre `logistics` (regenera los UUID v7 de demo → todos los deep-links del admin dan 404,
 irreversible). Verificar seeders con SELECT/JOINs sobre la base actual; backup (`pg_dump`) antes de algo
@@ -402,6 +408,30 @@ Construir varios contextos en paralelo (marketplace: 6 contextos en varias olas)
   path packages) → `migrate` (aditivo) → `db:seed --class=...` idempotente → render sweep (admin 70/70) →
   `phpstan clear-result-cache` + global → `pint --test` global → `pest` de los contextos → cableado cross-context
   por relay. Ver [[multisession-shared-tree]], [[marketplace-roadmap]].
+
+## Contrato con la app Flutter y endpoints de app (verificado 2026-11-12, auditoría de la app)
+
+Checklist para TODO endpoint `/app/*` nuevo o cambiado (la app regenera su cliente Dart desde el spec):
+
+- **Paginación opt-in** con `App\Http\Support\ApiPagination` (`requested/limit/offset/envelope`): sin params de
+  página = lista completa igual que antes; con params = meta estándar. Paginar en SQL (LIMIT/OFFSET + COUNT), no
+  en memoria, salvo conjuntos chicos.
+- **OpenAPI**: `meta: $ref ListMeta` (nunca `oneOf` anónimo de PaginationMeta/CursorMeta); respuesta con schema
+  CON NOMBRE; fechas `format: date`; ver [[openapi-contract-conventions]].
+- **Alcance server-side por rol**: el servidor deriva el sujeto del token (`users.driver_id`, `node_id`,
+  `carrier_id`) e IGNORA ids que mande el teléfono (fuga P0 de liquidaciones). Transportista → `EnsureCarrierScope`.
+- **Lotes offline**: endpoint batch con resultado POR ÍTEM (`accepted|duplicate|rejected` + problem), 207 si hay
+  rechazos, idempotencia por clave de ítem persistida, cada ítem por el MISMO comando que su endpoint simple.
+- **Derivar server-side** lo que hoy arma el teléfono (origen/destino/expected ids de una recepción, total de
+  productos de una parada = unidades, no suma de quantity).
+- **GPS opcional**: `lat/lng` nullable, nunca guardar 0,0 (`GeoPoint::fromNullable`); aceptar
+  `location {lat,lng,accuracy_m,captured_at}`.
+- **Productos**: siempre nombre + SKU, nunca "bulto" (ni en descripciones del spec) — [[product-labeling-rules]].
+- **Eventos nuevos** → agregarlos a `SapNotifiableEvents::CATALOG` (los defaults avisan el catálogo entero;
+  excluir eventos de alto volumen como posiciones GPS) — [[dispatch-principles-adr022]].
+- **Errores**: regla de negocio → `DomainException` → 422 `business_rule_violation` (RFC 7807).
+- Coordinación con la sesión de la app: mandarle los shapes exactos por SendMessage al cerrar cada tanda; la app
+  cablea cuando el dueño despliega. Estado del backlog: [[app-audit-backlog-2026-11]].
 
 ## Referencia
 

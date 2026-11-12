@@ -16,6 +16,8 @@ use Logistics\Tracking\Database\Factories\TrackingRecordFactory;
  * lo usa el repositorio Eloquent para mapear hacia y desde el agregado ShipmentTracking.
  *
  * La pk es el UUID del seguimiento (string, no autoincremental). token y shipment_id son únicos.
+ * `customer_email` es PII del proceso de calificación: va oculto en la serialización y nunca se expone en
+ * vistas públicas.
  *
  * @property string      $id
  * @property string|null $shipment_id
@@ -29,6 +31,9 @@ use Logistics\Tracking\Database\Factories\TrackingRecordFactory;
  * @property string|null $last_lat
  * @property string|null $last_lng
  * @property Carbon|null $last_position_at
+ * @property Carbon|null $delivered_at
+ * @property string|null $customer_email
+ * @property Carbon|null $rating_requested_at
  */
 final class TrackingRecord extends Model
 {
@@ -55,6 +60,14 @@ final class TrackingRecord extends Model
         'last_lat',
         'last_lng',
         'last_position_at',
+        'delivered_at',
+        'customer_email',
+        'rating_requested_at',
+    ];
+
+    /** @var list<string> */
+    protected $hidden = [
+        'customer_email',
     ];
 
     /** @var array<string, string> */
@@ -63,6 +76,8 @@ final class TrackingRecord extends Model
         'route_position' => 'integer',
         'eta' => 'datetime',
         'last_position_at' => 'datetime',
+        'delivered_at' => 'datetime',
+        'rating_requested_at' => 'datetime',
     ];
 
     /**

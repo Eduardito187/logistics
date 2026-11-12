@@ -8,6 +8,9 @@ use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Shared\Domain\ValueObject\Ownership;
+use Logistics\Shipments\Application\Contract\NetworkNodeLookup;
+use Logistics\Shipments\Application\Measurement\LineMeasureResolver;
+use Logistics\Shipments\Application\ReadModel\CatalogMeasurements;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
@@ -33,6 +36,10 @@ use Logistics\Shipments\Domain\ValueObject\SourceReference;
  * Idempotente: si ya existe un envío para la misma referencia de origen, no duplica; deja disponible
  * el id del existente en lastShipmentId() y no vuelve a grabar eventos.
  *
+ * Foto de medidas (Roadmap 02, Fase 2.1): cada línea nace con su peso y volumen por unidad resueltos
+ * UNA vez acá (producto → categoría → default global, una sola lectura al catálogo para el pedido entero)
+ * y no se recalculan después. Medidas faltantes nunca bloquean el ingreso: caen al default y se marcan.
+ *
  * @implements CommandHandler<ReceiveShipment>
  */
 final class ReceiveShipmentHandler implements CommandHandler
@@ -43,6 +50,8 @@ final class ReceiveShipmentHandler implements CommandHandler
         private readonly ShipmentRepository $shipments,
         private readonly AddressConfidenceScorer $scorer,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly LineMeasureResolver $measures,
+        private readonly NetworkNodeLookup $nodes,
     ) {}
 
     public function handle(Command $command): void
@@ -69,6 +78,11 @@ final class ReceiveShipmentHandler implements CommandHandler
             $this->geoPointFrom($command->lat, $command->lng),
         );
 
+        $measures = $this->measures->resolveMany(array_values(array_map(
+            static fn (ShipmentLineInput $line): string => $line->sku,
+            $command->lines,
+        )));
+
         $lines = [];
         foreach ($command->lines as $line) {
             $lines[] = ShipmentLine::create(
@@ -78,6 +92,7 @@ final class ReceiveShipmentHandler implements CommandHandler
                 $line->quantity,
                 ProductImageUrl::fromNullable($line->imageUrl),
                 Money::fromNullable($line->price, $line->currency ?? 'BOB'),
+                $measures[CatalogMeasurements::keyOf($line->sku)] ?? $this->measures->fallback(),
             );
         }
 
@@ -106,7 +121,7 @@ final class ReceiveShipmentHandler implements CommandHandler
             $address,
             $confidence,
             $lines,
-            $command->destinationNodeId,
+            $this->destinationNodeOf($command, $sourceReference),
             $ownership,
             $command->orderReference,
         );
@@ -127,6 +142,34 @@ final class ReceiveShipmentHandler implements CommandHandler
         }
 
         return $this->lastShipmentId;
+    }
+
+    /**
+     * REGLA del nodo destino (retiro en tienda / traspaso), en cascada:
+     *
+     *  1. el `destinationNodeId` explícito que mande la fuente (commerce multishipping, integraciones);
+     *  2. el UUID del sufijo `#n:{uuid}` del id externo (envío hermano de una orden multishipping que va a
+     *     un nodo, ver SourceReference::pickupNodeId);
+     *  3. el código de tienda/CD (`destinationNodeCode`) traducido a su id por `network_nodes.code`.
+     *
+     * Si nada aplica, el envío es a DOMICILIO y queda sin nodo destino (null). Sin nodo, la tienda no ve el
+     * envío en «Recepción de mercadería» ni «Recojo en tienda» (seguro por defecto).
+     */
+    private function destinationNodeOf(ReceiveShipment $command, SourceReference $reference): ?string
+    {
+        $explicit = $command->destinationNodeId !== null ? trim($command->destinationNodeId) : '';
+        if ($explicit !== '') {
+            return $explicit;
+        }
+
+        $fromSuffix = $reference->pickupNodeId();
+        if ($fromSuffix !== null) {
+            return $fromSuffix;
+        }
+
+        $code = $command->destinationNodeCode !== null ? trim($command->destinationNodeCode) : '';
+
+        return $code !== '' ? $this->nodes->idForCode($code) : null;
     }
 
     private function geoPointFrom(?float $lat, ?float $lng): ?GeoPoint

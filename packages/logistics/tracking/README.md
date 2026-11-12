@@ -100,6 +100,29 @@ estrellas + comentario opcional + motivo opcional si la nota es baja).
   está en el contrato de API). Códigos: 201 ok, 404 token inválido/inexistente (genérico), 422 no
   elegible/validación, 409 ya calificado.
 
+### Vencimiento del enlace público (`tracking.public_link_ttl_hours`)
+
+- **Desde cuándo cuenta:** desde la ENTREGA (`tracking_shipments.delivered_at`). Mientras el pedido no
+  se entregó el enlace **no vence** (un pedido agendado a varios días no puede perder su seguimiento).
+  Una devolución posterior conserva `delivered_at`, así que sigue contando desde la entrega.
+- **Valor:** clave de Configuración `tracking.public_link_ttl_hours` = `{"hours": N}`. Sin la clave (docker
+  nuevo sin seeders) se usa **72 h** (`PublicLinkTtl::DEFAULT_HOURS`). `hours <= 0` desactiva el vencimiento.
+- **Qué responde un enlace vencido:** la página `/t/{token}` muestra `tracking::expired` (410, texto de
+  cliente, sin datos del pedido); `GET /api/v1/channels/tracking/{token}`, `.../units` y
+  `POST /t/{token}/survey` responden 410 con `error.code = tracking_link_expired`. Ninguna consulta
+  pública devuelve datos de un enlace vencido (la regla vive en `ShipmentTracking::publicLinkExpiresAt()`
+  y la aplica `PublicLinkGuard`).
+
+### `delivered_at`
+
+- Lo fija la proyección de la entrega (`ProjectExecutionTracking` → `ProjectExecutionEvent`) con el momento
+  del hecho: `occurred_at`/`delivered_at` del payload si viene, si no el `created_at` del mensaje del
+  outbox (misma transacción que la entrega). Un reenvío no lo mueve.
+- Backfill idempotente para filas previas: `php artisan logistics:tracking:backfill-delivered-at`
+  (fuentes: `execution_deliveries` → outbox `execution.shipment_delivered` → outbox
+  `tracking.status_changed` a DELIVERED → `updated_at` como aproximación; `--without-updated-at` omite el
+  último recurso). Se corre una vez tras migrar; no va al scheduler.
+
 ## Integración (pendiente)
 
 Los handlers de escritura liberan los eventos del agregado con `releaseEvents()` y hoy quedan marcados

@@ -8,8 +8,9 @@ use Logistics\Notifications\Domain\ValueObject\MessageType;
 
 /**
  * Puerto de dominio: dado el id de un envío y el tipo de mensaje, arma el mapa de variables con las
- * que se interpolan las plantillas de notificación ({{order}}, {{customer}}, {{address}}, {{eta}},
- * {{stops}}, …).
+ * que se interpolan las plantillas de notificación ({{order}}, {{order_reference}}, {{customer}},
+ * {{address}}, {{eta}}, {{stops}}, {{tracking_url}}, …). Nunca expone UUIDs internos en el texto: el token
+ * público solo viaja dentro de {{tracking_url}}.
  *
  * Los valores salen de los datos reales del envío (referencia humana del pedido, nombre del cliente,
  * dirección) y del tracking (paradas restantes, hora estimada) cuando están disponibles. Es solo

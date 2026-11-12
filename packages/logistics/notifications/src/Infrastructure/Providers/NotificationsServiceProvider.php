@@ -10,6 +10,10 @@ use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Notifications\Application\Command\AdvanceCascade\AdvanceCascade;
 use Logistics\Notifications\Application\Command\AdvanceCascade\AdvanceCascadeHandler;
+use Logistics\Notifications\Application\Command\MarkAllNotificationsRead\MarkAllNotificationsRead;
+use Logistics\Notifications\Application\Command\MarkAllNotificationsRead\MarkAllNotificationsReadHandler;
+use Logistics\Notifications\Application\Command\MarkNotificationRead\MarkNotificationRead;
+use Logistics\Notifications\Application\Command\MarkNotificationRead\MarkNotificationReadHandler;
 use Logistics\Notifications\Application\Command\MarkNotificationSent\MarkNotificationSent;
 use Logistics\Notifications\Application\Command\MarkNotificationSent\MarkNotificationSentHandler;
 use Logistics\Notifications\Application\Command\QueueNotification\QueueNotification;
@@ -23,7 +27,10 @@ use Logistics\Notifications\Application\Command\SuppressNotification\SuppressNot
 use Logistics\Notifications\Application\Command\UpsertMessageTemplate\UpsertMessageTemplate;
 use Logistics\Notifications\Application\Command\UpsertMessageTemplate\UpsertMessageTemplateHandler;
 use Logistics\Notifications\Application\Contract\CascadeRuleSettings;
+use Logistics\Notifications\Application\Contract\NotificationInboxReader;
 use Logistics\Notifications\Application\Contract\NotificationRulesProvider;
+use Logistics\Notifications\Application\Query\CountUnreadNotifications\CountUnreadNotifications;
+use Logistics\Notifications\Application\Query\CountUnreadNotifications\CountUnreadNotificationsHandler;
 use Logistics\Notifications\Application\Query\GetMessageTemplate\GetMessageTemplate;
 use Logistics\Notifications\Application\Query\GetMessageTemplate\GetMessageTemplateHandler;
 use Logistics\Notifications\Application\Query\GetNotification\GetNotification;
@@ -43,6 +50,7 @@ use Logistics\Notifications\Domain\Contract\CollageImageBuilder;
 use Logistics\Notifications\Domain\Contract\CollageImageStore;
 use Logistics\Notifications\Domain\Contract\MessageTemplateRepository;
 use Logistics\Notifications\Domain\Contract\MessageTypeRuleRepository;
+use Logistics\Notifications\Domain\Contract\NotificationReadStateRepository;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Contract\NotificationVariableProvider;
 use Logistics\Notifications\Domain\Contract\ProductImageResolver;
@@ -68,8 +76,11 @@ use Logistics\Notifications\Infrastructure\Image\NullCollageImageBuilder;
 use Logistics\Notifications\Infrastructure\Image\PushImageResolver;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentMessageTemplateRepository;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentMessageTypeRuleRepository;
+use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentNotificationInboxReader;
+use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentNotificationReadStateRepository;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentNotificationRepository;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentSmsBudgetRepository;
+use Logistics\Notifications\Infrastructure\Persistence\Eloquent\NotificationMapper;
 use Logistics\Notifications\Infrastructure\Product\LineItemProductImageResolver;
 use Logistics\Notifications\Infrastructure\Rules\SettingsNotificationRulesProvider;
 use Logistics\Notifications\Infrastructure\Settings\SettingsCascadeRuleGateway;
@@ -107,6 +118,10 @@ final class NotificationsServiceProvider extends ServiceProvider
         ListMessageTemplates::class => ListMessageTemplatesHandler::class,
         GetMessageTemplate::class => GetMessageTemplateHandler::class,
         GetSmsBudget::class => GetSmsBudgetHandler::class,
+        // Estado de lectura por usuario de la bandeja de la app (pedido #9 de la auditoría de la app).
+        MarkNotificationRead::class => MarkNotificationReadHandler::class,
+        MarkAllNotificationsRead::class => MarkAllNotificationsReadHandler::class,
+        CountUnreadNotifications::class => CountUnreadNotificationsHandler::class,
     ];
 
     private const CONFIG_PATH = __DIR__.'/../../../config/logistics-notifications.php';
@@ -134,6 +149,25 @@ final class NotificationsServiceProvider extends ServiceProvider
             );
         });
         $this->app->bind(SmsBudgetRepository::class, EloquentSmsBudgetRepository::class);
+
+        // Estado de lectura por usuario: escritura (Domain) y lectura de la bandeja (Application). El
+        // DatabaseManager (alias 'db') implementa ConnectionResolverInterface; no está aliado por defecto.
+        $this->app->bind(NotificationReadStateRepository::class, function ($app): EloquentNotificationReadStateRepository {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+
+            return new EloquentNotificationReadStateRepository($connections);
+        });
+        $this->app->bind(NotificationInboxReader::class, function ($app): EloquentNotificationInboxReader {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+
+            return new EloquentNotificationInboxReader(
+                $app->make(NotificationMapper::class),
+                $connections,
+                $app->make(LoggerInterface::class),
+            );
+        });
 
         // Reglas de cascada: la FUENTE DE VERDAD es el contexto Configuración (versionado, con historial).
         // El puerto CascadeRuleSettings traduce a/desde esa configuración por los buses CQRS; se bindea como

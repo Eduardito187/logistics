@@ -37,6 +37,7 @@ final readonly class EloquentRouteComparisonProblemProvider implements RouteComp
         private PlanRepository $plans,
         private PlanningOriginLocator $originLocator,
         private Config $config,
+        private ShipmentLoadReader $loads,
     ) {}
 
     public function forPlan(PlanId $planId): ?RouteComparisonProblem
@@ -67,7 +68,8 @@ final readonly class EloquentRouteComparisonProblemProvider implements RouteComp
     }
 
     /**
-     * Arma los candidatos desde los envíos del plan: coordenadas, carga estimada (bultos × defaults) y
+     * Arma los candidatos desde los envíos del plan: coordenadas, carga real por línea (con fallback a
+     * los defaults por producto, marcada como estimada) y
      * requisitos de ruteo (R-04). Descarta los envíos sin coordenadas numéricas.
      *
      * @param  list<string>            $shipmentIds
@@ -79,14 +81,12 @@ final readonly class EloquentRouteComparisonProblemProvider implements RouteComp
             return [];
         }
 
-        $defaultWeight = $this->floatConfig('default_weight_kg_per_package', 10.0);
-        $defaultVolume = $this->floatConfig('default_volume_m3_per_package', 0.05);
         $requirements = $this->shipmentRequirements($shipmentIds);
+        $loads = $this->loads->loadsFor($shipmentIds);
 
         try {
             $records = ShipmentRecord::query()
                 ->whereIn('id', $shipmentIds)
-                ->withSum('lines', 'quantity')
                 ->orderBy('id')
                 ->get();
         } catch (Throwable) {
@@ -99,22 +99,22 @@ final readonly class EloquentRouteComparisonProblemProvider implements RouteComp
                 continue;
             }
 
-            $packagesRaw = $record->getAttribute('lines_sum_quantity');
-            $packages = is_numeric($packagesRaw) ? max(1, (int) $packagesRaw) : 1;
             $shipmentId = (string) $record->id;
+            $load = $loads[$shipmentId] ?? null;
 
             $candidates[] = DeliveryCandidate::of(
                 shipmentId: $shipmentId,
                 latitude: (float) $record->lat,
                 longitude: (float) $record->lng,
-                weightKg: $packages * $defaultWeight,
-                volumeM3: $packages * $defaultVolume,
+                weightKg: $load['kg'] ?? 0.0,
+                volumeM3: $load['m3'] ?? 0.0,
                 // Sin departamento: el camión de la comparación es flexible y toma todas las paradas.
                 departmentId: null,
                 orderReference: $record->external_id,
                 customerName: $record->customer_name,
                 address: $record->address_text,
                 requirement: $requirements[$shipmentId] ?? null,
+                loadEstimated: $load['estimated'] ?? true,
             );
         }
 
@@ -227,13 +227,6 @@ final readonly class EloquentRouteComparisonProblemProvider implements RouteComp
         }
 
         return null;
-    }
-
-    private function floatConfig(string $key, float $default): float
-    {
-        $value = $this->config->get("logistics-planning.auto_planner.{$key}");
-
-        return is_numeric($value) ? (float) $value : $default;
     }
 
     private function stringConfig(string $key): ?string

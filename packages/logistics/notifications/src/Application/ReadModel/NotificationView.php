@@ -30,10 +30,18 @@ final readonly class NotificationView
         // Referencia externa humana del envío (tabla shipments.external_id) resuelta en el QueryHandler.
         // Null si el envío asociado ya no existe; el UUID crudo se mantiene en shipment_id.
         public ?string $shipmentExternalId = null,
+        // Fecha de creación (ISO 8601) y estado de lectura DEL USUARIO que consulta (null = no leída).
+        // Los resuelve el QueryHandler en lote por página (NotificationInboxReader); no son del agregado.
+        public ?string $createdAt = null,
+        public ?string $readAt = null,
     ) {}
 
-    public static function fromNotification(Notification $notification, ?string $shipmentExternalId = null): self
-    {
+    public static function fromNotification(
+        Notification $notification,
+        ?string $shipmentExternalId = null,
+        ?string $createdAt = null,
+        ?string $readAt = null,
+    ): self {
         return new self(
             $notification->id()->toString(),
             $notification->shipmentId(),
@@ -44,6 +52,8 @@ final readonly class NotificationView
             array_map(static fn (Channel $c): string => $c->value, $notification->policy()->channels),
             $notification->attempts(),
             $shipmentExternalId,
+            $createdAt,
+            $readAt,
         );
     }
 
@@ -62,6 +72,8 @@ final readonly class NotificationView
             'fcm_topic' => $this->fcmTopic,
             'channels' => $this->channels,
             'attempts' => $this->attempts,
+            'created_at' => $this->createdAt,
+            'read_at' => $this->readAt,
         ];
     }
 }

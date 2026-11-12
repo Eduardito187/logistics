@@ -11,6 +11,7 @@ use Illuminate\Foundation\Http\FormRequest;
  *
  * El corredor llega por sus tres primitivos, el monto como centavos + moneda y el período como texto
  * `YYYY-MM`, igual que el Command SubmitSettlement; el handler los convierte a los VO del dominio.
+ * `vehicle_class` es opcional: si falta, el handler la deriva de la tarifa única del corredor.
  */
 final class SubmitSettlementRequest extends FormRequest
 {
@@ -35,6 +36,7 @@ final class SubmitSettlementRequest extends FormRequest
             'documents' => ['sometimes', 'array'],
             'documents.*.type' => ['required_with:documents', 'string', 'max:64'],
             'documents.*.reference' => ['required_with:documents', 'string', 'max:255'],
+            'vehicle_class' => ['sometimes', 'nullable', 'string', 'in:trailer,truck,third_party'],
         ];
     }
 }

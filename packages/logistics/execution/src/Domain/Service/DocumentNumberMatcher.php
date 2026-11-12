@@ -57,7 +57,7 @@ final readonly class DocumentNumberMatcher
         return EvidenceValidationStatus::Mismatch;
     }
 
-    /** Quita todo lo que no sea dígito (espacios, guiones, puntos, complemento alfanumérico). */
+    /** Quita cualquier carácter que no sea dígito (espacios, guiones, puntos, complemento alfanumérico). */
     private function digitsOnly(?string $value): string
     {
         if ($value === null) {

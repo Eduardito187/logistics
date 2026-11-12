@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Shipments\Domain\Model;
 
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
+use Logistics\Shipments\Domain\ValueObject\LineMeasure;
 use Logistics\Shipments\Domain\ValueObject\Money;
 use Logistics\Shipments\Domain\ValueObject\ProductImageUrl;
 use Logistics\Shipments\Domain\ValueObject\ProductName;
@@ -20,6 +21,10 @@ use Logistics\Shipments\Domain\ValueObject\Sku;
  * La imagen del producto y el precio unitario son datos OPCIONALES de presentación (por defecto null):
  * los consume el notificador para mostrar productos con miniatura en mail/push y precio en el detalle.
  * Su ausencia nunca rompe la ingesta existente.
+ *
+ * La foto de medidas ({@see LineMeasure}: peso y volumen por unidad + fuente) se toma al recibir el envío
+ * y viaja con la línea sin recalcularse. Es null solo en líneas históricas aún no rellenadas por el
+ * backfill (o creadas a mano en el admin).
  */
 final class ShipmentLine
 {
@@ -30,6 +35,7 @@ final class ShipmentLine
         private readonly int $quantity,
         private readonly ?ProductImageUrl $imageUrl,
         private readonly ?Money $unitPrice,
+        private readonly ?LineMeasure $measure,
     ) {}
 
     public static function create(
@@ -39,12 +45,13 @@ final class ShipmentLine
         int $quantity,
         ?ProductImageUrl $imageUrl = null,
         ?Money $unitPrice = null,
+        ?LineMeasure $measure = null,
     ): self {
         if ($quantity < 1) {
             throw ShipmentsException::because("la cantidad de la línea debe ser >= 1: {$quantity}");
         }
 
-        return new self($id, $sku, $productName, $quantity, $imageUrl, $unitPrice);
+        return new self($id, $sku, $productName, $quantity, $imageUrl, $unitPrice, $measure);
     }
 
     public function id(): ShipmentLineId
@@ -81,5 +88,13 @@ final class ShipmentLine
     public function unitPrice(): ?Money
     {
         return $this->unitPrice;
+    }
+
+    /**
+     * Foto de medidas por unidad (peso, volumen, fuente), o null en líneas históricas sin backfill.
+     */
+    public function measure(): ?LineMeasure
+    {
+        return $this->measure;
     }
 }

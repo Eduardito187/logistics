@@ -10,6 +10,7 @@ use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
 use Livewire\Attributes\Computed;
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierResource;
+use Logistics\Carriers\Presentation\Filament\Resources\CarrierTripResource;
 use Logistics\Carriers\Presentation\Filament\Resources\SettlementResource;
 use Logistics\Carriers\Presentation\Filament\Resources\TariffResource;
 use Throwable;
@@ -78,6 +79,8 @@ final class ViewCarrier extends ViewRecord
         $items = [
             ['Tarifas', TariffResource::class],
             ['Liquidaciones', SettlementResource::class],
+            // Viajes (carga asignada) del transportista: alta, armado de carga e inicio/cierre.
+            [__('Trips'), CarrierTripResource::class],
         ];
 
         $out = [];

@@ -23,6 +23,10 @@ use Illuminate\Database\Eloquent\Model;
  * @property string                                                                    $status
  * @property list<array{sku: string, name: string, attributes: array<string, string>}> $variants
  * @property list<array{path: string, alt: string, position: int}>                     $media
+ * @property string|null                                                               $weight_kg
+ * @property string|null                                                               $length_cm
+ * @property string|null                                                               $width_cm
+ * @property string|null                                                               $height_cm
  */
 final class ProductRecord extends Model
 {
@@ -43,6 +47,11 @@ final class ProductRecord extends Model
     protected $casts = [
         'variants' => 'array',
         'media' => 'array',
+        // Medidas físicas (Fase 2.0): decimal → string; el mapper las convierte a float.
+        'weight_kg' => 'decimal:3',
+        'length_cm' => 'decimal:2',
+        'width_cm' => 'decimal:2',
+        'height_cm' => 'decimal:2',
     ];
 
     protected static function newFactory(): ProductFactory

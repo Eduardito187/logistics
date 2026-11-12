@@ -7,7 +7,9 @@ namespace Logistics\Tracking\Presentation\Http\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
 use Logistics\Tracking\Application\Query\GetPublicTracking\GetPublicTracking;
+use Logistics\Tracking\Application\ReadModel\PublicLinkState;
 use Logistics\Tracking\Application\ReadModel\PublicTrackingView;
 use Logistics\Tracking\Presentation\Http\ApiResponder;
 
@@ -39,6 +41,11 @@ final class PublicTrackingController
         $view = $this->queryBus->ask(new GetPublicTracking($token));
 
         if (!$view instanceof PublicTrackingView) {
+            // Enlace vencido (TTL desde la entrega): 410 con código estable; inexistente: 404 genérico.
+            if ($this->queryBus->ask(new GetPublicLinkState($token)) === PublicLinkState::Expired) {
+                return $this->error('tracking_link_expired', 'This tracking link has expired.', 410);
+            }
+
             return $this->error('tracking_not_found', 'No tracking matches this token.', 404);
         }
 

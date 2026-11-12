@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Logistics\SapConnector\Infrastructure\Sap;
 
 use Logistics\SapConnector\Domain\Contract\SapClient;
+use Logistics\SapConnector\Domain\Model\SapNotification;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
+use Logistics\SapConnector\Domain\ValueObject\SapResponse;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -37,5 +39,19 @@ final readonly class NullSapClient implements SapClient
         $this->logger?->debug('NullSapClient returned no orders');
 
         return [];
+    }
+
+    /**
+     * No-op: no sale nada de la plataforma. Responde como si SAP hubiera aceptado el aviso, para que el
+     * flujo se pueda ejercitar en desarrollo (en la práctica, sin URL base el aviso nace Skipped).
+     */
+    public function notifyEvent(SapNotification $notification): SapResponse
+    {
+        $this->logger?->debug('SAP notification discarded by NullSapClient', [
+            'event_id' => $notification->eventId(),
+            'event_name' => $notification->eventName(),
+        ]);
+
+        return new SapResponse(204, '');
     }
 }

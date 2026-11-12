@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use Logistics\Execution\Domain\Event\NodeReceptionOpened;
 use Logistics\Execution\Domain\Event\NodeReceptionReconciled;
 use Logistics\Execution\Domain\Event\NodeUnitReceived;
+use Logistics\Execution\Domain\Event\NodeUnitShelved;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\Corridor;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
@@ -15,6 +16,8 @@ use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\NodeReceptionId;
 use Logistics\Execution\Domain\ValueObject\NodeReceptionStatus;
 use Logistics\Execution\Domain\ValueObject\ReceivedUnit;
+use Logistics\Execution\Domain\ValueObject\ReconciliationReport;
+use Logistics\Execution\Domain\ValueObject\ShelfLocation;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
 /**
@@ -26,14 +29,18 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * esperado y calcula faltantes (esperados que no llegaron) y sobrantes (recibidos que no se esperaban),
  * grabando el evento que alimenta tracking y el conector SAP por el outbox.
  *
+ * Además guarda el informe del operador al conciliar (motivo de cada faltante, envío real de cada
+ * sobrante, notas y foto) y la ubicación en estante VIGENTE de cada producto dentro del nodo.
+ *
  * Referencia a envío y nodos por id string: no se acopla a shipments ni a network. La entrega al cliente
  * (CD→cliente) NO pasa por acá: la gobierna el agregado Delivery.
  */
 final class NodeReception extends AggregateRoot
 {
     /**
-     * @param list<string>       $expectedUnitIds
-     * @param list<ReceivedUnit> $receivedUnits
+     * @param list<string>                 $expectedUnitIds
+     * @param list<ReceivedUnit>           $receivedUnits
+     * @param array<string, ShelfLocation> $shelfLocations  ubicación vigente por id de producto
      */
     private function __construct(
         private readonly NodeReceptionId $id,
@@ -46,6 +53,8 @@ final class NodeReception extends AggregateRoot
         private NodeReceptionStatus $status,
         private readonly DateTimeImmutable $openedAt,
         private ?DateTimeImmutable $reconciledAt,
+        private array $shelfLocations,
+        private ReconciliationReport $report,
     ) {}
 
     /**
@@ -95,6 +104,8 @@ final class NodeReception extends AggregateRoot
             NodeReceptionStatus::Open,
             $openedAt,
             null,
+            [],
+            ReconciliationReport::empty(),
         );
 
         $reception->recordEvent(new NodeReceptionOpened(
@@ -113,8 +124,9 @@ final class NodeReception extends AggregateRoot
     /**
      * Reconstituye el agregado desde la persistencia, sin grabar eventos (no es un hecho nuevo).
      *
-     * @param list<string>       $expectedUnitIds
-     * @param list<ReceivedUnit> $receivedUnits
+     * @param list<string>        $expectedUnitIds
+     * @param list<ReceivedUnit>  $receivedUnits
+     * @param list<ShelfLocation> $shelfLocations
      */
     public static function reconstitute(
         NodeReceptionId $id,
@@ -127,7 +139,14 @@ final class NodeReception extends AggregateRoot
         NodeReceptionStatus $status,
         DateTimeImmutable $openedAt,
         ?DateTimeImmutable $reconciledAt,
+        array $shelfLocations = [],
+        ?ReconciliationReport $report = null,
     ): self {
+        $locations = [];
+        foreach ($shelfLocations as $shelfLocation) {
+            $locations[$shelfLocation->unitId] = $shelfLocation;
+        }
+
         return new self(
             $id,
             $shipmentId,
@@ -139,19 +158,25 @@ final class NodeReception extends AggregateRoot
             $status,
             $openedAt,
             $reconciledAt,
+            $locations,
+            $report ?? ReconciliationReport::empty(),
         );
     }
 
     /**
      * Escanea la recepción de un bulto en el nodo. Idempotente por idempotencyKey (reintento offline no
      * duplica). Solo mientras la recepción está abierta; graba NodeUnitReceived.
+     *
+     * El GPS es opcional (sin señal en interiores): null nunca se reemplaza por una posición inventada.
      */
     public function receiveUnit(
         string $unitId,
-        GeoPoint $geo,
+        ?GeoPoint $geo,
         DeviceContext $device,
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,
+        ?float $accuracyM = null,
+        ?DateTimeImmutable $locationCapturedAt = null,
     ): void {
         if ($this->isDuplicate($idempotencyKey)) {
             return;
@@ -161,7 +186,15 @@ final class NodeReception extends AggregateRoot
             throw ExecutionException::because('no se pueden recibir productos en una recepción ya conciliada');
         }
 
-        $this->receivedUnits[] = ReceivedUnit::record($unitId, $geo, $device, $occurredAt, $idempotencyKey);
+        $this->receivedUnits[] = ReceivedUnit::record(
+            $unitId,
+            $geo,
+            $device,
+            $occurredAt,
+            $idempotencyKey,
+            $accuracyM,
+            $locationCapturedAt,
+        );
 
         $this->recordEvent(new NodeUnitReceived(
             $this->id->toString(),
@@ -174,9 +207,14 @@ final class NodeReception extends AggregateRoot
 
     /**
      * Cierra la recepción conciliando lo recibido contra lo esperado. Idempotente: si ya estaba
-     * conciliada, no hace nada (no re-emite). Graba NodeReceptionReconciled con faltantes y sobrantes.
+     * conciliada, no hace nada (no re-emite ni reescribe el informe). Graba NodeReceptionReconciled con
+     * faltantes y sobrantes.
+     *
+     * El informe del operador (motivos, envío real de los sobrantes, notas, foto) es opcional y solo
+     * EXPLICA las discrepancias calculadas: las declaraciones sobre productos que no son faltantes/sobrantes
+     * según los escaneos se descartan.
      */
-    public function reconcile(DeviceContext $by, DateTimeImmutable $occurredAt): void
+    public function reconcile(DeviceContext $by, DateTimeImmutable $occurredAt, ?ReconciliationReport $report = null): void
     {
         if ($this->status === NodeReceptionStatus::Reconciled) {
             return;
@@ -187,6 +225,7 @@ final class NodeReception extends AggregateRoot
 
         $this->status = NodeReceptionStatus::Reconciled;
         $this->reconciledAt = $occurredAt;
+        $this->report = ($report ?? ReconciliationReport::empty())->restrictedTo($missing, $surplus);
 
         $this->recordEvent(new NodeReceptionReconciled(
             $this->id->toString(),
@@ -200,7 +239,53 @@ final class NodeReception extends AggregateRoot
             $surplus,
             $missing === [] && $surplus === [],
             $occurredAt,
+            $this->report->missingToArray(),
+            $this->report->surplusToArray(),
+            $this->report->notes,
+            $this->report->photoPath,
         ));
+    }
+
+    /**
+     * Ubica (o reubica) en estante un producto de esta recepción. Vale tanto con la recepción abierta como
+     * ya conciliada (el producto se guarda después de recibirlo). Graba NodeUnitShelved.
+     *
+     * Idempotente y tolerante al orden offline: repetir la misma ubicación no hace nada, y una ubicación
+     * con hora ANTERIOR a la vigente (reenvío tardío de la cola) se ignora para no pisar la más nueva.
+     *
+     * @return bool true si cambió la ubicación vigente
+     */
+    public function assignShelfLocation(
+        string $unitId,
+        string $location,
+        DeviceContext $by,
+        DateTimeImmutable $occurredAt,
+    ): bool {
+        $unit = trim($unitId);
+        if (!in_array($unit, $this->expectedUnitIds, true) && !in_array($unit, $this->receivedUnitIds(), true)) {
+            throw ExecutionException::because("el producto {$unit} no pertenece a esta recepción");
+        }
+
+        $shelf = ShelfLocation::of($unit, $location, $occurredAt, $by);
+        $current = $this->shelfLocations[$unit] ?? null;
+
+        if ($current !== null && ($current->location === $shelf->location || $current->locatedAt > $occurredAt)) {
+            return false;
+        }
+
+        $this->shelfLocations[$unit] = $shelf;
+
+        $this->recordEvent(new NodeUnitShelved(
+            $this->id->toString(),
+            $this->shipmentId,
+            $this->destinationNodeId,
+            $unit,
+            $shelf->location,
+            $current?->location,
+            $occurredAt,
+        ));
+
+        return true;
     }
 
     public function id(): NodeReceptionId
@@ -257,6 +342,29 @@ final class NodeReception extends AggregateRoot
     public function reconciledAt(): ?DateTimeImmutable
     {
         return $this->reconciledAt;
+    }
+
+    /**
+     * Ubicación en estante vigente de cada producto (solo los ya ubicados).
+     *
+     * @return list<ShelfLocation>
+     */
+    public function shelfLocations(): array
+    {
+        return array_values($this->shelfLocations);
+    }
+
+    public function shelfLocationOf(string $unitId): ?ShelfLocation
+    {
+        return $this->shelfLocations[trim($unitId)] ?? null;
+    }
+
+    /**
+     * Informe del operador al conciliar (vacío mientras la recepción está abierta).
+     */
+    public function reconciliationReport(): ReconciliationReport
+    {
+        return $this->report;
     }
 
     /**

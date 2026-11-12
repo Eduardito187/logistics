@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Logistics\Settings\Infrastructure\Providers;
 
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Settings\Application\Command\SetSetting\SetSettingCommand;
 use Logistics\Settings\Application\Command\SetSetting\SetSettingHandler;
@@ -83,6 +85,25 @@ final class SettingsServiceProvider extends ServiceProvider
         }
 
         $this->applyIntegrationOverrides();
+        $this->refreshIntegrationOverridesInWorkers();
+    }
+
+    /**
+     * Los workers de cola (`queue:work`) viven horas: sin esto, un cambio guardado en el panel (p. ej.
+     * apagar SAP o cambiar su URL/eventos) no les llegaría hasta reciclarse. Antes de cada job se vuelven
+     * a aplicar los overrides, con tope de una vez cada 30 s por proceso (una lectura de cache). Nunca falla.
+     */
+    private function refreshIntegrationOverridesInWorkers(): void
+    {
+        if (!$this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->app->make(Dispatcher::class)->listen(JobProcessing::class, function (): void {
+            IntegrationRuntimeOverrides::refreshForWorker(
+                fn (): IntegrationRuntimeOverrides => $this->app->make(IntegrationRuntimeOverrides::class),
+            );
+        });
     }
 
     /**

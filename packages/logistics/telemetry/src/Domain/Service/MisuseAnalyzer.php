@@ -14,7 +14,7 @@ use Logistics\Telemetry\Domain\ValueObject\GeoPoint;
 use Logistics\Telemetry\Domain\ValueObject\Speed;
 
 /**
- * Detecta mal uso a partir de una lectura de telemetría. Servicio de dominio PURO: recibe TODO por
+ * Detecta mal uso a partir de una lectura de telemetría. Servicio de dominio PURO: recibe CADA dato por
  * parámetro (el ping, las geocercas activas y los umbrales) y no conoce Clock, config ni Eloquent. Así
  * se puede probar con vectores fijos y el orquestador de ingesta (Grupo A) decide de dónde salen los
  * umbrales (config) y el reloj.

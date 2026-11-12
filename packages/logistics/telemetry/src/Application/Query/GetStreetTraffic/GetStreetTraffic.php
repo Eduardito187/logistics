@@ -9,7 +9,7 @@ use Logistics\Shared\Application\Query\Query;
 /**
  * Pide el tráfico agregado de calles para pintar el mapa de calles transitadas vs libres.
  *
- * `bbox` acota el resultado a la zona visible del mapa (el mapa no carga todo el país). `null` = todo.
+ * `bbox` acota el resultado a la zona visible del mapa (el mapa no carga el país entero). `null` = sin recorte (país completo).
  */
 final readonly class GetStreetTraffic implements Query
 {

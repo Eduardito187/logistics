@@ -31,7 +31,7 @@ use Logistics\Shipments\Presentation\Filament\Resources\ShipmentLineResource\Pag
  * Admin de líneas de pedido: cada SKU con su cantidad dentro de un envío.
  *
  * Filament opera sobre el record Eloquent (ShipmentLineRecord) por diseño del framework. El select
- * de pedido es buscable y usa la relación real (external_id). Todo texto visible va en inglés
+ * de pedido es buscable y usa la relación real (external_id). Cada texto visible va en inglés
  * (regla 5 del proyecto).
  *
  * @extends resource<ShipmentLineRecord>

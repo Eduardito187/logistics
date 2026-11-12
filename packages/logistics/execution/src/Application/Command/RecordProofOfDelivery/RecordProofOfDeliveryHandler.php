@@ -47,10 +47,24 @@ final class RecordProofOfDeliveryHandler implements CommandHandler
 
         $occurredAt = new DateTimeImmutable($command->occurredAt);
 
-        $delivery->recordProofOfDelivery(
-            $command->unitId,
-            ProofOfDeliveryVO::of($command->confirmation, $command->photoUrl, $occurredAt, $command->photoPath),
-            GeoPoint::of($command->lat, $command->lng),
+        $unitIds = $command->unitIds !== [] ? $command->unitIds : [$command->unitId];
+
+        $delivery->recordProofOfDeliveryForUnits(
+            $unitIds,
+            ProofOfDeliveryVO::of(
+                $command->confirmation,
+                $command->photoUrl,
+                $occurredAt,
+                $command->photoPath,
+                $command->photoPaths,
+                $command->evidenceIds,
+            ),
+            GeoPoint::fromNullable(
+                $command->lat,
+                $command->lng,
+                $command->accuracyM,
+                $command->locationCapturedAt !== null ? new DateTimeImmutable($command->locationCapturedAt) : null,
+            ),
             DeviceContext::of($command->deviceId, $command->userId),
             $occurredAt,
             $command->idempotencyKey,

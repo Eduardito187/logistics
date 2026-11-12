@@ -45,10 +45,10 @@ almacén central, la unidad es operacionalmente idéntica a una Dismac → todo 
   `ReturnOrder`, retorno de cliente / return-to-vendor, disposición restock/return-to-seller/scrap).
   **Cableado**: `returns.return_dispositioned` (restock) → `ReturnRestockDispatcher` (en inventory) →
   `ReceiveStock` (reingreso al lote del dueño). VERIFICADO end-to-end.
-- **Fase 5 — HECHA y verde:** `promise` suma lead time de marketplace (FBD/dropship; retail intacto; gancho
-  a `sellers.fulfillment_lead_days` y a ATP de inventory). `execution` tiene la rama DROPSHIP por
-  `fulfillment_mode` (`DropshipHandling` TrackOnly/ThirdPartyCarrier/LastMile; en no-LastMile se prohíben los
-  escaneos propios y se cierra por confirmación del seller). `sellerportal` (package nuevo, solo lectura:
+- **Fase 5 — HECHA, luego revisada por ADR 022 (2026-11-12):** la promesa ya NO suma lead time por tipo de
+  propiedad (igual para OWNED/FBD/DROPSHIP, nunca depende de stock) y `execution` ya NO tiene rama DROPSHIP
+  (se eliminaron `DropshipHandling`, la guardia de escaneos propios y la confirmación del seller): flujo único
+  para todo pedido; `fulfillment_mode` queda solo como dato. `sellerportal` (package nuevo, solo lectura:
   ASNs/stock/liquidaciones del seller; el sellerId sale del scope de permiso del token de `access`:
   `sellerportal.seller.<uuidhex>`, 403 si abarca ≠1 seller).
 

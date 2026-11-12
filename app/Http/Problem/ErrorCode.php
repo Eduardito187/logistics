@@ -55,6 +55,9 @@ enum ErrorCode: string
     // bien formada pero no se puede procesar en el estado actual. Distinto de ValidationFailed (campos del form).
     case BusinessRuleViolation = 'business_rule_violation';
 
+    // 426 — la versión de la app instalada está por debajo de la mínima soportada: hay que actualizar.
+    case UpgradeRequired = 'upgrade_required';
+
     // 429 — límite de tasa.
     case RateLimited = 'rate_limited';
 
@@ -77,6 +80,7 @@ enum ErrorCode: string
             self::PayloadTooLarge => 413,
             self::UnsupportedMediaType => 415,
             self::ValidationFailed, self::BusinessRuleViolation => 422,
+            self::UpgradeRequired => 426,
             self::RateLimited => 429,
             self::ServerError => 500,
             self::ServiceUnavailable => 503,
@@ -108,6 +112,7 @@ enum ErrorCode: string
             self::UnsupportedMediaType => 'Unsupported media type',
             self::ValidationFailed => 'Validation failed',
             self::BusinessRuleViolation => 'Business rule violation',
+            self::UpgradeRequired => 'Upgrade required',
             self::RateLimited => 'Too many requests',
             self::ServerError => 'Internal server error',
             self::ServiceUnavailable => 'Service unavailable',
@@ -130,6 +135,7 @@ enum ErrorCode: string
             413 => self::PayloadTooLarge,
             415 => self::UnsupportedMediaType,
             422 => self::ValidationFailed,
+            426 => self::UpgradeRequired,
             429 => self::RateLimited,
             503 => self::ServiceUnavailable,
             default => $status >= 500 ? self::ServerError : self::BadRequest,

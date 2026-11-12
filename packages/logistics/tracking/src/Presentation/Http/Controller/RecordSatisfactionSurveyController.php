@@ -9,7 +9,9 @@ use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Domain\Exception\DomainException;
 use Logistics\Tracking\Application\Command\RecordSatisfactionSurvey\RecordSatisfactionSurvey;
+use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
 use Logistics\Tracking\Application\Query\GetPublicSurveyState\GetPublicSurveyState;
+use Logistics\Tracking\Application\ReadModel\PublicLinkState;
 use Logistics\Tracking\Application\ReadModel\PublicSurveyStateView;
 use Logistics\Tracking\Presentation\Http\ApiResponder;
 use Logistics\Tracking\Presentation\Http\Request\RecordSatisfactionSurveyRequest;
@@ -41,6 +43,10 @@ final class RecordSatisfactionSurveyController
         $state = $this->queryBus->ask(new GetPublicSurveyState($token));
 
         if (!$state instanceof PublicSurveyStateView) {
+            if ($this->queryBus->ask(new GetPublicLinkState($token)) === PublicLinkState::Expired) {
+                return $this->error('tracking_link_expired', 'This tracking link has expired.', 410);
+            }
+
             return $this->error('tracking_not_found', 'No tracking matches this token.', 404);
         }
 

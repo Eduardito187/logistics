@@ -18,19 +18,21 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * Es detalle de Infrastructure: nunca cruza hacia Application ni Domain. El mapeo a/desde el agregado
  * lo hace DeliveryMapper.
  *
- * @property string      $id
- * @property string      $shipment_id
- * @property string      $vehicle_id
- * @property string      $status
- * @property string|null $pod_confirmation
- * @property string|null $pod_photo_url
- * @property string|null $pod_photo_path
- * @property string|null $pod_captured_at
- * @property string|null $failure_reason
- * @property string      $fulfillment_mode
- * @property string|null $dropship_handling
- * @property string|null $dispatch_confirmation_key
- * @property string|null $delivery_confirmation_key
+ * @property string            $id
+ * @property string            $shipment_id
+ * @property string            $vehicle_id
+ * @property string            $status
+ * @property string|null       $pod_confirmation
+ * @property string|null       $pod_photo_url
+ * @property string|null       $pod_photo_path
+ * @property string|null       $pod_captured_at
+ * @property string|null       $failure_reason
+ * @property string            $fulfillment_mode
+ * @property string|null       $dropship_handling
+ * @property string|null       $dispatch_confirmation_key
+ * @property string|null       $delivery_confirmation_key
+ * @property list<string>|null $pod_photo_paths
+ * @property list<string>|null $pod_evidence_ids
  */
 final class DeliveryRecord extends Model
 {
@@ -44,6 +46,16 @@ final class DeliveryRecord extends Model
     protected $table = 'execution_deliveries';
 
     protected $guarded = [];
+
+    /**
+     * Referencias de evidencias del POD (fotos y evidencias anti-fraude) viajan como JSON.
+     *
+     * @var array<string, string>
+     */
+    protected $casts = [
+        'pod_photo_paths' => 'array',
+        'pod_evidence_ids' => 'array',
+    ];
 
     /**
      * @return HasMany<ScanEventRecord, $this>

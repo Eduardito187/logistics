@@ -18,9 +18,21 @@ interface PingRepository
     public function append(VehiclePing $ping): void;
 
     /**
+     * Inserta un lote. Idempotente por (vehicle_id, recorded_at, fix_key): una lectura ya persistida se
+     * ignora en silencio (ON CONFLICT DO NOTHING), así un reintento concurrente no duplica.
+     *
      * @param list<VehiclePing> $pings
      */
     public function appendMany(array $pings): void;
+
+    /**
+     * De las claves de lectura dadas, cuáles YA están persistidas para el vehículo (acotado por el rango de
+     * `recorded_at` del lote, que aprovecha la poda de particiones).
+     *
+     * @param  list<string> $fixKeys
+     * @return list<string>
+     */
+    public function existingFixKeys(string $vehicleId, array $fixKeys, DateTimeImmutable $from, DateTimeImmutable $to): array;
 
     public function latestForVehicle(string $vehicleId): ?VehiclePing;
 

@@ -7,11 +7,13 @@ namespace Logistics\Notifications\Application\Query\GetNotification;
 use Logistics\Shared\Application\Query\Query;
 
 /**
- * Obtiene una notificación por su id como NotificationView, o null si no existe.
+ * Obtiene una notificación por su id como NotificationView, o null si no existe. Con `userId` incluye
+ * el estado de lectura de ese usuario (read_at).
  */
 final readonly class GetNotification implements Query
 {
     public function __construct(
         public string $notificationId,
+        public ?string $userId = null,
     ) {}
 }

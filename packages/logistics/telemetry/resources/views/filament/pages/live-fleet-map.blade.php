@@ -414,7 +414,7 @@
         // El contenedor puede estar oculto al crearse; recalcular tamaño cuando ya es visible.
         live.timeout(300, () => map.invalidateSize());
 
-        // Polling: cada 10 s se vuelven a pedir posiciones y excepciones al servidor y se repinta todo.
+        // Polling: cada 10 s se vuelven a pedir posiciones y excepciones al servidor y se repinta el mapa completo.
         // Lo gestiona la sesión: se corta al salir de la página, no se solapa y no corre con la pestaña oculta.
         live.every(10000, () => Promise.all([
             live.call(() => $wire.positions(), (fresh) => {

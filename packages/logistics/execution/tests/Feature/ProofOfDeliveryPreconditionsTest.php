@@ -6,6 +6,8 @@ use App\Enums\Role;
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\IdempotentRequests;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
+use Logistics\Execution\Application\Command\RecordLoadScan\RecordLoadScan;
 use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScan;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
@@ -17,6 +19,10 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  */
 beforeEach(function (): void {
     $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+
+    // La foto del POD debe existir en el disco de evidencia (se rechaza una referencia no subida).
+    Storage::fake('pod');
+    Storage::disk('pod')->put('evidence/pod.jpg', 'jpg');
 
     // Rol de campo (no Tienda): el POD opera cross-nodo, sin el chequeo de nodo de la tienda.
     $user = User::factory()->create();
@@ -47,14 +53,22 @@ function podBody(string $shipment, string $unit, array $overrides = []): array
     ], $overrides);
 }
 
-it('sin foto (photo_path) el POD responde 422, nunca cierra sin evidencia', function (): void {
-    $body = podBody(Uuid::generate()->value, Uuid::generate()->value);
+it('sin foto el POD cierra 200 y queda pendiente de foto (opción A, POD asíncrono)', function (): void {
+    $shipment = Uuid::generate()->value;
+    $unit = Uuid::generate()->value;
+
+    /** @var CommandBus $bus */
+    $bus = app(CommandBus::class);
+    $bus->dispatch(new RecordPreparationScan($shipment, Uuid::generate()->value, $unit, -16.5, -68.15, 'dev', 'usr', '2026-10-16T10:00:00+00:00', 'prep-'.$unit));
+    $bus->dispatch(new RecordLoadScan($shipment, $unit, -16.5, -68.15, 'dev', 'usr', '2026-10-16T10:30:00+00:00', 'load-'.$unit));
+
+    $body = podBody($shipment, $unit);
     unset($body['photo_path']);
 
     $this->postJson('/api/v1/app/deliveries/proof-of-delivery', $body)
-        ->assertStatus(422)
-        ->assertJsonPath('code', 'validation_failed')
-        ->assertJsonPath('errors.photo_path.0', fn (string $m): bool => $m !== '');
+        ->assertOk()
+        ->assertJsonPath('data.status', 'DELIVERED')
+        ->assertJsonPath('data.pod_photo_pending', true);
 });
 
 it('sin entrega abierta para el envío, el POD responde 422 con el motivo (no 500)', function (): void {

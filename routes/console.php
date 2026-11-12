@@ -35,9 +35,18 @@ Schedule::command('logistics:outbox:pump')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Reconciliación hacia SAP: empuja los traspasos de stock pendientes (idempotente
-// por event_id). Worker de respaldo del flujo evento → outbox → SAP.
+// Reconciliación hacia SAP: reintenta SOLO los traspasos Failed cuyo backoff venció
+// (lotes chicos, idempotente por event_id). Nunca toma los Pending: los traspasos
+// nuevos los empuja únicamente el reactor del outbox (sin doble envío).
 Schedule::command('logistics:sap:dispatch-transfers')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Avisos fire-and-forget a SAP: re-encola en la cola `sap` los avisos Pending/Failed
+// con intentos < máximo y backoff vencido (lote chico, fuera de transacción). No
+// habla con SAP: el envío lo hace el job; agotados los intentos se dejan Failed.
+Schedule::command('logistics:sap:retry-notifications')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
@@ -79,6 +88,17 @@ Schedule::command('logistics:promise:expire-reservations')
 // las 23:55 (hora de plataforma), con los conteos del día ya consolidados. Idempotente por métrica+fecha.
 Schedule::command('cockpit:metrics:snapshot')
     ->dailyAt('23:55')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Auto-planificador NOCTURNO (Ola 0): planifica el día siguiente (America/La_Paz) a la hora configurada
+// (PLANNING_AUTO_PLAN_AT, 21:00 por defecto). Solo encola la corrida; el cálculo pesado lo hace el worker.
+// Idempotente por día+modo y nunca pisa planes publicados. Se apaga con PLANNING_AUTO_PLAN_ENABLED=false.
+Schedule::command('logistics:planning:auto-plan')
+    ->dailyAt((string) config('logistics-planning.auto_planner.nightly.at', '21:00'))
+    ->timezone('America/La_Paz')
+    ->when(static fn (): bool => (bool) config('logistics-planning.auto_planner.nightly.enabled', true))
     ->onOneServer()
     ->withoutOverlapping()
     ->runInBackground();

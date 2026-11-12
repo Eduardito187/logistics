@@ -20,12 +20,21 @@ use Logistics\Planning\Application\Command\PublishPlan\PublishPlan;
 use Logistics\Planning\Application\Command\PublishPlan\PublishPlanHandler;
 use Logistics\Planning\Application\Command\ReassignShipmentToVehicle\ReassignShipmentToVehicle;
 use Logistics\Planning\Application\Command\ReassignShipmentToVehicle\ReassignShipmentToVehicleHandler;
+use Logistics\Planning\Application\Command\RemoveShipmentRequirement\RemoveShipmentRequirement;
+use Logistics\Planning\Application\Command\RemoveShipmentRequirement\RemoveShipmentRequirementHandler;
+use Logistics\Planning\Application\Command\RemoveVehicleRestrictions\RemoveVehicleRestrictions;
+use Logistics\Planning\Application\Command\RemoveVehicleRestrictions\RemoveVehicleRestrictionsHandler;
 use Logistics\Planning\Application\Command\ReoptimizeRoute\ReoptimizeRoute;
 use Logistics\Planning\Application\Command\ReoptimizeRoute\ReoptimizeRouteHandler;
 use Logistics\Planning\Application\Command\ReorderStops\ReorderStops;
 use Logistics\Planning\Application\Command\ReorderStops\ReorderStopsHandler;
 use Logistics\Planning\Application\Command\ScheduleReplan\ScheduleReplan;
 use Logistics\Planning\Application\Command\ScheduleReplan\ScheduleReplanHandler;
+use Logistics\Planning\Application\Command\SetShipmentRequirement\SetShipmentRequirement;
+use Logistics\Planning\Application\Command\SetShipmentRequirement\SetShipmentRequirementHandler;
+use Logistics\Planning\Application\Command\SetVehicleRestrictions\SetVehicleRestrictions;
+use Logistics\Planning\Application\Command\SetVehicleRestrictions\SetVehicleRestrictionsHandler;
+use Logistics\Planning\Application\Contract\PlanCrewLabels;
 use Logistics\Planning\Application\Query\CompareRoutingBackends\CompareRoutingBackends;
 use Logistics\Planning\Application\Query\CompareRoutingBackends\CompareRoutingBackendsHandler;
 use Logistics\Planning\Application\Query\GetDailyPlanRun\GetDailyPlanRun;
@@ -39,6 +48,7 @@ use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDateHandler;
 use Logistics\Planning\Application\Service\PlanGeometryRefresher;
 use Logistics\Planning\Domain\Contract\AutoPlanRunRepository;
 use Logistics\Planning\Domain\Contract\AutoPlanSettingsProvider;
+use Logistics\Planning\Domain\Contract\CrewShiftRulesProvider;
 use Logistics\Planning\Domain\Contract\DailyPlanDispatcher;
 use Logistics\Planning\Domain\Contract\FleetAvailabilityProvider;
 use Logistics\Planning\Domain\Contract\PendingDeliveryProvider;
@@ -51,6 +61,7 @@ use Logistics\Planning\Domain\Contract\RouteGeometryProvider;
 use Logistics\Planning\Domain\Contract\RouteLoadProfileProvider;
 use Logistics\Planning\Domain\Contract\RouteOptimizer;
 use Logistics\Planning\Domain\Contract\RoutingBackend;
+use Logistics\Planning\Domain\Contract\RoutingConstraintRepository;
 use Logistics\Planning\Domain\Contract\ShipmentCoordinatesProvider;
 use Logistics\Planning\Domain\Service\ClarkeWrightSolver;
 use Logistics\Planning\Domain\Service\DailyPlanComposer;
@@ -62,13 +73,17 @@ use Logistics\Planning\Infrastructure\Adapter\EloquentPendingDeliveryProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentRouteComparisonProblemProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentRouteLoadProfileProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentShipmentCoordinatesProvider;
+use Logistics\Planning\Infrastructure\Adapter\FleetCrewShiftRulesProvider;
 use Logistics\Planning\Infrastructure\Adapter\FleetVehicleAvailabilityProvider;
 use Logistics\Planning\Infrastructure\Adapter\NetworkNodeOriginLocator;
+use Logistics\Planning\Infrastructure\Adapter\ShipmentLoadReader;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
+use Logistics\Planning\Infrastructure\Persistence\Eloquent\DbRoutingConstraintRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentAutoPlanRunRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentPlanRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentReplanBacklogRepository;
 use Logistics\Planning\Infrastructure\Queue\QueuedDailyPlanDispatcher;
+use Logistics\Planning\Infrastructure\ReadModel\DbPlanCrewLabels;
 use Logistics\Planning\Infrastructure\Routing\BuiltinRouteOptimizer;
 use Logistics\Planning\Infrastructure\Routing\BuiltinRoutingBackend;
 use Logistics\Planning\Infrastructure\Routing\OsrmRoadMatrixProvider;
@@ -77,6 +92,7 @@ use Logistics\Planning\Infrastructure\Routing\OsrmRouteOptimizer;
 use Logistics\Planning\Infrastructure\Routing\OsrmTripRoutingBackend;
 use Logistics\Planning\Infrastructure\Routing\VroomRoutingBackend;
 use Logistics\Planning\Infrastructure\Settings\ConfiguredAutoPlanSettings;
+use Logistics\Planning\Presentation\Console\AutoPlanNightlyCommand;
 use Logistics\Planning\Presentation\Console\BackfillPlanGeometryCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 use Logistics\Shared\Application\Query\QueryBus;
@@ -108,6 +124,10 @@ final class PlanningServiceProvider extends ServiceProvider
         GetDailyPlanRun::class => GetDailyPlanRunHandler::class,
         GetRouteQuality::class => GetRouteQualityHandler::class,
         CompareRoutingBackends::class => CompareRoutingBackendsHandler::class,
+        SetVehicleRestrictions::class => SetVehicleRestrictionsHandler::class,
+        RemoveVehicleRestrictions::class => RemoveVehicleRestrictionsHandler::class,
+        SetShipmentRequirement::class => SetShipmentRequirementHandler::class,
+        RemoveShipmentRequirement::class => RemoveShipmentRequirementHandler::class,
     ];
 
     public function register(): void
@@ -117,6 +137,12 @@ final class PlanningServiceProvider extends ServiceProvider
         $this->app->bind(PlanRepository::class, EloquentPlanRepository::class);
         $this->app->bind(ReplanBacklogRepository::class, EloquentReplanBacklogRepository::class);
         $this->app->bind(AutoPlanRunRepository::class, EloquentAutoPlanRunRepository::class);
+
+        // Escritor de las restricciones de ruteo (R-04): perfil por camión y requisitos por envío.
+        $this->app->bind(RoutingConstraintRepository::class, DbRoutingConstraintRepository::class);
+
+        // Read-side: placa del camión y chofer del día para enriquecer los planes (en lote, sin N+1).
+        $this->app->bind(PlanCrewLabels::class, DbPlanCrewLabels::class);
 
         // Auto-planificador diario: puertos de lectura (pedidos pendientes y flota disponible),
         // parámetros configurables (settings/config) y encolado asíncrono del cálculo pesado.
@@ -131,6 +157,14 @@ final class PlanningServiceProvider extends ServiceProvider
             );
         });
         $this->app->bind(FleetAvailabilityProvider::class, FleetVehicleAvailabilityProvider::class);
+
+        // Ventana de turno de las tripulaciones (reglas de Flota traducidas a primitivos de Planificación):
+        // acota la hora de salida y la duración de cada ruta del auto-planificador.
+        $this->app->bind(CrewShiftRulesProvider::class, FleetCrewShiftRulesProvider::class);
+
+        // Lector de la carga real (kg/m3 por línea de envío, con fallback a defaults). `scoped`: una
+        // instancia por request/job, así la inspección del esquema de shipment_lines se hace una sola vez.
+        $this->app->scoped(ShipmentLoadReader::class);
         $this->app->bind(AutoPlanSettingsProvider::class, ConfiguredAutoPlanSettings::class);
         $this->app->bind(DailyPlanDispatcher::class, QueuedDailyPlanDispatcher::class);
 
@@ -294,7 +328,7 @@ final class PlanningServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([BackfillPlanGeometryCommand::class]);
+            $this->commands([BackfillPlanGeometryCommand::class, AutoPlanNightlyCommand::class]);
         }
 
         /** @var HandlerRegistry $registry */

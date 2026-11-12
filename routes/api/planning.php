@@ -19,6 +19,7 @@ return [
     'app' => static function (): void {
         Route::prefix('plans')->name('planning.plans.')->group(function (): void {
             // Ver el plan del día (uno por camión): GET /plans?date=YYYY-MM-DD
+            // Opcionales: date_from/date_to (rango ≤31 días), status, vehicle_id y paginación page/per_page|cursor.
             Route::get('/', [PlanController::class, 'index'])->name('index');
 
             // Generar la propuesta automática pedido→camión de un día.

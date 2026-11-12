@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Domain\Contract;
 
+use DateTimeImmutable;
 use Logistics\Telemetry\Domain\Model\TelemetryAlert;
 use Logistics\Telemetry\Domain\ValueObject\AlertId;
 
@@ -22,6 +23,7 @@ interface AlertRepository
      * Lista alertas con filtros opcionales por vehículo, por tipo y por estado de reconocimiento.
      *
      * `$limit`/`$offset` son opcionales (null = sin recorte): bajan LIMIT/OFFSET a SQL al paginar.
+     * `$from`/`$to` acotan por `occurred_at` (inclusive), opcionales.
      *
      * @return list<TelemetryAlert>
      */
@@ -31,10 +33,18 @@ interface AlertRepository
         ?bool $acknowledged = null,
         ?int $limit = null,
         ?int $offset = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
     ): array;
 
     /**
      * Cuenta las alertas que cumplen los MISMOS filtros que `listBy`, para el total de la paginación.
      */
-    public function countBy(?string $vehicleId = null, ?string $type = null, ?bool $acknowledged = null): int;
+    public function countBy(
+        ?string $vehicleId = null,
+        ?string $type = null,
+        ?bool $acknowledged = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
+    ): int;
 }

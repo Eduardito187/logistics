@@ -12,6 +12,7 @@ use Commerce\Catalog\Infrastructure\Persistence\Eloquent\Model\ProductRecord;
 use Commerce\Catalog\Presentation\Filament\Resources\ProductResource\Pages\CreateProduct;
 use Commerce\Catalog\Presentation\Filament\Resources\ProductResource\Pages\ListProducts;
 use Commerce\Catalog\Presentation\Filament\Resources\ProductResource\Pages\ViewProduct;
+use Commerce\Catalog\Presentation\Filament\Support\PhysicalSpecForm;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\KeyValue;
@@ -136,6 +137,14 @@ final class ProductResource extends Resource
                 ->preload()
                 ->placeholder(__('Uncategorized'))
                 ->options(static fn (): array => self::categoryOptions()),
+            // Medidas físicas (Fase 2.0), opcionales: si se cargan, CreateProduct despacha
+            // SetProductPhysicalSpec tras el alta. Vacías nunca bloquean nada.
+            Section::make(__('Physical specs'))
+                ->description(__('Optional. Weight and dimensions per unit of product.'))
+                ->schema(PhysicalSpecForm::fields())
+                ->columns(2)
+                ->collapsible()
+                ->columnSpanFull(),
         ]);
     }
 
@@ -173,6 +182,25 @@ final class ProductResource extends Resource
                         ->formatStateUsing(static fn (int $state): string => (string) $state),
                 ])
                 ->columns(2),
+            Section::make(__('Physical specs'))
+                ->schema([
+                    TextEntry::make('weight_kg')
+                        ->label(__('Weight (kg)'))
+                        ->placeholder(__('Not set')),
+                    TextEntry::make('length_cm')
+                        ->label(__('Length (cm)'))
+                        ->placeholder(__('Not set')),
+                    TextEntry::make('width_cm')
+                        ->label(__('Width (cm)'))
+                        ->placeholder(__('Not set')),
+                    TextEntry::make('height_cm')
+                        ->label(__('Height (cm)'))
+                        ->placeholder(__('Not set')),
+                    TextEntry::make('volume_m3')
+                        ->label(__('Volume (m³)'))
+                        ->state(static fn (ProductRecord $record): string => PhysicalSpecForm::recordVolume($record)),
+                ])
+                ->columns(3),
         ]);
     }
 
@@ -204,6 +232,14 @@ final class ProductResource extends Resource
                         ? (self::categoryOptions()[$state] ?? __('Unknown'))
                         : __('Uncategorized'))
                     ->placeholder(__('Uncategorized')),
+                // Completitud de las medidas físicas (Fase 2.0): marca los productos sin medidas, que
+                // en logística caen a la categoría o al default global.
+                TextColumn::make('measurements')
+                    ->label(__('Measurements'))
+                    ->state(static fn (ProductRecord $record): string => PhysicalSpecForm::completeness($record))
+                    ->badge()
+                    ->color(static fn (string $state): string => PhysicalSpecForm::completenessColor($state))
+                    ->formatStateUsing(static fn (string $state): string => PhysicalSpecForm::completenessLabel($state)),
             ])
             ->filters([
                 SelectFilter::make('status')
@@ -226,6 +262,8 @@ final class ProductResource extends Resource
             ])
             ->recordActions([
                 ViewAction::make(),
+                // Medidas físicas: despacha SetProductPhysicalSpec al bus (Fase 2.0).
+                PhysicalSpecForm::productAction(),
                 // Publicar: despacha PublishProduct al bus. Visible solo si aún no está publicado.
                 Action::make('publish')
                     ->label(__('Publish'))

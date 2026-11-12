@@ -14,16 +14,16 @@ use Logistics\Shared\Application\Query\Query;
 final readonly class CalculateDeliveryPromise implements Query
 {
     /**
-     * Los campos de propiedad son ADITIVOS y opcionales: sin ellos la consulta es retail (OWNED) y se
-     * comporta exactamente como siempre. Cuando el ítem es de un seller (FBD/DROPSHIP), el handler arma el
-     * `Ownership` con ellos y le suma a la promesa el lead time del modo de fulfillment.
+     * Los campos de propiedad se conservan solo por compatibilidad con llamadores existentes y el handler
+     * los IGNORA: la promesa nunca depende del stock ni del tipo de propiedad (OWNED/FBD/DROPSHIP). Cada
+     * pedido recibe el mismo cálculo para la misma zona, fecha y horizonte.
      *
      * @param string      $zoneId          zona de cobertura (id primitivo)
      * @param string|null $fromDate        primer día del horizonte (Y-m-d); null = desde hoy
      * @param int         $horizonDays     cuántos días hacia adelante se exploran (incluye el día de inicio)
-     * @param string|null $fulfillmentMode modo de fulfillment ('owned'|'fbd'|'dropship'); null = retail (owned)
-     * @param string|null $ownerPartyId    seller dueño del producto (uuid); obligatorio en fbd/dropship
-     * @param string|null $sellerSkuRef    SKU del seller (opcional), para un lead por seller/sku a futuro
+     * @param string|null $fulfillmentMode modo de fulfillment ('owned'|'fbd'|'dropship'); ignorado
+     * @param string|null $ownerPartyId    seller dueño del producto (uuid); ignorado
+     * @param string|null $sellerSkuRef    SKU del seller; ignorado
      */
     public function __construct(
         public string $zoneId,

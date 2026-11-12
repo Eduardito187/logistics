@@ -431,7 +431,7 @@ components:
         unit_id:
           type: string
           maxLength: 64
-          description: Bulto escaneado
+          description: Producto escaneado
         lat:
           type: number
           format: double
@@ -490,7 +490,7 @@ components:
             node_id:
               type: string
               format: uuid
-              description: Parada (nodo) donde se descarga el bulto
+              description: Parada (nodo) donde se descarga el producto
     VerifyLabelRequest:
       type: object
       required: [payload, signature, key_id]

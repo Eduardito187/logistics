@@ -96,7 +96,7 @@ final class LiveFleetMap extends Page
     /**
      * Panel de excepciones accionables: alertas de telemetría sin reconocer (posibles mal usos) y
      * vehículos inactivos (detenidos o en ralentí). Se expone como método público para que el polling
-     * del navegador (`$wire.exceptions()`) lo refresque. Todo en primitivos, placas ya resueltas.
+     * del navegador (`$wire.exceptions()`) lo refresque. Cada dato en primitivos, placas ya resueltas.
      *
      * @return array{alerts: list<array{id: string, vehicle_id: string, vehicle: string, type: string, severity: string, severity_label: string, severity_color: string, age_minutes: int, lat: float|null, lng: float|null}>, idle: list<array{vehicle_id: string, vehicle: string, state: string, idling: bool, age_minutes: int, lat: float, lng: float, speed_kph: float|null}>}
      */

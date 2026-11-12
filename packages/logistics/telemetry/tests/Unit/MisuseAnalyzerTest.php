@@ -12,7 +12,7 @@ use Logistics\Telemetry\Domain\ValueObject\Polygon;
 use Logistics\Telemetry\Domain\ValueObject\Speed;
 
 // Servicio de dominio MisuseAnalyzer: las 5 reglas de mal uso sobre una lectura. PHP puro, sin dobles de
-// framework: recibe TODO por parámetro (geocercas en memoria, umbrales y reloj).
+// framework: recibe CADA dato por parámetro (geocercas en memoria, umbrales y reloj).
 
 /**
  * Extrae los tipos de alerta detectados.

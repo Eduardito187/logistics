@@ -8,14 +8,17 @@ use DateTimeImmutable;
 use Exception;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Planning\Domain\Contract\AutoPlanRunRepository;
+use Logistics\Planning\Domain\Contract\CrewShiftRulesProvider;
 use Logistics\Planning\Domain\Contract\FleetAvailabilityProvider;
 use Logistics\Planning\Domain\Contract\PendingDeliveryProvider;
 use Logistics\Planning\Domain\Contract\PlanningOriginLocator;
 use Logistics\Planning\Domain\Contract\PlanRepository;
+use Logistics\Planning\Domain\Contract\ReplanBacklogRepository;
 use Logistics\Planning\Domain\Contract\RoutingBackend;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\Model\AutoPlanRun;
 use Logistics\Planning\Domain\Model\DeliveryPlan;
+use Logistics\Planning\Domain\Service\ShiftWindowRouteGuard;
 use Logistics\Planning\Domain\ValueObject\AutoPlanParameters;
 use Logistics\Planning\Domain\ValueObject\AutoPlanRunId;
 use Logistics\Planning\Domain\ValueObject\AutoPlanRunStatus;
@@ -32,6 +35,14 @@ use Logistics\Shared\Domain\Clock\Clock;
  * (respetando capacidad, tripulación y la regla "un camión = un departamento"), resuelve el orden, la ETA
  * y la geometría por calles de cada ruta; el runner persiste un plan propuesto por camión con todo eso.
  *
+ * Turnos: si Flota publica reglas de turno (CrewShiftRulesProvider), la salida no se planifica antes del
+ * inicio permitido y se quitan de cada ruta las paradas cuya ETA excede la ventana o la jornada máxima
+ * (ShiftWindowRouteGuard); las quitadas cuentan como no asignadas.
+ *
+ * Backlog de replanificación: los envíos del backlog del día llegan como candidatos por el proveedor de
+ * pendientes; al materializar, los que quedaron en un plan se marcan CONSUMIDOS (idempotente), en la
+ * misma transacción del job que persiste los planes.
+ *
  * Idempotente: una corrida ya completada no se re-procesa; y, dentro de un reintento, cada camión reusa el
  * plan existente del día (no duplica) y respeta los publicados. Al terminar, cierra la corrida con su
  * resumen, lo que emite planning.plan_generated al outbox.
@@ -47,6 +58,8 @@ final readonly class DailyPlanRunner
         private PlanRepository $plans,
         private RecordDomainEvents $recordEvents,
         private Clock $clock,
+        private ReplanBacklogRepository $backlog,
+        private CrewShiftRulesProvider $shiftRules,
     ) {}
 
     /**
@@ -80,21 +93,54 @@ final readonly class DailyPlanRunner
         $candidates = $this->pending->pendingFor($date);
         $vehicles = $this->fleet->availableFor($date);
 
+        // La salida nunca se planifica antes del inicio de turno permitido (si hay reglas de turno).
+        $shiftWindow = $this->shiftRules->windowFor($date);
         $departAt = $this->parseDepartAt($params->departAt);
+        if ($shiftWindow !== null) {
+            $departAt = $shiftWindow->departureFor($departAt);
+        }
         $origin = $this->origin->locate($params->originNodeId);
 
         $result = $this->backend->route($departAt, $origin, $candidates, $vehicles, $params);
 
         $existingByVehicle = $this->existingPlansByVehicle($date);
+        $guard = new ShiftWindowRouteGuard;
+
+        $trucksPlanned = 0;
+        $stopsPlanned = 0;
+        $unassigned = $result->unassignedCount();
+        /** @var list<string> $plannedShipmentIds */
+        $plannedShipmentIds = [];
 
         foreach ($result->routes as $route) {
-            $this->materializeRoute($route, $date, $existingByVehicle);
+            if ($shiftWindow !== null) {
+                // Las paradas que exceden el turno salen de la ruta y quedan sin asignar.
+                $fitted = $guard->fit($route, $departAt, $shiftWindow);
+                $unassigned += count($fitted['removed']);
+                $fittedRoute = $fitted['route'];
+                if ($fittedRoute === null) {
+                    continue;
+                }
+                $route = $fittedRoute;
+            }
+
+            $trucksPlanned++;
+            $stopsPlanned += $route->stopCount();
+
+            if ($this->materializeRoute($route, $date, $existingByVehicle)) {
+                foreach ($route->orderedShipmentIds() as $shipmentId) {
+                    $plannedShipmentIds[] = $shipmentId;
+                }
+            }
         }
 
+        // Backlog: lo que entró en un plan generado queda consumido (idempotente por fila pendiente).
+        $this->backlog->markProcessed($plannedShipmentIds, $date, $this->clock->now());
+
         $run->complete(
-            $result->trucksPlanned(),
-            $result->stopsPlanned(),
-            $result->unassignedCount(),
+            $trucksPlanned,
+            $stopsPlanned,
+            $unassigned,
             $this->clock->now(),
         );
         $this->runs->save($run);
@@ -105,15 +151,16 @@ final readonly class DailyPlanRunner
      * Convierte la ruta resuelta de un camión en un plan propuesto: asigna los pedidos, fija el orden y la
      * ETA que trae la ruta, adjunta la geometría por calles y recomputa el plan de carga. Reusa el plan
      * existente del día para ese camión (idempotencia) y respeta los planes ya publicados (no los pisa).
+     * Devuelve true si el plan se persistió (false si se respetó un plan publicado).
      *
      * @param array<string, DeliveryPlan> $existingByVehicle
      */
-    private function materializeRoute(PlannedRoute $route, PlanDate $date, array $existingByVehicle): void
+    private function materializeRoute(PlannedRoute $route, PlanDate $date, array $existingByVehicle): bool
     {
         $existing = $existingByVehicle[$route->vehicleId] ?? null;
         if ($existing !== null && $existing->status() === PlanStatus::Published) {
             // Plan ya publicado para ese camión y día: no se re-planifica encima.
-            return;
+            return false;
         }
 
         $planId = $existing !== null ? $existing->id() : $this->plans->nextIdentity();
@@ -139,6 +186,8 @@ final readonly class DailyPlanRunner
 
         $this->plans->save($plan);
         $this->recordEvents->record($plan->releaseEvents(), 'planning.plan');
+
+        return true;
     }
 
     /**

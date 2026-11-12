@@ -13,7 +13,11 @@ use Logistics\Telemetry\Domain\Model\VehiclePing;
  * Es la proyección optimizada para pintar la flota en el mapa sin escanear la tabla de pings. Devuelve
  * filas primitivas (array shape) porque el contrato de dominio no conoce los ReadModels de Application.
  *
- * @phpstan-type LivePositionRow array{vehicle_id: string, lat: float, lng: float, speed_kph: float|null, heading: int|null, ignition: bool|null, moving: bool, route_id: string|null, recorded_at: DateTimeImmutable}
+ * `driver_id` y `updated_at` (hora del servidor en que la fila cambió) son opcionales en la forma para no
+ * romper a quien arme filas a mano; el repositorio Eloquent siempre los incluye.
+ *
+ * @phpstan-type LivePositionRow array{vehicle_id: string, lat: float, lng: float, speed_kph: float|null, heading: int|null, ignition: bool|null, moving: bool, route_id: string|null, recorded_at: DateTimeImmutable, driver_id?: string|null, updated_at?: DateTimeImmutable|null}
+ * @phpstan-type WatchState array{speeding_since: DateTimeImmutable|null, off_route_since: DateTimeImmutable|null}
  */
 interface VehiclePositionRepository
 {
@@ -36,4 +40,26 @@ interface VehiclePositionRepository
      * @return LivePositionRow|null
      */
     public function forVehicle(string $vehicleId): ?array;
+
+    /**
+     * Posiciones que CAMBIARON (hora del servidor) desde `$since` inclusive (al-menos-una-vez): polling incremental
+     * de la flota en vivo (`?since=`).
+     *
+     * @return list<LivePositionRow>
+     */
+    public function changedSince(DateTimeImmutable $since): array;
+
+    /**
+     * Estado de las condiciones sostenidas del vehículo (desde cuándo excede la velocidad / está fuera de
+     * ruta). Sin fila: ambos null.
+     *
+     * @return WatchState
+     */
+    public function watchState(string $vehicleId): array;
+
+    /**
+     * Persiste el estado de las condiciones sostenidas. No toca la posición ni `updated_at` de polling
+     * (no es un cambio de posición).
+     */
+    public function saveWatchState(string $vehicleId, ?DateTimeImmutable $speedingSince, ?DateTimeImmutable $offRouteSince): void;
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Planning\Application\Query\GetPlan;
 
 use Logistics\Planning\Application\ReadModel\PlanView;
+use Logistics\Planning\Application\Service\PlanViewAssembler;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\ValueObject\PlanId;
@@ -16,7 +17,10 @@ use Logistics\Shared\Application\Query\QueryHandler;
  */
 final readonly class GetPlanHandler implements QueryHandler
 {
-    public function __construct(private PlanRepository $plans) {}
+    public function __construct(
+        private PlanRepository $plans,
+        private PlanViewAssembler $views,
+    ) {}
 
     public function handle(Query $query): ?PlanView
     {
@@ -26,6 +30,6 @@ final readonly class GetPlanHandler implements QueryHandler
 
         $plan = $this->plans->findById(PlanId::fromString($query->planId));
 
-        return $plan === null ? null : PlanView::fromPlan($plan);
+        return $plan === null ? null : $this->views->one($plan);
     }
 }

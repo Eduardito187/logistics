@@ -16,6 +16,7 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -29,8 +30,11 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Logistics\Fleet\Application\Command\ChangeVehicleStatus\ChangeVehicleStatus;
+use Logistics\Fleet\Application\Command\ClearVehicleFitness\ClearVehicleFitness;
 use Logistics\Fleet\Domain\Exception\FleetException;
 use Logistics\Fleet\Domain\ValueObject\VehicleStatus;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
@@ -293,6 +297,17 @@ final class VehicleResource extends Resource
                         default => 'gray',
                     })
                     ->formatStateUsing(static fn (string $state): string => __(VehicleStatus::from($state)->label())),
+                // Aptitud para despachar (#27): no apto por checklist pre-salida con falla crítica.
+                TextColumn::make('unfit_since')
+                    ->label(__('Dispatch fitness'))
+                    ->badge()
+                    ->getStateUsing(static fn (VehicleModel $record): string => $record->unfit_since === null ? 'fit' : 'unfit')
+                    ->color(static fn (string $state): string => $state === 'fit' ? 'success' : 'danger')
+                    ->formatStateUsing(static fn (string $state, VehicleModel $record): string => $state === 'fit'
+                        ? __('Fit')
+                        : __('Unfit since :date', ['date' => (string) $record->unfit_since]))
+                    ->tooltip(static fn (VehicleModel $record): ?string => $record->unfit_reason)
+                    ->toggleable(),
             ])
             ->filters([
                 SelectFilter::make('status')
@@ -304,6 +319,7 @@ final class VehicleResource extends Resource
             // botones de la fila (cambiar estado, editar) siguen disponibles.
             ->recordUrl(static fn (VehicleModel $record): string => self::getUrl('view', ['record' => $record]))
             ->recordActions([
+                self::clearFitnessAction(),
                 self::changeStatusAction(),
                 ViewAction::make(),
                 EditAction::make(),
@@ -436,6 +452,68 @@ final class VehicleResource extends Resource
                 } catch (FleetException $e) {
                     Notification::make()
                         ->title(__('Could not change status'))
+                        ->body($e->getMessage())
+                        ->danger()
+                        ->send();
+                }
+            });
+    }
+
+    /**
+     * Habilitar un vehículo NO APTO tras la reparación (#27). Solo visible si está bloqueado.
+     *
+     * No escribe el Record: despacha ClearVehicleFitness por el CommandBus con el autor de la sesión; el
+     * dominio exige la nota, se deja constancia en la bitácora de aptitud y se publica
+     * `fleet.vehicle_cleared` al outbox. La acción es pública para reusarla en la ficha 360 del vehículo.
+     */
+    public static function clearFitnessAction(): Action
+    {
+        return Action::make('clearFitness')
+            ->label(__('Clear for dispatch'))
+            ->icon('heroicon-o-shield-check')
+            ->color('success')
+            ->visible(static fn (VehicleModel $record): bool => $record->unfit_since !== null)
+            ->modalHeading(__('Clear vehicle for dispatch'))
+            ->modalDescription(static fn (VehicleModel $record): string => __('Unfit since :date: :reason', [
+                'date' => (string) $record->unfit_since,
+                'reason' => (string) $record->unfit_reason,
+            ]))
+            ->modalSubmitActionLabel(__('Clear for dispatch'))
+            ->schema([
+                Textarea::make('note')
+                    ->label(__('Repair note'))
+                    ->helperText(__('Describe what was repaired. This is recorded in the audit log.'))
+                    ->required()
+                    ->minLength(3)
+                    ->maxLength(1000),
+            ])
+            ->action(static function (VehicleModel $record, array $data): void {
+                $user = Auth::user();
+                $actorId = $user !== null ? (string) $user->getAuthIdentifier() : null;
+                $actorLabel = 'System';
+                if ($user instanceof Model) {
+                    $name = $user->getAttribute('name');
+                    $email = $user->getAttribute('email');
+                    $actorLabel = is_string($name) && trim($name) !== ''
+                        ? $name
+                        : (is_string($email) && $email !== '' ? $email : ($actorId ?? 'System'));
+                }
+
+                try {
+                    app(CommandBus::class)->dispatch(new ClearVehicleFitness(
+                        vehicleId: (string) $record->getKey(),
+                        note: (string) ($data['note'] ?? ''),
+                        clearedById: $actorId,
+                        clearedByLabel: $actorLabel,
+                    ));
+
+                    Notification::make()
+                        ->title(__('Vehicle cleared for dispatch'))
+                        ->success()
+                        ->send();
+                } catch (FleetException $e) {
+                    Notification::make()
+                        ->title(__('Could not clear the vehicle'))
                         ->body($e->getMessage())
                         ->danger()
                         ->send();

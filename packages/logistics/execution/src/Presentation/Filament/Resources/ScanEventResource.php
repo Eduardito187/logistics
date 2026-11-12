@@ -32,7 +32,7 @@ use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
  * observa para operación y reconciliación, nunca los crea ni los edita; por eso no hay formulario de
  * alta/edición. Las escrituras de dominio pasan siempre por los buses CQRS en la capa HTTP.
  *
- * Todo el texto visible va en inglés (regla CLAUDE.md #5).
+ * El texto visible completo va en inglés (regla CLAUDE.md #5).
  *
  * @extends resource<ScanEventRecord>
  */

@@ -28,9 +28,13 @@ use Throwable;
  *    el header de idempotencia del HttpSapClient.
  *
  * Reintentos: si SAP falla, se marca el traspaso Failed (queda visible en el panel de reconciliación) y
- * se relanza la excepción, para que el relay aplique su backoff y reintente el mismo mensaje. El worker
- * de reconciliación (DispatchPendingTransfers) es la red de seguridad para los que quedan Failed tras
- * agotar los reintentos del outbox.
+ * NO se relanza: el mensaje del outbox queda despachado. El ÚNICO camino de reintento es el worker de
+ * reconciliación del scheduler (`logistics:sap:dispatch-transfers`), que reempuja los Failed con su
+ * backoff. Así hay un solo dueño de cada envío (sin doble push entre el backoff del outbox y el
+ * scheduler) y una caída de SAP nunca llena el outbox de reintentos ni de dead-letters.
+ *
+ * Este reactor corre en la cola dedicada `sap` (queue_routes `sap_connector.` del outbox): un SAP lento
+ * no frena a los demás reactores.
  */
 final readonly class SapMessageDispatcher implements MessageDispatcher
 {
@@ -73,7 +77,7 @@ final readonly class SapMessageDispatcher implements MessageDispatcher
 
     /**
      * Empuja un traspaso a SAP. Éxito → Sent (a la espera del callback de confirmación). Fallo → Failed
-     * con el motivo y se relanza, para que el relay reintente con backoff.
+     * con el motivo, sin relanzar: lo reintenta el worker de reconciliación con su backoff.
      *
      * Bifurcación por propiedad (ADR 017, roadmap §6.4): el stock de un seller (consignación) NUNCA se
      * postea a SAP como material propio de Dismac. Un traspaso de consignación es un movimiento puramente
@@ -95,7 +99,7 @@ final readonly class SapMessageDispatcher implements MessageDispatcher
             $transfer->markFailed($exception->getMessage());
             $this->transfers->save($transfer);
 
-            throw $exception;
+            return;
         }
 
         $transfer->markSent();

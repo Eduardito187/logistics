@@ -69,6 +69,25 @@ del scheduler y el monitoreo.
 - Toda escritura del panel pasa por el CommandBus (Presentation → Application); el detalle Eloquent solo se
   usa para leer/filtrar.
 
+## Observadores (punto de extensión)
+
+Además de los reactores (`routes`/`fanout`, que **son** el despacho), el outbox ofrece **observadores**:
+plugins que escuchan cada mensaje procesado sin participar del desenlace.
+
+- Contrato: `Logistics\Outbox\Application\Contract\OutboxObserver::observe(OutboxMessage): void`.
+- Registro: config `logistics-outbox.observers` (lista de class-string). Cada contexto puede sumarse
+  desde su propio provider, como hace el conector SAP con `SapNotificationRecorder`.
+- `ProcessOutboxMessage` invoca a cada observador **después** de persistir el desenlace (despachado,
+  fallido con backoff o dead-letter), cada uno en su propio `try/catch` que traga y loguea: un
+  observador **nunca** cambia el estado del mensaje, sus reintentos ni el dead-letter, y su fallo no
+  saltea a otros observadores (a diferencia de un reactor del abanico, que corta a los siguientes).
+- Se lo llama en cada procesamiento (también en reintentos): debe ser idempotente por `eventId` y
+  liviano (registrar una fila, encolar un job). Nada de I/O externo síncrono dentro del observador.
+- No se notifica a los observadores si el mensaje ya estaba en estado terminal al tomarlo.
+
+Colas: los mensajes con prefijo `sap_connector.` van a la cola dedicada `sap` (`pump.queue_routes`),
+consumida por su propio worker, para que un SAP lento no frene a los demás reactores de `outbox`.
+
 ## Estado
 
 | Pieza | Estado |

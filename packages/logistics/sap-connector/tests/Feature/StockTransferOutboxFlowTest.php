@@ -10,7 +10,9 @@ use Logistics\SapConnector\Application\Command\DispatchPendingTransfers\Dispatch
 use Logistics\SapConnector\Application\Command\EnqueueStockTransfer\EnqueueStockTransfer;
 use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Event\StockTransferEnqueued;
+use Logistics\SapConnector\Domain\Model\SapNotification;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
+use Logistics\SapConnector\Domain\ValueObject\SapResponse;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\SapConnector\Infrastructure\Outbox\SapMessageDispatcher;
@@ -135,6 +137,11 @@ it('el worker NO postea a SAP una consignación de seller y la deja Sent', funct
         public function fetchOrders(): array
         {
             return [];
+        }
+
+        public function notifyEvent(SapNotification $notification): SapResponse
+        {
+            return new SapResponse(204, '');
         }
     };
     app()->instance(SapClient::class, $sap);

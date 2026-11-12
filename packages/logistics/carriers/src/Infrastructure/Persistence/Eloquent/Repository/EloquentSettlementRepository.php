@@ -38,10 +38,16 @@ final readonly class EloquentSettlementRepository implements SettlementRepositor
         return $record instanceof SettlementRecord ? $this->mapper->toDomain($record) : null;
     }
 
-    public function list(?string $carrierId = null, ?string $status = null, ?int $limit = null, ?int $offset = null): array
-    {
+    public function list(
+        ?string $carrierId = null,
+        ?string $status = null,
+        ?int $limit = null,
+        ?int $offset = null,
+        ?string $periodFrom = null,
+        ?string $periodTo = null,
+    ): array {
         // Desempate por id (UUID v7) para que la paginación sea determinista ante periodos repetidos.
-        $query = $this->filtered($carrierId, $status)
+        $query = $this->filtered($carrierId, $status, $periodFrom, $periodTo)
             ->orderByDesc('period')->orderBy('carrier_id')->orderBy('id');
 
         if ($offset !== null) {
@@ -57,17 +63,22 @@ final readonly class EloquentSettlementRepository implements SettlementRepositor
             ->all());
     }
 
-    public function countBy(?string $carrierId = null, ?string $status = null): int
-    {
-        return $this->filtered($carrierId, $status)->count();
+    public function countBy(
+        ?string $carrierId = null,
+        ?string $status = null,
+        ?string $periodFrom = null,
+        ?string $periodTo = null,
+    ): int {
+        return $this->filtered($carrierId, $status, $periodFrom, $periodTo)->count();
     }
 
     /**
-     * Query builder con los filtros comunes de list/countBy (sin orden ni recorte).
+     * Query builder con los filtros comunes de list/countBy (sin orden ni recorte). Los períodos son meses
+     * `YYYY-MM` inclusivos.
      *
      * @return Builder<SettlementRecord>
      */
-    private function filtered(?string $carrierId, ?string $status): Builder
+    private function filtered(?string $carrierId, ?string $status, ?string $periodFrom = null, ?string $periodTo = null): Builder
     {
         $query = SettlementRecord::query();
 
@@ -76,6 +87,14 @@ final readonly class EloquentSettlementRepository implements SettlementRepositor
         }
         if ($status !== null && $status !== '') {
             $query->where('status', $status);
+        }
+        // `period` es texto `YYYY-MM`: la comparación lexicográfica equivale a la cronológica y usa los
+        // índices (carrier_id, period) y (period, carrier_id).
+        if ($periodFrom !== null && $periodFrom !== '') {
+            $query->where('period', '>=', $periodFrom);
+        }
+        if ($periodTo !== null && $periodTo !== '') {
+            $query->where('period', '<=', $periodTo);
         }
 
         return $query;

@@ -10,11 +10,15 @@ use Illuminate\Http\Request;
 use Logistics\Carriers\Application\Query\ListCarriers\ListCarriers;
 use Logistics\Carriers\Application\ReadModel\CarrierView;
 use Logistics\Carriers\Presentation\Http\ApiController;
+use Logistics\Carriers\Presentation\Http\Middleware\EnsureCarrierScope;
 use Logistics\Shared\Application\Query\QueryBus;
 
 /**
  * Lista los transportistas como proyecciones de lectura, con filtro opcional por estado
  * (consulta ListCarriers).
+ *
+ * Rol transportista: {@see EnsureCarrierScope} deja su transportista en el request y aquí se recorta el
+ * listado a esa única fila (el transportista no ve a sus competidores; su identidad sale de /auth/me).
  */
 final class ListCarriersController extends ApiController
 {
@@ -30,6 +34,14 @@ final class ListCarriersController extends ApiController
 
             /** @var list<CarrierView> $carriers */
             $carriers = $this->queries->ask(new ListCarriers(status: $status));
+
+            $scopedCarrierId = $request->attributes->get(EnsureCarrierScope::ATTRIBUTE);
+            if (is_string($scopedCarrierId) && $scopedCarrierId !== '') {
+                $carriers = array_values(array_filter(
+                    $carriers,
+                    static fn (CarrierView $view): bool => $view->id === $scopedCarrierId,
+                ));
+            }
 
             $items = array_map(static fn (CarrierView $view): array => $view->toArray(), $carriers);
 

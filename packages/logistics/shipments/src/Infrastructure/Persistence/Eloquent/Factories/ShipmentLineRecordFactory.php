@@ -48,4 +48,17 @@ final class ShipmentLineRecordFactory extends Factory
             'unit_price_currency' => null,
         ]);
     }
+
+    /**
+     * Línea con foto de medidas (Fase 2.1). Por defecto la factory deja las medidas en NULL a propósito:
+     * planning cae a sus defaults de config cuando faltan y hay tests que dependen de eso.
+     */
+    public function withMeasurements(float $unitWeightKg = 12.5, float $unitVolumeM3 = 0.08, string $source = 'product'): self
+    {
+        return $this->state(fn (): array => [
+            'unit_weight_kg' => $unitWeightKg,
+            'unit_volume_m3' => $unitVolumeM3,
+            'measurements_source' => $source,
+        ]);
+    }
 }

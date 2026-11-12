@@ -17,6 +17,8 @@ use Logistics\Execution\Domain\ValueObject\ScanType;
  *
  * La idempotencia offline se apoya en idempotencyKey: la clave que genera el dispositivo por evento.
  * Reintentar el mismo escaneo (sin red, reenvío) trae la misma clave y no duplica el hecho.
+ *
+ * El GPS es OPCIONAL (null = posición desconocida, p. ej. sin señal en interiores): nunca se inventa 0,0.
  */
 final readonly class ScanEvent
 {
@@ -25,7 +27,7 @@ final readonly class ScanEvent
         public string $deliveryId,
         public ScanType $type,
         public string $unitId,
-        public GeoPoint $geo,
+        public ?GeoPoint $geo,
         public DeviceContext $device,
         public DateTimeImmutable $occurredAt,
         public string $idempotencyKey,
@@ -36,7 +38,7 @@ final readonly class ScanEvent
         string $deliveryId,
         ScanType $type,
         string $unitId,
-        GeoPoint $geo,
+        ?GeoPoint $geo,
         DeviceContext $device,
         DateTimeImmutable $occurredAt,
         string $idempotencyKey,

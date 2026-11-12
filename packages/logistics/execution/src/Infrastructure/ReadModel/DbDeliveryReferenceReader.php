@@ -33,7 +33,7 @@ final readonly class DbDeliveryReferenceReader implements DeliveryReferenceReade
         try {
             $rows = $this->connection->table('shipments')
                 ->whereIn('id', $ids)
-                ->get(['id', 'external_id', 'customer_name', 'address_text']);
+                ->get(['id', 'order_reference', 'external_id', 'customer_name', 'address_text']);
         } catch (Throwable) {
             return [];
         }
@@ -41,7 +41,10 @@ final readonly class DbDeliveryReferenceReader implements DeliveryReferenceReade
         $result = [];
         foreach ($rows as $row) {
             $result[(string) $row->id] = [
-                'order_reference' => self::str($row->external_id ?? null),
+                // La ORDEN (order_reference) y no el id externo: en multishipping el hermano de retiro lleva
+                // "{orden}#n:{nodo}" como id externo, que no es lo que el chofer/preparador reconoce. Filas
+                // viejas sin order_reference caen al id externo.
+                'order_reference' => self::str($row->order_reference ?? null) ?? self::str($row->external_id ?? null),
                 'customer_name' => self::str($row->customer_name ?? null),
                 'address' => self::str($row->address_text ?? null),
             ];

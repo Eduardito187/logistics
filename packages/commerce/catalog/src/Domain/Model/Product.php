@@ -6,10 +6,12 @@ namespace Commerce\Catalog\Domain\Model;
 
 use Commerce\Catalog\Domain\Event\ProductArchived;
 use Commerce\Catalog\Domain\Event\ProductDrafted;
+use Commerce\Catalog\Domain\Event\ProductPhysicalSpecChanged;
 use Commerce\Catalog\Domain\Event\ProductPublished;
 use Commerce\Catalog\Domain\Exception\CatalogException;
 use Commerce\Catalog\Domain\ValueObject\CategoryId;
 use Commerce\Catalog\Domain\ValueObject\MediaAsset;
+use Commerce\Catalog\Domain\ValueObject\PhysicalSpec;
 use Commerce\Catalog\Domain\ValueObject\ProductId;
 use Commerce\Catalog\Domain\ValueObject\ProductStatus;
 use Commerce\Catalog\Domain\ValueObject\ProductVariant;
@@ -27,6 +29,10 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  *
  * El precio NO vive acá: lo resuelve el contexto `pricing` (ADR 018). El stock/ATP lo resuelve
  * `inventory` por un puerto de lectura; el SKU canónico es el puente 1:1.
+ *
+ * Las medidas físicas ({@see PhysicalSpec}: peso y L×A×H) son un atributo del producto (Roadmap 02,
+ * Fase 2.0): se editan en el admin o llegan por SKU desde Magento/integraciones. Pueden faltar o ser
+ * parciales; nunca bloquean nada (el stock tampoco es una regla del catálogo).
  */
 final class Product extends AggregateRoot
 {
@@ -44,6 +50,7 @@ final class Product extends AggregateRoot
         private ProductStatus $status,
         private array $variants,
         private array $media,
+        private PhysicalSpec $physicalSpec,
     ) {}
 
     /**
@@ -73,6 +80,7 @@ final class Product extends AggregateRoot
             ProductStatus::Draft,
             [],
             [],
+            PhysicalSpec::empty(),
         );
         $product->recordEvent(new ProductDrafted(
             $id->toString(),
@@ -100,6 +108,7 @@ final class Product extends AggregateRoot
         ProductStatus $status,
         array $variants,
         array $media,
+        ?PhysicalSpec $physicalSpec = null,
     ): self {
         return new self(
             $id,
@@ -111,7 +120,29 @@ final class Product extends AggregateRoot
             $status,
             $variants,
             $media,
+            $physicalSpec ?? PhysicalSpec::empty(),
         );
+    }
+
+    /**
+     * Define (reemplaza) las medidas físicas del producto. Idempotente: si la ficha no cambia, no hace
+     * nada ni graba evento. Una ficha vacía o parcial es válida (las medidas faltantes no bloquean).
+     */
+    public function definePhysicalSpec(PhysicalSpec $spec): void
+    {
+        if ($this->physicalSpec->equals($spec)) {
+            return;
+        }
+        $this->physicalSpec = $spec;
+        $this->recordEvent(new ProductPhysicalSpecChanged(
+            $this->id->toString(),
+            $this->canonicalSku->value,
+            $spec->weightKg,
+            $spec->lengthCm,
+            $spec->widthCm,
+            $spec->heightCm,
+            $spec->volumeM3(),
+        ));
     }
 
     public function rename(string $name): void
@@ -241,5 +272,10 @@ final class Product extends AggregateRoot
     public function media(): array
     {
         return $this->media;
+    }
+
+    public function physicalSpec(): PhysicalSpec
+    {
+        return $this->physicalSpec;
     }
 }

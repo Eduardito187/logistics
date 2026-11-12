@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Shipments\Application\ReadModel;
 
 use Logistics\Shipments\Domain\Model\Shipment;
+use Logistics\Shipments\Domain\ValueObject\DeliveryMode;
 
 /**
  * Modelo de lectura del envío: forma plana en primitivos para APIs, listados y paneles.
@@ -36,7 +37,57 @@ final readonly class ShipmentView
         public ?string $deliveryWindowEnd,
         public ?string $destinationNodeId,
         public array $lines,
+        // Avance operativo (camión, preparado, cargado, entregado, etiquetas): enriquecimiento del lado de
+        // lectura que agrega el listado de la app. Null = no enriquecido (no se serializa).
+        public ?ShipmentProgressView $progress = null,
+        // Modalidad de entrega (home_delivery / store_pickup), DERIVADA del tipo del nodo destino por el
+        // lado de lectura (ver DeliveryMode). Null = no enriquecida: toArray() la infiere solo cuando no
+        // hay nodo destino (domicilio seguro); con nodo y sin enriquecer se serializa null.
+        public ?string $deliveryMode = null,
     ) {}
+
+    /**
+     * Copia de la vista con su avance operativo adjunto (la vista es inmutable).
+     */
+    public function withProgress(ShipmentProgressView $progress): self
+    {
+        return $this->copy($progress, $this->deliveryMode);
+    }
+
+    /**
+     * Copia de la vista con su modalidad de entrega resuelta (la vista es inmutable).
+     */
+    public function withDeliveryMode(DeliveryMode $deliveryMode): self
+    {
+        return $this->copy($this->progress, $deliveryMode->value);
+    }
+
+    private function copy(?ShipmentProgressView $progress, ?string $deliveryMode): self
+    {
+        return new self(
+            $this->id,
+            $this->source,
+            $this->externalId,
+            $this->customerName,
+            $this->customerDocumentId,
+            $this->customerPhone,
+            $this->customerEmail,
+            $this->addressText,
+            $this->addressReference,
+            $this->lat,
+            $this->lng,
+            $this->addressConfidenceScore,
+            $this->addressConfidenceLevel,
+            $this->status,
+            $this->deliveryDate,
+            $this->deliveryWindowStart,
+            $this->deliveryWindowEnd,
+            $this->destinationNodeId,
+            $this->lines,
+            $progress,
+            $deliveryMode,
+        );
+    }
 
     public static function fromShipment(Shipment $shipment): self
     {
@@ -158,11 +209,21 @@ final readonly class ShipmentView
     }
 
     /**
+     * Dirección estructurada (best-effort) a partir del texto libre y la referencia.
+     */
+    public function addressParts(): AddressPartsView
+    {
+        return AddressPartsView::fromText($this->addressText, $this->addressReference);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
     {
-        return [
+        $addressParts = $this->addressParts();
+
+        $data = [
             'id' => $this->id,
             'source' => $this->source,
             'external_id' => $this->externalId,
@@ -182,6 +243,18 @@ final readonly class ShipmentView
             'delivery_window_end' => $this->deliveryWindowEnd,
             'destination_node_id' => $this->destinationNodeId,
             'lines' => array_map(static fn (ShipmentLineView $line): array => $line->toArray(), $this->lines),
+            // Aditivos (pedidos #22 y #26 de la app): modalidad de entrega y dirección estructurada.
+            'delivery_mode' => $this->deliveryMode ?? ($this->destinationNodeId === null ? DeliveryMode::HomeDelivery->value : null),
+            'address_parts' => $addressParts->toArray(),
+            'short_address' => $addressParts->shortAddress,
         ];
+
+        // Aditivo: solo cuando la consulta lo enriqueció (listado de la app), para no cambiar las demás
+        // respuestas que comparten esta vista.
+        if ($this->progress !== null) {
+            $data['progress'] = $this->progress->toArray();
+        }
+
+        return $data;
     }
 }

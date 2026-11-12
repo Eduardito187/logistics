@@ -7,6 +7,7 @@ namespace Logistics\SapConnector\Infrastructure\Persistence\Eloquent;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\Factories\StockTransferRecordFactory;
 
 /**
@@ -26,6 +27,8 @@ use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\Factories\StockTr
  * @property string|null $last_error
  * @property string      $transfer_kind
  * @property string|null $owner_party_id
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  *
  * @use HasFactory<StockTransferRecordFactory>
  */

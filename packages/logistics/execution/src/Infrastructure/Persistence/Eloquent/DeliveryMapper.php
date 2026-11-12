@@ -10,7 +10,6 @@ use Logistics\Execution\Domain\Model\ScanEvent;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\DropshipHandling;
 use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
@@ -40,13 +39,13 @@ final class DeliveryMapper
             'pod_photo_url' => $proof?->photoUrl,
             'pod_photo_path' => $proof?->photoPath,
             'pod_captured_at' => $proof?->capturedAt->format(DATE_ATOM),
+            // Vínculo con las evidencias ya subidas por la app (POD en lote): null si no hay.
+            'pod_photo_paths' => $proof !== null && $proof->photoPaths !== [] ? $proof->photoPaths : null,
+            'pod_evidence_ids' => $proof !== null && $proof->evidenceIds !== [] ? $proof->evidenceIds : null,
             'failure_reason' => $delivery->failureReason()?->value,
-            // Dimensión de fulfillment (aditiva): modo y, en dropship, cómo lo maneja Dismac + claves de
-            // idempotencia de las confirmaciones del seller.
+            // Dimensión de fulfillment: solo el modo (dato para reportes/liquidaciones). Las columnas
+            // dropship_handling / *_confirmation_key quedan en la tabla sin uso (no se borran: regla aditiva).
             'fulfillment_mode' => $delivery->fulfillmentMode()->value,
-            'dropship_handling' => $delivery->dropshipHandling()?->value,
-            'dispatch_confirmation_key' => $delivery->dispatchConfirmationKey(),
-            'delivery_confirmation_key' => $delivery->deliveryConfirmationKey(),
         ];
     }
 
@@ -60,8 +59,11 @@ final class DeliveryMapper
             'delivery_id' => $scan->deliveryId,
             'type' => $scan->type->value,
             'unit_id' => $scan->unitId,
-            'lat' => $scan->geo->lat,
-            'lng' => $scan->geo->lng,
+            // GPS opcional: null = posición desconocida (nunca 0,0 inventado).
+            'lat' => $scan->geo?->lat,
+            'lng' => $scan->geo?->lng,
+            'accuracy_m' => $scan->geo?->accuracyM,
+            'location_captured_at' => $scan->geo?->capturedAt?->format(DATE_ATOM),
             'device_id' => $scan->device->deviceId,
             'user_id' => $scan->device->userId,
             'occurred_at' => $scan->occurredAt->format(DATE_ATOM),
@@ -81,7 +83,7 @@ final class DeliveryMapper
                 $scanRecord->delivery_id,
                 ScanType::from($scanRecord->type),
                 $scanRecord->unit_id,
-                GeoPoint::of((float) $scanRecord->lat, (float) $scanRecord->lng),
+                self::geoOf($scanRecord),
                 DeviceContext::of($scanRecord->device_id, $scanRecord->user_id),
                 new DateTimeImmutable($scanRecord->occurred_at),
                 $scanRecord->idempotency_key,
@@ -95,6 +97,8 @@ final class DeliveryMapper
                 $record->pod_photo_url,
                 new DateTimeImmutable($record->pod_captured_at),
                 $record->pod_photo_path,
+                array_values(array_map('strval', $record->pod_photo_paths ?? [])),
+                array_values(array_map('strval', $record->pod_evidence_ids ?? [])),
             );
         }
 
@@ -107,9 +111,23 @@ final class DeliveryMapper
             $proof,
             $record->failure_reason !== null ? FailureReason::from($record->failure_reason) : null,
             FulfillmentMode::from($record->fulfillment_mode),
-            $record->dropship_handling !== null ? DropshipHandling::from($record->dropship_handling) : null,
-            $record->dispatch_confirmation_key,
-            $record->delivery_confirmation_key,
+        );
+    }
+
+    /**
+     * Posición del escaneo desde su fila: null si no se registró (filas nuevas sin señal).
+     */
+    private static function geoOf(ScanEventRecord $record): ?GeoPoint
+    {
+        if ($record->lat === null || $record->lng === null) {
+            return null;
+        }
+
+        return GeoPoint::of(
+            (float) $record->lat,
+            (float) $record->lng,
+            $record->accuracy_m !== null ? (float) $record->accuracy_m : null,
+            $record->location_captured_at !== null ? new DateTimeImmutable($record->location_captured_at) : null,
         );
     }
 }

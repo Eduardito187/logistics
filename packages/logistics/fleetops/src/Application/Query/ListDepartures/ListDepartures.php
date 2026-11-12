@@ -8,7 +8,8 @@ use Logistics\Shared\Application\Query\Query;
 
 /**
  * Lista salidas con filtros opcionales: por vehículo, estado ('out'|'returned') y rango de fecha de
- * salida (ISO 8601).
+ * salida (ISO 8601). Con `limit` el handler pagina en SQL y devuelve una Page; sin `limit`, la lista
+ * completa (compatibilidad).
  */
 final readonly class ListDepartures implements Query
 {
@@ -17,5 +18,7 @@ final readonly class ListDepartures implements Query
         public ?string $status = null,
         public ?string $from = null,
         public ?string $to = null,
+        public ?int $limit = null,
+        public ?int $offset = null,
     ) {}
 }

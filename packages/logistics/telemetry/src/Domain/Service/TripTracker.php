@@ -12,7 +12,7 @@ use Logistics\Telemetry\Domain\Model\VehiclePing;
  *
  * La regla es el hueco temporal: si entre el último punto del trip activo y el ping nuevo pasó más del
  * `gapMinutes` configurado, el trip se da por terminado y empieza otro. Sin estado, sin reloj, sin
- * config: todo entra por parámetro, de modo que es trivialmente testeable y determinista.
+ * config: cada dato entra por parámetro, de modo que es trivialmente testeable y determinista.
  */
 final readonly class TripTracker
 {

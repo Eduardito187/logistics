@@ -50,13 +50,29 @@ final class EloquentNodeReceptionRepository implements NodeReceptionRepository
                     $values,
                 );
             }
+
+            // Ubicación en estante VIGENTE: una fila por (recepción, producto). El agregado ya decidió si
+            // la ubicación cambia (idempotencia y orden offline); aquí solo se refleja su estado.
+            foreach ($reception->shelfLocations() as $location) {
+                $record = NodeReceptionUnitLocationRecord::query()->firstOrNew([
+                    'node_reception_id' => $reception->id()->toString(),
+                    'unit_id' => $location->unitId,
+                ]);
+                if (!$record->exists) {
+                    $record->id = Uuid::generate()->value;
+                }
+                $record->fill($this->mapper->toLocationRow($reception, $location));
+                if ($record->isDirty()) {
+                    $record->save();
+                }
+            }
         });
     }
 
     public function findById(NodeReceptionId $id): ?NodeReception
     {
         $record = NodeReceptionRecord::query()
-            ->with(['units'])
+            ->with(['units', 'locations'])
             ->find($id->toString());
 
         return $record === null ? null : $this->mapper->toDomain($record);
@@ -65,7 +81,7 @@ final class EloquentNodeReceptionRepository implements NodeReceptionRepository
     public function findByShipmentAndDestination(string $shipmentId, string $destinationNodeId): ?NodeReception
     {
         $record = NodeReceptionRecord::query()
-            ->with(['units'])
+            ->with(['units', 'locations'])
             ->where('shipment_id', $shipmentId)
             ->where('destination_node_id', $destinationNodeId)
             ->first();

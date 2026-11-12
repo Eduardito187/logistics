@@ -14,6 +14,7 @@ final readonly class VehicleView
 {
     /**
      * @param list<array{type: string, expires_on: string}> $documents
+     * @param list<string>                                  $unfitItems
      */
     private function __construct(
         public string $id,
@@ -23,10 +24,16 @@ final readonly class VehicleView
         public string $homeBaseNodeId,
         public string $status,
         public array $documents,
+        public bool $fitToDispatch = true,
+        public ?string $unfitSince = null,
+        public ?string $unfitReason = null,
+        public array $unfitItems = [],
     ) {}
 
     public static function fromDomain(Vehicle $vehicle): self
     {
+        $fitness = $vehicle->fitness();
+
         return new self(
             $vehicle->id()->toString(),
             $vehicle->plate()->value,
@@ -35,11 +42,15 @@ final readonly class VehicleView
             $vehicle->homeBaseNodeId(),
             $vehicle->status()->value,
             array_values(array_map(static fn (DocumentExpiry $document) => $document->toArray(), $vehicle->documents())),
+            !$fitness->isUnfit(),
+            $fitness->unfitSince?->format('Y-m-d'),
+            $fitness->reason,
+            $fitness->failedItems,
         );
     }
 
     /**
-     * @return array{id: string, plate: string, capacity_kg: int, capacity_m3: float, home_base_node_id: string, status: string, documents: list<array{type: string, expires_on: string}>}
+     * @return array{id: string, plate: string, capacity_kg: int, capacity_m3: float, home_base_node_id: string, status: string, documents: list<array{type: string, expires_on: string}>, fit_to_dispatch: bool, unfit_since: string|null, unfit_reason: string|null, unfit_items: list<string>}
      */
     public function toArray(): array
     {
@@ -51,6 +62,11 @@ final readonly class VehicleView
             'home_base_node_id' => $this->homeBaseNodeId,
             'status' => $this->status,
             'documents' => $this->documents,
+            // Aditivo (#27): aptitud para despachar (false = bloqueado por checklist crítico hasta habilitarlo).
+            'fit_to_dispatch' => $this->fitToDispatch,
+            'unfit_since' => $this->unfitSince,
+            'unfit_reason' => $this->unfitReason,
+            'unfit_items' => $this->unfitItems,
         ];
     }
 }
