@@ -56,8 +56,10 @@ final readonly class LabelPayload
         string $destination,
         int $issuedAt,
     ): self {
-        if ($keyId < 1) {
-            throw InvalidLabelException::because("keyId debe ser >= 1: {$keyId}");
+        // keyId 0 = etiqueta ABIERTA (sin clave): su autenticidad la da el registro (label_id), no una firma.
+        // keyId >= 1 = etiqueta firmada con esa clave. Negativo es inválido.
+        if ($keyId < 0) {
+            throw InvalidLabelException::because("keyId no puede ser negativo: {$keyId}");
         }
         if (preg_match(self::ULID_PATTERN, $id) !== 1) {
             throw InvalidLabelException::because("id no es un ULID: {$id}");

@@ -29,6 +29,8 @@ final class LabelTestEnv
     {
         $secret = sodium_crypto_sign_secretkey(sodium_crypto_sign_seed_keypair($seed));
 
+        // Estos tests prueban el modo FIRMADO: se fuerza open=false (el default de producción es abierto).
+        config()->set('logistics-labels.open', false);
         config()->set('logistics-labels.active_key_id', $keyId);
         config()->set('logistics-labels.signing_key', base64_encode($secret));
         config()->set('logistics-labels.previous_public_keys', $previousPublicKeys);

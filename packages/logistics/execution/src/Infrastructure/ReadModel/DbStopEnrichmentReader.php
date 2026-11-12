@@ -49,6 +49,7 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
             ->get(['shipment_id', 'sku', 'product_name', 'quantity', 'product_image_url']);
 
         $itemsByShipment = $this->groupItemsByShipment($lines);
+        $unitIdsByShipment = $this->unitIdsByShipmentFor($ids);
         $nodesById = $this->nodesByIdFor($headers);
 
         $result = [];
@@ -58,11 +59,36 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
                 'customer_phone' => $header->customer_phone !== null ? (string) $header->customer_phone : null,
                 'address_reference' => $header->address_reference !== null ? (string) $header->address_reference : null,
                 'items' => $itemsByShipment[$shipmentId] ?? [],
+                'unit_ids' => $unitIdsByShipment[$shipmentId] ?? [],
                 'destination' => $this->resolveDestination($header, $nodesById),
             ];
         }
 
         return $result;
+    }
+
+    /**
+     * Ids de los bultos (shipment_units) de cada envío, EN LOTE y en orden estable. La app los usa para
+     * validar OFFLINE que el bulto escaneado pertenece a la parada, sin otra llamada.
+     *
+     * @param  list<string>                $ids
+     * @return array<string, list<string>>
+     */
+    private function unitIdsByShipmentFor(array $ids): array
+    {
+        $byShipment = [];
+        foreach (
+            $this->connection->table('shipment_units')
+                ->whereIn('shipment_id', $ids)
+                ->orderBy('unit_index')
+                ->orderBy('piece_index')
+                ->orderBy('id')
+                ->get(['id', 'shipment_id']) as $unit
+        ) {
+            $byShipment[(string) $unit->shipment_id][] = (string) $unit->id;
+        }
+
+        return $byShipment;
     }
 
     /**

@@ -11,6 +11,12 @@ return [
     // Clave privada Ed25519 activa, en base64 (64 bytes).
     'signing_key' => env('LABELS_SIGNING_KEY'),
 
+    // Modo ABIERTO (sin clave): la etiqueta es un JSON abierto y su autenticidad la da el REGISTRO (el
+    // label_id es un ULID emitido por el sistema y rastreado toda su vida), no una firma secreta. Así una
+    // etiqueta impresa NUNCA se descarta por un problema de clave. Es el DEFAULT (no hay que configurar nada).
+    // Para usar firma criptográfica Ed25519 en su lugar: LABELS_OPEN=false + LABELS_SIGNING_KEY.
+    'open' => (bool) env('LABELS_OPEN', true),
+
     // Claves públicas ADICIONALES aceptadas al verificar, formato "id:base64,id:base64".
     // La pública de la clave activa se deriva sola; acá van solo las anteriores aún vigentes.
     'previous_public_keys' => env('LABELS_PREVIOUS_PUBLIC_KEYS', ''),

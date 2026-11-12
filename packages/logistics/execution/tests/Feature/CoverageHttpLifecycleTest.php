@@ -60,6 +60,7 @@ it('recorre el ciclo de una entrega entregada por sus endpoints', function (): v
 
     $this->postJson('/api/v1/app/deliveries/proof-of-delivery', coverageScanBody($shipment) + [
         'confirmation' => 'QR-OK-1',
+        'photo_path' => 'evidence/pod-1.jpg',
     ])->assertOk()
         ->assertJsonPath('data.status', 'DELIVERED');
 

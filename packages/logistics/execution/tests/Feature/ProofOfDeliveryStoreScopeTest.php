@@ -82,6 +82,7 @@ function podScopeBody(string $shipment, string $unit): array
         'shipment_id' => $shipment,
         'unit_id' => $unit,
         'confirmation' => 'QR-OK',
+        'photo_path' => 'evidence/pod-scope.jpg',
         'lat' => -16.5,
         'lng' => -68.15,
         'occurred_at' => '2026-10-16T11:00:00+00:00',

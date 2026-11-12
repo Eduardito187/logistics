@@ -51,6 +51,9 @@ enum ErrorCode: string
 
     // 422 — validación / regla de negocio.
     case ValidationFailed = 'validation_failed';
+    // Regla de negocio del dominio violada (precondición de estado, invariante del agregado): la petición está
+    // bien formada pero no se puede procesar en el estado actual. Distinto de ValidationFailed (campos del form).
+    case BusinessRuleViolation = 'business_rule_violation';
 
     // 429 — límite de tasa.
     case RateLimited = 'rate_limited';
@@ -73,7 +76,7 @@ enum ErrorCode: string
             self::Conflict, self::IdempotencyKeyInProgress, self::IdempotencyKeyReused => 409,
             self::PayloadTooLarge => 413,
             self::UnsupportedMediaType => 415,
-            self::ValidationFailed => 422,
+            self::ValidationFailed, self::BusinessRuleViolation => 422,
             self::RateLimited => 429,
             self::ServerError => 500,
             self::ServiceUnavailable => 503,
@@ -104,6 +107,7 @@ enum ErrorCode: string
             self::PayloadTooLarge => 'Payload too large',
             self::UnsupportedMediaType => 'Unsupported media type',
             self::ValidationFailed => 'Validation failed',
+            self::BusinessRuleViolation => 'Business rule violation',
             self::RateLimited => 'Too many requests',
             self::ServerError => 'Internal server error',
             self::ServiceUnavailable => 'Service unavailable',

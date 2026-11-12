@@ -6,6 +6,7 @@ namespace Logistics\Execution\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Execution\Domain\Event\DriverRouteAssembled;
+use Logistics\Execution\Domain\Event\DriverRouteStopAttached;
 use Logistics\Execution\Domain\Event\DriverRouteStopCompleted;
 use Logistics\Execution\Domain\Event\DriverRouteStopFailed;
 use Logistics\Execution\Domain\Exception\ExecutionException;
@@ -13,6 +14,7 @@ use Logistics\Execution\Domain\ValueObject\IncidentSeverity;
 use Logistics\Execution\Domain\ValueObject\RouteDate;
 use Logistics\Execution\Domain\ValueObject\RouteId;
 use Logistics\Execution\Domain\ValueObject\RouteStatus;
+use Logistics\Execution\Domain\ValueObject\RouteStopId;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
 /**
@@ -197,6 +199,47 @@ final class VehicleRoute extends AggregateRoot
     public function status(): RouteStatus
     {
         return $this->status;
+    }
+
+    /**
+     * Agrega un envío a la ruta como parada pendiente al final de la secuencia (asignación manual desde el
+     * andén: el preparador elige el camión de reparto). Idempotente: si el envío ya es una parada de esta
+     * ruta, no hace nada. Reabre el estado a InProgress si la ruta estaba terminada (reasignación).
+     */
+    public function attachShipment(
+        RouteStopId $stopId,
+        string $shipmentId,
+        ?string $orderReference,
+        ?string $customerName,
+        ?string $address,
+        DateTimeImmutable $at,
+    ): void {
+        if ($this->hasShipment($shipmentId)) {
+            return;
+        }
+
+        $sequence = $this->totalStops() + 1;
+        $this->stops[] = RouteStop::plan(
+            $stopId,
+            $shipmentId,
+            $sequence,
+            $orderReference,
+            $customerName,
+            $address,
+            null,
+            null,
+            null,
+        );
+        $this->refreshStatus();
+
+        $this->recordEvent(new DriverRouteStopAttached(
+            $this->id->toString(),
+            $this->vehicleId,
+            $shipmentId,
+            $sequence,
+            $this->totalStops(),
+            $at,
+        ));
     }
 
     /**
