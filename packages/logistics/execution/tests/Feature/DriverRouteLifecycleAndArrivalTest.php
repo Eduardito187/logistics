@@ -92,7 +92,7 @@ it('cierra la ruta sin exigir todas las paradas y reporta las pendientes', funct
         ->assertOk()
         ->assertJsonPath('data.status', 'COMPLETED')
         ->assertJsonPath('data.pending_stops', 2)
-        ->assertJsonPath('data.close_odometer_km', 1290.0);
+        ->assertJsonPath('data.close_odometer_km', 1290);
 
     // Reintento del cierre (la ruta ya no está "abierta"): se ubica por el día de occurred_at, idempotente.
     test()->postJson("/api/v1/app/vehicles/{$vehicle}/route/close", $close)

@@ -136,11 +136,10 @@ it('envía el aviso con el contrato acordado, marca sent y guarda la respuesta c
     Http::assertSent(static function (Request $request) use ($message): bool {
         /** @var array<string, mixed> $body */
         $body = $request->data();
-        // El payload viaja como objeto JSON y se persiste en una columna jsonb, que normaliza (reordena) las
-        // claves del objeto: se comparan las parejas clave-valor sin depender del orden, que es irrelevante
-        // en el contrato con SAP.
+        // El cliente manda el payload como `(object)` y `data()` devuelve ese stdClass tal cual: se castea a
+        // array y se ordena por clave, porque el orden es irrelevante en el contrato con SAP.
         /** @var array<string, mixed> $payload */
-        $payload = is_array($body['payload'] ?? null) ? $body['payload'] : [];
+        $payload = (array) ($body['payload'] ?? []);
         ksort($payload);
 
         return $request->method() === 'POST'

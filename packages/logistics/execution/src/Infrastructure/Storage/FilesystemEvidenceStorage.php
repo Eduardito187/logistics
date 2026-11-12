@@ -131,6 +131,12 @@ final readonly class FilesystemEvidenceStorage implements EvidenceStorage
             return false;
         }
 
+        // Una referencia de evidencia es `<tipo>/<envío>/<archivo>`: sin `/` (p. ej. "pendiente") NO es un
+        // path válido, así que no existe (false), nunca "no verificable".
+        if (!str_contains($reference, '/')) {
+            return false;
+        }
+
         $unknown = false;
         foreach ($this->candidateDisks($reference) as $diskName) {
             try {
