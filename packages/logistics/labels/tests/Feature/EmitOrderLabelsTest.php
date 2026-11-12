@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Logistics\Labels\Application\Command\EmitOrderLabels\EmitOrderLabels;
-use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
 use Logistics\Labels\Domain\Model\EmittedLabel;
 use Logistics\Labels\Infrastructure\Persistence\Eloquent\EmittedLabelRecord;
@@ -121,29 +120,4 @@ it('respeta el origin override (escape hatch) cuando se pasa', function (): void
     $labels = emittedFor('SCZ-EMO-04');
     expect($labels)->toHaveCount(1)
         ->and($labels[0]->originCode())->toBe('CD-EMO-LP');
-})->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');
-
-it('reimprimir SIN líneas (caso app: solo motivo) revoca y RE-EMITE del pedido, no deja 0 activas', function (): void {
-    $home = ShipmentRecord::factory()->create(['external_id' => 'SCZ-EMO-RP', 'order_reference' => 'SCZ-EMO-RP', 'destination_node_id' => null, 'lat' => -17.80, 'lng' => -63.20]);
-    ShipmentLineRecord::factory()->create(['shipment_id' => $home->id, 'sku' => 'SKU-RP', 'product_name' => 'Heladera', 'quantity' => 2]);
-    $plan = PlanRecord::factory()->published()->create();
-    PlannedStopRecord::factory()->create(['plan_id' => $plan->id, 'shipment_id' => $home->id]);
-
-    // Emisión inicial por orden: 2 bultos activos.
-    app(CommandBus::class)->dispatch(new EmitOrderLabels('SCZ-EMO-RP'));
-    $initialActive = EmittedLabelRecord::query()->where('order_id', 'SCZ-EMO-RP')->whereNull('revoked_at')->pluck('label_id')->all();
-    expect($initialActive)->toHaveCount(2);
-
-    // Reimpresión como la manda la app: SIN líneas, solo motivo.
-    app(CommandBus::class)->dispatch(new ReprintOrderLabels(
-        'SCZ-EMO-RP', '', '', [], 'Etiqueta dañada',
-    ));
-
-    $active = EmittedLabelRecord::query()->where('order_id', 'SCZ-EMO-RP')->whereNull('revoked_at')->pluck('label_id')->all();
-    $revoked = EmittedLabelRecord::query()->where('order_id', 'SCZ-EMO-RP')->whereNotNull('revoked_at')->pluck('label_id')->all();
-
-    // 2 nuevas ACTIVAS (ids nuevos) + las 2 viejas revocadas. NUNCA 0 activas.
-    expect($active)->toHaveCount(2)
-        ->and($revoked)->toHaveCount(2)
-        ->and(array_intersect($initialActive, $active))->toBe([]);
 })->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');

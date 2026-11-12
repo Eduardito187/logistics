@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+// Driver de los discos de EVIDENCIA (pod, damage, checklist, signature, collages): S3 solo si hay S3
+// configurado; si no, caen a LOCAL para que la subida de fotos funcione en cualquier entorno (staging/dev
+// sin S3), sin 500. Regla "funciona en docker nuevo": los defaults operan sin depender de infra externa.
+$evidenceDriver = (env('AWS_BUCKET') || env('AWS_ENDPOINT')) ? 's3' : 'local';
+
 return [
 
     /*
@@ -91,12 +96,12 @@ return [
 
         // Prueba de entrega: firma y fotos que registra el repartidor al entregar.
         'pod' => [
-            'driver' => 's3',
+            'driver' => $evidenceDriver,
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_POD_BUCKET', env('AWS_BUCKET')),
-            'root' => env('AWS_POD_BUCKET') ? '' : 'pod',
+            'root' => $evidenceDriver === 's3' ? (env('AWS_POD_BUCKET') ? '' : 'pod') : storage_path('app/private/pod'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -107,12 +112,12 @@ return [
 
         // Checklist de carga / salida de vehículo.
         'checklist' => [
-            'driver' => 's3',
+            'driver' => $evidenceDriver,
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_CHECKLIST_BUCKET', env('AWS_BUCKET')),
-            'root' => env('AWS_CHECKLIST_BUCKET') ? '' : 'checklists',
+            'root' => $evidenceDriver === 's3' ? (env('AWS_CHECKLIST_BUCKET') ? '' : 'checklists') : storage_path('app/private/checklists'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -123,12 +128,12 @@ return [
 
         // Evidencia de daños (reclamos / siniestros).
         'damage' => [
-            'driver' => 's3',
+            'driver' => $evidenceDriver,
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_DAMAGE_BUCKET', env('AWS_BUCKET')),
-            'root' => env('AWS_DAMAGE_BUCKET') ? '' : 'damages',
+            'root' => $evidenceDriver === 's3' ? (env('AWS_DAMAGE_BUCKET') ? '' : 'damages') : storage_path('app/private/damages'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -139,12 +144,12 @@ return [
 
         // Firma manuscrita del cliente (evidencia anti-fraude): privado, PII.
         'signature' => [
-            'driver' => 's3',
+            'driver' => $evidenceDriver,
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_SIGNATURE_BUCKET', env('AWS_BUCKET')),
-            'root' => env('AWS_SIGNATURE_BUCKET') ? '' : 'signatures',
+            'root' => $evidenceDriver === 's3' ? (env('AWS_SIGNATURE_BUCKET') ? '' : 'signatures') : storage_path('app/private/signatures'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -155,12 +160,12 @@ return [
 
         // Foto del documento de identidad del cliente (evidencia anti-fraude): privado, PII sensible.
         'id_document' => [
-            'driver' => 's3',
+            'driver' => $evidenceDriver,
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_ID_DOCUMENT_BUCKET', env('AWS_BUCKET')),
-            'root' => env('AWS_ID_DOCUMENT_BUCKET') ? '' : 'id-documents',
+            'root' => $evidenceDriver === 's3' ? (env('AWS_ID_DOCUMENT_BUCKET') ? '' : 'id-documents') : storage_path('app/private/id-documents'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -171,12 +176,12 @@ return [
 
         // Collage PNG público que acompaña la notificación al cliente (ADR 006).
         'collages' => [
-            'driver' => 's3',
+            'driver' => $evidenceDriver === 's3' ? 's3' : 'local',
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_COLLAGE_BUCKET', env('AWS_BUCKET')),
-            'root' => env('AWS_COLLAGE_BUCKET') ? '' : 'collages',
+            'root' => $evidenceDriver === 's3' ? (env('AWS_COLLAGE_BUCKET') ? '' : 'collages') : storage_path('app/public/collages'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),

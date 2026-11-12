@@ -63,15 +63,6 @@ it('responde 404 al pedir el ZPL de un pedido sin etiquetas vigentes', function 
     $this->get('/api/v1/app/orders/DM-260070004/labels/zpl')->assertNotFound();
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
-it('reimprime las etiquetas de un pedido (revoca y re-emite)', function (): void {
-    $this->postJson('/api/v1/app/orders/DM-260070005/labels', labelOrderBody())->assertCreated();
-
-    $this->postJson('/api/v1/app/orders/DM-260070005/labels/reprint', [
-        ...labelOrderBody(),
-        'reason' => 'Damaged label',
-    ])->assertCreated();
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
-
 it('entrega el bundle de claves públicas para verificación offline', function (): void {
     $this->getJson('/api/v1/app/labels/public-keys')
         ->assertOk()

@@ -36,10 +36,10 @@ it('renderiza el listado de etiquetas vacío', function (): void {
     Livewire::test(ListEmittedLabels::class)->assertOk();
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
-it('renderiza el listado de etiquetas con filas (vigente y revocada)', function (): void {
-    // Una vigente y una revocada para que la tabla evalúe los closures de estado, color y ruta.
+it('renderiza el listado de etiquetas con filas', function (): void {
+    // Dos etiquetas permanentes para que la tabla evalúe los closures de columnas y ruta.
     EmittedLabelRecord::factory()->forOrder('DM-260099001')->create();
-    EmittedLabelRecord::factory()->forOrder('DM-260099001')->revoked()->create();
+    EmittedLabelRecord::factory()->forOrder('DM-260099001')->create();
 
     Livewire::test(ListEmittedLabels::class)->assertOk();
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
@@ -56,17 +56,13 @@ it('renderiza la vista de una etiqueta con el QR y el Code128 escaneables (SVG i
 
 it('monta las acciones de cabecera del listado (flujos CQRS)', function (): void {
     // Montar cada acción construye y renderiza su modal: corre el schema del formulario de pedido de
-    // emitir/pre-emitir/reimprimir, y el modalContent de las claves públicas (bundle por el QueryBus).
+    // emitir/pre-emitir, y el modalContent de las claves públicas (bundle por el QueryBus).
     Livewire::test(ListEmittedLabels::class)
         ->mountAction('emitLabels')
         ->assertOk();
 
     Livewire::test(ListEmittedLabels::class)
         ->mountAction('preEmitLabels')
-        ->assertOk();
-
-    Livewire::test(ListEmittedLabels::class)
-        ->mountAction('reprintLabels')
         ->assertOk();
 
     Livewire::test(ListEmittedLabels::class)

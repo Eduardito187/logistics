@@ -24,11 +24,11 @@ return [
             Route::get('public-keys', PublicKeyController::class)->name('public-keys');
         });
 
-        // Etiquetas de un pedido: emitir, reimprimir, obtener (offline-friendly) y ZPL para Zebra.
+        // Etiquetas de un pedido: emitir, obtener (offline-friendly, se pueden volver a imprimir tal cual) y
+        // ZPL para Zebra. Las etiquetas son PERMANENTES: no se revocan ni se re-emiten con id nuevo.
         Route::prefix('orders/{orderNumber}/labels')->name('orders.labels.')->group(function (): void {
             Route::get('/', [LabelController::class, 'index'])->name('index');
             Route::post('/', [LabelController::class, 'store'])->name('store');
-            Route::post('reprint', [LabelController::class, 'reprint'])->name('reprint');
             Route::get('zpl', [LabelController::class, 'zpl'])->name('zpl');
         });
 

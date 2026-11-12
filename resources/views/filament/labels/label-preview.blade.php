@@ -21,20 +21,12 @@
 
     $qr = $showQr ? $renderer->qr((string) $record->signed_json) : '';
     $barcode = $showBarcode ? $renderer->barcode((string) $record->label_id) : '';
-    $revoked = (bool) $record->is_revoked;
 @endphp
 
 <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start">
     {{-- La etiqueta física (blanca, para escanear con contraste) --}}
     <div style="background:#ffffff;color:#111111;border-radius:12px;padding:16px 18px;width:300px;max-width:100%;
                 box-shadow:0 1px 0 rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.35);position:relative;font-family:'IBM Plex Mono',ui-monospace,monospace">
-        @if($revoked)
-            <div style="position:absolute;top:10px;right:10px;background:#ffe3e5;color:#b4232c;font-weight:700;
-                        font-size:10px;letter-spacing:.08em;padding:2px 8px;border-radius:999px;text-transform:uppercase">
-                {{ __('Revoked') }}
-            </div>
-        @endif
-
         {{-- QR escaneable (negro sobre blanco), payload firmado exacto — solo si la simbología lo incluye --}}
         @if($showQr)
             <div style="display:flex;justify-content:center;padding:4px 0 8px">
