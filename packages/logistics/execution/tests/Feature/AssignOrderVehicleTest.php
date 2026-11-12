@@ -119,6 +119,29 @@ it('abre la entrega del envío al asignar el vehículo (habilita carga y POD del
     expect(DB::table('execution_deliveries')->where('shipment_id', $shipmentId)->count())->toBe(1);
 });
 
+it('reasignar el pedido MUEVE la entrega en curso al camión nuevo', function (): void {
+    $order = 'DEMO-AOV-05';
+    $shipmentId = aovOrder($order);
+    $v1 = aovVehicle();
+    $v2 = aovVehicle();
+
+    $this->postJson("/api/v1/app/orders/{$order}/vehicle", ['vehicle_id' => $v1])->assertOk();
+    $this->postJson("/api/v1/app/orders/{$order}/vehicle", ['vehicle_id' => $v2])->assertOk();
+
+    // El pedido queda en el ÚLTIMO camión asignado (ese chofer lo entrega).
+    $delivery = app(DeliveryRepository::class)->findByShipmentId($shipmentId);
+    expect($delivery)->not->toBeNull()
+        ->and($delivery->vehicleId())->toBe($v2);
+    // Y la entrega no se duplicó por reasignar.
+    expect(DB::table('execution_deliveries')->where('shipment_id', $shipmentId)->count())->toBe(1);
+
+    // La RUTA queda consistente: el pedido aparece SOLO en el camión nuevo, no fantasma en el viejo.
+    $oldRoute = app(QueryBus::class)->ask(new GetDriverRoute($v1, null));
+    $newRoute = app(QueryBus::class)->ask(new GetDriverRoute($v2, null));
+    expect(collect($oldRoute->stops)->pluck('shipmentId')->all())->not->toContain($shipmentId)
+        ->and(collect($newRoute->stops)->pluck('shipmentId')->all())->toContain($shipmentId);
+});
+
 it('es idempotente: reasignar el mismo pedido no duplica la parada', function (): void {
     $order = 'DEMO-AOV-03';
     $shipmentId = aovOrder($order);

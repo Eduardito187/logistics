@@ -17,6 +17,8 @@ use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliv
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidenceHandler;
 use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRoute;
 use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRouteHandler;
+use Logistics\Execution\Application\Command\DetachShipmentFromRoute\DetachShipmentFromRoute;
+use Logistics\Execution\Application\Command\DetachShipmentFromRoute\DetachShipmentFromRouteHandler;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDeparted;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDepartedHandler;
 use Logistics\Execution\Application\Command\MarkStopArrived\MarkStopArrived;
@@ -129,6 +131,7 @@ final class ExecutionServiceProvider extends ServiceProvider
      */
     private const HANDLERS = [
         OpenDelivery::class => OpenDeliveryHandler::class,
+        DetachShipmentFromRoute::class => DetachShipmentFromRouteHandler::class,
         RecordPreparationScan::class => RecordPreparationScanHandler::class,
         RecordLoadScan::class => RecordLoadScanHandler::class,
         MarkShipmentDeparted::class => MarkShipmentDepartedHandler::class,

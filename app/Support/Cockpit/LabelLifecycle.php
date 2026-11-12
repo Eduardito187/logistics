@@ -255,6 +255,16 @@ final class LabelLifecycle
         if ($event === 'printed' && isset($meta['printer']) && is_string($meta['printer'])) {
             return $meta['printer'] === 'sticker' ? 'Impresora de pegatinas' : 'Impresora normal';
         }
+        if ($event === 'reassigned') {
+            $to = isset($meta['to_plate']) && is_string($meta['to_plate']) ? $meta['to_plate'] : null;
+            $from = isset($meta['from_plate']) && is_string($meta['from_plate']) ? $meta['from_plate'] : null;
+            if ($to !== null && $from !== null) {
+                return 'del camión '.$from.' al camión '.$to;
+            }
+            if ($to !== null) {
+                return 'al camión '.$to;
+            }
+        }
 
         return '';
     }
@@ -265,6 +275,7 @@ final class LabelLifecycle
             'generated' => 'Generada',
             'printed' => 'Impresa',
             'revoked' => 'Revocada',
+            'reassigned' => 'Reasignada',
             default => ucfirst($event),
         };
     }
@@ -275,6 +286,7 @@ final class LabelLifecycle
         return match ($event) {
             'revoked' => 'danger',
             'printed' => 'info',
+            'reassigned' => 'info',
             default => 'ok',
         };
     }
