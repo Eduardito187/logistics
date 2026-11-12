@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Presentation\Http;
 
+use App\Models\PersonalAccessToken;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryState;
@@ -47,14 +49,30 @@ abstract class ExecutionController
     /**
      * Identidad del dispositivo que origina el escaneo.
      *
-     * El integrador de Auth la inyecta desde el token (usuario + dispositivo) como atributos de la
-     * request; mientras tanto se acepta del cuerpo para no bloquear a la app.
+     * Fuente AUTORITATIVA: el dispositivo ligado al token Sanctum (`PersonalAccessToken.device_id`), que es
+     * lo que `EnsureDeviceToken` valida en cada request de `/app/*`. El integrador de Auth (futuro) lo
+     * inyectará como atributo de la request; mientras no exista, se resuelve acá desde el token. Respaldos:
+     * el header `X-Device-Id` que manda la app y, por compatibilidad, el cuerpo. El dominio exige que no sea
+     * vacío (DeviceContext), así que esta resolución es la que evita que TODO escaneo (POD/carga/…) falle.
      */
     protected function deviceId(Request $request): string
     {
         $attribute = $request->attributes->get('device_id');
         if (is_string($attribute) && trim($attribute) !== '') {
             return trim($attribute);
+        }
+
+        $user = $request->user();
+        if ($user instanceof User) {
+            $token = $user->currentAccessToken();
+            if ($token instanceof PersonalAccessToken && $token->device_id !== null) {
+                return (string) $token->device_id;
+            }
+        }
+
+        $header = $request->header('X-Device-Id');
+        if (is_string($header) && trim($header) !== '') {
+            return trim($header);
         }
 
         $body = $request->input('device_id');
@@ -64,12 +82,20 @@ abstract class ExecutionController
 
     /**
      * Identidad del usuario que origina el escaneo (ver deviceId()).
+     *
+     * Fuente AUTORITATIVA: el usuario autenticado, que el token Sanctum ya prueba (`getAuthIdentifier()`);
+     * no tiene sentido exigir que el cliente mande su propio id. Respaldo por compatibilidad: el cuerpo.
      */
     protected function userId(Request $request): string
     {
         $attribute = $request->attributes->get('user_id');
         if (is_string($attribute) && trim($attribute) !== '') {
             return trim($attribute);
+        }
+
+        $userId = $request->user()?->getAuthIdentifier();
+        if ($userId !== null && trim((string) $userId) !== '') {
+            return trim((string) $userId);
         }
 
         $body = $request->input('user_id');
