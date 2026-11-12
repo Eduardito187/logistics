@@ -16034,11 +16034,15 @@ components:
           type: object
           required:
           - database
+          - schema
           - cache
           properties:
             database:
               type: boolean
               description: PostgreSQL reachable with PostGIS enabled
+            schema:
+              type: boolean
+              description: A real schema table is queryable (detects schema/plan breakage)
             cache:
               type: boolean
               description: Valkey reachable
