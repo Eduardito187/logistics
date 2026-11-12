@@ -1,0 +1,87 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Enums\Role;
+use App\Http\Middleware\EnsureDeviceToken;
+use App\Http\Middleware\IdempotentRequests;
+use App\Models\User;
+use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScan;
+use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Domain\ValueObject\Uuid;
+
+/**
+ * Precondiciones del POD por API: una precondición faltante responde 422 con el motivo (nunca 500), y la foto
+ * de entrega es OBLIGATORIA. Antes, cualquier regla de negocio del dominio caía en la rama "default" del
+ * renderer y daba 500 ("se colgó"), que no le dice nada al chofer.
+ */
+beforeEach(function (): void {
+    $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+
+    // Rol de campo (no Tienda): el POD opera cross-nodo, sin el chequeo de nodo de la tienda.
+    $user = User::factory()->create();
+    $user->assignRole(Role::Chofer);
+    $this->actingAs($user, 'sanctum');
+})->skip(
+    env('DB_CONNECTION') !== 'pgsql',
+    'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',
+);
+
+/**
+ * @param  array<string, mixed> $overrides
+ * @return array<string, mixed>
+ */
+function podBody(string $shipment, string $unit, array $overrides = []): array
+{
+    return array_merge([
+        'shipment_id' => $shipment,
+        'unit_id' => $unit,
+        'confirmation' => 'Firma receptor',
+        'photo_path' => 'evidence/pod.jpg',
+        'lat' => -16.5,
+        'lng' => -68.15,
+        'occurred_at' => '2026-10-16T11:00:00+00:00',
+        'device_id' => 'device-01',
+        'user_id' => 'user-07',
+        'idempotency_key' => 'pod-'.$unit,
+    ], $overrides);
+}
+
+it('sin foto (photo_path) el POD responde 422, nunca cierra sin evidencia', function (): void {
+    $body = podBody(Uuid::generate()->value, Uuid::generate()->value);
+    unset($body['photo_path']);
+
+    $this->postJson('/api/v1/app/deliveries/proof-of-delivery', $body)
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'validation_failed')
+        ->assertJsonPath('errors.photo_path.0', fn (string $m): bool => $m !== '');
+});
+
+it('sin entrega abierta para el envío, el POD responde 422 con el motivo (no 500)', function (): void {
+    $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podBody(Uuid::generate()->value, Uuid::generate()->value))
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'business_rule_violation')
+        ->assertJsonPath('detail', fn (string $m): bool => str_contains($m, 'entrega'));
+});
+
+it('si el bulto no está cargado todavía, el POD responde 422 (transición inválida), no 500', function (): void {
+    $shipment = Uuid::generate()->value;
+    $unit = Uuid::generate()->value;
+
+    // Solo preparación: la entrega queda en Prepared, no Loaded → el POD no es una transición válida.
+    app(CommandBus::class)->dispatch(new RecordPreparationScan(
+        shipmentId: $shipment,
+        vehicleId: Uuid::generate()->value,
+        unitId: $unit,
+        lat: -16.5,
+        lng: -68.15,
+        deviceId: 'device-01',
+        userId: 'user-07',
+        occurredAt: '2026-10-16T08:00:00+00:00',
+        idempotencyKey: 'prep-'.$unit,
+    ));
+
+    $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podBody($shipment, $unit))
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'business_rule_violation');
+});

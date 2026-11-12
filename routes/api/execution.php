@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Logistics\Execution\Presentation\Http\AssembleDailyRouteController;
+use Logistics\Execution\Presentation\Http\AssignOrderVehicleController;
 use Logistics\Execution\Presentation\Http\CaptureDeliveryEvidenceController;
 use Logistics\Execution\Presentation\Http\GetDeliveryEvidenceController;
 use Logistics\Execution\Presentation\Http\GetDeliveryStateController;
@@ -57,6 +58,10 @@ return [
             // (fuera de servicio + reprogramación + avisos). Idempotente por Idempotency-Key.
             Route::post('vehicles/{vehicleId}/incidents', ReportVehicleIncidentController::class)
                 ->name('vehicles.incidents.report');
+            // Asignar el pedido a un camión de reparto real y atarlo a la ruta de ese vehículo (andén):
+            // aparece en «Mi ruta de hoy» del chofer. 422 si el vehículo no existe/no está operativo.
+            Route::post('orders/{orderNumber}/vehicle', AssignOrderVehicleController::class)
+                ->name('orders.vehicle.assign');
 
             // Estado actual de la entrega de un envío (con sus escaneos).
             Route::get('deliveries/{shipmentId}', GetDeliveryStateController::class)

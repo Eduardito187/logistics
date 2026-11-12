@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Labels\Infrastructure\Providers;
 
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Labels\Application\Command\EmitOrderLabels\EmitOrderLabels;
 use Logistics\Labels\Application\Command\EmitOrderLabels\EmitOrderLabelsHandler;
@@ -44,6 +45,8 @@ use Logistics\Labels\Domain\Contract\LabelVerifier;
 use Logistics\Labels\Domain\Contract\PrinterRepository;
 use Logistics\Labels\Domain\Contract\PublicKeyDirectory;
 use Logistics\Labels\Infrastructure\Crypto\ConfigPublicKeyDirectory;
+use Logistics\Labels\Infrastructure\Crypto\OpenLabelSigner;
+use Logistics\Labels\Infrastructure\Crypto\SigningKeyRegistry;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelSigner;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelVerifier;
 use Logistics\Labels\Infrastructure\Persistence\Eloquent\EloquentEmittedLabelRepository;
@@ -74,6 +77,11 @@ final class LabelsServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-labels.php', 'logistics-labels');
 
+        // Registro append-only de públicas por key_id (memoria de integridad; tolerante si falta la tabla).
+        $this->app->singleton(SigningKeyRegistry::class, function ($app): SigningKeyRegistry {
+            return new SigningKeyRegistry($app->make(ConnectionInterface::class));
+        });
+
         // Lazy: sin LABELS_SIGNING_KEY la app arranca igual; falla recién quien intente firmar,
         // con un mensaje que dice exactamente qué falta.
         $this->app->singleton(SodiumLabelSigner::class, function ($app): SodiumLabelSigner {
@@ -90,19 +98,56 @@ final class LabelsServiceProvider extends ServiceProvider
                 throw new RuntimeException('LABELS_SIGNING_KEY is not valid base64.');
             }
 
-            return new SodiumLabelSigner((int) $config->get('logistics-labels.active_key_id', 1), $secret);
-        });
-        $this->app->alias(SodiumLabelSigner::class, LabelSigner::class);
+            $activeId = (int) $config->get('logistics-labels.active_key_id', 1);
+            $signer = new SodiumLabelSigner($activeId, $secret);
 
-        $this->app->singleton(LabelVerifier::class, function ($app): LabelVerifier {
+            // Guardia anti-pisada (invariante append-only): si este key_id YA firmó con otra pública, NO se
+            // firma con la nueva bajo el id viejo (rompería la verificación de lo ya emitido). Hay que
+            // asignarle un key_id NUEVO. Si no hay colisión, se registra (append-only, idempotente) para que
+            // su pública se sirva siempre por ese id. Resolver el firmante = intención de firmar.
+            $registry = $app->make(SigningKeyRegistry::class);
+            $publicKey = base64_encode($signer->publicKey());
+            if ($registry->conflicts($activeId, $publicKey)) {
+                throw new RuntimeException(
+                    "LABELS_SIGNING_KEY changed for key_id {$activeId}: a different public key already signed labels ".
+                    'with that id. Assign a NEW LABELS_ACTIVE_KEY_ID instead of reusing it, so already-issued '.
+                    'labels keep verifying.',
+                );
+            }
+            $registry->register($activeId, $publicKey);
+
+            return $signer;
+        });
+
+        // Firmante efectivo: ABIERTO (sin clave) o firmado (Sodium). Modo abierto cuando LABELS_OPEN=true o
+        // cuando NO hay LABELS_SIGNING_KEY: la etiqueta es un JSON abierto y su autenticidad la da el registro
+        // (label_id rastreado), no una firma. Así una etiqueta impresa NUNCA se descarta por un problema de
+        // clave, y generar/validar funciona sin claves (decisión del dueño). Con clave y LABELS_OPEN=false se
+        // firma con Sodium como antes.
+        $this->app->bind(LabelSigner::class, function ($app): LabelSigner {
             /** @var Repository $config */
             $config = $app->make(Repository::class);
-            $keys = self::parsePublicKeys((string) $config->get('logistics-labels.previous_public_keys', ''));
+            $key = $config->get('logistics-labels.signing_key');
+            $open = (bool) $config->get('logistics-labels.open', false) || !is_string($key) || $key === '';
 
-            $encoded = $config->get('logistics-labels.signing_key');
-            if (is_string($encoded) && $encoded !== '') {
-                $signer = $app->make(SodiumLabelSigner::class);
-                $keys[$signer->activeKeyId()] = $signer->publicKey();
+            return $open
+                ? $app->make(OpenLabelSigner::class)
+                : $app->make(SodiumLabelSigner::class);
+        });
+
+        // El verificador valida contra EXACTAMENTE lo que publica el directorio (registro append-only +
+        // anteriores de config + activa), así una etiqueta válida nunca se rechaza. No resuelve el firmante
+        // (no dispara la guardia ni escribe): es solo lectura de las públicas.
+        $this->app->singleton(LabelVerifier::class, function ($app): LabelVerifier {
+            $bundle = $app->make(PublicKeyDirectory::class)->bundle();
+            $keys = [];
+            foreach ($bundle as $id => $publicKeys) {
+                foreach ($publicKeys as $base64) {
+                    $bytes = base64_decode($base64, true);
+                    if ($bytes !== false) {
+                        $keys[$id][] = $bytes;
+                    }
+                }
             }
 
             return new SodiumLabelVerifier($keys);
@@ -160,25 +205,5 @@ final class LabelsServiceProvider extends ServiceProvider
                 ExportPublicKeysCommand::class,
             ]);
         }
-    }
-
-    /**
-     * "1:base64,2:base64" → [1 => bytes, 2 => bytes]
-     *
-     * @return array<int, string>
-     */
-    private static function parsePublicKeys(string $raw): array
-    {
-        $keys = [];
-        foreach (array_filter(array_map('trim', explode(',', $raw))) as $entry) {
-            [$id, $encoded] = array_pad(explode(':', $entry, 2), 2, '');
-            $bytes = base64_decode($encoded, true);
-            if (!ctype_digit($id) || $bytes === false) {
-                throw new RuntimeException("Invalid entry in LABELS_PREVIOUS_PUBLIC_KEYS: {$entry}");
-            }
-            $keys[(int) $id] = $bytes;
-        }
-
-        return $keys;
     }
 }
