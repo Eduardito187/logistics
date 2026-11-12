@@ -33,20 +33,12 @@ final class GetPublicTrackingHandler implements QueryHandler
             throw TrackingException::because('GetPublicTrackingHandler solo maneja GetPublicTracking');
         }
 
-        try {
-            $token = TrackingToken::fromString($query->token);
-        } catch (TrackingException) {
-            return null;
-        }
-
-        $tracking = $this->trackings->findByToken($token);
-        if ($tracking === null) {
-            return null;
-        }
+        $token = $this->parseToken($query->token);
+        $tracking = $token !== null ? $this->trackings->findByToken($token) : null;
 
         // Enlace vencido (TTL desde la entrega): no se sirven datos. Presentation distingue "vencido" de
         // "inexistente" con GetPublicLinkState.
-        if ($this->guard->isExpired($tracking)) {
+        if ($tracking === null || $this->guard->isExpired($tracking)) {
             return null;
         }
 
@@ -54,5 +46,17 @@ final class GetPublicTrackingHandler implements QueryHandler
         $positionIsLive = $position?->isLiveAt($this->clock->now());
 
         return PublicTrackingView::fromTracking($tracking, $positionIsLive);
+    }
+
+    /**
+     * Token de la URL, o null si su forma es inválida (no corresponde a ningún seguimiento).
+     */
+    private function parseToken(string $raw): ?TrackingToken
+    {
+        try {
+            return TrackingToken::fromString($raw);
+        } catch (TrackingException) {
+            return null;
+        }
     }
 }

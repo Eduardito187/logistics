@@ -7,6 +7,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
+// Nombre del cliente del envío sembrado; se verifica en la hoja de ruta y en el estado por envío.
+const ORDER_REF_PHOTO_TEST_CUSTOMER = 'Cliente Carga';
+
 /**
  * Pantalla de carga de la app: las entregas (hoja de ruta del vehículo y estado por envío) traen la ORDEN
  * (order_reference, no el id externo con sufijo de multishipping) y el cliente, para no mostrar «Envío 1».
@@ -36,7 +39,7 @@ function dorSeedDelivery(): array
         'source' => 'commerce',
         'external_id' => $order.'#n:'.Uuid::generate()->value,
         'order_reference' => $order,
-        'customer_name' => 'Cliente Carga',
+        'customer_name' => ORDER_REF_PHOTO_TEST_CUSTOMER,
         'address_text' => 'Av. Banzer 100',
         'address_confidence' => 90,
         'address_confidence_level' => 'high',
@@ -65,7 +68,7 @@ it('la hoja de ruta del vehículo trae la orden y el cliente de cada entrega', f
         ->assertJsonPath('data.0.shipment_id', $seed['shipment'])
         ->assertJsonPath('data.0.order_reference', $seed['order'])
         ->assertJsonPath('data.0.reference', $seed['order'])
-        ->assertJsonPath('data.0.customer_name', 'Cliente Carga');
+        ->assertJsonPath('data.0.customer_name', ORDER_REF_PHOTO_TEST_CUSTOMER);
 });
 
 it('el estado de la entrega de un envío también trae la orden y el cliente', function (): void {
@@ -75,7 +78,7 @@ it('el estado de la entrega de un envío también trae la orden y el cliente', f
         ->assertOk()
         ->assertJsonPath('data.order_reference', $seed['order'])
         ->assertJsonPath('data.reference', $seed['order'])
-        ->assertJsonPath('data.customer_name', 'Cliente Carga');
+        ->assertJsonPath('data.customer_name', ORDER_REF_PHOTO_TEST_CUSTOMER);
 });
 
 it('la misma Idempotency-Key devuelve la referencia original y no guarda una foto duplicada', function (): void {

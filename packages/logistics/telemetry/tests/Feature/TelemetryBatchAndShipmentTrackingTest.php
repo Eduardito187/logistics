@@ -17,6 +17,8 @@ use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Model\VehiclePositio
 
 // Desplazamiento relativo usado por varias lecturas/entregas del lote.
 const TBT_THIRTY_MINUTES_AGO = '-30 minutes';
+const TBT_TEN_MINUTES_AGO = '-10 minutes';
+const TBT_TWO_MINUTES_AGO = '-2 minutes';
 
 /**
  * Pedidos de la auditoría de la app (#12, #17, #20 y seguimiento por envío) contra el stack completo:
@@ -106,7 +108,7 @@ it('ingests a batch idempotently per fix: a retried batch is reported as duplica
     $vehicleId = Uuid::generate()->value;
     $pings = [
         ['fix_id' => 'f-1', 'lat' => -16.500, 'lng' => -68.150, 'recorded_at' => tbtAt('-3 minutes'), 'speed_kph' => 30.0],
-        ['fix_id' => 'f-2', 'lat' => -16.501, 'lng' => -68.151, 'recorded_at' => tbtAt('-2 minutes'), 'speed_kph' => 30.0],
+        ['fix_id' => 'f-2', 'lat' => -16.501, 'lng' => -68.151, 'recorded_at' => tbtAt(TBT_TWO_MINUTES_AGO), 'speed_kph' => 30.0],
         ['fix_id' => 'f-3', 'lat' => -16.502, 'lng' => -68.152, 'recorded_at' => tbtAt('-1 minute'), 'speed_kph' => 30.0],
     ];
 
@@ -146,7 +148,7 @@ it('produces the same pings, trip and live position as sending the readings one 
     $batch = Uuid::generate()->value;
     $pings = [
         ['lat' => -16.500, 'lng' => -68.150, 'recorded_at' => tbtAt('-3 minutes'), 'speed_kph' => 20.0, 'device_id' => 'd'],
-        ['lat' => -16.505, 'lng' => -68.150, 'recorded_at' => tbtAt('-2 minutes'), 'speed_kph' => 25.0, 'device_id' => 'd'],
+        ['lat' => -16.505, 'lng' => -68.150, 'recorded_at' => tbtAt(TBT_TWO_MINUTES_AGO), 'speed_kph' => 25.0, 'device_id' => 'd'],
         ['lat' => -16.510, 'lng' => -68.150, 'recorded_at' => tbtAt('-1 minute'), 'speed_kph' => 30.0, 'device_id' => 'd'],
     ];
 
@@ -175,7 +177,7 @@ it('answers 207 with per-item results when part of the batch is malformed', func
     $vehicleId = Uuid::generate()->value;
 
     tbtPost($this, $vehicleId, [
-        ['lat' => -16.5, 'lng' => -68.15, 'recorded_at' => tbtAt('-2 minutes')],
+        ['lat' => -16.5, 'lng' => -68.15, 'recorded_at' => tbtAt(TBT_TWO_MINUTES_AGO)],
         ['lat' => 123.0, 'lng' => -68.15, 'recorded_at' => tbtAt('-1 minute')],
     ])
         ->assertStatus(207)
@@ -194,7 +196,7 @@ it('tolerates out-of-order batches: an older batch is stored but does not move t
     $newer = tbtAt('-1 minute');
 
     tbtPost($this, $vehicleId, [['lat' => -16.40, 'lng' => -68.10, 'recorded_at' => $newer, 'device_id' => 'd']])->assertStatus(202);
-    tbtPost($this, $vehicleId, [['lat' => -16.60, 'lng' => -68.20, 'recorded_at' => tbtAt('-10 minutes'), 'device_id' => 'd']])->assertStatus(202);
+    tbtPost($this, $vehicleId, [['lat' => -16.60, 'lng' => -68.20, 'recorded_at' => tbtAt(TBT_TEN_MINUTES_AGO), 'device_id' => 'd']])->assertStatus(202);
 
     $live = VehiclePositionRecord::query()->findOrFail($vehicleId);
 
@@ -266,7 +268,7 @@ it('returns the breadcrumbs of a shipment only within its on-board window', func
         ['lat' => -16.40, 'lng' => -68.10, 'recorded_at' => tbtAt('-90 minutes'), 'device_id' => 'd'],
         ['lat' => -16.50, 'lng' => -68.150, 'recorded_at' => tbtAt('-50 minutes'), 'device_id' => 'd'],
         ['lat' => -16.51, 'lng' => -68.150, 'recorded_at' => tbtAt(TBT_THIRTY_MINUTES_AGO), 'device_id' => 'd'],
-        ['lat' => -16.52, 'lng' => -68.150, 'recorded_at' => tbtAt('-10 minutes'), 'device_id' => 'd'],
+        ['lat' => -16.52, 'lng' => -68.150, 'recorded_at' => tbtAt(TBT_TEN_MINUTES_AGO), 'device_id' => 'd'],
     ])->assertStatus(202);
 
     $this->getJson("/api/v1/app/telemetry/shipments/{$shipmentId}/breadcrumbs")
@@ -305,7 +307,7 @@ it('raises a route deviation alert with its outbox event when the loaded vehicle
 
     // Sobre la ruta: sin alerta.
     tbtPost($this, $vehicleId, [
-        ['lat' => -16.500, 'lng' => -68.18, 'recorded_at' => tbtAt('-10 minutes'), 'speed_kph' => 30.0],
+        ['lat' => -16.500, 'lng' => -68.18, 'recorded_at' => tbtAt(TBT_TEN_MINUTES_AGO), 'speed_kph' => 30.0],
         ['lat' => -16.500, 'lng' => -68.17, 'recorded_at' => tbtAt('-9 minutes'), 'speed_kph' => 30.0],
     ])->assertStatus(202);
     expect(AlertRecord::query()->where('vehicle_id', $vehicleId)->where('type', 'route_deviation')->count())->toBe(0);
@@ -349,10 +351,10 @@ it('raises a speeding alert only when the excess is sustained', function (): voi
 it('bridges the batch to per-shipment tracking with one position event carrying the shipments on board', function (): void {
     $vehicleId = Uuid::generate()->value;
     $shipmentId = Uuid::generate()->value;
-    tbtDelivery($shipmentId, $vehicleId, 'LOADED', tbtAt('-10 minutes'));
+    tbtDelivery($shipmentId, $vehicleId, 'LOADED', tbtAt(TBT_TEN_MINUTES_AGO));
 
     tbtPost($this, $vehicleId, [
-        ['lat' => -16.50, 'lng' => -68.15, 'recorded_at' => tbtAt('-2 minutes')],
+        ['lat' => -16.50, 'lng' => -68.15, 'recorded_at' => tbtAt(TBT_TWO_MINUTES_AGO)],
         ['lat' => -16.51, 'lng' => -68.15, 'recorded_at' => tbtAt('-1 minute')],
     ])->assertStatus(202);
 

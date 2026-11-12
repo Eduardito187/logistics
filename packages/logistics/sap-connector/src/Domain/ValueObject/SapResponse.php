@@ -22,4 +22,12 @@ final readonly class SapResponse
     {
         return $this->status >= 200 && $this->status < 300;
     }
+
+    /**
+     * Cuerpo recortado a `$limit` bytes (sin partir un carácter multibyte), para guardarlo como diagnóstico.
+     */
+    public function truncatedBody(int $limit): string
+    {
+        return strlen($this->body) > $limit ? mb_strcut($this->body, 0, $limit) : $this->body;
+    }
 }

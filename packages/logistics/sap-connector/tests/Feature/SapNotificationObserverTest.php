@@ -156,7 +156,7 @@ it('si SAP falla nunca lanza, reintenta con backoff y se detiene a los 3 intento
     app(SapNotificationRecorder::class)->observe($message);
 
     // Intentos 2 y 3: el barrido del scheduler, con el backoff ya vencido (se adelanta en la fila).
-    foreach ([2, 3] as $attempt) {
+    for ($retry = 1; $retry <= 2; $retry++) {
         SapNotificationRecord::query()->update(['next_attempt_at' => (new DateTimeImmutable('-1 minute'))->format('Y-m-d H:i:sP')]);
         $this->artisan('logistics:sap:retry-notifications')->assertSuccessful();
     }

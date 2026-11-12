@@ -453,13 +453,13 @@ final class Delivery extends AggregateRoot
     }
 
     /**
-     * Clave derivada para el escaneo de cada bulto adicional de un POD en lote (cabe en 191 caracteres).
+     * Clave derivada para el escaneo de cada producto adicional de un POD en lote (cabe en 191 caracteres).
      */
     private static function derivedKey(string $idempotencyKey, string $unitId): string
     {
         $key = $idempotencyKey.':'.$unitId;
 
-        return strlen($key) <= 191 ? $key : $idempotencyKey.':'.sha1($unitId);
+        return strlen($key) <= 191 ? $key : $idempotencyKey.':'.substr(hash('sha256', $unitId), 0, 40);
     }
 
     private function appendScan(

@@ -11,6 +11,13 @@ use Illuminate\Support\Facades\Schema;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
+/** Fecha prometida base de los escenarios del resumen. */
+const SHIPMENT_SUMMARY_KPIS_DAY = '2031-03-10';
+
+/** Franja de entrega de mañana usada en los escenarios (inicio y fin). */
+const SHIPMENT_SUMMARY_KPIS_WINDOW_START = '09:00';
+const SHIPMENT_SUMMARY_KPIS_WINDOW_END = '13:00';
+
 /**
  * Auditoría app #16 / #22 / #26 + KPIs del día, contra PostgreSQL (base logistics_test):
  *  - GET /app/shipments/summary (agregados por estado, alcance por tienda);
@@ -103,11 +110,11 @@ function summaryTestDelivery(string $shipmentId, string $vehicleId, string $stat
 // ── #16 resumen del tablero ────────────────────────────────────────────────
 it('resume los envíos por estado con agregados SQL, acotado por fecha y nodo', function (): void {
     $node = Uuid::generate()->value;
-    $planned = ShipmentRecord::factory()->forNode($node)->withDeliverySlot('2031-03-10', '09:00', '13:00')->create(['status' => 'PLANNED']);
-    ShipmentRecord::factory()->forNode($node)->withDeliverySlot('2031-03-10', '09:00', '13:00')->create(['status' => 'PLANNED']);
-    ShipmentRecord::factory()->forNode($node)->withDeliverySlot('2031-03-10', '14:00', '18:00')->create(['status' => 'RECEIVED']);
+    $planned = ShipmentRecord::factory()->forNode($node)->withDeliverySlot(SHIPMENT_SUMMARY_KPIS_DAY, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create(['status' => 'PLANNED']);
+    ShipmentRecord::factory()->forNode($node)->withDeliverySlot(SHIPMENT_SUMMARY_KPIS_DAY, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create(['status' => 'PLANNED']);
+    ShipmentRecord::factory()->forNode($node)->withDeliverySlot(SHIPMENT_SUMMARY_KPIS_DAY, '14:00', '18:00')->create(['status' => 'RECEIVED']);
     // Otro día: fuera del resumen.
-    ShipmentRecord::factory()->forNode($node)->withDeliverySlot('2031-03-11', '09:00', '13:00')->create(['status' => 'DELIVERED']);
+    ShipmentRecord::factory()->forNode($node)->withDeliverySlot('2031-03-11', SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create(['status' => 'DELIVERED']);
 
     summaryTestDelivery($planned->id, Uuid::generate()->value, 'LOADED');
 
@@ -120,8 +127,8 @@ it('resume los envíos por estado con agregados SQL, acotado por fecha y nodo', 
     ])
         ->and($data['total'])->toBe(3)
         ->and($data['by_execution_status'])->toBe(['LOADED' => 1])
-        ->and($data['date_from'])->toBe('2031-03-10')
-        ->and($data['date_to'])->toBe('2031-03-10')
+        ->and($data['date_from'])->toBe(SHIPMENT_SUMMARY_KPIS_DAY)
+        ->and($data['date_to'])->toBe(SHIPMENT_SUMMARY_KPIS_DAY)
         ->and($data)->toHaveKeys(['active_plans', 'open_alerts', 'units_total', 'generated_at']);
 
     // Rango de fechas: incluye el día siguiente.
@@ -139,8 +146,8 @@ it('resume los envíos por estado con agregados SQL, acotado por fecha y nodo', 
 it('acota el resumen de una tienda a su propio nodo (ignora el filtro del cliente)', function (): void {
     $ownNode = Uuid::generate()->value;
     $otherNode = Uuid::generate()->value;
-    ShipmentRecord::factory()->forNode($ownNode)->withDeliverySlot('2031-03-12', '09:00', '13:00')->create(['status' => 'PLANNED']);
-    ShipmentRecord::factory()->forNode($otherNode)->withDeliverySlot('2031-03-12', '09:00', '13:00')->create(['status' => 'PLANNED']);
+    ShipmentRecord::factory()->forNode($ownNode)->withDeliverySlot('2031-03-12', SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create(['status' => 'PLANNED']);
+    ShipmentRecord::factory()->forNode($otherNode)->withDeliverySlot('2031-03-12', SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create(['status' => 'PLANNED']);
 
     $store = User::factory()->create();
     $store->assignRole(Role::Tienda);
@@ -192,12 +199,12 @@ it('deriva delivery_mode del tipo del nodo destino y filtra por él', function (
     $dc = summaryTestNode('distribution_center');
     $date = '2031-04-15';
 
-    $pickup = ShipmentRecord::factory()->forNode($store)->withDeliverySlot($date, '09:00', '13:00')->create([
+    $pickup = ShipmentRecord::factory()->forNode($store)->withDeliverySlot($date, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create([
         'address_text' => 'Av. 6 de Agosto 2170, Sopocachi, La Paz',
         'address_reference' => 'Edificio azul',
     ]);
-    $transfer = ShipmentRecord::factory()->forNode($dc)->withDeliverySlot($date, '09:00', '13:00')->create();
-    $home = ShipmentRecord::factory()->withDeliverySlot($date, '09:00', '13:00')->create();
+    $transfer = ShipmentRecord::factory()->forNode($dc)->withDeliverySlot($date, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create();
+    $home = ShipmentRecord::factory()->withDeliverySlot($date, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create();
 
     $ids = fn (string $mode): array => collect(
         $this->getJson("/api/v1/app/shipments?delivery_date_from={$date}&delivery_date_to={$date}&delivery_mode={$mode}")
@@ -241,11 +248,11 @@ it('calcula los KPIs del día con SQL: entregadas, fallidas, pendientes, a tiemp
     $route = summaryTestRoute($vehicle, $date);
 
     // A: entregada a tiempo (cierre 12:00 La Paz, ventana hasta 13:00), primer intento.
-    $onTime = ShipmentRecord::factory()->withDeliverySlot($date, '09:00', '13:00')->create(['status' => 'DELIVERED'])->id;
+    $onTime = ShipmentRecord::factory()->withDeliverySlot($date, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create(['status' => 'DELIVERED'])->id;
     summaryTestStop($route, $onTime, 1, 'COMPLETED', '2031-02-10T12:00:00-04:00');
 
     // B: fallida (cliente ausente).
-    $failed = ShipmentRecord::factory()->withDeliverySlot($date, '09:00', '13:00')->create(['status' => 'FAILED'])->id;
+    $failed = ShipmentRecord::factory()->withDeliverySlot($date, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create(['status' => 'FAILED'])->id;
     summaryTestStop($route, $failed, 2, 'FAILED', '2031-02-10T11:00:00-04:00');
     summaryTestDelivery($failed, $vehicle, 'FAILED', null, 'CUSTOMER_ABSENT');
 
@@ -255,7 +262,7 @@ it('calcula los KPIs del día con SQL: entregadas, fallidas, pendientes, a tiemp
 
     // D: entregada TARDE (POD 15:00, ventana hasta 13:00), parada aún sin cerrar, y con un intento
     //    fallido el día anterior (no es primer intento).
-    $late = ShipmentRecord::factory()->withDeliverySlot($date, '09:00', '13:00')->create(['status' => 'DELIVERED'])->id;
+    $late = ShipmentRecord::factory()->withDeliverySlot($date, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create(['status' => 'DELIVERED'])->id;
     summaryTestStop($route, $late, 4, 'PENDING');
     summaryTestDelivery($late, $vehicle, 'DELIVERED', '2031-02-10T15:00:00-04:00');
     summaryTestStop(summaryTestRoute($vehicle, '2031-02-09'), $late, 1, 'FAILED', '2031-02-09T16:00:00-04:00');

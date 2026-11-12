@@ -10,6 +10,11 @@ use Logistics\Shipments\Domain\ValueObject\LineMeasure;
 use Logistics\Shipments\Domain\ValueObject\MeasurementsSource;
 
 /**
+ * Caída simulada del lector de catálogo (la cascada debe degradar a los defaults sin propagarla).
+ */
+final class FakeCatalogReaderOutage extends RuntimeException {}
+
+/**
  * Lector de catálogo en memoria para probar la cascada sin base de datos.
  *
  * @param array<string, CatalogMeasurements> $known
@@ -26,7 +31,7 @@ function fakeCatalogReader(array $known, bool $throws = false): CatalogMeasureme
         public function forSkus(array $skus): array
         {
             if ($this->throws) {
-                throw new RuntimeException('catálogo caído');
+                throw new FakeCatalogReaderOutage('catálogo caído');
             }
 
             return array_intersect_key($this->known, array_flip($skus));

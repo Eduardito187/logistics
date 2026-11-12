@@ -163,45 +163,81 @@ final class SyncShipmentStatusCommand extends Command
             return [];
         }
 
+        /** @var array<string, ShipmentStatus> $targets */
         $targets = [];
-        $raise = static function (string $id, ShipmentStatus $status) use (&$targets): void {
-            $known = $targets[$id] ?? null;
-            if ($known === null || ($status->progressRank() ?? 0) > ($known->progressRank() ?? 0)) {
-                $targets[$id] = $status;
-            }
-        };
+        foreach ($this->executionTargets($connection, $ids) as [$id, $status]) {
+            self::raise($targets, $id, $status);
+        }
+        foreach ($this->plannedIds($connection, $ids) as $id) {
+            self::raise($targets, $id, ShipmentStatus::Planned);
+        }
 
+        return $targets;
+    }
+
+    /**
+     * Sube el estado objetivo del envío solo si el nuevo es de MAYOR avance que el ya conocido.
+     *
+     * @param array<string, ShipmentStatus> $targets
+     */
+    private static function raise(array &$targets, string $id, ShipmentStatus $status): void
+    {
+        $known = $targets[$id] ?? null;
+        if ($known === null || ($status->progressRank() ?? 0) > ($known->progressRank() ?? 0)) {
+            $targets[$id] = $status;
+        }
+    }
+
+    /**
+     * Estado objetivo que se deriva de cada entrega en ejecución (pares envío → estado).
+     *
+     * @param  list<string>                              $ids
+     * @return list<array{0: string, 1: ShipmentStatus}>
+     */
+    private function executionTargets(ConnectionInterface $connection, array $ids): array
+    {
+        $pairs = [];
         foreach ($this->safeRows(fn () => $connection->table('execution_deliveries')
             ->whereIn('shipment_id', $ids)
             ->get(['shipment_id', 'status'])) as $row) {
             $status = is_string($row->status ?? null) ? (self::DELIVERY_TARGETS[$row->status] ?? null) : null;
             if ($status !== null && is_scalar($row->shipment_id ?? null)) {
-                $raise((string) $row->shipment_id, $status);
+                $pairs[] = [(string) $row->shipment_id, $status];
             }
         }
 
-        foreach ($this->safeRows(fn () => $connection->table('execution_driver_route_stops')
+        return $pairs;
+    }
+
+    /**
+     * Envíos con parada en una ruta de chofer o en un plan PUBLICADO (ambos casos → PLANNED).
+     *
+     * @param  list<string> $ids
+     * @return list<string>
+     */
+    private function plannedIds(ConnectionInterface $connection, array $ids): array
+    {
+        $routeStops = $this->safeRows(fn () => $connection->table('execution_driver_route_stops')
             ->whereIn('shipment_id', $ids)
             ->distinct()
-            ->get(['shipment_id'])) as $row) {
-            if (is_scalar($row->shipment_id ?? null)) {
-                $raise((string) $row->shipment_id, ShipmentStatus::Planned);
-            }
-        }
+            ->get(['shipment_id']));
 
         // Solo planes PUBLICADOS: un plan propuesto todavía se re-arma (ver ShipmentStatusProgressionDispatcher).
-        foreach ($this->safeRows(fn () => $connection->table('planning_plan_stops as s')
+        $planStops = $this->safeRows(fn () => $connection->table('planning_plan_stops as s')
             ->join('planning_plans as p', 'p.id', '=', 's.plan_id')
             ->whereIn('s.shipment_id', $ids)
             ->where('p.status', 'PUBLISHED')
             ->distinct()
-            ->get(['s.shipment_id'])) as $row) {
+            ->get(['s.shipment_id']));
+
+        $planned = [];
+        foreach ([...$routeStops, ...$planStops] as $row) {
             if (is_scalar($row->shipment_id ?? null)) {
-                $raise((string) $row->shipment_id, ShipmentStatus::Planned);
+                $planned[] = (string) $row->shipment_id;
             }
         }
 
-        return $targets;
+        return $planned;
     }
 
     /**
@@ -246,42 +282,8 @@ final class SyncShipmentStatusCommand extends Command
                 break;
             }
 
-            /** @var array<string, string> $nodeByShipment */
-            $nodeByShipment = [];
-            foreach ($rows as $row) {
-                /** @var \stdClass $row */
-                $id = is_scalar($row->id ?? null) ? (string) $row->id : '';
-                if ($id === '') {
-                    continue;
-                }
-                $lastId = $id;
-
-                $node = self::pickupNodeOf($row->source ?? null, $row->external_id ?? null);
-                if ($node !== null) {
-                    $nodeByShipment[$id] = $node;
-                }
-            }
-
-            // Solo nodos que existen en la red (un sufijo huérfano no se escribe).
-            $existing = [];
-            foreach ($this->safeRows(fn () => $connection->table('network_nodes')
-                ->whereIn('id', array_values(array_unique(array_values($nodeByShipment))))
-                ->get(['id'])) as $node) {
-                if (is_scalar($node->id ?? null)) {
-                    $existing[strtolower((string) $node->id)] = true;
-                }
-            }
-
-            foreach ($nodeByShipment as $shipmentId => $nodeId) {
-                if (!isset($existing[$nodeId])) {
-                    continue;
-                }
-
-                $total += $dryRun ? 1 : $connection->table(self::TABLE)
-                    ->where('id', $shipmentId)
-                    ->whereNull('destination_node_id')
-                    ->update(['destination_node_id' => $nodeId, 'updated_at' => now()]);
-            }
+            $nodeByShipment = self::pickupNodesOf($rows, $lastId);
+            $total += $this->fillDestinationNodes($connection, $nodeByShipment, $dryRun);
 
             if ($rows->count() < $chunk) {
                 break;
@@ -289,6 +291,78 @@ final class SyncShipmentStatusCommand extends Command
         }
 
         return $total;
+    }
+
+    /**
+     * Nodo de retiro de cada envío del tramo (envío → nodo). Avanza `$lastId` al último id válido visto,
+     * que es el cursor keyset del tramo siguiente.
+     *
+     * @param  iterable<mixed>       $rows
+     * @return array<string, string>
+     */
+    private static function pickupNodesOf(iterable $rows, ?string &$lastId): array
+    {
+        $nodeByShipment = [];
+        foreach ($rows as $row) {
+            /** @var \stdClass $row */
+            $id = is_scalar($row->id ?? null) ? (string) $row->id : '';
+            if ($id === '') {
+                continue;
+            }
+            $lastId = $id;
+
+            $node = self::pickupNodeOf($row->source ?? null, $row->external_id ?? null);
+            if ($node !== null) {
+                $nodeByShipment[$id] = $node;
+            }
+        }
+
+        return $nodeByShipment;
+    }
+
+    /**
+     * Escribe el nodo destino de los envíos cuyo nodo existe en la red (o los cuenta en dry-run). La
+     * guarda `destination_node_id IS NULL` evita pisar un nodo ya puesto.
+     *
+     * @param array<string, string> $nodeByShipment
+     */
+    private function fillDestinationNodes(ConnectionInterface $connection, array $nodeByShipment, bool $dryRun): int
+    {
+        $existing = $this->existingNodes($connection, $nodeByShipment);
+
+        $total = 0;
+        foreach ($nodeByShipment as $shipmentId => $nodeId) {
+            if (!isset($existing[$nodeId])) {
+                continue;
+            }
+
+            $total += $dryRun ? 1 : $connection->table(self::TABLE)
+                ->where('id', $shipmentId)
+                ->whereNull('destination_node_id')
+                ->update(['destination_node_id' => $nodeId, 'updated_at' => now()]);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Solo nodos que existen en la red (un sufijo huérfano no se escribe), en minúsculas.
+     *
+     * @param  array<string, string> $nodeByShipment
+     * @return array<string, true>
+     */
+    private function existingNodes(ConnectionInterface $connection, array $nodeByShipment): array
+    {
+        $existing = [];
+        foreach ($this->safeRows(fn () => $connection->table('network_nodes')
+            ->whereIn('id', array_values(array_unique(array_values($nodeByShipment))))
+            ->get(['id'])) as $node) {
+            if (is_scalar($node->id ?? null)) {
+                $existing[strtolower((string) $node->id)] = true;
+            }
+        }
+
+        return $existing;
     }
 
     /** Nodo de retiro del id externo (misma regla del ingreso), o null si no aplica. */

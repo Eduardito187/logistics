@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\DB;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 
+/** Ruta del endpoint de ficha física del producto usado en los casos de validación. */
+const PHYSICAL_SPEC_ENDPOINT_COC01_URL = '/api/v1/integrations/catalog/products/COC-01/physical-spec';
+
 /**
  * Medidas físicas del catálogo (Roadmap 02, Fase 2.0) contra PostgreSQL real (logistics_test):
  * comando SetProductPhysicalSpec y endpoints de integraciones por SKU (PUT individual y POST en lote).
@@ -77,15 +80,15 @@ it('PUT acepta una ficha parcial (solo peso) sin volumen', function (): void {
 it('PUT rechaza con 422 valores inválidos y un cuerpo vacío', function (): void {
     $this->commands->dispatch(new DraftProduct('Cocina', 'coc-01'));
 
-    $this->putJson('/api/v1/integrations/catalog/products/COC-01/physical-spec', ['weight_kg' => -3])
+    $this->putJson(PHYSICAL_SPEC_ENDPOINT_COC01_URL, ['weight_kg' => -3])
         ->assertStatus(422);
-    $this->putJson('/api/v1/integrations/catalog/products/COC-01/physical-spec', ['weight_kg' => 0])
+    $this->putJson(PHYSICAL_SPEC_ENDPOINT_COC01_URL, ['weight_kg' => 0])
         ->assertStatus(422);
-    $this->putJson('/api/v1/integrations/catalog/products/COC-01/physical-spec', ['length_cm' => 'ancho'])
+    $this->putJson(PHYSICAL_SPEC_ENDPOINT_COC01_URL, ['length_cm' => 'ancho'])
         ->assertStatus(422);
-    $this->putJson('/api/v1/integrations/catalog/products/COC-01/physical-spec', ['height_cm' => 999999])
+    $this->putJson(PHYSICAL_SPEC_ENDPOINT_COC01_URL, ['height_cm' => 999999])
         ->assertStatus(422);
-    $this->putJson('/api/v1/integrations/catalog/products/COC-01/physical-spec', [])
+    $this->putJson(PHYSICAL_SPEC_ENDPOINT_COC01_URL, [])
         ->assertStatus(422);
 
     $record = ProductRecord::query()->where('canonical_sku', 'COC-01')->firstOrFail();

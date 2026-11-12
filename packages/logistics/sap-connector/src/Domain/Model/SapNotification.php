@@ -7,6 +7,7 @@ namespace Logistics\SapConnector\Domain\Model;
 use DateInterval;
 use DateTimeImmutable;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
+use Logistics\SapConnector\Domain\ValueObject\SapDeliveryTrace;
 use Logistics\SapConnector\Domain\ValueObject\SapNotificationId;
 use Logistics\SapConnector\Domain\ValueObject\SapNotificationStatus;
 use Logistics\SapConnector\Domain\ValueObject\SapResponse;
@@ -96,7 +97,8 @@ final class SapNotification
     }
 
     /**
-     * Reconstituye el aviso desde la persistencia (los datos de la fila ya son válidos).
+     * Reconstituye el aviso desde la persistencia (los datos de la fila ya son válidos). El rastro del
+     * envío (error, respuesta, horas) llega agrupado en un solo valor.
      *
      * @param array<string, mixed> $payload
      */
@@ -109,11 +111,7 @@ final class SapNotification
         DateTimeImmutable $occurredAt,
         SapNotificationStatus $status,
         int $attempts,
-        ?string $lastError,
-        ?int $responseStatus,
-        ?string $responseBody,
-        ?DateTimeImmutable $sentAt,
-        ?DateTimeImmutable $nextAttemptAt,
+        SapDeliveryTrace $trace,
     ): self {
         return new self(
             $id,
@@ -124,11 +122,11 @@ final class SapNotification
             $occurredAt,
             $status,
             $attempts,
-            $lastError,
-            $responseStatus,
-            $responseBody,
-            $sentAt,
-            $nextAttemptAt,
+            $trace->lastError,
+            $trace->responseStatus,
+            $trace->responseBody,
+            $trace->sentAt,
+            $trace->nextAttemptAt,
         );
     }
 
@@ -166,7 +164,7 @@ final class SapNotification
         $this->status = SapNotificationStatus::Sent;
         $this->lastError = null;
         $this->responseStatus = $response->status;
-        $this->responseBody = self::truncateBody($response->body);
+        $this->responseBody = $response->truncatedBody(self::RESPONSE_BODY_LIMIT);
         $this->sentAt = $now;
         $this->nextAttemptAt = null;
     }
@@ -194,7 +192,7 @@ final class SapNotification
         $trimmed = trim($error);
         $this->lastError = mb_substr($trimmed !== '' ? $trimmed : 'error desconocido', 0, self::ERROR_LIMIT);
         $this->responseStatus = $response?->status;
-        $this->responseBody = $response !== null ? self::truncateBody($response->body) : null;
+        $this->responseBody = $response?->truncatedBody(self::RESPONSE_BODY_LIMIT);
 
         $this->nextAttemptAt = $this->attempts < max(1, $maxAttempts)
             ? self::plusSeconds($now, 60 * max(0, $backoffMinutes[$this->attempts] ?? 5))
@@ -271,34 +269,18 @@ final class SapNotification
         return $this->attempts;
     }
 
-    public function lastError(): ?string
+    /**
+     * Rastro del envío: último error, respuesta cruda de SAP, hora de aceptación y próximo intento.
+     */
+    public function deliveryTrace(): SapDeliveryTrace
     {
-        return $this->lastError;
-    }
-
-    public function responseStatus(): ?int
-    {
-        return $this->responseStatus;
-    }
-
-    public function responseBody(): ?string
-    {
-        return $this->responseBody;
-    }
-
-    public function sentAt(): ?DateTimeImmutable
-    {
-        return $this->sentAt;
-    }
-
-    public function nextAttemptAt(): ?DateTimeImmutable
-    {
-        return $this->nextAttemptAt;
-    }
-
-    private static function truncateBody(string $body): string
-    {
-        return strlen($body) > self::RESPONSE_BODY_LIMIT ? mb_strcut($body, 0, self::RESPONSE_BODY_LIMIT) : $body;
+        return new SapDeliveryTrace(
+            $this->lastError,
+            $this->responseStatus,
+            $this->responseBody,
+            $this->sentAt,
+            $this->nextAttemptAt,
+        );
     }
 
     private static function plusSeconds(DateTimeImmutable $at, int $seconds): DateTimeImmutable

@@ -10,6 +10,7 @@ const APP_GATE_VERSION_OLD = '1.0.0';
 const APP_GATE_VERSION_FUTURE = '9.0.0';
 const APP_GATE_VERSION_MIN = '1.5.0';
 const APP_GATE_ME_URL = '/api/v1/app/auth/me';
+const APP_GATE_CONFIG_URL = '/api/v1/app/app-config';
 
 // GET /api/v1/app/app-config (configuración dictada por el servidor) y la guarda de versión mínima de la
 // puerta app: cabecera X-Min-App-Version + 426 Upgrade Required por debajo de la mínima; sin X-App-Version
@@ -33,7 +34,7 @@ function versionGateBearer(): string
 }
 
 it('app-config es público y trae la forma completa con defaults que funcionan', function (): void {
-    $response = $this->getJson('/api/v1/app/app-config');
+    $response = $this->getJson(APP_GATE_CONFIG_URL);
 
     $response->assertOk()
         ->assertJsonStructure(['data' => [
@@ -58,7 +59,7 @@ it('app-config resuelve la mínima y la tienda por plataforma', function (): voi
     config()->set('app_client.version.store_url.android', 'https://play.example.test/app');
     config()->set('app_client.feature_flags', ['new_pod_flow' => true, 'beta_map' => 'false']);
 
-    $this->getJson('/api/v1/app/app-config', ['X-App-Platform' => 'android'])
+    $this->getJson(APP_GATE_CONFIG_URL, ['X-App-Platform' => 'android'])
         ->assertOk()
         ->assertJsonPath('data.platform', 'android')
         ->assertJsonPath('data.version.min_app_version', '1.4.0')
@@ -66,7 +67,7 @@ it('app-config resuelve la mínima y la tienda por plataforma', function (): voi
         ->assertJsonPath('data.version.min_app_versions.default', '1.2.0')
         ->assertJsonPath('data.feature_flags', ['beta_map' => false, 'new_pod_flow' => true]);
 
-    $this->getJson('/api/v1/app/app-config', ['X-App-Platform' => 'ios'])
+    $this->getJson(APP_GATE_CONFIG_URL, ['X-App-Platform' => 'ios'])
         ->assertJsonPath('data.version.min_app_version', '1.2.0');
 });
 
@@ -126,7 +127,7 @@ it('usa la mínima de la plataforma indicada en X-App-Platform', function (): vo
 it('nunca rechaza app-config, así una app vieja sabe a dónde actualizarse', function (): void {
     config()->set('app_client.version.min.default', APP_GATE_VERSION_FUTURE);
 
-    $this->getJson('/api/v1/app/app-config', ['X-App-Version' => APP_GATE_VERSION_OLD])
+    $this->getJson(APP_GATE_CONFIG_URL, ['X-App-Version' => APP_GATE_VERSION_OLD])
         ->assertOk()
         ->assertHeader('X-Min-App-Version', APP_GATE_VERSION_FUTURE);
 });

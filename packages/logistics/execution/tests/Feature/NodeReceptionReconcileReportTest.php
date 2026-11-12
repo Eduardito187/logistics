@@ -9,6 +9,11 @@ use Logistics\Outbox\Infrastructure\Persistence\Eloquent\OutboxMessageRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
+// Valores repetidos en los escenarios de conciliación (endpoint, instante y nota del informe).
+const RECON_REPORT_TEST_URL = '/api/v1/app/node-receptions/reconcile';
+const RECON_REPORT_TEST_AT = '2026-11-12T10:00:00+00:00';
+const RECON_REPORT_TEST_NOTES = 'Llegó una caja abierta';
+
 /**
  * #11 — Conciliar con motivo y evidencia: `missing:[{unit_id, reason}]`, `surplus:[{unit_id,
  * belongs_to_shipment_id?}]`, `notes`, `photo_path`; se persiste y se devuelve en `reconciliation`. El cuerpo
@@ -67,13 +72,13 @@ it('reconciles with reasons, surplus owner, notes and photo and returns them', f
     $this->postJson('/api/v1/app/node-receptions/units', reportReceiveBody($shipment, $node, 'U-9'))->assertOk();
     $owner = Uuid::generate()->value;
 
-    $response = $this->postJson('/api/v1/app/node-receptions/reconcile', [
+    $response = $this->postJson(RECON_REPORT_TEST_URL, [
         'shipment_id' => $shipment,
         'destination_node_id' => $node,
-        'occurred_at' => '2026-11-12T10:00:00+00:00',
+        'occurred_at' => RECON_REPORT_TEST_AT,
         'device_id' => 'device-01',
         'user_id' => 'user-07',
-        'notes' => 'Llegó una caja abierta',
+        'notes' => RECON_REPORT_TEST_NOTES,
         'photo_path' => 'evidence/reception-42.jpg',
         'missing' => [
             ['unit_id' => 'U-2', 'reason' => 'damaged'],
@@ -86,7 +91,7 @@ it('reconciles with reasons, surplus owner, notes and photo and returns them', f
         ->and($response->json('data.missing_count'))->toBe(2)
         ->and($response->json('data.surplus_count'))->toBe(1)
         ->and($response->json('data.reconciliation'))->toBe([
-            'notes' => 'Llegó una caja abierta',
+            'notes' => RECON_REPORT_TEST_NOTES,
             'photo_path' => 'evidence/reception-42.jpg',
             'missing' => [
                 ['unit_id' => 'U-2', 'reason' => 'damaged'],
@@ -106,16 +111,16 @@ it('reconciles with reasons, surplus owner, notes and photo and returns them', f
         ->firstOrFail()
         ->payload;
     expect($payload['missing_units'])->toHaveCount(2)
-        ->and($payload['notes'])->toBe('Llegó una caja abierta');
+        ->and($payload['notes'])->toBe(RECON_REPORT_TEST_NOTES);
 });
 
 it('keeps accepting the legacy reconcile body and leaves reasons null', function (): void {
     ['shipment' => $shipment, 'node' => $node] = reportOpenReception();
 
-    $this->postJson('/api/v1/app/node-receptions/reconcile', [
+    $this->postJson(RECON_REPORT_TEST_URL, [
         'shipment_id' => $shipment,
         'destination_node_id' => $node,
-        'occurred_at' => '2026-11-12T10:00:00+00:00',
+        'occurred_at' => RECON_REPORT_TEST_AT,
         'device_id' => 'device-01',
         'user_id' => 'user-07',
     ])->assertOk()
@@ -136,10 +141,10 @@ it('returns reconciliation null while the reception is open', function (): void 
 it('rejects an unknown missing reason with 422', function (): void {
     ['shipment' => $shipment, 'node' => $node] = reportOpenReception();
 
-    $this->postJson('/api/v1/app/node-receptions/reconcile', [
+    $this->postJson(RECON_REPORT_TEST_URL, [
         'shipment_id' => $shipment,
         'destination_node_id' => $node,
-        'occurred_at' => '2026-11-12T10:00:00+00:00',
+        'occurred_at' => RECON_REPORT_TEST_AT,
         'device_id' => 'device-01',
         'user_id' => 'user-07',
         'missing' => [['unit_id' => 'U-1', 'reason' => 'stolen_by_aliens']],

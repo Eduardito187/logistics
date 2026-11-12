@@ -7,6 +7,7 @@ namespace Logistics\SapConnector\Infrastructure\Persistence\Eloquent;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Logistics\SapConnector\Domain\Model\SapNotification;
+use Logistics\SapConnector\Domain\ValueObject\SapDeliveryTrace;
 use Logistics\SapConnector\Domain\ValueObject\SapNotificationId;
 use Logistics\SapConnector\Domain\ValueObject\SapNotificationStatus;
 
@@ -24,14 +25,16 @@ final class SapNotificationMapper
      */
     public function toStateRow(SapNotification $notification): array
     {
+        $trace = $notification->deliveryTrace();
+
         return [
             'status' => $notification->status()->value,
             'attempts' => $notification->attempts(),
-            'last_error' => $notification->lastError(),
-            'response_status' => $notification->responseStatus(),
-            'response_body' => $notification->responseBody(),
-            'sent_at' => $notification->sentAt()?->format(self::DATE_FORMAT),
-            'next_attempt_at' => $notification->nextAttemptAt()?->format(self::DATE_FORMAT),
+            'last_error' => $trace->lastError,
+            'response_status' => $trace->responseStatus,
+            'response_body' => $trace->responseBody,
+            'sent_at' => $trace->sentAt?->format(self::DATE_FORMAT),
+            'next_attempt_at' => $trace->nextAttemptAt?->format(self::DATE_FORMAT),
         ];
     }
 
@@ -72,11 +75,13 @@ final class SapNotificationMapper
             self::date($record->occurred_at) ?? self::date($record->created_at) ?? new DateTimeImmutable,
             SapNotificationStatus::tryFrom($record->status) ?? SapNotificationStatus::Failed,
             $record->attempts,
-            $record->last_error,
-            $record->response_status,
-            $record->response_body,
-            self::date($record->sent_at),
-            self::date($record->next_attempt_at),
+            new SapDeliveryTrace(
+                $record->last_error,
+                $record->response_status,
+                $record->response_body,
+                self::date($record->sent_at),
+                self::date($record->next_attempt_at),
+            ),
         );
     }
 

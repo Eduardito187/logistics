@@ -15,6 +15,9 @@ use Logistics\Fleet\Domain\ValueObject\PlateNumber;
 use Logistics\Fleet\Domain\ValueObject\PreTripChecklist;
 use Logistics\Fleet\Domain\ValueObject\VehicleId;
 
+// Día de inspección usado en los escenarios de aptitud.
+const VEHICLE_FITNESS_TEST_DAY = '2026-11-12';
+
 /**
  * Dominio puro de la auditoría #27: evaluación del checklist contra la plantilla y aptitud del vehículo.
  */
@@ -60,7 +63,7 @@ it('un crítico faltante se informa pero no bloquea', function (): void {
 
 it('marcar no apto bloquea desde esa fecha en adelante y es idempotente', function (): void {
     $vehicle = vehiculoUnit();
-    $vehicle->markUnfit(new DateTimeImmutable('2026-11-12'), 'Frenos', 'insp-1', ['brakes']);
+    $vehicle->markUnfit(new DateTimeImmutable(VEHICLE_FITNESS_TEST_DAY), 'Frenos', 'insp-1', ['brakes']);
     $vehicle->markUnfit(new DateTimeImmutable('2026-11-13'), 'Motor', 'insp-2', ['engine']);
 
     $events = $vehicle->releaseEvents();
@@ -68,10 +71,10 @@ it('marcar no apto bloquea desde esa fecha en adelante y es idempotente', functi
         ->and($events[0])->toBeInstanceOf(VehicleMarkedUnfit::class)
         ->and($events[0]->eventName())->toBe('fleet.vehicle_marked_unfit')
         ->and($vehicle->fitness()->isFitOn(new DateTimeImmutable('2026-11-11')))->toBeTrue()
-        ->and($vehicle->fitness()->isFitOn(new DateTimeImmutable('2026-11-12')))->toBeFalse()
+        ->and($vehicle->fitness()->isFitOn(new DateTimeImmutable(VEHICLE_FITNESS_TEST_DAY)))->toBeFalse()
         ->and($vehicle->fitness()->isFitOn(new DateTimeImmutable('2026-11-20')))->toBeFalse();
 
-    expect(fn () => $vehicle->ensureFitToDispatchOn(new DateTimeImmutable('2026-11-12')))
+    expect(fn () => $vehicle->ensureFitToDispatchOn(new DateTimeImmutable(VEHICLE_FITNESS_TEST_DAY)))
         ->toThrow(FleetException::class);
 });
 
@@ -80,7 +83,7 @@ it('habilitar exige nota, solo aplica a un vehículo no apto y graba el evento',
 
     expect(fn () => $vehicle->clearFitness('1', 'Admin', 'nada'))->toThrow(FleetException::class);
 
-    $vehicle->markUnfit(new DateTimeImmutable('2026-11-12'), 'Frenos', null, ['brakes']);
+    $vehicle->markUnfit(new DateTimeImmutable(VEHICLE_FITNESS_TEST_DAY), 'Frenos', null, ['brakes']);
     $vehicle->releaseEvents();
 
     expect(fn () => $vehicle->clearFitness('1', 'Admin', '   '))->toThrow(FleetException::class);
@@ -94,5 +97,5 @@ it('habilitar exige nota, solo aplica a un vehículo no apto y graba el evento',
         ->and($events[0]->payload()['cleared_by'])->toBe('Admin')
         ->and($vehicle->fitness()->isUnfit())->toBeFalse();
 
-    $vehicle->ensureFitToDispatchOn(new DateTimeImmutable('2026-11-12'));
+    $vehicle->ensureFitToDispatchOn(new DateTimeImmutable(VEHICLE_FITNESS_TEST_DAY));
 });

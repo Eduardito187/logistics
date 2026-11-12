@@ -9,6 +9,7 @@ use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Query\ShipmentListSupport;
+use Logistics\Shipments\Application\ReadModel\ShipmentListFilter;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
 
@@ -36,6 +37,6 @@ final class ListLowConfidenceAddressesHandler implements QueryHandler
             throw ShipmentsException::because('ListLowConfidenceAddressesHandler solo maneja ListLowConfidenceAddresses');
         }
 
-        return ShipmentListSupport::withDeliveryMode($this->reader->list(lowConfidenceOnly: true), $this->deliveryModes);
+        return ShipmentListSupport::withDeliveryMode($this->reader->list(new ShipmentListFilter(lowConfidenceOnly: true)), $this->deliveryModes);
     }
 }

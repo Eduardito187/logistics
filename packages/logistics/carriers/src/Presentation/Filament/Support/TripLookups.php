@@ -6,6 +6,7 @@ namespace Logistics\Carriers\Presentation\Filament\Support;
 
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use stdClass;
 
 /**
  * Valores legibles para el admin de viajes de transportista (regla dura: nunca mostrar UUIDs).
@@ -125,11 +126,7 @@ final class TripLookups
      */
     public static function load(string $tripId): array
     {
-        /** @var list<string> $ids */
-        $ids = array_values(array_map(
-            static fn (mixed $id): string => self::str($id),
-            DB::table('carrier_trip_shipments')->where('trip_id', $tripId)->orderBy('position')->pluck('shipment_id')->all(),
-        ));
+        $ids = self::tripShipmentIds($tripId);
         if ($ids === []) {
             return [];
         }
@@ -139,23 +136,7 @@ final class TripLookups
             $shipments[self::str($row->id)] = $row;
         }
 
-        /** @var array<string, array<string, array{label: string, count: int}>> $products */
-        $products = [];
-        $units = DB::table('shipment_units as u')
-            ->leftJoin('shipment_lines as l', 'l.id', '=', 'u.line_id')
-            ->whereIn('u.shipment_id', $ids)
-            ->get(['u.shipment_id', 'l.sku', 'l.product_name']);
-        foreach ($units as $unit) {
-            $sku = trim(self::str($unit->sku));
-            $name = trim(self::str($unit->product_name));
-            if ($name === '') {
-                $name = $sku !== '' ? $sku : 'Product';
-            }
-            $label = $sku !== '' && $sku !== $name ? "{$name} · {$sku}" : $name;
-            $shipmentId = self::str($unit->shipment_id);
-            $products[$shipmentId][$label] ??= ['label' => $label, 'count' => 0];
-            $products[$shipmentId][$label]['count']++;
-        }
+        $products = self::productsByShipment($ids);
 
         $out = [];
         foreach ($ids as $id) {
@@ -163,21 +144,84 @@ final class TripLookups
             if ($row === null) {
                 continue;
             }
-            $lines = array_map(
-                static fn (array $p): string => $p['count'] > 1 ? "{$p['label']} ×{$p['count']}" : $p['label'],
-                array_values($products[$id] ?? []),
-            );
-            $destination = self::str($row->destination_node_id);
-            $out[] = [
-                'shipment' => self::shipmentLabel($row),
-                'customer' => self::str($row->customer_name),
-                'destination' => $destination !== '' ? self::nodeName($destination) : __('Customer address'),
-                'products' => $lines !== [] ? implode(', ', $lines) : __('No products'),
-                'units' => array_sum(array_map(static fn (array $p): int => $p['count'], $products[$id] ?? [])),
-            ];
+            $out[] = self::loadRow($row, $products[$id] ?? []);
         }
 
         return $out;
+    }
+
+    /**
+     * Ids de los envíos del viaje, en el orden de carga.
+     *
+     * @return list<string>
+     */
+    private static function tripShipmentIds(string $tripId): array
+    {
+        return array_values(array_map(
+            static fn (mixed $id): string => self::str($id),
+            DB::table('carrier_trip_shipments')->where('trip_id', $tripId)->orderBy('position')->pluck('shipment_id')->all(),
+        ));
+    }
+
+    /**
+     * Productos de cada envío agrupados por etiqueta (nombre + SKU) con su cantidad.
+     *
+     * @param  list<string>                                                   $ids
+     * @return array<string, array<string, array{label: string, count: int}>>
+     */
+    private static function productsByShipment(array $ids): array
+    {
+        /** @var array<string, array<string, array{label: string, count: int}>> $products */
+        $products = [];
+        $units = DB::table('shipment_units as u')
+            ->leftJoin('shipment_lines as l', 'l.id', '=', 'u.line_id')
+            ->whereIn('u.shipment_id', $ids)
+            ->get(['u.shipment_id', 'l.sku', 'l.product_name']);
+        foreach ($units as $unit) {
+            $label = self::productLabel(self::str($unit->sku), self::str($unit->product_name));
+            $shipmentId = self::str($unit->shipment_id);
+            $products[$shipmentId][$label] ??= ['label' => $label, 'count' => 0];
+            $products[$shipmentId][$label]['count']++;
+        }
+
+        return $products;
+    }
+
+    /**
+     * Etiqueta de producto "Nombre · SKU"; sin nombre se usa el SKU y, sin ninguno de los dos, "Product".
+     */
+    private static function productLabel(string $rawSku, string $rawName): string
+    {
+        $sku = trim($rawSku);
+        $name = trim($rawName);
+        if ($name === '') {
+            $name = $sku !== '' ? $sku : 'Product';
+        }
+
+        return $sku !== '' && $sku !== $name ? "{$name} · {$sku}" : $name;
+    }
+
+    /**
+     * Renglón de la carga para un envío.
+     *
+     * @param  array<string, array{label: string, count: int}>                                              $products
+     * @return array{shipment: string, customer: string, destination: string, products: string, units: int}
+     */
+    private static function loadRow(stdClass $row, array $products): array
+    {
+        $lines = array_map(
+            static fn (array $p): string => $p['count'] > 1 ? "{$p['label']} ×{$p['count']}" : $p['label'],
+            array_values($products),
+        );
+        $destination = self::str($row->destination_node_id);
+
+        return [
+            'shipment' => self::shipmentLabel($row),
+            'customer' => self::str($row->customer_name),
+            'destination' => $destination !== '' ? self::nodeName($destination) : __('Customer address'),
+            'products' => $lines !== [] ? implode(', ', $lines) : __('No products'),
+            'units' => array_sum(array_map(static fn (array $p): int => $p['count'], $products)),
+        ];
     }
 
     /**

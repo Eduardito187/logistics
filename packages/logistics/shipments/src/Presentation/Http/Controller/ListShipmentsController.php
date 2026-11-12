@@ -58,22 +58,14 @@ final class ListShipmentsController
     {
         $statuses = array_map(static fn (ShipmentStatus $status): string => $status->value, ShipmentStatus::cases());
         $sources = array_map(static fn (OrderSource $source): string => $source->value, OrderSource::cases());
+        $modes = array_map(static fn (DeliveryMode $mode): string => $mode->value, DeliveryMode::cases());
 
         // El estado se acepta en cualquier capitalización (planned / PLANNED / Planned): se normaliza a
         // mayúsculas ANTES de validar, así solo un valor realmente desconocido devuelve 422. Aditivo: varios
         // estados por `status[]=` o separados por coma; un único estado conserva el camino histórico.
         $statusList = $this->statusList($request->query('status'));
         $isMultiStatus = $statusList !== null && count($statusList) > 1;
-        if ($statusList !== null) {
-            $request->merge(['status' => $isMultiStatus ? $statusList : ($statusList[0] ?? null)]);
-        }
-
-        $rawMode = $request->query('delivery_mode');
-        if (is_string($rawMode) && trim($rawMode) !== '') {
-            $request->merge(['delivery_mode' => strtolower(trim($rawMode))]);
-        }
-
-        $modes = array_map(static fn (DeliveryMode $mode): string => $mode->value, DeliveryMode::cases());
+        $this->normalizeQuery($request, $statusList, $isMultiStatus);
 
         /** @var array{source?: string|null, destination_node_id?: string|null, delivery_date_from?: string|null, delivery_date_to?: string|null, delivery_mode?: string|null, include?: string|null} $filters */
         $filters = $request->validate([
@@ -88,34 +80,20 @@ final class ListShipmentsController
             'include' => ['nullable', 'string', 'max:200'],
         ]);
 
-        // Un estado → filtro `status` (camino histórico); varios → filtro `statuses` (IN).
-        $validStatuses = array_values(array_filter($statusList ?? [], static fn (mixed $value): bool => is_string($value)));
-        $status = $isMultiStatus ? null : ($validStatuses[0] ?? null);
-        $multiStatuses = $isMultiStatus ? $validStatuses : null;
-        $deliveryMode = $filters['delivery_mode'] ?? null;
-        $withCountByStatus = in_array('count_by_status', array_map('trim', explode(',', (string) ($filters['include'] ?? ''))), true);
-
-        $deliveryDateFrom = $filters['delivery_date_from'] ?? null;
-        $deliveryDateTo = $filters['delivery_date_to'] ?? null;
-
         // Resuelve el filtro de nodo destino: para el rol Tienda se FUERZA su nodo asignado (server-side,
         // ignorando lo que mande el cliente); el resto de roles puede pasar el filtro opcional.
-        $destinationNodeId = $filters['destination_node_id'] ?? null;
+        $destinationNodeId = $this->destinationNodeId($request, $filters['destination_node_id'] ?? null);
 
-        $user = $request->user();
-        if ($user instanceof User && $user->hasRole(Role::Tienda)) {
-            $assignedNode = $user->node_id;
-
-            // Tienda sin nodo asignado: lista vacía (no puede ver envíos de ninguna tienda).
-            if (!is_string($assignedNode) || $assignedNode === '') {
-                return $this->data([]);
-            }
-
-            $destinationNodeId = $assignedNode;
+        // Tienda sin nodo asignado: lista vacía (no puede ver envíos de ninguna tienda).
+        if ($destinationNodeId === false) {
+            return $this->data([]);
         }
 
-        $countByStatus = $withCountByStatus
-            ? $this->countByStatus($filters['source'] ?? null, $destinationNodeId, $deliveryDateFrom, $deliveryDateTo, $deliveryMode)
+        // Filtros del listado sin recorte; cada modo de paginación los copia a su propia consulta.
+        $criteria = $this->criteria($statusList, $isMultiStatus, $filters, $destinationNodeId);
+
+        $countByStatus = $this->wantsCountByStatus($filters['include'] ?? null)
+            ? $this->countByStatus($criteria)
             : null;
 
         // Paginación por CURSOR (keyset) — modo PREFERIDO para los envíos (colección que crece): avanza por
@@ -123,77 +101,162 @@ final class ListShipmentsController
         // primera. El cursor es un token opaco (no se filtra el modelo de almacenamiento); el id viaja
         // codificado, nunca como texto visible.
         if ($request->has('cursor')) {
-            $perPage = ApiPagination::limit($request);
-
-            /** @var ShipmentPage $page */
-            $page = $this->queryBus->ask(new ListShipmentsByCursor(
-                limit: $perPage,
-                afterId: $this->decodeCursor($request->input('cursor')),
-                status: $status,
-                source: $filters['source'] ?? null,
-                destinationNodeId: $destinationNodeId,
-                deliveryDateFrom: $deliveryDateFrom,
-                deliveryDateTo: $deliveryDateTo,
-                statuses: $multiStatuses,
-                deliveryMode: $deliveryMode,
-            ));
-
-            $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
-            $hasMore = $page->nextCursor !== null;
-
-            $meta = [
-                'count' => count($items),
-                'per_page' => $perPage,
-                'has_more' => $hasMore,
-                'next_cursor' => $hasMore && $page->nextCursor !== null ? $this->encodeCursor($page->nextCursor) : null,
-            ];
-            if ($countByStatus !== null) {
-                $meta['count_by_status'] = $countByStatus;
-            }
-
-            return new JsonResponse([
-                'data' => array_values($items),
-                'meta' => $meta,
-            ]);
+            return $this->respondByCursor($request, $criteria, $countByStatus);
         }
 
         // Paginación por OFFSET numerada (?page/?per_page): se CONSERVA porque la puerta app expone páginas
         // numeradas con `total`/`total_pages` (contrato E-02 que la app ya consume). El COUNT(*) va aparte;
-        // ya no se materializa toda la tabla para trocearla en PHP. Para colecciones grandes, preferir cursor.
+        // ya no se materializa la tabla completa para trocearla en PHP. Para colecciones grandes, preferir cursor.
         if (ApiPagination::requested($request)) {
-            /** @var Page<ShipmentView> $page */
-            $page = $this->queryBus->ask(new ListShipments(
-                status: $status,
-                source: $filters['source'] ?? null,
-                destinationNodeId: $destinationNodeId,
-                limit: ApiPagination::limit($request),
-                offset: ApiPagination::offset($request),
-                deliveryDateFrom: $deliveryDateFrom,
-                deliveryDateTo: $deliveryDateTo,
-                statuses: $multiStatuses,
-                deliveryMode: $deliveryMode,
-            ));
-
-            $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
-
-            $envelope = ApiPagination::envelope($items, $page->total, $request);
-            if ($countByStatus !== null) {
-                $envelope['meta']['count_by_status'] = $countByStatus;
-            }
-
-            return new JsonResponse($envelope);
+            return $this->respondByOffset($request, $criteria, $countByStatus);
         }
 
-        /** @var list<ShipmentView> $views */
-        $views = $this->queryBus->ask(new ListShipments(
-            status: $status,
+        return $this->respondUnpaginated($criteria, $countByStatus);
+    }
+
+    /**
+     * Normaliza la query string ANTES de validar: estado(s) en mayúsculas y `delivery_mode` en minúsculas.
+     *
+     * @param list<mixed>|null $statusList
+     */
+    private function normalizeQuery(Request $request, ?array $statusList, bool $isMultiStatus): void
+    {
+        if ($statusList !== null) {
+            $request->merge(['status' => $isMultiStatus ? $statusList : ($statusList[0] ?? null)]);
+        }
+
+        $rawMode = $request->query('delivery_mode');
+        if (is_string($rawMode) && trim($rawMode) !== '') {
+            $request->merge(['delivery_mode' => strtolower(trim($rawMode))]);
+        }
+    }
+
+    /**
+     * Nodo destino efectivo: el rol Tienda queda acotado a su nodo asignado; el resto usa el filtro
+     * opcional del cliente. Devuelve false cuando es una Tienda sin nodo asignado (debe ver lista vacía).
+     */
+    private function destinationNodeId(Request $request, ?string $requested): string | false | null
+    {
+        $user = $request->user();
+        if (!$user instanceof User || !$user->hasRole(Role::Tienda)) {
+            return $requested;
+        }
+
+        $assignedNode = $user->node_id;
+
+        return is_string($assignedNode) && $assignedNode !== '' ? $assignedNode : false;
+    }
+
+    /**
+     * Arma los filtros del listado (sin recorte). Un estado → filtro `status` (camino histórico); varios →
+     * filtro `statuses` (IN).
+     *
+     * @param list<mixed>|null           $statusList
+     * @param array<string, string|null> $filters
+     */
+    private function criteria(?array $statusList, bool $isMultiStatus, array $filters, ?string $destinationNodeId): ListShipments
+    {
+        $validStatuses = array_values(array_filter($statusList ?? [], static fn (mixed $value): bool => is_string($value)));
+
+        return new ListShipments(
+            status: $isMultiStatus ? null : ($validStatuses[0] ?? null),
             source: $filters['source'] ?? null,
             destinationNodeId: $destinationNodeId,
-            deliveryDateFrom: $deliveryDateFrom,
-            deliveryDateTo: $deliveryDateTo,
-            statuses: $multiStatuses,
-            deliveryMode: $deliveryMode,
+            deliveryDateFrom: $filters['delivery_date_from'] ?? null,
+            deliveryDateTo: $filters['delivery_date_to'] ?? null,
+            statuses: $isMultiStatus ? $validStatuses : null,
+            deliveryMode: $filters['delivery_mode'] ?? null,
+        );
+    }
+
+    /**
+     * Si `include` pide `count_by_status` (lista separada por comas).
+     */
+    private function wantsCountByStatus(?string $include): bool
+    {
+        return in_array('count_by_status', array_map('trim', explode(',', (string) ($include ?? ''))), true);
+    }
+
+    /**
+     * Respuesta paginada por cursor (keyset): `meta` con `count`, `per_page`, `has_more` y `next_cursor`.
+     *
+     * @param array<string, int>|null $countByStatus
+     */
+    private function respondByCursor(Request $request, ListShipments $criteria, ?array $countByStatus): JsonResponse
+    {
+        $perPage = ApiPagination::limit($request);
+
+        /** @var ShipmentPage $page */
+        $page = $this->queryBus->ask(new ListShipmentsByCursor(
+            limit: $perPage,
+            afterId: $this->decodeCursor($request->input('cursor')),
+            status: $criteria->status,
+            source: $criteria->source,
+            destinationNodeId: $criteria->destinationNodeId,
+            deliveryDateFrom: $criteria->deliveryDateFrom,
+            deliveryDateTo: $criteria->deliveryDateTo,
+            statuses: $criteria->statuses,
+            deliveryMode: $criteria->deliveryMode,
         ));
+
+        $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
+        $hasMore = $page->nextCursor !== null;
+
+        $meta = [
+            'count' => count($items),
+            'per_page' => $perPage,
+            'has_more' => $hasMore,
+            'next_cursor' => $hasMore && $page->nextCursor !== null ? $this->encodeCursor($page->nextCursor) : null,
+        ];
+        if ($countByStatus !== null) {
+            $meta['count_by_status'] = $countByStatus;
+        }
+
+        return new JsonResponse([
+            'data' => array_values($items),
+            'meta' => $meta,
+        ]);
+    }
+
+    /**
+     * Respuesta paginada por offset numerado (envelope con `total`/`total_pages`).
+     *
+     * @param array<string, int>|null $countByStatus
+     */
+    private function respondByOffset(Request $request, ListShipments $criteria, ?array $countByStatus): JsonResponse
+    {
+        /** @var Page<ShipmentView> $page */
+        $page = $this->queryBus->ask(new ListShipments(
+            status: $criteria->status,
+            source: $criteria->source,
+            destinationNodeId: $criteria->destinationNodeId,
+            limit: ApiPagination::limit($request),
+            offset: ApiPagination::offset($request),
+            deliveryDateFrom: $criteria->deliveryDateFrom,
+            deliveryDateTo: $criteria->deliveryDateTo,
+            statuses: $criteria->statuses,
+            deliveryMode: $criteria->deliveryMode,
+        ));
+
+        $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
+
+        $envelope = ApiPagination::envelope($items, $page->total, $request);
+        if ($countByStatus !== null) {
+            $envelope['meta']['count_by_status'] = $countByStatus;
+        }
+
+        return new JsonResponse($envelope);
+    }
+
+    /**
+     * Respuesta sin paginar (camino histórico): `data` y, si se pidió, `meta.count_by_status`.
+     *
+     * @param array<string, int>|null $countByStatus
+     */
+    private function respondUnpaginated(ListShipments $criteria, ?array $countByStatus): JsonResponse
+    {
+        /** @var list<ShipmentView> $views */
+        $views = $this->queryBus->ask($criteria);
 
         $data = array_map(static fn (ShipmentView $view): array => $view->toArray(), $views);
 
@@ -213,7 +276,11 @@ final class ListShipmentsController
      */
     private function statusList(mixed $raw): ?array
     {
-        $values = is_array($raw) ? array_values($raw) : (is_string($raw) ? explode(',', $raw) : []);
+        if (is_array($raw)) {
+            $values = array_values($raw);
+        } else {
+            $values = is_string($raw) ? explode(',', $raw) : [];
+        }
 
         $list = [];
         foreach ($values as $value) {
@@ -235,15 +302,15 @@ final class ListShipmentsController
      *
      * @return array<string, int>
      */
-    private function countByStatus(?string $source, ?string $destinationNodeId, ?string $deliveryDateFrom, ?string $deliveryDateTo, ?string $deliveryMode): array
+    private function countByStatus(ListShipments $criteria): array
     {
         /** @var array<string, int> $counts */
         $counts = $this->queryBus->ask(new CountShipmentsByStatus(
-            source: $source,
-            destinationNodeId: $destinationNodeId,
-            deliveryDateFrom: $deliveryDateFrom,
-            deliveryDateTo: $deliveryDateTo,
-            deliveryMode: $deliveryMode,
+            source: $criteria->source,
+            destinationNodeId: $criteria->destinationNodeId,
+            deliveryDateFrom: $criteria->deliveryDateFrom,
+            deliveryDateTo: $criteria->deliveryDateTo,
+            deliveryMode: $criteria->deliveryMode,
         ));
 
         return $counts;

@@ -39,6 +39,14 @@ final readonly class FleetCrewShiftRulesProvider implements CrewShiftRulesProvid
             return null;
         }
 
+        return $this->readFleetWindow();
+    }
+
+    /**
+     * Lee las reglas de Flota por su contrato público; null si Flota no está registrado o si falla la lectura.
+     */
+    private function readFleetWindow(): ?CrewShiftWindow
+    {
         try {
             if (!$this->container->bound(ShiftRulesPolicy::class)) {
                 return null;

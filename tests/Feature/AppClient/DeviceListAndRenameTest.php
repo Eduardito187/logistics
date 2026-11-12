@@ -6,6 +6,9 @@ use App\Models\Device;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
 
+// Modelo de teléfono reportado por la app en la cabecera X-Device-Model.
+const DEVICE_LIST_TEST_MODEL = 'Samsung SM-A515F';
+
 // GET /api/v1/app/devices distingue teléfonos (auditoría app #28): is_current, display_name, modelo,
 // versión de la app; y PATCH /api/v1/app/devices/{uuid} renombra SOLO un equipo propio.
 
@@ -42,7 +45,7 @@ it('marca el dispositivo del token como is_current y registra modelo y versión 
     $response = $this->withToken($token)->getJson('/api/v1/app/devices', [
         'X-App-Version' => '1.4.2',
         'X-App-Build' => '42',
-        'X-Device-Model' => 'Samsung SM-A515F',
+        'X-Device-Model' => DEVICE_LIST_TEST_MODEL,
         'X-Device-Os-Version' => 'Android 13',
     ]);
 
@@ -50,12 +53,12 @@ it('marca el dispositivo del token como is_current y registra modelo y versión 
     $rows = collect((array) $response->json('data'))->keyBy('uuid');
 
     expect($rows[$current->uuid]['is_current'])->toBeTrue()
-        ->and($rows[$current->uuid]['model'])->toBe('Samsung SM-A515F')
+        ->and($rows[$current->uuid]['model'])->toBe(DEVICE_LIST_TEST_MODEL)
         ->and($rows[$current->uuid]['app_version'])->toBe('1.4.2')
         ->and($rows[$current->uuid]['app_build'])->toBe('42')
         ->and($rows[$current->uuid]['os_version'])->toBe('Android 13')
         // El nombre genérico no sirve para distinguir: se muestra el modelo.
-        ->and($rows[$current->uuid]['display_name'])->toBe('Samsung SM-A515F')
+        ->and($rows[$current->uuid]['display_name'])->toBe(DEVICE_LIST_TEST_MODEL)
         ->and($rows[$other->uuid]['is_current'])->toBeFalse()
         ->and($rows[$other->uuid]['display_name'])->toBe('iOS device');
 });

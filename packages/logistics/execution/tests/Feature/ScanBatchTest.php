@@ -22,6 +22,8 @@ beforeEach(function (): void {
 );
 
 const SBATCH_AT = '2026-11-12T08:00:00-04:00';
+// Endpoint del lote de escaneos, usado por varios escenarios.
+const SBATCH_URL = '/api/v1/app/deliveries/scans/batch';
 
 /**
  * Ítem del lote con el payload dado.
@@ -52,7 +54,7 @@ it('acepta, deduplica y rechaza por ítem con 207', function (): void {
         sbatchItem('sb-dep-1', 'departure', ['shipment_id' => $shipment]),
     ];
 
-    test()->postJson('/api/v1/app/deliveries/scans/batch', ['items' => $items])
+    test()->postJson(SBATCH_URL, ['items' => $items])
         ->assertStatus(207)
         ->assertJsonPath('data.0.result', 'accepted')
         ->assertJsonPath('data.1.result', 'accepted')
@@ -70,7 +72,7 @@ it('acepta, deduplica y rechaza por ítem con 207', function (): void {
         ->and(DB::table('execution_scan_batch_items')->where('idempotency_key', 'sb-load-1')->value('result'))->toBe('accepted');
 
     // Reenvío del lote entero: lo aceptado vuelve como duplicate, sin duplicar escaneos.
-    test()->postJson('/api/v1/app/deliveries/scans/batch', ['items' => array_slice($items, 0, 2)])
+    test()->postJson(SBATCH_URL, ['items' => array_slice($items, 0, 2)])
         ->assertStatus(207)
         ->assertJsonPath('data.0.result', 'duplicate')
         ->assertJsonPath('data.1.result', 'duplicate');
@@ -91,7 +93,7 @@ it('reconoce como duplicate un escaneo ya enviado por su endpoint individual', f
     ];
     test()->postJson('/api/v1/app/deliveries/scans/preparation', $body)->assertOk();
 
-    test()->postJson('/api/v1/app/deliveries/scans/batch', ['items' => [sbatchItem('sb-single-1', 'preparation', $body)]])
+    test()->postJson(SBATCH_URL, ['items' => [sbatchItem('sb-single-1', 'preparation', $body)]])
         ->assertStatus(207)
         ->assertJsonPath('data.0.result', 'duplicate');
 });
@@ -100,16 +102,16 @@ it('rechaza con 422 un lote por encima del tope o con un tipo desconocido', func
     config(['logistics-execution.scan_batch.max_items' => 2]);
     $item = sbatchItem('sb-cap', 'departure', ['shipment_id' => Uuid::generate()->value]);
 
-    test()->postJson('/api/v1/app/deliveries/scans/batch', ['items' => [$item, $item, $item]])
+    test()->postJson(SBATCH_URL, ['items' => [$item, $item, $item]])
         ->assertStatus(422)
         ->assertJsonPath('code', 'validation_failed');
 
-    test()->postJson('/api/v1/app/deliveries/scans/batch', ['items' => [sbatchItem('sb-x', 'teleport', [])]])
+    test()->postJson(SBATCH_URL, ['items' => [sbatchItem('sb-x', 'teleport', [])]])
         ->assertStatus(422);
 });
 
 it('propaga Retry-After en las respuestas 429 de la API', function (): void {
-    $request = Request::create('/api/v1/app/deliveries/scans/batch', 'POST');
+    $request = Request::create(SBATCH_URL, 'POST');
     $response = app(ProblemExceptionRenderer::class)->render(
         new ThrottleRequestsException('Too Many Attempts.', null, ['Retry-After' => 30]),
         $request,

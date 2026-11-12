@@ -11,6 +11,7 @@ use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Query\ShipmentListSupport;
+use Logistics\Shipments\Application\ReadModel\ShipmentListFilter;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
@@ -54,16 +55,21 @@ final class ListShipmentsHandler implements QueryHandler
         $statuses = ShipmentListSupport::statuses($query->statuses);
         $deliveryMode = ShipmentListSupport::deliveryMode($query->deliveryMode);
 
-        $views = $this->reader->list(
+        // Mismos filtros para la página y para el COUNT(*) del total.
+        $filter = new ShipmentListFilter(
             status: $status,
             source: $source,
             destinationNodeId: $query->destinationNodeId,
-            limit: $query->limit,
-            offset: $query->offset,
             deliveryDateFrom: $query->deliveryDateFrom,
             deliveryDateTo: $query->deliveryDateTo,
             statuses: $statuses,
             deliveryMode: $deliveryMode,
+        );
+
+        $views = $this->reader->list(
+            filter: $filter,
+            limit: $query->limit,
+            offset: $query->offset,
         );
 
         $views = ShipmentListSupport::withDeliveryMode(ShipmentListSupport::withProgress($views, $this->progress), $this->deliveryModes);
@@ -72,14 +78,6 @@ final class ListShipmentsHandler implements QueryHandler
             return $views;
         }
 
-        return new Page($views, $this->reader->count(
-            status: $status,
-            source: $source,
-            destinationNodeId: $query->destinationNodeId,
-            deliveryDateFrom: $query->deliveryDateFrom,
-            deliveryDateTo: $query->deliveryDateTo,
-            statuses: $statuses,
-            deliveryMode: $deliveryMode,
-        ));
+        return new Page($views, $this->reader->count($filter));
     }
 }

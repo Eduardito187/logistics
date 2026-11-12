@@ -10,6 +10,7 @@ use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Query\ShipmentListSupport;
+use Logistics\Shipments\Application\ReadModel\ShipmentListFilter;
 use Logistics\Shipments\Application\ReadModel\ShipmentPage;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
@@ -43,13 +44,15 @@ final class ListShipmentsByCursorHandler implements QueryHandler
         $page = $this->reader->listKeyset(
             limit: $query->limit,
             afterId: $query->afterId,
-            status: $status,
-            source: $source,
-            destinationNodeId: $query->destinationNodeId,
-            deliveryDateFrom: $query->deliveryDateFrom,
-            deliveryDateTo: $query->deliveryDateTo,
-            statuses: $statuses,
-            deliveryMode: $deliveryMode,
+            filter: new ShipmentListFilter(
+                status: $status,
+                source: $source,
+                destinationNodeId: $query->destinationNodeId,
+                deliveryDateFrom: $query->deliveryDateFrom,
+                deliveryDateTo: $query->deliveryDateTo,
+                statuses: $statuses,
+                deliveryMode: $deliveryMode,
+            ),
         );
 
         // Avance operativo de la página entera en lote (mismo enriquecimiento que el listado por offset).

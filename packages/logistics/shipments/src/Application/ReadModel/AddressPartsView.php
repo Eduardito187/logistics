@@ -26,6 +26,9 @@ final readonly class AddressPartsView
     /** Largo máximo de `short_address` (una línea de pantalla de teléfono). */
     private const SHORT_MAX_LENGTH = 80;
 
+    /** Nombre canónico de Santa Cruz (varias claves de CITIES lo resuelven). */
+    private const SANTA_CRUZ = 'Santa Cruz';
+
     /**
      * Ciudades/municipios de Bolivia reconocidos: clave normalizada (minúsculas, sin tildes) → nombre
      * canónico a devolver.
@@ -33,9 +36,9 @@ final readonly class AddressPartsView
     private const CITIES = [
         'la paz' => 'La Paz',
         'el alto' => 'El Alto',
-        'santa cruz' => 'Santa Cruz',
-        'santa cruz de la sierra' => 'Santa Cruz',
-        'scz' => 'Santa Cruz',
+        'santa cruz' => self::SANTA_CRUZ,
+        'santa cruz de la sierra' => self::SANTA_CRUZ,
+        'scz' => self::SANTA_CRUZ,
         'cochabamba' => 'Cochabamba',
         'cbba' => 'Cochabamba',
         'sucre' => 'Sucre',

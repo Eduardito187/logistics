@@ -14,6 +14,7 @@ use Logistics\Fleet\Domain\Model\PreTripInspection;
 use Logistics\Fleet\Domain\ValueObject\ChecklistEvaluation;
 use Logistics\Fleet\Domain\ValueObject\DriverId;
 use Logistics\Fleet\Domain\ValueObject\PreTripChecklist;
+use Logistics\Fleet\Domain\ValueObject\VehicleFitnessLogEntry;
 use Logistics\Fleet\Domain\ValueObject\VehicleId;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
@@ -29,7 +30,7 @@ use Logistics\Shared\Domain\Clock\Clock;
  * supervisor lo habilite. Sin plantilla activa, el checklist no bloquea (comportamiento histórico). Si el
  * vehículo no está registrado en flota, se guarda la inspección sin marcar nada.
  *
- * Todo (inspección, vehículo, bitácora y outbox) corre en la misma transacción, que abre el decorador
+ * El conjunto completo (inspección, vehículo, bitácora y outbox) corre en la misma transacción, que abre el decorador
  * transaccional del CommandBus (Infrastructure); por eso acá no hay nada del framework.
  *
  * @implements CommandHandler<ConductPreTripChecklist>
@@ -106,14 +107,16 @@ final readonly class ConductPreTripChecklistHandler implements CommandHandler
         $this->vehicles->save($vehicle);
 
         $this->fitnessLog->append(
-            $vehicle->id()->toString(),
-            VehicleFitnessLog::ACTION_MARKED_UNFIT,
+            new VehicleFitnessLogEntry(
+                vehicleId: $vehicle->id()->toString(),
+                action: VehicleFitnessLog::ACTION_MARKED_UNFIT,
+                reason: $reason,
+                failedItems: $evaluation->failedCritical,
+                inspectionId: $inspection->id()->toString(),
+                actorId: $inspection->driverId()->toString(),
+                actorLabel: null,
+            ),
             $this->clock->now(),
-            $reason,
-            $evaluation->failedCritical,
-            $inspection->id()->toString(),
-            $inspection->driverId()->toString(),
-            null,
         );
 
         $this->recordEvents->record($vehicle->releaseEvents(), 'fleet.vehicle');

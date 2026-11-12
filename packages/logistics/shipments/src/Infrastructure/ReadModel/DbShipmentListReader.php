@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\ReadModel\ShipmentLineView;
+use Logistics\Shipments\Application\ReadModel\ShipmentListFilter;
 use Logistics\Shipments\Application\ReadModel\ShipmentPage;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\ValueObject\AddressConfidenceLevel;
@@ -27,19 +28,12 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 final class DbShipmentListReader implements ShipmentListReader
 {
     public function list(
-        ?string $status = null,
-        ?string $source = null,
-        ?string $destinationNodeId = null,
-        bool $lowConfidenceOnly = false,
+        ShipmentListFilter $filter = new ShipmentListFilter,
         ?int $limit = null,
         ?int $offset = null,
-        ?string $deliveryDateFrom = null,
-        ?string $deliveryDateTo = null,
-        ?array $statuses = null,
-        ?string $deliveryMode = null,
     ): array {
         // Orden estable por id (UUID v7 = orden temporal), igual que el listado histórico.
-        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo, $statuses, $deliveryMode)
+        $query = $this->filtered($filter)
             ->orderBy('id');
 
         if ($offset !== null) {
@@ -58,16 +52,9 @@ final class DbShipmentListReader implements ShipmentListReader
     public function listKeyset(
         int $limit,
         ?string $afterId = null,
-        ?string $status = null,
-        ?string $source = null,
-        ?string $destinationNodeId = null,
-        bool $lowConfidenceOnly = false,
-        ?string $deliveryDateFrom = null,
-        ?string $deliveryDateTo = null,
-        ?array $statuses = null,
-        ?string $deliveryMode = null,
+        ShipmentListFilter $filter = new ShipmentListFilter,
     ): ShipmentPage {
-        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo, $statuses, $deliveryMode);
+        $query = $this->filtered($filter);
 
         // Keyset: avanza por el último id visto en vez de OFFSET. `id > $afterId` se apoya en el índice de
         // la PK (UUID v7, orden temporal), así la página profunda no escanea-y-descarta.
@@ -92,18 +79,10 @@ final class DbShipmentListReader implements ShipmentListReader
         return new ShipmentPage($this->toViews($pageRecords), $nextCursor);
     }
 
-    public function count(
-        ?string $status = null,
-        ?string $source = null,
-        ?string $destinationNodeId = null,
-        bool $lowConfidenceOnly = false,
-        ?string $deliveryDateFrom = null,
-        ?string $deliveryDateTo = null,
-        ?array $statuses = null,
-        ?string $deliveryMode = null,
-    ): int {
+    public function count(ShipmentListFilter $filter = new ShipmentListFilter): int
+    {
         // COUNT(*) acotado al filtro (no toca la tabla de líneas ni reconstruye agregados).
-        return $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo, $statuses, $deliveryMode)
+        return $this->filtered($filter)
             ->count();
     }
 
@@ -111,48 +90,39 @@ final class DbShipmentListReader implements ShipmentListReader
      * Query base con los filtros calientes empujados a SQL (predicados indexables), combinados con AND.
      * Compartida por list()/count()/listKeyset() para no duplicar la forma del WHERE.
      *
-     * @param  list<string>|null       $statuses
      * @return Builder<ShipmentRecord>
      */
-    private function filtered(
-        ?string $status,
-        ?string $source,
-        ?string $destinationNodeId,
-        bool $lowConfidenceOnly,
-        ?string $deliveryDateFrom = null,
-        ?string $deliveryDateTo = null,
-        ?array $statuses = null,
-        ?string $deliveryMode = null,
-    ): Builder {
+    private function filtered(ShipmentListFilter $filter): Builder
+    {
         $query = ShipmentRecord::query();
 
-        if ($status !== null) {
-            $query->where('status', $status);
+        if ($filter->status !== null) {
+            $query->where('status', $filter->status);
         }
-        if ($source !== null) {
-            $query->where('source', $source);
+        if ($filter->source !== null) {
+            $query->where('source', $filter->source);
         }
-        if ($destinationNodeId !== null) {
-            $query->where('destination_node_id', $destinationNodeId);
+        if ($filter->destinationNodeId !== null) {
+            $query->where('destination_node_id', $filter->destinationNodeId);
         }
-        if ($lowConfidenceOnly) {
+        if ($filter->lowConfidenceOnly) {
             $query->where('address_confidence_level', AddressConfidenceLevel::Low->value);
         }
         // Rango de fecha prometida (columna indexada `delivery_date`, ambos extremos inclusive). Un envío
         // sin fecha no cumple ninguna cota (comparar con NULL es falso), que es lo esperado.
-        if ($deliveryDateFrom !== null) {
-            $query->where('delivery_date', '>=', $deliveryDateFrom);
+        if ($filter->deliveryDateFrom !== null) {
+            $query->where('delivery_date', '>=', $filter->deliveryDateFrom);
         }
-        if ($deliveryDateTo !== null) {
-            $query->where('delivery_date', '<=', $deliveryDateTo);
+        if ($filter->deliveryDateTo !== null) {
+            $query->where('delivery_date', '<=', $filter->deliveryDateTo);
         }
         // Varios estados a la vez (IN sobre la columna indexada `status`).
-        if ($statuses !== null && $statuses !== []) {
-            $query->whereIn('status', $statuses);
+        if ($filter->statuses !== null && $filter->statuses !== []) {
+            $query->whereIn('status', $filter->statuses);
         }
         // Modalidad de entrega derivada del tipo del nodo destino (subconsulta a la tabla chica de nodos).
-        if ($deliveryMode !== null) {
-            ShipmentSqlFilters::deliveryMode($query->getQuery(), $deliveryMode);
+        if ($filter->deliveryMode !== null) {
+            ShipmentSqlFilters::deliveryMode($query->getQuery(), $filter->deliveryMode);
         }
 
         return $query;

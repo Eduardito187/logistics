@@ -22,7 +22,7 @@ use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
  * por un checklist crítico y quién lo habilitó tras la reparación. Es append-only: no hay alta, edición
  * ni borrado. Su hogar es la ficha 360 del vehículo (enlace filtrado por ?vehicle=<id>).
  *
- * Todo el texto visible va en inglés (regla 5 de CLAUDE.md); nunca se muestra un UUID.
+ * El texto visible va íntegramente en inglés (regla 5 de CLAUDE.md); nunca se muestra un UUID.
  */
 final class VehicleFitnessLogResource extends Resource
 {

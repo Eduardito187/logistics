@@ -31,10 +31,8 @@ final class SafeRead
     {
         try {
             if ($connection->transactionLevel() > 0) {
-                /** @var T $result */
-                $result = $connection->transaction(static fn (): mixed => $read());
-
-                return $result;
+                // El tipo T lo fija el @return del método (transaction() devuelve mixed).
+                return $connection->transaction(static fn (): mixed => $read());
             }
 
             return $read();

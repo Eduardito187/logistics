@@ -35,7 +35,7 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  * lectura salvo «Mark as resolved»: las filas las crea la app. Sin UUIDs visibles (usuario por nombre,
  * equipo por su nombre legible; los ids de la ruta llegan enmascarados como `{id}`).
  *
- * Todo texto visible va en inglés (regla 5 del proyecto).
+ * El texto visible va íntegramente en inglés (regla 5 del proyecto).
  *
  * @extends resource<AppOutboxFailure>
  */
@@ -155,17 +155,7 @@ final class AppOutboxFailureResource extends Resource
                     ->label(__('App version'))
                     ->placeholder('—')
                     ->toggleable(),
-                TextColumn::make('resolved_at')
-                    ->label(__('Status'))
-                    ->badge()
-                    ->getStateUsing(static fn (AppOutboxFailure $record): string => $record->isResolved() ? __('Resolved') : __('Open'))
-                    ->color(static fn (AppOutboxFailure $record): string => $record->isResolved() ? 'success' : 'danger')
-                    ->tooltip(static fn (AppOutboxFailure $record): ?string => $record->isResolved()
-                        ? __('Resolved by :actor on :date', [
-                            'actor' => $record->resolved_by ?? '—',
-                            'date' => $record->resolved_at?->toDayDateTimeString() ?? '—',
-                        ])
-                        : null),
+                self::statusColumn(),
             ])
             ->filters([
                 SelectFilter::make('status')
@@ -196,27 +186,7 @@ final class AppOutboxFailureResource extends Resource
                     ->label(__('Reason'))
                     ->native(false)
                     ->options(self::reasonOptions()),
-                Filter::make('period')
-                    ->label(__('Date range'))
-                    ->schema([
-                        DatePicker::make('from')->label(__('From'))->native(false),
-                        DatePicker::make('until')->label(__('To'))->native(false),
-                    ])
-                    ->query(static function (Builder $query, array $data): Builder {
-                        $from = $data['from'] ?? null;
-                        $until = $data['until'] ?? null;
-                        if (is_string($from) && $from !== '') {
-                            $query->where('occurred_at', '>=', Carbon::parse($from)->startOfDay());
-                        }
-                        if (is_string($until) && $until !== '') {
-                            $query->where('occurred_at', '<', Carbon::parse($until)->addDay()->startOfDay());
-                        }
-
-                        return $query;
-                    })
-                    ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) || ($data['until'] ?? null)
-                        ? (string) __('Date range')
-                        : null),
+                self::periodFilter(),
             ])
             ->recordActions([
                 self::resolveAction(),
@@ -236,6 +206,52 @@ final class AppOutboxFailureResource extends Resource
         return [
             'index' => ListAppOutboxFailures::route('/'),
         ];
+    }
+
+    /**
+     * Columna de estado: abierta/resuelta, con quién y cuándo la resolvió en el tooltip.
+     */
+    private static function statusColumn(): TextColumn
+    {
+        return TextColumn::make('resolved_at')
+            ->label(__('Status'))
+            ->badge()
+            ->getStateUsing(static fn (AppOutboxFailure $record): string => $record->isResolved() ? __('Resolved') : __('Open'))
+            ->color(static fn (AppOutboxFailure $record): string => $record->isResolved() ? 'success' : 'danger')
+            ->tooltip(static fn (AppOutboxFailure $record): ?string => $record->isResolved()
+                ? __('Resolved by :actor on :date', [
+                    'actor' => $record->resolved_by ?? '—',
+                    'date' => $record->resolved_at?->toDayDateTimeString() ?? '—',
+                ])
+                : null);
+    }
+
+    /**
+     * Filtro por rango de fechas de ocurrencia (límite superior inclusivo por día).
+     */
+    private static function periodFilter(): Filter
+    {
+        return Filter::make('period')
+            ->label(__('Date range'))
+            ->schema([
+                DatePicker::make('from')->label(__('From'))->native(false),
+                DatePicker::make('until')->label(__('To'))->native(false),
+            ])
+            ->query(static function (Builder $query, array $data): Builder {
+                $from = $data['from'] ?? null;
+                $until = $data['until'] ?? null;
+                if (is_string($from) && $from !== '') {
+                    $query->where('occurred_at', '>=', Carbon::parse($from)->startOfDay());
+                }
+                if (is_string($until) && $until !== '') {
+                    $query->where('occurred_at', '<', Carbon::parse($until)->addDay()->startOfDay());
+                }
+
+                return $query;
+            })
+            ->indicateUsing(static fn (array $data): ?string => ($data['from'] ?? null) || ($data['until'] ?? null)
+                ? (string) __('Date range')
+                : null);
     }
 
     private static function resolveAction(): Action

@@ -18,6 +18,7 @@ use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\IncidentSeverity;
 use Logistics\Execution\Domain\ValueObject\RouteDate;
 use Logistics\Execution\Domain\ValueObject\RouteId;
+use Logistics\Execution\Domain\ValueObject\RouteLifecycleSnapshot;
 use Logistics\Execution\Domain\ValueObject\RouteStatus;
 use Logistics\Execution\Domain\ValueObject\RouteStopId;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
@@ -83,7 +84,8 @@ final class VehicleRoute extends AggregateRoot
     }
 
     /**
-     * Reconstituye la ruta desde la persistencia, sin grabar eventos (no es un hecho nuevo).
+     * Reconstituye la ruta desde la persistencia, sin grabar eventos (no es un hecho nuevo). Los datos de
+     * inicio/cierre (horas y odómetros) llegan agrupados en la foto del ciclo de vida; sin ella, vacíos.
      *
      * @param list<RouteStop> $stops
      */
@@ -93,10 +95,7 @@ final class VehicleRoute extends AggregateRoot
         RouteDate $date,
         RouteStatus $status,
         array $stops,
-        ?DateTimeImmutable $startedAt = null,
-        ?DateTimeImmutable $closedAt = null,
-        ?float $startOdometerKm = null,
-        ?float $closeOdometerKm = null,
+        ?RouteLifecycleSnapshot $lifecycle = null,
     ): self {
         return new self(
             $id,
@@ -104,10 +103,10 @@ final class VehicleRoute extends AggregateRoot
             $date,
             $status,
             self::bySequence($stops),
-            $startedAt,
-            $closedAt,
-            $startOdometerKm,
-            $closeOdometerKm,
+            $lifecycle?->startedAt,
+            $lifecycle?->closedAt,
+            $lifecycle?->startOdometerKm,
+            $lifecycle?->closeOdometerKm,
         );
     }
 

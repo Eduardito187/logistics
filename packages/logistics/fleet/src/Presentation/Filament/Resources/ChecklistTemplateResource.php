@@ -33,7 +33,7 @@ use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
  * DefineChecklistTemplate por el CommandBus (el dominio valida claves únicas y criticidad, y publica el
  * evento al outbox). La app descarga la plantilla activa por GET /app/fleet/checklist-template.
  *
- * Todo el texto visible va en inglés (regla 5 de CLAUDE.md).
+ * El texto visible va íntegramente en inglés (regla 5 de CLAUDE.md).
  */
 final class ChecklistTemplateResource extends Resource
 {

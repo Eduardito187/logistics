@@ -7,6 +7,7 @@ namespace Logistics\Fleet\Application\Command\ClearVehicleFitness;
 use Logistics\Fleet\Domain\Contract\VehicleFitnessLog;
 use Logistics\Fleet\Domain\Contract\VehicleRepository;
 use Logistics\Fleet\Domain\Exception\FleetException;
+use Logistics\Fleet\Domain\ValueObject\VehicleFitnessLogEntry;
 use Logistics\Fleet\Domain\ValueObject\VehicleId;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
@@ -44,14 +45,16 @@ final readonly class ClearVehicleFitnessHandler implements CommandHandler
         $this->vehicles->save($vehicle);
 
         $this->fitnessLog->append(
-            $vehicle->id()->toString(),
-            VehicleFitnessLog::ACTION_CLEARED,
+            new VehicleFitnessLogEntry(
+                vehicleId: $vehicle->id()->toString(),
+                action: VehicleFitnessLog::ACTION_CLEARED,
+                reason: trim($command->note),
+                failedItems: $previous->failedItems,
+                inspectionId: $previous->inspectionId,
+                actorId: $command->clearedById,
+                actorLabel: $command->clearedByLabel,
+            ),
             $this->clock->now(),
-            trim($command->note),
-            $previous->failedItems,
-            $previous->inspectionId,
-            $command->clearedById,
-            $command->clearedByLabel,
         );
 
         $this->recordEvents->record($vehicle->releaseEvents(), 'fleet.vehicle');

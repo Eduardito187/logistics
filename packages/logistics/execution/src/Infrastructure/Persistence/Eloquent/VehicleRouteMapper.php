@@ -11,6 +11,7 @@ use Logistics\Execution\Domain\Model\VehicleRoute;
 use Logistics\Execution\Domain\ValueObject\ArrivalSource;
 use Logistics\Execution\Domain\ValueObject\RouteDate;
 use Logistics\Execution\Domain\ValueObject\RouteId;
+use Logistics\Execution\Domain\ValueObject\RouteLifecycleSnapshot;
 use Logistics\Execution\Domain\ValueObject\RouteStatus;
 use Logistics\Execution\Domain\ValueObject\RouteStopId;
 use Logistics\Execution\Domain\ValueObject\RouteStopStatus;
@@ -77,10 +78,12 @@ final class VehicleRouteMapper
             RouteDate::fromString($record->route_date),
             RouteStatus::from($record->status),
             $stops,
-            self::date($record->started_at),
-            self::date($record->closed_at),
-            $record->start_odometer_km !== null ? (float) $record->start_odometer_km : null,
-            $record->close_odometer_km !== null ? (float) $record->close_odometer_km : null,
+            new RouteLifecycleSnapshot(
+                self::date($record->started_at),
+                self::date($record->closed_at),
+                $record->start_odometer_km !== null ? (float) $record->start_odometer_km : null,
+                $record->close_odometer_km !== null ? (float) $record->close_odometer_km : null,
+            ),
         );
     }
 

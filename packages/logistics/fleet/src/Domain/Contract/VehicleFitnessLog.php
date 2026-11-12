@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Fleet\Domain\Contract;
 
 use DateTimeImmutable;
+use Logistics\Fleet\Domain\ValueObject\VehicleFitnessLogEntry;
 
 /**
  * Bitácora append-only (auditoría) de la aptitud de los vehículos: cada vez que uno queda NO APTO por un
@@ -18,16 +19,7 @@ interface VehicleFitnessLog
     public const string ACTION_CLEARED = 'cleared';
 
     /**
-     * @param list<string> $failedItems
+     * Agrega un asiento a la bitácora con el instante en que ocurrió.
      */
-    public function append(
-        string $vehicleId,
-        string $action,
-        DateTimeImmutable $occurredAt,
-        ?string $reason,
-        array $failedItems,
-        ?string $inspectionId,
-        ?string $actorId,
-        ?string $actorLabel,
-    ): void;
+    public function append(VehicleFitnessLogEntry $entry, DateTimeImmutable $occurredAt): void;
 }

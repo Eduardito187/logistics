@@ -307,7 +307,7 @@ it('lee requisitos de envío y restricciones de camión solo de los ids en alcan
 it('la salida no se planifica antes del inicio del turno y se quitan las paradas que exceden la ventana', function (): void {
     $date = PlanDate::fromString(PLANNING_FIX_DATE);
     $coords = ['status' => 'RECEIVED', 'lat' => -16.4955, 'lng' => -68.1336];
-    foreach (range(1, 3) as $ignored) {
+    for ($created = 0; $created < 3; $created++) {
         ShipmentRecordFactory::new()->withDeliverySlot(PLANNING_FIX_DATE, '09:00', '18:00')->create($coords);
     }
 

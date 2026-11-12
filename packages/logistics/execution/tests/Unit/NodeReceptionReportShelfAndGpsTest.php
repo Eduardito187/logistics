@@ -15,6 +15,10 @@ use Logistics\Execution\Domain\ValueObject\NodeReceptionId;
 use Logistics\Execution\Domain\ValueObject\ReconciliationReport;
 use Logistics\Execution\Domain\ValueObject\SurplusUnitDeclaration;
 
+// Instante de conciliación/reubicación y foto del informe, repetidos en varios escenarios.
+const SHELF_GPS_TEST_AT = '2026-11-12T10:00:00+00:00';
+const SHELF_GPS_TEST_PHOTO = 'evidence/reception-1.jpg';
+
 /**
  * Dominio de la recepción en nodo: informe del operador al conciliar (#11), ubicación en estante (#7) y GPS
  * opcional al recibir (#25). Sin base de datos.
@@ -51,9 +55,9 @@ it('records the operator report on reconcile and keeps only real discrepancies',
     nrReceive($reception, 'U-9'); // sobrante
     $reception->releaseEvents();
 
-    $reception->reconcile(nrDevice(), new DateTimeImmutable('2026-11-12T10:00:00+00:00'), ReconciliationReport::of(
+    $reception->reconcile(nrDevice(), new DateTimeImmutable(SHELF_GPS_TEST_AT), ReconciliationReport::of(
         '  faltó una caja  ',
-        'evidence/reception-1.jpg',
+        SHELF_GPS_TEST_PHOTO,
         [
             MissingUnitDeclaration::of('U-2', MissingUnitReason::Damaged),
             MissingUnitDeclaration::of('U-1', MissingUnitReason::NotArrived), // sí llegó: se descarta
@@ -66,7 +70,7 @@ it('records the operator report on reconcile and keeps only real discrepancies',
 
     $report = $reception->reconciliationReport();
     expect($report->notes)->toBe('faltó una caja')
-        ->and($report->photoPath)->toBe('evidence/reception-1.jpg')
+        ->and($report->photoPath)->toBe(SHELF_GPS_TEST_PHOTO)
         ->and($report->missingToArray())->toBe([['unit_id' => 'U-2', 'reason' => 'damaged']])
         ->and($report->surplusToArray())->toBe([['unit_id' => 'U-9', 'belongs_to_shipment_id' => 'e1111111-1111-7111-8111-111111111111']])
         ->and($report->reasonFor('U-3'))->toBeNull();
@@ -79,12 +83,12 @@ it('records the operator report on reconcile and keeps only real discrepancies',
     expect($event->missingUnitIds)->toBe(['U-2', 'U-3'])
         ->and($event->payload()['missing_units'])->toBe([['unit_id' => 'U-2', 'reason' => 'damaged']])
         ->and($event->payload()['notes'])->toBe('faltó una caja')
-        ->and($event->payload()['photo_path'])->toBe('evidence/reception-1.jpg');
+        ->and($event->payload()['photo_path'])->toBe(SHELF_GPS_TEST_PHOTO);
 });
 
 it('reconciles without a report exactly as before (empty report, additive payload)', function (): void {
     $reception = nrReception();
-    $reception->reconcile(nrDevice(), new DateTimeImmutable('2026-11-12T10:00:00+00:00'));
+    $reception->reconcile(nrDevice(), new DateTimeImmutable(SHELF_GPS_TEST_AT));
 
     expect($reception->reconciliationReport()->isEmpty())->toBeTrue();
 
@@ -97,7 +101,7 @@ it('reconciles without a report exactly as before (empty report, additive payloa
 
 it('does not overwrite the report on a second reconcile (idempotent)', function (): void {
     $reception = nrReception();
-    $reception->reconcile(nrDevice(), new DateTimeImmutable('2026-11-12T10:00:00+00:00'), ReconciliationReport::of('primera'));
+    $reception->reconcile(nrDevice(), new DateTimeImmutable(SHELF_GPS_TEST_AT), ReconciliationReport::of('primera'));
     $reception->releaseEvents();
 
     $reception->reconcile(nrDevice(), new DateTimeImmutable('2026-11-12T11:00:00+00:00'), ReconciliationReport::of('segunda'));
@@ -125,7 +129,7 @@ it('shelves a unit, is idempotent on the same location and ignores stale relocat
     expect($reception->assignShelfLocation('U-1', 'B-01-1', nrDevice(), new DateTimeImmutable('2026-11-12T09:00:00+00:00')))->toBeFalse();
 
     // Reubicación posterior: cambia y recuerda la anterior.
-    expect($reception->assignShelfLocation('U-1', 'B-01-1', nrDevice(), new DateTimeImmutable('2026-11-12T10:00:00+00:00')))->toBeTrue();
+    expect($reception->assignShelfLocation('U-1', 'B-01-1', nrDevice(), new DateTimeImmutable(SHELF_GPS_TEST_AT)))->toBeTrue();
     /** @var NodeUnitShelved $moved */
     $moved = $reception->releaseEvents()[0];
     expect($moved->previousLocation)->toBe('A-03-2')
@@ -135,17 +139,17 @@ it('shelves a unit, is idempotent on the same location and ignores stale relocat
 it('allows shelving after reconciliation and for received surplus units', function (): void {
     $reception = nrReception();
     nrReceive($reception, 'U-9'); // sobrante recibido
-    $reception->reconcile(nrDevice(), new DateTimeImmutable('2026-11-12T10:00:00+00:00'));
+    $reception->reconcile(nrDevice(), new DateTimeImmutable(SHELF_GPS_TEST_AT));
 
     expect($reception->assignShelfLocation('U-9', 'SOBRANTES', nrDevice(), new DateTimeImmutable('2026-11-12T10:05:00+00:00')))->toBeTrue();
 });
 
 it('rejects shelving a unit that does not belong to the reception', function (): void {
-    nrReception()->assignShelfLocation('U-404', 'A-01', nrDevice(), new DateTimeImmutable('2026-11-12T10:00:00+00:00'));
+    nrReception()->assignShelfLocation('U-404', 'A-01', nrDevice(), new DateTimeImmutable(SHELF_GPS_TEST_AT));
 })->throws(ExecutionException::class);
 
 it('rejects an empty or too long shelf location', function (string $location): void {
-    nrReception()->assignShelfLocation('U-1', $location, nrDevice(), new DateTimeImmutable('2026-11-12T10:00:00+00:00'));
+    nrReception()->assignShelfLocation('U-1', $location, nrDevice(), new DateTimeImmutable(SHELF_GPS_TEST_AT));
 })->with(['   ', str_repeat('X', 65)])->throws(ExecutionException::class);
 
 it('receives a unit without GPS and never invents a position', function (): void {

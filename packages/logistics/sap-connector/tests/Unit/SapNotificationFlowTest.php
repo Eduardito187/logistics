@@ -99,7 +99,7 @@ function sapNotifRepository(): SapNotificationRepository
             $due = array_filter(
                 $this->byId,
                 static fn (SapNotification $n): bool => $n->canAttempt($maxAttempts)
-                    && ($n->nextAttemptAt() === null || $n->nextAttemptAt() <= $now),
+                    && ($n->deliveryTrace()->nextAttemptAt === null || $n->deliveryTrace()->nextAttemptAt <= $now),
             );
 
             return array_slice(array_values($due), 0, $limit);
@@ -242,10 +242,10 @@ it('el envío marca sent y guarda el código y el cuerpo crudo de la respuesta d
     $notification = $repository->findById($id);
     expect($status)->toBe(SapNotificationStatus::Sent)
         ->and($notification?->attempts())->toBe(1)
-        ->and($notification?->responseStatus())->toBe(202)
-        ->and($notification?->responseBody())->toBe('{"received":true}')
-        ->and($notification?->sentAt())->toEqual($clock->now())
-        ->and($notification?->lastError())->toBeNull();
+        ->and($notification?->deliveryTrace()->responseStatus)->toBe(202)
+        ->and($notification?->deliveryTrace()->responseBody)->toBe('{"received":true}')
+        ->and($notification?->deliveryTrace()->sentAt)->toEqual($clock->now())
+        ->and($notification?->deliveryTrace()->lastError)->toBeNull();
 
     // Reentrega del job: ya enviado, no se vuelve a llamar a SAP.
     (new DeliverSapNotification($repository, $sap, sapNotifPolicy(), $clock))->deliver($id);
@@ -261,7 +261,7 @@ it('trunca la respuesta cruda de SAP a ~4 KB', function (): void {
 
     (new DeliverSapNotification($repository, sapNotifClient(200, str_repeat('x', 10000)), sapNotifPolicy(), sapNotifClock()))->deliver($id);
 
-    expect(strlen((string) $repository->findById($id)?->responseBody()))->toBe(SapNotification::RESPONSE_BODY_LIMIT);
+    expect(strlen((string) $repository->findById($id)?->deliveryTrace()->responseBody))->toBe(SapNotification::RESPONSE_BODY_LIMIT);
 });
 
 it('un fallo de SAP nunca lanza y se deja de insistir tras 3 intentos (queda failed)', function (): void {
@@ -278,7 +278,7 @@ it('un fallo de SAP nunca lanza y se deja de insistir tras 3 intentos (queda fai
 
     // Intento 1 (job del registro): falla, backoff 1 min.
     expect($deliver->deliver($id))->toBe(SapNotificationStatus::Failed);
-    expect($repository->findById($id)?->nextAttemptAt())->toEqual($clock->now()->add(new DateInterval('PT1M')));
+    expect($repository->findById($id)?->deliveryTrace()->nextAttemptAt)->toEqual($clock->now()->add(new DateInterval('PT1M')));
 
     // Antes de vencer el backoff el barrido no lo toma.
     expect($requeue->run())->toBe(0);
@@ -296,8 +296,8 @@ it('un fallo de SAP nunca lanza y se deja de insistir tras 3 intentos (queda fai
     $notification = $repository->findById($id);
     expect($notification?->status())->toBe(SapNotificationStatus::Failed)
         ->and($notification?->attempts())->toBe(3)
-        ->and($notification?->nextAttemptAt())->toBeNull()
-        ->and($notification?->lastError())->toContain('SAP timeout')
+        ->and($notification?->deliveryTrace()->nextAttemptAt)->toBeNull()
+        ->and($notification?->deliveryTrace()->lastError)->toContain('SAP timeout')
         ->and($sap->calls)->toBe(3);
 
     // Agotado: ni el barrido lo vuelve a tomar ni un job tardío vuelve a llamar a SAP.
@@ -319,8 +319,8 @@ it('una respuesta no 2xx cuenta como intento fallido y guarda la respuesta', fun
     $notification = $repository->findById($id);
     expect($notification?->status())->toBe(SapNotificationStatus::Failed)
         ->and($notification?->attempts())->toBe(1)
-        ->and($notification?->responseStatus())->toBe(503)
-        ->and($notification?->responseBody())->toBe('maintenance');
+        ->and($notification?->deliveryTrace()->responseStatus)->toBe(503)
+        ->and($notification?->deliveryTrace()->responseBody)->toBe('maintenance');
 });
 
 it('si el conector se apaga entre el registro y el envío, el aviso queda skipped sin llamar a SAP', function (): void {

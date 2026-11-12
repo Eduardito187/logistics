@@ -15,7 +15,7 @@ final readonly class CalculateDeliveryPromise implements Query
 {
     /**
      * Los campos de propiedad se conservan solo por compatibilidad con llamadores existentes y el handler
-     * los IGNORA: la promesa nunca depende del stock ni del tipo de propiedad (OWNED/FBD/DROPSHIP). Todo
+     * los IGNORA: la promesa nunca depende del stock ni del tipo de propiedad (OWNED/FBD/DROPSHIP). Cada
      * pedido recibe el mismo cálculo para la misma zona, fecha y horizonte.
      *
      * @param string      $zoneId          zona de cobertura (id primitivo)

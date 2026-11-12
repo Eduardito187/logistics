@@ -118,15 +118,14 @@ final readonly class EloquentCarrierTripRepository implements CarrierTripReposit
      */
     private function shipmentIdsOf(string $tripId): array
     {
-        /** @var list<string> $ids */
-        $ids = DB::table(self::SHIPMENTS_TABLE)
-            ->where('trip_id', $tripId)
-            ->orderBy('position')
-            ->pluck('shipment_id')
-            ->map(static fn (mixed $id): string => \is_string($id) ? $id : '')
-            ->values()
-            ->all();
-
-        return $ids;
+        // array_values() deja la forma list<string> que exige el @return (all() tipa array<int, string>).
+        return array_values(
+            DB::table(self::SHIPMENTS_TABLE)
+                ->where('trip_id', $tripId)
+                ->orderBy('position')
+                ->pluck('shipment_id')
+                ->map(static fn (mixed $id): string => \is_string($id) ? $id : '')
+                ->all(),
+        );
     }
 }

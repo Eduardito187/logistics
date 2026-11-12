@@ -15,6 +15,16 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
 const OUTBOX_OBSERVER_REACTOR_DOWN = 'reactor down';
 
 /**
+ * Falla simulada de un observador (extiende RuntimeException: cualquier captura existente la sigue atrapando).
+ */
+final class OutboxObserverTestObserverException extends RuntimeException {}
+
+/**
+ * Falla simulada del reactor destino del despacho.
+ */
+final class OutboxObserverTestReactorException extends RuntimeException {}
+
+/**
  * Punto de extensión de observadores del outbox: un observador que lanza NUNCA cambia el desenlace del
  * despacho, los reintentos ni el dead-letter, y no impide que los demás observadores se ejecuten.
  * PHP puro, sin Laravel ni base de datos.
@@ -95,7 +105,7 @@ function explodingObserver(): OutboxObserver
         {
             $this->calls++;
 
-            throw new RuntimeException('observer boom');
+            throw new OutboxObserverTestObserverException('observer boom');
         }
     };
 }
@@ -154,7 +164,7 @@ it('un observador que lanza no cambia el backoff de un despacho fallido', functi
         {
             public function dispatch(OutboxMessage $message): void
             {
-                throw new RuntimeException(OUTBOX_OBSERVER_REACTOR_DOWN);
+                throw new OutboxObserverTestReactorException(OUTBOX_OBSERVER_REACTOR_DOWN);
             }
         },
         observers: [explodingObserver()],
@@ -180,7 +190,7 @@ it('un observador que lanza no evita el dead-letter al agotar los intentos', fun
         {
             public function dispatch(OutboxMessage $message): void
             {
-                throw new RuntimeException(OUTBOX_OBSERVER_REACTOR_DOWN);
+                throw new OutboxObserverTestReactorException(OUTBOX_OBSERVER_REACTOR_DOWN);
             }
         },
         maxAttempts: 1,
@@ -200,7 +210,10 @@ it('no notifica a los observadores si el mensaje ya estaba en estado terminal', 
         observerTestStore(),
         new class implements MessageDispatcher
         {
-            public function dispatch(OutboxMessage $message): void {}
+            public function dispatch(OutboxMessage $message): void
+            {
+                // Sin efecto a propósito: el mensaje ya es terminal y el despacho no debería ni intentarse.
+            }
         },
         observers: [$recording],
     );

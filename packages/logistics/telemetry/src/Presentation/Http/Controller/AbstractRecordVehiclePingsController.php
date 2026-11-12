@@ -105,10 +105,8 @@ abstract class AbstractRecordVehiclePingsController extends ApiController
             return [];
         }
 
-        /** @var array<int, string> $statuses */
-        $statuses = $this->queries->ask(new ClassifyPingFixes($vehicleId, $fixes));
-
-        return $statuses;
+        // El tipo lo fija el @return del método (el QueryBus devuelve mixed).
+        return $this->queries->ask(new ClassifyPingFixes($vehicleId, $fixes));
     }
 
     /**

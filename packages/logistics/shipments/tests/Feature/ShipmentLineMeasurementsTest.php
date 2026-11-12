@@ -14,6 +14,11 @@ use Logistics\Shipments\Domain\ValueObject\SourceReference;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 
 /**
+ * Falla al sembrar: el envío recién recibido no apareció en el repositorio.
+ */
+final class LineMeasurementsShipmentNotFound extends RuntimeException {}
+
+/**
  * Foto de medidas por línea al recibir el envío (Roadmap 02, Fase 2.1) y su backfill, contra PostgreSQL
  * real (logistics_test). El catálogo se siembra por SQL directo (shipments no depende del dominio de
  * commerce/catalog: solo lee sus tablas).
@@ -82,7 +87,7 @@ function receiveAndLoadLines(string $externalId, array $lines): array
 
     $shipment = app(ShipmentRepository::class)->findBySourceReference(
         SourceReference::of(OrderSource::Store, $externalId),
-    ) ?? throw new RuntimeException('envío no encontrado');
+    ) ?? throw new LineMeasurementsShipmentNotFound('envío no encontrado');
 
     $records = ShipmentLineRecord::query()->where('shipment_id', $shipment->id()->toString())->get();
 

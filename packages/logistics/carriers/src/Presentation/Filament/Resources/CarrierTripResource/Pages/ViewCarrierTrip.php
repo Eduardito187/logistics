@@ -10,7 +10,7 @@ use Logistics\Carriers\Presentation\Filament\Resources\CarrierTripResource;
 
 /**
  * Ficha de un viaje: datos del corredor, estado y carga (envíos → productos con nombre + SKU). Desde acá
- * la oficina arma la carga y opera el viaje (todo por comandos).
+ * la oficina arma la carga y opera el viaje (siempre por comandos).
  */
 final class ViewCarrierTrip extends ViewRecord
 {

@@ -24,12 +24,12 @@ use Logistics\Shipments\Infrastructure\Dispatch\ShipmentStatusProgressionDispatc
 use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
 use Logistics\Tracking\Infrastructure\Outbox\CancelOnOrderCancelled;
 use Logistics\Tracking\Infrastructure\Outbox\InProgressOnLabelsEmitted;
-use Logistics\Tracking\Infrastructure\Outbox\TruckPositionOnVehicleReport;
 use Logistics\Tracking\Infrastructure\Outbox\OpenTrackingOnOrderPlaced;
 use Logistics\Tracking\Infrastructure\Outbox\ProcessingOnOrderPaid;
 use Logistics\Tracking\Infrastructure\Outbox\ProjectExecutionTracking;
 use Logistics\Tracking\Infrastructure\Outbox\RescheduledOnReschedule;
 use Logistics\Tracking\Infrastructure\Outbox\ReturnedOnReturnInitiated;
+use Logistics\Tracking\Infrastructure\Outbox\TruckPositionOnVehicleReport;
 
 // Configuración del Transactional Outbox (ADR 002). Valores afinables por entorno vía .env.
 return [

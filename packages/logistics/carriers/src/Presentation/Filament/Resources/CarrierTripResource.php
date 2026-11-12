@@ -10,13 +10,10 @@ use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Infolists\Components\RepeatableEntry;
-use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -31,6 +28,7 @@ use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\CarrierTripReco
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierTripResource\Pages\CreateCarrierTrip;
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierTripResource\Pages\ListCarrierTrips;
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierTripResource\Pages\ViewCarrierTrip;
+use Logistics\Carriers\Presentation\Filament\Support\CarrierTripSchema;
 use Logistics\Carriers\Presentation\Filament\Support\TripLookups;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandBus;
@@ -55,21 +53,6 @@ final class CarrierTripResource extends Resource
     use PlainNavigationLabel;
 
     protected static ?string $model = CarrierTripRecord::class;
-
-    /**
-     * Estados del ciclo de vida (mismos valores que CarrierTripStatus del dominio).
-     *
-     * @var array<string, string>
-     */
-    public const STATUSES = [
-        'scheduled' => 'Scheduled',
-        'in_progress' => 'In progress',
-        'closed' => 'Closed',
-        'cancelled' => 'Cancelled',
-    ];
-
-    /** Formato de fecha y hora de las columnas e infolists del viaje. */
-    private const DATETIME_FORMAT = 'Y-m-d H:i';
 
     public static function shouldRegisterNavigation(): bool
     {
@@ -118,26 +101,7 @@ final class CarrierTripResource extends Resource
         $carrier = $record->carrier->name ?? __('Carrier');
         $route = TripLookups::nodeName($record->corridor_from).' → '.TripLookups::nodeName($record->corridor_to);
 
-        return "{$carrier} · {$route} · ".$record->scheduled_at->format(self::DATETIME_FORMAT);
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public static function statusOptions(): array
-    {
-        return array_map(static fn (string $label): string => __($label), self::STATUSES);
-    }
-
-    public static function statusColor(string $state): string
-    {
-        return match ($state) {
-            'scheduled' => 'warning',
-            'in_progress' => 'info',
-            'closed' => 'success',
-            'cancelled' => 'gray',
-            default => 'gray',
-        };
+        return "{$carrier} · {$route} · ".$record->scheduled_at->format(CarrierTripSchema::DATETIME_FORMAT);
     }
 
     /**
@@ -184,26 +148,9 @@ final class CarrierTripResource extends Resource
                 ->columns(2),
             Section::make(__('Load'))
                 ->schema([
-                    self::shipmentPicker('shipment_ids'),
+                    CarrierTripSchema::shipmentPicker('shipment_ids'),
                 ]),
         ]);
-    }
-
-    /**
-     * Select buscable de envíos cargables (no en otro viaje vigente), por pedido o cliente.
-     */
-    public static function shipmentPicker(string $name): Select
-    {
-        return Select::make($name)
-            ->label(__('Shipments'))
-            ->helperText(__('Search by order number or customer. Shipments already on an active trip are excluded.'))
-            ->multiple()
-            ->native(false)
-            ->searchable()
-            ->getSearchResultsUsing(static fn (string $search): array => TripLookups::searchLoadableShipments($search))
-            ->getOptionLabelsUsing(static fn (array $values): array => TripLookups::shipmentLabels(
-                array_values(array_filter($values, static fn (mixed $v): bool => \is_string($v))),
-            ));
     }
 
     public static function table(Table $table): Table
@@ -217,35 +164,7 @@ final class CarrierTripResource extends Resource
                 return \is_string($carrier) && $carrier !== '' ? $query->where('carrier_id', $carrier) : $query;
             })
             ->defaultSort('scheduled_at', 'desc')
-            ->columns([
-                TextColumn::make('carrier.name')
-                    ->label(__('Carrier'))
-                    ->searchable()
-                    ->sortable(),
-                TextColumn::make('corridor_from')
-                    ->label(__('Pickup node'))
-                    ->formatStateUsing(static fn (?string $state): string => TripLookups::nodeName($state)),
-                TextColumn::make('corridor_to')
-                    ->label(__('Destination node'))
-                    ->formatStateUsing(static fn (?string $state): string => TripLookups::nodeName($state)),
-                TextColumn::make('scheduled_at')
-                    ->label(__('Scheduled departure'))
-                    ->dateTime(self::DATETIME_FORMAT)
-                    ->sortable(),
-                TextColumn::make('shipments_count')
-                    ->label(__('Shipments'))
-                    ->counts('shipments')
-                    ->sortable(),
-                TextColumn::make('reference')
-                    ->label(__('Reference'))
-                    ->placeholder('—')
-                    ->searchable(),
-                TextColumn::make('status')
-                    ->label(__('Status'))
-                    ->badge()
-                    ->color(static fn (string $state): string => self::statusColor($state))
-                    ->formatStateUsing(static fn (string $state): string => __(self::STATUSES[$state] ?? $state)),
-            ])
+            ->columns(CarrierTripSchema::tableColumns())
             ->filters([
                 SelectFilter::make('carrier_id')
                     ->label(__('Carrier'))
@@ -254,7 +173,7 @@ final class CarrierTripResource extends Resource
                     ->options(static fn (): array => DB::table('carriers')->orderBy('name')->pluck('name', 'id')->all()),
                 SelectFilter::make('status')
                     ->label(__('Status'))
-                    ->options(self::statusOptions())
+                    ->options(CarrierTripSchema::statusOptions())
                     ->native(false),
             ])
             ->recordActions([
@@ -267,56 +186,8 @@ final class CarrierTripResource extends Resource
     public static function infolist(Schema $schema): Schema
     {
         return $schema->components([
-            Section::make(__('Trip'))
-                ->schema([
-                    TextEntry::make('carrier.name')
-                        ->label(__('Carrier')),
-                    TextEntry::make('status')
-                        ->label(__('Status'))
-                        ->badge()
-                        ->color(static fn (string $state): string => self::statusColor($state))
-                        ->formatStateUsing(static fn (string $state): string => __(self::STATUSES[$state] ?? $state)),
-                    TextEntry::make('corridor_from')
-                        ->label(__('Pickup node'))
-                        ->formatStateUsing(static fn (?string $state): string => TripLookups::nodeName($state)),
-                    TextEntry::make('corridor_to')
-                        ->label(__('Destination node'))
-                        ->formatStateUsing(static fn (?string $state): string => TripLookups::nodeName($state)),
-                    TextEntry::make('scheduled_at')
-                        ->label(__('Scheduled departure'))
-                        ->dateTime(self::DATETIME_FORMAT),
-                    TextEntry::make('reference')
-                        ->label(__('Reference'))
-                        ->placeholder('—'),
-                    TextEntry::make('started_at')
-                        ->label(__('Started at'))
-                        ->dateTime(self::DATETIME_FORMAT)
-                        ->placeholder(__('Not started yet')),
-                    TextEntry::make('closed_at')
-                        ->label(__('Closed at'))
-                        ->dateTime(self::DATETIME_FORMAT)
-                        ->placeholder(__('Not closed yet')),
-                ])
-                ->columns(2),
-            Section::make(__('Load'))
-                ->schema([
-                    RepeatableEntry::make('load')
-                        ->label(__('Shipments'))
-                        ->state(static fn (CarrierTripRecord $record): array => TripLookups::load($record->id))
-                        ->placeholder(__('No shipments assigned yet'))
-                        ->schema([
-                            TextEntry::make('shipment')
-                                ->label(__('Order')),
-                            TextEntry::make('destination')
-                                ->label(__('Destination')),
-                            TextEntry::make('units')
-                                ->label(__('Products to pick up')),
-                            TextEntry::make('products')
-                                ->label(__('Products'))
-                                ->columnSpanFull(),
-                        ])
-                        ->columns(3),
-                ]),
+            CarrierTripSchema::tripSection(),
+            CarrierTripSchema::loadSection(),
         ]);
     }
 
@@ -364,7 +235,7 @@ final class CarrierTripResource extends Resource
             ->icon('heroicon-o-plus-circle')
             ->visible(static fn (CarrierTripRecord $record): bool => $record->status === 'scheduled')
             ->schema([
-                self::shipmentPicker('shipment_ids')->required(),
+                CarrierTripSchema::shipmentPicker('shipment_ids')->required(),
             ])
             ->modalHeading(__('Add shipments to trip'))
             ->action(static function (CarrierTripRecord $record, array $data): void {

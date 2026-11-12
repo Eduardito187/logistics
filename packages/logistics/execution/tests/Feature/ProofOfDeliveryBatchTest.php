@@ -23,6 +23,8 @@ beforeEach(function (): void {
 );
 
 const PODB_AT = '2026-11-12T11:00:00-04:00';
+// Primera foto del POD (la que queda como foto principal).
+const PODB_PHOTO_A = 'pod/a.jpg';
 
 /**
  * Prepara y carga los bultos dados para dejar la entrega lista para el POD.
@@ -50,7 +52,7 @@ it('cierra la entrega con varios bultos en un solo POD y vincula las evidencias'
         'shipment_id' => $shipment,
         'unit_ids' => ['U-1', 'U-2'],
         'confirmation' => 'FIRMA_DIGITAL',
-        'photo_paths' => ['pod/a.jpg', 'pod/b.jpg'],
+        'photo_paths' => [PODB_PHOTO_A, 'pod/b.jpg'],
         'evidence_ids' => [$evidence],
         'occurred_at' => PODB_AT,
         'idempotency_key' => 'podb-batch-1',
@@ -60,13 +62,13 @@ it('cierra la entrega con varios bultos en un solo POD y vincula las evidencias'
         ->assertOk()
         ->assertJsonPath('data.status', 'DELIVERED')
         ->assertJsonPath('data.units_delivered', 2)
-        ->assertJsonPath('data.pod_photo_path', 'pod/a.jpg');
+        ->assertJsonPath('data.pod_photo_path', PODB_PHOTO_A);
 
     // Reintento idempotente: no duplica escaneos.
     test()->postJson('/api/v1/app/deliveries/proof-of-delivery', $body)->assertOk();
 
     $row = DB::table('execution_deliveries')->where('shipment_id', $shipment)->first(['pod_photo_paths', 'pod_evidence_ids']);
-    expect(json_decode((string) $row?->pod_photo_paths, true))->toBe(['pod/a.jpg', 'pod/b.jpg'])
+    expect(json_decode((string) $row?->pod_photo_paths, true))->toBe([PODB_PHOTO_A, 'pod/b.jpg'])
         ->and(json_decode((string) $row?->pod_evidence_ids, true))->toBe([$evidence])
         ->and(DB::table('execution_scan_events')->where('type', 'PROOF_OF_DELIVERY')->where('idempotency_key', 'like', 'podb-batch-1%')->count())->toBe(2);
 });
