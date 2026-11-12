@@ -21,6 +21,7 @@ final readonly class RouteStopView
     /**
      * @param list<array{sku: string, name: string, quantity: int, image_url: string|null}> $items
      * @param array{type: string, name: string|null, node_code: string|null}|null           $destination
+     * @param list<string>                                                                  $unitIds     ids de los bultos esperados en esta parada (validación offline del escaneo)
      */
     public function __construct(
         public string $id,
@@ -38,6 +39,7 @@ final readonly class RouteStopView
         public ?string $addressReference = null,
         public array $items = [],
         public ?array $destination = null,
+        public array $unitIds = [],
     ) {}
 
     /**
@@ -45,6 +47,7 @@ final readonly class RouteStopView
      *
      * @param list<array{sku: string, name: string, quantity: int, image_url: string|null}> $items
      * @param array{type: string, name: string|null, node_code: string|null}|null           $destination
+     * @param list<string>                                                                  $unitIds
      */
     public static function fromStop(
         RouteStop $stop,
@@ -52,6 +55,7 @@ final readonly class RouteStopView
         ?string $addressReference = null,
         array $items = [],
         ?array $destination = null,
+        array $unitIds = [],
     ): self {
         return new self(
             $stop->id()->toString(),
@@ -69,6 +73,7 @@ final readonly class RouteStopView
             $addressReference,
             $items,
             $destination,
+            $unitIds,
         );
     }
 
@@ -92,6 +97,7 @@ final readonly class RouteStopView
             'customer_phone' => $this->customerPhone,
             'address_reference' => $this->addressReference,
             'items' => $this->items,
+            'unit_ids' => $this->unitIds,
             'destination' => $this->destination,
         ];
     }

@@ -13,9 +13,13 @@ namespace Logistics\Labels\Domain\Contract;
 interface PublicKeyDirectory
 {
     /**
-     * Claves públicas vigentes como `id => clave pública en base64`, ordenadas por id.
+     * Claves públicas vigentes como `id => lista de claves públicas en base64`, ordenadas por id.
      *
-     * @return array<int, non-empty-string>
+     * Es una LISTA por id (no una sola) para la red de seguridad append-only: un mismo key_id puede
+     * tener más de una pública histórica y todas se sirven, de modo que una etiqueta válida nunca se
+     * rechace por un cambio de clave. En el caso normal la lista tiene un solo elemento.
+     *
+     * @return array<int, list<non-empty-string>>
      */
     public function bundle(): array;
 }

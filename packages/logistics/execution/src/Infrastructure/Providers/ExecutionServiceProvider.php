@@ -7,6 +7,8 @@ namespace Logistics\Execution\Infrastructure\Providers;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRoute;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRouteHandler;
+use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRoute;
+use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRouteHandler;
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidence;
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidenceHandler;
 use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDropshipDelivery;
@@ -113,6 +115,7 @@ final class ExecutionServiceProvider extends ServiceProvider
         ReceiveUnitAtNode::class => ReceiveUnitAtNodeHandler::class,
         ReconcileNodeReception::class => ReconcileNodeReceptionHandler::class,
         AssembleDailyRoute::class => AssembleDailyRouteHandler::class,
+        AttachShipmentToRoute::class => AttachShipmentToRouteHandler::class,
         ReportVehicleIncident::class => ReportVehicleIncidentHandler::class,
         ReportDeliveryIssue::class => ReportDeliveryIssueHandler::class,
         CaptureDeliveryEvidence::class => CaptureDeliveryEvidenceHandler::class,
