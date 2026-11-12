@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
+use Logistics\Labels\Application\ReadModel\EmittedLabelView;
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
 use Logistics\Labels\Domain\Exception\DuplicateLabelException;
 use Logistics\Labels\Domain\Model\EmittedLabel;
@@ -9,6 +11,7 @@ use Logistics\Labels\Domain\Service\LabelBatchFactory;
 use Logistics\Labels\Domain\ValueObject\LabelPayload;
 use Logistics\Labels\Infrastructure\Zpl\ZplLabelRenderer;
 use Logistics\Labels\Tests\Support\LabelFixtures;
+use Logistics\Shared\Application\Query\QueryBus;
 
 /**
  * Persistencia Eloquent de las etiquetas emitidas contra PostgreSQL (logistics_test): el índice único
@@ -44,6 +47,44 @@ function batchPayloads(int $quantity): array
         lines: [['sku' => 'LG-GT32WPP', 'quantity' => $quantity, 'piecesPerUnit' => 1]],
     );
 }
+
+/**
+ * @return list<LabelPayload>
+ */
+function batchPayloadsFor(string $orderNumber, int $quantity, int $issuedAt): array
+{
+    return (new LabelBatchFactory)->build(
+        keyId: 1,
+        orderNumber: $orderNumber,
+        origin: 'CD-SCZ',
+        destination: LabelPayload::CUSTOMER_DESTINATION,
+        issuedAt: $issuedAt,
+        lines: [['sku' => 'LG-GT32WPP', 'quantity' => $quantity, 'piecesPerUnit' => 1]],
+    );
+}
+
+it('el listado deduplica por bulto físico tras una re-emisión: una etiqueta vigente (la última) por unidad', function (): void {
+    /** @var EmittedLabelRepository $repository */
+    $repository = $this->repository;
+    $order = 'DM-260040002';
+
+    // Emisión original (2 unidades legítimas) y una RE-EMISIÓN posterior (ids nuevos, mismo bulto físico),
+    // como dejó el incidente de rotación de clave: el crudo acumula 4 filas sin borrar las viejas.
+    foreach (batchPayloadsFor($order, 2, 1759312800) as $payload) {
+        $repository->add(emittedLabelFrom($this, $payload, $order));
+    }
+    foreach (batchPayloadsFor($order, 2, 1759399200) as $payload) {
+        $repository->add(emittedLabelFrom($this, $payload, $order));
+    }
+    expect($repository->forOrder($order))->toHaveCount(4);
+
+    // El listado de la app debe devolver una por bulto físico (la más reciente), no las 4 crudas.
+    /** @var list<EmittedLabelView> $views */
+    $views = app(QueryBus::class)->ask(new GetShipmentLabels($order));
+    expect($views)->toHaveCount(2)
+        ->and(collect($views)->every(fn (EmittedLabelView $v): bool => $v->emittedAt === 1759399200))->toBeTrue()
+        ->and(collect($views)->pluck('unitIndex')->sort()->values()->all())->toBe([1, 2]);
+})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
 it('rejects a second label with the same label id', function (): void {
     /** @var EmittedLabelRepository $repository */

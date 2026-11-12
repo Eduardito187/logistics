@@ -11,6 +11,7 @@ use Logistics\Execution\Domain\Event\DriverRouteStarted;
 use Logistics\Execution\Domain\Event\DriverRouteStopArrived;
 use Logistics\Execution\Domain\Event\DriverRouteStopAttached;
 use Logistics\Execution\Domain\Event\DriverRouteStopCompleted;
+use Logistics\Execution\Domain\Event\DriverRouteStopDetached;
 use Logistics\Execution\Domain\Event\DriverRouteStopFailed;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\ArrivalSource;
@@ -400,6 +401,51 @@ final class VehicleRoute extends AggregateRoot
             $this->totalStops(),
             $at,
         ));
+    }
+
+    /**
+     * Saca el envío de esta ruta porque se reasignó a OTRO camión (el pedido pasó al último asignado). SOLO
+     * desengancha una parada aún PENDIENTE: si ya está atendida (entregada/fallida/reprogramada) se respeta
+     * y no se toca (mismo criterio seguro que el movimiento de la entrega). Recompacta la secuencia 1..n y
+     * graba DriverRouteStopDetached. Devuelve true si realmente quitó la parada.
+     */
+    public function detachShipment(string $shipmentId, DateTimeImmutable $at): bool
+    {
+        $target = null;
+        foreach ($this->stops as $stop) {
+            if ($stop->shipmentId() === $shipmentId) {
+                $target = $stop;
+                break;
+            }
+        }
+
+        if ($target === null || !$target->isPending()) {
+            return false;
+        }
+
+        $sequence = $target->sequence();
+        $this->stops = array_values(array_filter(
+            $this->stops,
+            static fn (RouteStop $stop): bool => $stop->shipmentId() !== $shipmentId,
+        ));
+
+        // Recompactar la secuencia para no dejar huecos (un futuro attach usa totalStops()+1).
+        foreach ($this->stops as $index => $stop) {
+            $stop->resequence($index + 1);
+        }
+
+        $this->refreshStatus();
+
+        $this->recordEvent(new DriverRouteStopDetached(
+            $this->id->toString(),
+            $this->vehicleId,
+            $shipmentId,
+            $sequence,
+            $this->totalStops(),
+            $at,
+        ));
+
+        return true;
     }
 
     /**

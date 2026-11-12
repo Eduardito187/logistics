@@ -6,6 +6,7 @@ namespace Logistics\Execution\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Execution\Domain\Event\DeliveryFailed;
+use Logistics\Execution\Domain\Event\DeliveryVehicleReassigned;
 use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
 use Logistics\Execution\Domain\Event\ShipmentDeparted;
@@ -48,7 +49,7 @@ final class Delivery extends AggregateRoot
     private function __construct(
         private readonly DeliveryId $id,
         private readonly string $shipmentId,
-        private readonly string $vehicleId,
+        private string $vehicleId,
         private DeliveryStatus $status,
         private array $scans,
         private ?ProofOfDelivery $proofOfDelivery,
@@ -437,6 +438,38 @@ final class Delivery extends AggregateRoot
         }
 
         $this->proofOfDelivery = $updated;
+
+        return true;
+    }
+
+    /**
+     * Mueve la entrega al camión nuevo (el pedido pasa al ÚLTIMO camión asignado y ESE chofer lo entrega).
+     * Regla del dueño — NUNCA perder una entrega REAL: si ya está entregada (DELIVERED) o fallida (FAILED),
+     * NO se mueve (se respeta el POD/desenlace ya registrado). Solo se mueve mientras está en curso
+     * (Pending/Prepared/Loaded/InTransit). Idempotente: mismo camión o id vacío → no hace nada.
+     *
+     * Devuelve true si realmente cambió (para que el repositorio guarde y se grabe el evento de auditoría).
+     */
+    public function reassignVehicle(string $newVehicleId, DateTimeImmutable $occurredAt): bool
+    {
+        $newVehicleId = trim($newVehicleId);
+
+        if ($this->status === DeliveryStatus::Delivered || $this->status === DeliveryStatus::Failed) {
+            return false;
+        }
+        if ($newVehicleId === '' || $newVehicleId === $this->vehicleId) {
+            return false;
+        }
+
+        $fromVehicleId = $this->vehicleId;
+        $this->vehicleId = $newVehicleId;
+        $this->recordEvent(new DeliveryVehicleReassigned(
+            $this->id->toString(),
+            $this->shipmentId,
+            $fromVehicleId,
+            $newVehicleId,
+            $occurredAt,
+        ));
 
         return true;
     }

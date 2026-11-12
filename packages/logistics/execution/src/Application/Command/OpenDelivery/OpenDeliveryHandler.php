@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Application\Command\OpenDelivery;
 
+use DateTimeImmutable;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
@@ -13,8 +14,11 @@ use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
 /**
- * Abre la entrega del envío si todavía no existe. Idempotente: si ya hay entrega para el envío, no hace
- * nada (no duplica ni reabre), así reasignar el vehículo del pedido es seguro.
+ * Asegura la entrega del envío al asignar el camión de reparto:
+ *  - si NO existe, la abre con ese vehículo;
+ *  - si YA existe y sigue en curso (no entregada ni fallida), la MUEVE al camión nuevo (el pedido pasa al
+ *    último camión asignado); una entrega REAL ya cerrada (DELIVERED/FAILED) no se mueve (se respeta el POD).
+ * Idempotente: reasignar al mismo camión no hace nada.
  *
  * Registra el `fulfillment_mode` del envío solo como dato (reportes/liquidaciones): OWNED, FBD y DROPSHIP
  * se despachan con el mismo flujo. Mismo criterio que RecordPreparationScanHandler::startFor.
@@ -35,8 +39,15 @@ final class OpenDeliveryHandler implements CommandHandler
             throw ExecutionException::because('OpenDeliveryHandler solo maneja OpenDelivery');
         }
 
-        // Idempotente: una entrega ya abierta (o en cualquier estado) no se toca.
-        if ($this->deliveries->findByShipmentId($command->shipmentId) !== null) {
+        $existing = $this->deliveries->findByShipmentId($command->shipmentId);
+
+        if ($existing !== null) {
+            // Ya hay entrega: mover al camión nuevo si sigue en curso (el dominio respeta DELIVERED/FAILED).
+            if ($existing->reassignVehicle($command->vehicleId, new DateTimeImmutable)) {
+                $this->deliveries->save($existing);
+                $this->recordEvents->record($existing->releaseEvents(), 'execution.delivery');
+            }
+
             return;
         }
 
