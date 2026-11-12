@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Logistics\Execution\Application\Query\GetDriverRoute\GetDriverRoute;
 use Logistics\Execution\Application\ReadModel\DriverRouteView;
+use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
@@ -99,6 +100,23 @@ it('devuelve 404 si el pedido no existe', function (): void {
     $this->postJson('/api/v1/app/orders/NO-EXISTE-999/vehicle', ['vehicle_id' => aovVehicle()])
         ->assertStatus(404)
         ->assertJsonPath('code', 'not_found');
+});
+
+it('abre la entrega del envío al asignar el vehículo (habilita carga y POD del chofer)', function (): void {
+    $order = 'DEMO-AOV-04';
+    $shipmentId = aovOrder($order);
+    $vehicleId = aovVehicle();
+
+    // En el flujo nuevo del dueño, asignar el vehículo ES preparar: debe abrir la entrega, o el POD
+    // fallaría en dominio ("no hay entrega abierta para el envío").
+    $this->postJson("/api/v1/app/orders/{$order}/vehicle", ['vehicle_id' => $vehicleId])->assertOk();
+
+    $delivery = app(DeliveryRepository::class)->findByShipmentId($shipmentId);
+    expect($delivery)->not->toBeNull();
+
+    // Reasignar no abre una segunda entrega (idempotente).
+    $this->postJson("/api/v1/app/orders/{$order}/vehicle", ['vehicle_id' => $vehicleId])->assertOk();
+    expect(DB::table('execution_deliveries')->where('shipment_id', $shipmentId)->count())->toBe(1);
 });
 
 it('es idempotente: reasignar el mismo pedido no duplica la parada', function (): void {
