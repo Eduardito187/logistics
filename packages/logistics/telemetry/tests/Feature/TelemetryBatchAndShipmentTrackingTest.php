@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use Logistics\Fleet\Database\Factories\DriverFactory;
 use Logistics\Fleet\Database\Factories\VehicleFactory;
 use Logistics\Shared\Domain\ValueObject\Uuid;
@@ -87,7 +88,7 @@ function tbtScan(string $deliveryId, string $type, string $occurredAt): void
 /**
  * @param list<array<string, mixed>> $pings
  */
-function tbtPost(object $test, string $vehicleId, array $pings, ?string $driverId = 'driver-1'): Illuminate\Testing\TestResponse
+function tbtPost(object $test, string $vehicleId, array $pings, ?string $driverId = 'driver-1'): TestResponse
 {
     return $test->postJson('/api/v1/app/telemetry/pings', [
         'vehicle_id' => $vehicleId,

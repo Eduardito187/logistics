@@ -35,9 +35,11 @@ final class DbShipmentListReader implements ShipmentListReader
         ?int $offset = null,
         ?string $deliveryDateFrom = null,
         ?string $deliveryDateTo = null,
+        ?array $statuses = null,
+        ?string $deliveryMode = null,
     ): array {
         // Orden estable por id (UUID v7 = orden temporal), igual que el listado histórico.
-        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo)
+        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo, $statuses, $deliveryMode)
             ->orderBy('id');
 
         if ($offset !== null) {
@@ -62,8 +64,10 @@ final class DbShipmentListReader implements ShipmentListReader
         bool $lowConfidenceOnly = false,
         ?string $deliveryDateFrom = null,
         ?string $deliveryDateTo = null,
+        ?array $statuses = null,
+        ?string $deliveryMode = null,
     ): ShipmentPage {
-        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo);
+        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo, $statuses, $deliveryMode);
 
         // Keyset: avanza por el último id visto en vez de OFFSET. `id > $afterId` se apoya en el índice de
         // la PK (UUID v7, orden temporal), así la página profunda no escanea-y-descarta.
@@ -95,15 +99,19 @@ final class DbShipmentListReader implements ShipmentListReader
         bool $lowConfidenceOnly = false,
         ?string $deliveryDateFrom = null,
         ?string $deliveryDateTo = null,
+        ?array $statuses = null,
+        ?string $deliveryMode = null,
     ): int {
         // COUNT(*) acotado al filtro (no toca la tabla de líneas ni reconstruye agregados).
-        return $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo)
+        return $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo, $statuses, $deliveryMode)
             ->count();
     }
 
     /**
      * Query base con los filtros calientes empujados a SQL (predicados indexables), combinados con AND.
      * Compartida por list()/count()/listKeyset() para no duplicar la forma del WHERE.
+     *
+     * @param list<string>|null $statuses
      *
      * @return Builder<ShipmentRecord>
      */
@@ -114,6 +122,8 @@ final class DbShipmentListReader implements ShipmentListReader
         bool $lowConfidenceOnly,
         ?string $deliveryDateFrom = null,
         ?string $deliveryDateTo = null,
+        ?array $statuses = null,
+        ?string $deliveryMode = null,
     ): Builder {
         $query = ShipmentRecord::query();
 
@@ -136,6 +146,14 @@ final class DbShipmentListReader implements ShipmentListReader
         }
         if ($deliveryDateTo !== null) {
             $query->where('delivery_date', '<=', $deliveryDateTo);
+        }
+        // Varios estados a la vez (IN sobre la columna indexada `status`).
+        if ($statuses !== null && $statuses !== []) {
+            $query->whereIn('status', $statuses);
+        }
+        // Modalidad de entrega derivada del tipo del nodo destino (subconsulta a la tabla chica de nodos).
+        if ($deliveryMode !== null) {
+            ShipmentSqlFilters::deliveryMode($query->getQuery(), $deliveryMode);
         }
 
         return $query;

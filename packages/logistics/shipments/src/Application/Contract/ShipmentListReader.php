@@ -30,6 +30,12 @@ interface ShipmentListReader
      *
      * El orden es estable por `id` (UUID v7, orden temporal), igual que el listado histórico.
      *
+     * `$statuses` (aditivo) filtra por VARIOS estados a la vez (IN); se combina con `$status` por AND.
+     * `$deliveryMode` (home_delivery / store_pickup) filtra por la modalidad derivada del tipo del nodo
+     * destino (ver DeliveryMode).
+     *
+     * @param list<string>|null $statuses
+     *
      * @return list<ShipmentView>
      */
     public function list(
@@ -41,6 +47,8 @@ interface ShipmentListReader
         ?int $offset = null,
         ?string $deliveryDateFrom = null,
         ?string $deliveryDateTo = null,
+        ?array $statuses = null,
+        ?string $deliveryMode = null,
     ): array;
 
     /**
@@ -52,6 +60,8 @@ interface ShipmentListReader
      * `$afterId` null (o vacío) = primera página. `$limit` es el tamaño de página. Devuelve los envíos de
      * la página y el `nextCursor` (id del último, o null si no hay más). No calcula `total` a propósito:
      * contar el universo en cada página derrota el objetivo del keyset.
+     *
+     * @param list<string>|null $statuses
      */
     public function listKeyset(
         int $limit,
@@ -62,12 +72,16 @@ interface ShipmentListReader
         bool $lowConfidenceOnly = false,
         ?string $deliveryDateFrom = null,
         ?string $deliveryDateTo = null,
+        ?array $statuses = null,
+        ?string $deliveryMode = null,
     ): ShipmentPage;
 
     /**
      * Cuenta los envíos que cumplen los MISMOS filtros (sin recorte), para la paginación: `total` del
      * envelope sale de este COUNT(*) y no de materializar la tabla. Los filtros se combinan con AND,
      * igual que en `list()`.
+     *
+     * @param list<string>|null $statuses
      */
     public function count(
         ?string $status = null,
@@ -76,5 +90,7 @@ interface ShipmentListReader
         bool $lowConfidenceOnly = false,
         ?string $deliveryDateFrom = null,
         ?string $deliveryDateTo = null,
+        ?array $statuses = null,
+        ?string $deliveryMode = null,
     ): int;
 }
