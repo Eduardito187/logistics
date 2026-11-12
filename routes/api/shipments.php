@@ -3,11 +3,13 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Logistics\Shipments\Presentation\Http\Controller\DailyKpisController;
 use Logistics\Shipments\Presentation\Http\Controller\GeocodeShipmentAddressController;
 use Logistics\Shipments\Presentation\Http\Controller\ImportShipmentsController;
 use Logistics\Shipments\Presentation\Http\Controller\ListLowConfidenceAddressesController;
 use Logistics\Shipments\Presentation\Http\Controller\ListShipmentsController;
 use Logistics\Shipments\Presentation\Http\Controller\ReceiveShipmentController;
+use Logistics\Shipments\Presentation\Http\Controller\ShipmentSummaryController;
 use Logistics\Shipments\Presentation\Http\Controller\ShowShipmentController;
 
 /*
@@ -28,14 +30,20 @@ return [
         });
     },
 
-    // Puerta app — ver pedidos, revisar direcciones de baja confianza y re-geocodificar.
+    // Puerta app — ver pedidos, resumen del tablero, KPIs del día, revisar direcciones de baja confianza y
+    // re-geocodificar.
     'app' => static function (): void {
         Route::name('shipments.')->group(function (): void {
             Route::get('shipments', ListShipmentsController::class)->name('index');
+            // Resumen agregado del tablero (antes de {shipment} para que "summary" no se tome como id).
+            Route::get('shipments/summary', ShipmentSummaryController::class)->name('summary');
             Route::get('shipments/low-confidence-addresses', ListLowConfidenceAddressesController::class)
                 ->name('low-confidence-addresses');
             Route::get('shipments/{shipment}', ShowShipmentController::class)->name('show');
             Route::post('shipments/{shipment}/geocode', GeocodeShipmentAddressController::class)->name('geocode');
         });
+
+        // KPIs operativos del día (chofer / supervisor / tienda), alcance por rol server-side.
+        Route::get('kpis/daily', DailyKpisController::class)->name('kpis.daily');
     },
 ];

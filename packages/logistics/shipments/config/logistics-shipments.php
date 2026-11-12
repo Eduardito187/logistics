@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-// Configuración del contexto Recepción de envíos. Todo el geocoding es open-source y self-host
+// Configuración del contexto Recepción de envíos. El geocoding completo es open-source y self-host
 // (Nominatim/OpenStreetMap): sin Google, sin servicios de pago ni claves de API.
 return [
     // Geocodificador: resuelve una dirección a coordenada + confianza (contrato Geocoder).
@@ -82,6 +82,23 @@ return [
         'warehouse_id' => env('SHIPMENTS_RETURNS_WAREHOUSE_ID', ''),
     ],
 
+    // Foto de medidas por línea (Roadmap 02, Fase 2.1): cascada producto → categoría → default global.
+    // El default global es por UNIDAD de producto y, si no se fija aparte, reutiliza el mismo env que
+    // planning (PLANNING_DEFAULT_WEIGHT_KG / PLANNING_DEFAULT_VOLUME_M3: 10 kg y 0,05 m³), para que el
+    // ingreso y el plan usen el mismo supuesto. Medidas faltantes nunca bloquean: caen acá y se marcan.
+    'measurements' => [
+        'default_unit_weight_kg' => (float) env(
+            'SHIPMENTS_DEFAULT_UNIT_WEIGHT_KG',
+            env('PLANNING_DEFAULT_WEIGHT_KG', 10.0),
+        ),
+        'default_unit_volume_m3' => (float) env(
+            'SHIPMENTS_DEFAULT_UNIT_VOLUME_M3',
+            env('PLANNING_DEFAULT_VOLUME_M3', 0.05),
+        ),
+        // Tamaño de tramo del backfill de líneas históricas.
+        'backfill_chunk' => (int) env('SHIPMENTS_MEASUREMENTS_BACKFILL_CHUNK', 500),
+    ],
+
     // Fuente Magento (SHP-07): lectura de pedidos pendientes para ingresarlos por la API única.
     // Sin base_url configurada, el contexto cae al lector stub (no trae pedidos), para arrancar y
     // desarrollar sin credenciales. Si Magento no entra al piloto, se deja vacío.
@@ -100,5 +117,38 @@ return [
 
         // Timeout por request en segundos. Traer pedidos nunca debe colgar un worker.
         'timeout' => (int) env('SHIPMENTS_MAGENTO_TIMEOUT', 10),
+
+        // RECOJO EN TIENDA (nodo destino del pedido). Atributos de extensión (del pedido o del envío) donde
+        // Magento manda el código del punto de retiro, en orden. Por defecto el de Magento MSI In-Store
+        // Pickup (`pickup_location_code`). CSV en env.
+        'pickup_code_attributes' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('SHIPMENTS_MAGENTO_PICKUP_CODE_ATTRIBUTES', 'pickup_location_code')),
+        ), static fn (string $attribute): bool => $attribute !== '')),
+
+        // Mapa código de retiro (o método de envío) de Magento => código de nodo de la red
+        // (`network_nodes.code`). Un código sin entrada se usa tal cual; un método de envío solo cuenta si
+        // está en el mapa. Formato env: "CODIGO_MAGENTO:CODIGO_NODO,storepickup_SCZ01:T-SCZ-01". Vacío = sin
+        // traducción (Magento usa los mismos códigos que la red).
+        'pickup_location_map' => (static function (string $raw): array {
+            $map = [];
+            foreach (explode(',', $raw) as $pair) {
+                $parts = explode(':', $pair, 2);
+                if (count($parts) === 2 && trim($parts[0]) !== '' && trim($parts[1]) !== '') {
+                    $map[trim($parts[0])] = trim($parts[1]);
+                }
+            }
+
+            return $map;
+        })((string) env('SHIPMENTS_MAGENTO_PICKUP_LOCATION_MAP', '')),
+    ],
+
+    // Caché CORTA de las lecturas agregadas de tablero (resumen de envíos, conteos por estado y KPIs del
+    // día): absorbe el repolling de muchos teléfonos sin pegarle a la base en cada request. Se cachea la
+    // forma PRIMITIVA (array), nunca el objeto. TTL en segundos; 0 desactiva la caché. Store vacío = el
+    // store por defecto de la app (funciona en cualquier entorno, sin depender del .env local).
+    'read_cache' => [
+        'ttl' => (int) env('SHIPMENTS_READ_CACHE_TTL', 45),
+        'store' => env('SHIPMENTS_READ_CACHE_STORE'),
     ],
 ];

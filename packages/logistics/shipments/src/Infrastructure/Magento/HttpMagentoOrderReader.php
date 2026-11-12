@@ -20,9 +20,23 @@ use Logistics\Shipments\Domain\ValueObject\OrderSource;
  *
  * Decisiones de infraestructura que viven acá: endpoint, token de servicio, timeout y el mapeo del
  * JSON de Magento a primitivos del comando. El dominio nunca ve Magento.
+ *
+ * RECOJO EN TIENDA: el nodo destino viaja como `destinationNodeCode` (el ingreso lo traduce a su id por
+ * `network_nodes.code`). Se resuelve en cascada:
+ *  1. el código de punto de retiro del pedido, leído de los atributos de extensión configurados (por
+ *     defecto `pickup_location_code`, el de Magento MSI In-Store Pickup), en el pedido o en el envío;
+ *  2. si no viene código, el método de envío (`shipping_method` / `shipping.method`) cuando el mapa lo
+ *     reconoce (módulos de retiro que codifican la tienda en el método, p. ej. `storepickup_SCZ01`).
+ * El código hallado pasa por el mapa `magento.pickup_location_map` (código Magento => código de nodo); sin
+ * entrada en el mapa se usa tal cual (se asume que Magento usa el mismo código que la red). Sin nada de
+ * eso el pedido es a domicilio (nodo null), como siempre.
  */
 final class HttpMagentoOrderReader implements MagentoOrderReader
 {
+    /**
+     * @param array<string, string> $pickupLocationMap    código de retiro o método de envío de Magento => código de nodo
+     * @param list<string>          $pickupCodeAttributes atributos de extensión donde Magento manda el código de retiro
+     */
     public function __construct(
         private readonly HttpClient $http,
         private readonly string $baseUrl,
@@ -30,6 +44,8 @@ final class HttpMagentoOrderReader implements MagentoOrderReader
         private readonly string $status,
         private readonly int $pageSize,
         private readonly int $timeout,
+        private readonly array $pickupLocationMap = [],
+        private readonly array $pickupCodeAttributes = ['pickup_location_code'],
     ) {}
 
     public function fetchPendingOrders(): array
@@ -93,7 +109,80 @@ final class HttpMagentoOrderReader implements MagentoOrderReader
             lat: null,
             lng: null,
             lines: $lines,
+            destinationNodeCode: $this->pickupNodeCode($order),
         );
+    }
+
+    /**
+     * Código del nodo de RETIRO EN TIENDA del pedido, o null si es a domicilio (ver la cascada en la clase).
+     *
+     * @param array<string, mixed> $order
+     */
+    private function pickupNodeCode(array $order): ?string
+    {
+        $code = $this->pickupLocationCode($order);
+        if ($code !== null) {
+            return $this->pickupLocationMap[$code] ?? $code;
+        }
+
+        foreach ($this->shippingMethods($order) as $method) {
+            if (isset($this->pickupLocationMap[$method])) {
+                return $this->pickupLocationMap[$method];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Código de punto de retiro que manda Magento en los atributos de extensión configurados, buscado en el
+     * pedido y en el envío (`shipping_assignments[0].shipping`). Null si no viene ninguno.
+     *
+     * @param array<string, mixed> $order
+     */
+    private function pickupLocationCode(array $order): ?string
+    {
+        $extension = $order['extension_attributes'] ?? [];
+        $shipping = is_array($extension) ? ($extension['shipping_assignments'][0]['shipping'] ?? null) : null;
+        $shippingExtension = is_array($shipping) ? ($shipping['extension_attributes'] ?? null) : null;
+
+        foreach ([$extension, $shippingExtension] as $source) {
+            if (!is_array($source)) {
+                continue;
+            }
+            foreach ($this->pickupCodeAttributes as $attribute) {
+                $value = $source[$attribute] ?? null;
+                if (is_scalar($value) && trim((string) $value) !== '') {
+                    return trim((string) $value);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Métodos de envío del pedido (raíz `shipping_method` y `shipping_assignments[0].shipping.method`).
+     *
+     * @param  array<string, mixed> $order
+     * @return list<string>
+     */
+    private function shippingMethods(array $order): array
+    {
+        $extension = $order['extension_attributes'] ?? [];
+        $candidates = [
+            $order['shipping_method'] ?? null,
+            is_array($extension) ? ($extension['shipping_assignments'][0]['shipping']['method'] ?? null) : null,
+        ];
+
+        $methods = [];
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                $methods[] = trim($candidate);
+            }
+        }
+
+        return $methods;
     }
 
     /**

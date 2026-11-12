@@ -6,6 +6,7 @@ namespace Logistics\Execution\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Execution\Domain\Exception\ExecutionException;
+use Logistics\Execution\Domain\ValueObject\ArrivalSource;
 use Logistics\Execution\Domain\ValueObject\RouteStopId;
 use Logistics\Execution\Domain\ValueObject\RouteStopStatus;
 
@@ -31,6 +32,8 @@ final class RouteStop
         private readonly ?float $lng,
         private RouteStopStatus $status,
         private ?DateTimeImmutable $settledAt,
+        private ?DateTimeImmutable $arrivedAt = null,
+        private ?ArrivalSource $arrivalSource = null,
     ) {}
 
     /**
@@ -85,6 +88,8 @@ final class RouteStop
         ?float $lng,
         RouteStopStatus $status,
         ?DateTimeImmutable $settledAt,
+        ?DateTimeImmutable $arrivedAt = null,
+        ?ArrivalSource $arrivalSource = null,
     ): self {
         return new self(
             $id,
@@ -98,7 +103,26 @@ final class RouteStop
             $lng,
             $status,
             $settledAt,
+            $arrivedAt,
+            $arrivalSource,
         );
+    }
+
+    /**
+     * Registra la LLEGADA del camión a la parada (geocerca o manual). La primera llegada gana: si ya tenía
+     * una, no se pisa y devuelve false. Vale en cualquier estado (la cola offline puede entregar la llegada
+     * después del POD). Solo lo llama el agregado.
+     */
+    public function markArrived(DateTimeImmutable $at, ArrivalSource $source): bool
+    {
+        if ($this->arrivedAt !== null) {
+            return false;
+        }
+
+        $this->arrivedAt = $at;
+        $this->arrivalSource = $source;
+
+        return true;
     }
 
     /**
@@ -201,6 +225,16 @@ final class RouteStop
     public function settledAt(): ?DateTimeImmutable
     {
         return $this->settledAt;
+    }
+
+    public function arrivedAt(): ?DateTimeImmutable
+    {
+        return $this->arrivedAt;
+    }
+
+    public function arrivalSource(): ?ArrivalSource
+    {
+        return $this->arrivalSource;
     }
 
     /**

@@ -7,9 +7,11 @@ namespace Logistics\Tracking\Presentation\Http\Controller;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Response;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
 use Logistics\Tracking\Application\Query\GetPublicSurveyState\GetPublicSurveyState;
 use Logistics\Tracking\Application\Query\GetPublicTracking\GetPublicTracking;
 use Logistics\Tracking\Application\Query\GetPublicUnits\GetPublicUnits;
+use Logistics\Tracking\Application\ReadModel\PublicLinkState;
 use Logistics\Tracking\Application\ReadModel\PublicSurveyStateView;
 use Logistics\Tracking\Application\ReadModel\PublicTrackingView;
 use Logistics\Tracking\Application\ReadModel\PublicUnitView;
@@ -35,6 +37,12 @@ final class PublicTrackingPageController
         $view = $this->queryBus->ask(new GetPublicTracking($token));
 
         if (!$view instanceof PublicTrackingView) {
+            // Sin datos: ¿enlace vencido (TTL desde la entrega) o inexistente? El vencido recibe una página
+            // amable en lenguaje de cliente (410 Gone); el resto, el 404 genérico de siempre.
+            if ($this->queryBus->ask(new GetPublicLinkState($token)) === PublicLinkState::Expired) {
+                return new Response(view('tracking::expired')->render(), 410);
+            }
+
             return new Response(view('tracking::not-found')->render(), 404);
         }
 

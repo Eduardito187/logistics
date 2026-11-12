@@ -48,7 +48,7 @@ it('filtra el listado por nodo destino en el Query ListShipments', function (): 
     expect($handler->handle(new ListShipments))->toHaveCount(4);
 });
 
-it('pagina /app/shipments en SQL: devuelve la página pedida y el total real (no materializa todo)', function (): void {
+it('pagina /app/shipments en SQL: devuelve la página pedida y el total real (no materializa la tabla completa)', function (): void {
     $node = Uuid::generate()->value;
     for ($i = 0; $i < 5; $i++) {
         ShipmentRecord::factory()->forNode($node)->create();

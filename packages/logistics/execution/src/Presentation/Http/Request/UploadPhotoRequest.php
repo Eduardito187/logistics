@@ -33,6 +33,8 @@ final class UploadPhotoRequest extends FormRequest
             // 'max:10240' a propósito (patrón limpio para el análisis de content-length).
             'photo' => ['required', File::image()->max(10 * 1024)],
             'kind' => ['sometimes', 'string', 'in:pod,damage'],
+            // Respaldo de la cabecera Idempotency-Key (la app offline puede mandarla como campo del form).
+            'idempotency_key' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 }

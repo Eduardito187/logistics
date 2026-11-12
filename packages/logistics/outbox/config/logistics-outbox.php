@@ -20,6 +20,7 @@ use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher
 use Logistics\Promise\Infrastructure\Dispatch\OrderCancelledCupoReleaseDispatcher;
 use Logistics\Promise\Infrastructure\Dispatch\OrderPaidCupoConfirmDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatcher;
+use Logistics\Shipments\Infrastructure\Dispatch\ShipmentStatusProgressionDispatcher;
 use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
 use Logistics\Tracking\Infrastructure\Outbox\CancelOnOrderCancelled;
 use Logistics\Tracking\Infrastructure\Outbox\InProgressOnLabelsEmitted;
@@ -28,6 +29,7 @@ use Logistics\Tracking\Infrastructure\Outbox\ProcessingOnOrderPaid;
 use Logistics\Tracking\Infrastructure\Outbox\ProjectExecutionTracking;
 use Logistics\Tracking\Infrastructure\Outbox\RescheduledOnReschedule;
 use Logistics\Tracking\Infrastructure\Outbox\ReturnedOnReturnInitiated;
+use Logistics\Tracking\Infrastructure\Outbox\TruckPositionOnVehicleReport;
 
 // Configuración del Transactional Outbox (ADR 002). Valores afinables por entorno vía .env.
 return [
@@ -68,9 +70,12 @@ return [
             'tracking.' => 'notifications',
             'notifications.' => 'notifications',
             'fleet.documents_expiry_alerted' => 'notifications',
+            // Conector SAP (ADR 002): los mensajes con destino SAP van a su PROPIA cola `sap`, con workers
+            // dedicados. Así un SAP lento o caído nunca frena a los demás reactores de la cola `outbox`.
+            'sap_connector.' => 'sap',
         ],
 
-        // Cola para los eventos sin prefijo que matchee (SAP, inbound, returns, fanout, ...).
+        // Cola para los eventos sin prefijo que matchee (inbound, returns, fanout, ...).
         'default_queue' => (string) env('OUTBOX_PUMP_DEFAULT_QUEUE', 'outbox'),
     ],
 
@@ -147,8 +152,20 @@ return [
         'execution.delivery_failed' => FanOutMessageDispatcher::class,
         'shipments.shipment_received' => FanOutMessageDispatcher::class,
         'shipments.shipment_rescheduled' => FanOutMessageDispatcher::class,
+
+        // AVANCE DEL ESTADO DEL ENVÍO (shipments.status): los hechos de planificación/ejecución mueven el
+        // envío RECEIVED → PLANNED → IN_EXECUTION → DELIVERED (ShipmentStatusProgressionDispatcher, monótono
+        // e idempotente). Los de ejecución que antes caían por prefijo a 'execution.' (solo notificación)
+        // pasan a abanico preservando la notificación PRIMERO; el plan publicado no tenía ruta (caía al
+        // dispatcher por defecto), así que va directo al reactor.
+        'execution.shipment_prepared' => FanOutMessageDispatcher::class,
+        'execution.route_stop_attached' => FanOutMessageDispatcher::class,
+        'execution.driver_route_assembled' => FanOutMessageDispatcher::class,
+        'planning.plan_published' => ShipmentStatusProgressionDispatcher::class,
         // Un solo reactor cada uno (no necesitan abanico): etiqueta generada → «en curso»; devolución → «devuelta».
         'labels.labels_emitted' => InProgressOnLabelsEmitted::class,
+        // Lote de telemetría → posición del camión en el seguimiento de cada envío a bordo.
+        'telemetry.vehicle_position_reported' => TruckPositionOnVehicleReport::class,
         'returns.return_initiated' => ReturnedOnReturnInitiated::class,
     ],
 
@@ -229,20 +246,54 @@ return [
         'execution.shipment_loaded' => [
             DomainEventNotificationDispatcher::class,
             ProjectExecutionTracking::class,
+            // Estado del envío (shipments.status): SIEMPRE último y nunca lanza (no corta a los demás).
+            ShipmentStatusProgressionDispatcher::class,
         ],
         'execution.shipment_departed' => [
             DomainEventNotificationDispatcher::class,
             ProjectExecutionTracking::class,
+            // Estado del envío (shipments.status): SIEMPRE último y nunca lanza (no corta a los demás).
+            ShipmentStatusProgressionDispatcher::class,
         ],
         'execution.shipment_delivered' => [
             DomainEventNotificationDispatcher::class,
             ProjectExecutionTracking::class,
+            // Estado del envío (shipments.status): SIEMPRE último y nunca lanza (no corta a los demás).
+            ShipmentStatusProgressionDispatcher::class,
         ],
         'execution.delivery_failed' => [
             DomainEventNotificationDispatcher::class,
             ProjectExecutionTracking::class,
+            // Estado del envío (shipments.status): SIEMPRE último y nunca lanza (no corta a los demás).
+            ShipmentStatusProgressionDispatcher::class,
+        ],
+
+        // Preparación / asignación a camión / ruta armada: aviso (si aplica) + avance del estado del envío.
+        // La notificación va primero (preserva el ruteo previo por prefijo 'execution.'); el reactor de
+        // envíos, último.
+        'execution.shipment_prepared' => [
+            DomainEventNotificationDispatcher::class,
+            ShipmentStatusProgressionDispatcher::class,
+        ],
+        'execution.route_stop_attached' => [
+            DomainEventNotificationDispatcher::class,
+            ShipmentStatusProgressionDispatcher::class,
+        ],
+        'execution.driver_route_assembled' => [
+            DomainEventNotificationDispatcher::class,
+            ShipmentStatusProgressionDispatcher::class,
         ],
     ],
+
+    // Observadores del procesamiento (punto de extensión genérico, ver OutboxObserver). Lista de
+    // class-string ligados en el contenedor que ProcessOutboxMessage invoca DESPUÉS de persistir el
+    // desenlace de CADA mensaje procesado, aislados en try/catch: un observador nunca cambia el despacho,
+    // los reintentos ni el dead-letter. A diferencia de un reactor del abanico, no corta a nadie si falla.
+    //
+    // Cada contexto puede sumarse desde su propio provider (como las rutas). Hoy:
+    //   - Conector SAP: SapNotificationRecorder registra el aviso a SAP de los eventos de despacho
+    //     configurados y lo envía async por la cola `sap` (fire-and-forget; lo agrega su provider).
+    'observers' => [],
 
     // Dispatcher por defecto cuando ningún prefijo de 'routes' matchea: hoy NullMessageDispatcher
     // (solo log), reemplazable por un canal catch-all.

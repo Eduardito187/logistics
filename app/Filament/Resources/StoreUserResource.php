@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\DB;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
 /**
- * Admin Filament para asignar el nodo de tienda a una cuenta de usuario de la app.
+ * Admin Filament para asignar el nodo de tienda (rol tienda) o el transportista (rol transportista) a una
+ * cuenta de usuario de la app.
  *
  * `App\Models\User` (login de la app, tabla `users`) no tiene un Resource propio; esta pantalla cubre
  * la regla de negocio "un usuario de tienda pertenece a UN nodo de tipo store". No es un CRUD de
@@ -24,6 +25,10 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  *
  * El nodo se referencia por su UUID (sin acople al dominio de Network: se lee `network_nodes` por
  * consulta directa). Todo texto visible va en inglés (regla 5 del proyecto).
+ *
+ * Igual con el transportista: `users.carrier_id` es la identidad SERVER-SIDE del rol transportista (los
+ * endpoints de liquidaciones acotan por ella; la app la lee de /auth/me). Se elige por nombre contra la
+ * tabla `carriers` (consulta directa, sin acoplar al dominio de Carriers); nunca se muestra el UUID.
  *
  * @extends resource<User>
  */
@@ -97,6 +102,29 @@ final class StoreUserResource extends Resource
 
                     return $node === null ? null : "{$node->code} — {$node->name}";
                 }),
+            // Transportista de la cuenta (rol transportista): select buscable por nombre o NIT contra los
+            // transportistas reales; nunca el UUID a pelo.
+            Select::make('carrier_id')
+                ->label(__('Carrier'))
+                ->native(false)
+                ->searchable()
+                ->placeholder(__('Unassigned'))
+                ->helperText(__('Carrier this account belongs to (carrier role only). Leave empty to unassign.'))
+                ->getSearchResultsUsing(fn (string $search): array => DB::table('carriers')
+                    ->where(function ($query) use ($search): void {
+                        $query->where('name', 'ilike', "%{$search}%")
+                            ->orWhere('tax_id', 'ilike', "%{$search}%");
+                    })
+                    ->orderBy('name')
+                    ->limit(50)
+                    ->get()
+                    ->mapWithKeys(static fn ($carrier): array => [$carrier->id => "{$carrier->name} ({$carrier->tax_id})"])
+                    ->all())
+                ->getOptionLabelUsing(function ($value): ?string {
+                    $carrier = DB::table('carriers')->where('id', $value)->first();
+
+                    return $carrier === null ? null : "{$carrier->name} ({$carrier->tax_id})";
+                }),
         ]);
     }
 
@@ -124,12 +152,24 @@ final class StoreUserResource extends Resource
 
                         return $node === null ? null : "{$node->code} — {$node->name}";
                     }),
+                // Transportista asignado, resuelto a su nombre leyendo carriers por consulta directa.
+                TextColumn::make('carrier')
+                    ->label(__('Carrier'))
+                    ->placeholder('—')
+                    ->getStateUsing(function (User $record): ?string {
+                        if ($record->carrier_id === null) {
+                            return null;
+                        }
+                        $name = DB::table('carriers')->where('id', $record->carrier_id)->value('name');
+
+                        return is_string($name) ? $name : null;
+                    }),
             ])
             ->recordActions([
                 EditAction::make()
-                    ->label(__('Assign store'))
+                    ->label(__('Edit assignment'))
                     ->icon('heroicon-o-building-storefront')
-                    ->modalHeading(__('Assign store node')),
+                    ->modalHeading(__('Edit assignment')),
             ]);
     }
 

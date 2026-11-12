@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Presentation\Http\Controller;
 
+use App\Http\Support\ApiPagination;
+use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Logistics\Planning\Application\Command\PublishPlan\PublishPlan;
 use Logistics\Planning\Application\Query\GetPlan\GetPlan;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDate;
@@ -15,6 +19,7 @@ use Logistics\Planning\Presentation\Http\Request\GeneratePlanProposalRequest;
 use Logistics\Planning\Presentation\Http\Request\ReorderStopsRequest;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Application\ReadModel\Page;
 
 /**
  * Puerta HTTP de planificación para la app interna: ver el plan del día, generar la propuesta,
@@ -33,20 +38,75 @@ final class PlanController extends PlanningController
 
     /**
      * GET /plans?date=YYYY-MM-DD — planes de reparto de un día (uno por camión).
+     *
+     * Aditivo (auditoría app #20): rango `date_from`/`date_to` (máx. 31 días, en lugar de `date`), filtros
+     * `status` y `vehicle_id`, y paginación estándar opt-in (`page`/`per_page` o `cursor`, ver ApiPagination).
+     * Sin parámetros de página la respuesta es la histórica: lista completa + meta {date, count}.
      */
     public function index(Request $request): JsonResponse
     {
+        /** @var array{date?: string|null, date_from?: string|null, date_to?: string|null, status?: string|null, vehicle_id?: string|null} $validated */
         $validated = $request->validate([
-            'date' => ['required', 'string', 'date_format:Y-m-d'],
+            'date' => ['required_without:date_from', 'nullable', 'string', 'date_format:Y-m-d'],
+            'date_from' => ['required_without:date', 'required_with:date_to', 'nullable', 'string', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'string', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'status' => ['nullable', 'string', Rule::in(ListPlansByDate::STATUSES)],
+            'vehicle_id' => ['nullable', 'uuid'],
         ]);
 
+        // `date` (día suelto) tiene prioridad por compatibilidad; si no viene, manda el rango.
+        $date = $validated['date'] ?? null;
+        $from = $date ?? (string) ($validated['date_from'] ?? '');
+        $to = $date !== null ? null : ($validated['date_to'] ?? null);
+
+        if ($to !== null && $this->spanDays($from, $to) > ListPlansByDate::MAX_RANGE_DAYS) {
+            throw ValidationException::withMessages([
+                'date_to' => ['The date range may not exceed '.ListPlansByDate::MAX_RANGE_DAYS.' days.'],
+            ]);
+        }
+
+        $rangeMeta = ['date' => $from] + ($to !== null ? ['date_to' => $to] : []);
+        $paginate = ApiPagination::requested($request);
+
+        $result = $this->queryBus->ask(new ListPlansByDate(
+            planDate: $from,
+            dateTo: $to,
+            status: $validated['status'] ?? null,
+            vehicleId: $validated['vehicle_id'] ?? null,
+            limit: $paginate ? ApiPagination::limit($request) : null,
+            offset: $paginate ? ApiPagination::offset($request) : 0,
+        ));
+
+        if ($result instanceof Page) {
+            /** @var Page<PlanView> $result */
+            $items = array_map(static fn (PlanView $plan): array => $plan->toArray(), $result->items);
+            $envelope = ApiPagination::envelope($items, $result->total, $request);
+
+            return $this->collection($envelope['data'], $rangeMeta + $envelope['meta']);
+        }
+
         /** @var list<PlanView> $plans */
-        $plans = $this->queryBus->ask(new ListPlansByDate($validated['date']));
+        $plans = $result;
 
         return $this->collection(
             array_map(static fn (PlanView $plan): array => $plan->toArray(), $plans),
-            ['date' => $validated['date'], 'count' => count($plans)],
+            $rangeMeta + ['count' => count($plans)],
         );
+    }
+
+    /**
+     * Días del rango inclusive (ambas fechas ya validadas como Y-m-d).
+     */
+    private function spanDays(string $from, string $to): int
+    {
+        $start = DateTimeImmutable::createFromFormat('!Y-m-d', $from);
+        $end = DateTimeImmutable::createFromFormat('!Y-m-d', $to);
+
+        if ($start === false || $end === false) {
+            return 0;
+        }
+
+        return (int) $start->diff($end)->days + 1;
     }
 
     /**

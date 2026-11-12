@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
  *
  * PRESERVA DATOS (regla no-destructiva): no es un `migrate:fresh` ni un wipe. Recrea la tabla como
  * particionada con la MISMA forma (`LIKE ... INCLUDING DEFAULTS`), copia TODAS las filas, verifica que el
- * conteo coincide y recién entonces reemplaza la original, todo en una sola transacción (atómico: si algo
+ * conteo coincide y recién entonces reemplaza la original, el proceso entero en una sola transacción (atómico: si algo
  * falla, se revierte y la tabla queda intacta). Idempotente: si ya está particionada, no hace nada.
  *
  * La PK pasa a ser COMPUESTA `(id, recorded_at)` porque Postgres exige que la clave de partición forme

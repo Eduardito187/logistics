@@ -33,7 +33,7 @@ use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource\Pag
  * de pieza. Es la unidad que se escanea en preparación, carga y entrega.
  *
  * Filament opera sobre el record Eloquent (PhysicalUnitRecord). Los selects de pedido y línea son
- * buscables y usan las relaciones reales. Todo texto visible va en inglés (regla 5 del proyecto).
+ * buscables y usan las relaciones reales. Cada texto visible va en inglés (regla 5 del proyecto).
  *
  * @extends resource<PhysicalUnitRecord>
  */

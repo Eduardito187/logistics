@@ -9,6 +9,7 @@ use Logistics\Fleet\Domain\Model\Vehicle;
 use Logistics\Fleet\Domain\ValueObject\Capacity;
 use Logistics\Fleet\Domain\ValueObject\DocumentExpiry;
 use Logistics\Fleet\Domain\ValueObject\PlateNumber;
+use Logistics\Fleet\Domain\ValueObject\VehicleFitness;
 use Logistics\Fleet\Domain\ValueObject\VehicleId;
 use Logistics\Fleet\Domain\ValueObject\VehicleStatus;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
@@ -45,14 +46,34 @@ final class VehicleMapper
             $model->photo_back,
             $model->photo_left,
             $model->photo_right,
+            $this->fitnessFrom($model),
         );
     }
 
     /**
-     * @return array{id: string, plate: string, capacity_kg: int, capacity_m3: float, home_base_node_id: string, status: string, documents: list<array{type: string, expires_on: string}>, make: string|null, model: string|null, model_year: int|null, vin: string|null, engine_number: string|null, color: string|null, photo_front: string|null, photo_back: string|null, photo_left: string|null, photo_right: string|null}
+     * Aptitud desde las columnas `unfit_*`: sin `unfit_since` el vehículo está apto.
+     */
+    private function fitnessFrom(VehicleModel $model): VehicleFitness
+    {
+        if ($model->unfit_since === null || $model->unfit_since === '') {
+            return VehicleFitness::fit();
+        }
+
+        return VehicleFitness::unfit(
+            new DateTimeImmutable($model->unfit_since),
+            $model->unfit_reason ?? '',
+            $model->unfit_inspection_id,
+            array_values(array_map('strval', $model->unfit_items ?? [])),
+        );
+    }
+
+    /**
+     * @return array{id: string, plate: string, capacity_kg: int, capacity_m3: float, home_base_node_id: string, status: string, documents: list<array{type: string, expires_on: string}>, make: string|null, model: string|null, model_year: int|null, vin: string|null, engine_number: string|null, color: string|null, photo_front: string|null, photo_back: string|null, photo_left: string|null, photo_right: string|null, unfit_since: string|null, unfit_reason: string|null, unfit_inspection_id: string|null, unfit_items: list<string>|null}
      */
     public function toRow(Vehicle $vehicle): array
     {
+        $fitness = $vehicle->fitness();
+
         return [
             'id' => $vehicle->id()->toString(),
             'plate' => $vehicle->plate()->value,
@@ -71,6 +92,10 @@ final class VehicleMapper
             'photo_back' => $vehicle->photoBack(),
             'photo_left' => $vehicle->photoLeft(),
             'photo_right' => $vehicle->photoRight(),
+            'unfit_since' => $fitness->unfitSince?->format('Y-m-d'),
+            'unfit_reason' => $fitness->reason,
+            'unfit_inspection_id' => $fitness->inspectionId,
+            'unfit_items' => $fitness->isUnfit() ? $fitness->failedItems : null,
         ];
     }
 }

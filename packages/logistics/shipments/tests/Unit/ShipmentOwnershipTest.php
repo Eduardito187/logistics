@@ -18,7 +18,7 @@ use Logistics\Shipments\Domain\ValueObject\Sku;
 use Logistics\Shipments\Domain\ValueObject\SourceReference;
 
 /**
- * Dimensión de propiedad (ADR 017) cableada en los agregados del contexto: por defecto todo es Dismac
+ * Dimensión de propiedad (ADR 017) cableada en los agregados del contexto: por defecto cada envío es de Dismac
  * (retail, `OWNED`) y los bultos heredan la propiedad del envío; un envío de un seller la propaga.
  *
  * Arma una línea con la cantidad dada.

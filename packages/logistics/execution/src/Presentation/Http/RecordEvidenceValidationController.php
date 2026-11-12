@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Presentation\Http;
 
+use App\Http\Middleware\AuthenticateServiceClient;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Logistics\Execution\Application\Command\RecordEvidenceValidation\RecordEvidenceValidation;
 use Logistics\Execution\Presentation\Http\Request\RecordEvidenceValidationRequest;
@@ -28,9 +30,25 @@ final class RecordEvidenceValidationController extends ExecutionController
             ocrDocumentNumber: $this->nullableString($data, 'ocr_document_number'),
             detail: $this->nullableString($data, 'detail'),
             validatedAt: $this->nullableString($data, 'validated_at'),
+            validatedBy: $this->validatorName($request),
         ));
 
         return new JsonResponse(['data' => ['evidence_id' => $evidenceId, 'status' => 'recorded']]);
+    }
+
+    /**
+     * Nombre del cliente de integración (validador) autenticado por la puerta integrations, o null.
+     */
+    private function validatorName(RecordEvidenceValidationRequest $request): ?string
+    {
+        $client = $request->attributes->get(AuthenticateServiceClient::ATTRIBUTE);
+        if (!$client instanceof Model) {
+            return null;
+        }
+
+        $name = $client->getAttribute('name');
+
+        return is_string($name) && $name !== '' ? $name : null;
     }
 
     /**

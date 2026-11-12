@@ -30,6 +30,7 @@ use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Factory\PingFactory;
  * @property Carbon      $received_at
  * @property string      $source
  * @property string|null $trip_id
+ * @property string|null $fix_key
  */
 final class PingRecord extends Model
 {

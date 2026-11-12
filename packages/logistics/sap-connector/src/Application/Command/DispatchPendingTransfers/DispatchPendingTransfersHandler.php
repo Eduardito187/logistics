@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Application\Command\DispatchPendingTransfers;
 
+use DateInterval;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Contract\StockTransferRepository;
@@ -11,15 +12,18 @@ use Logistics\SapConnector\Domain\Exception\SapConnectorException;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
+use Logistics\Shared\Domain\Clock\Clock;
 use Throwable;
 
 /**
- * Worker de despacho: empuja a SAP los traspasos pendientes (Pending y Failed). Por cada uno, si SAP
- * responde bien lo deja Sent; si falla lo deja Failed con el motivo, para que siga visible en el panel
- * de reconciliación y se reintente en la próxima corrida. Un fallo aislado no corta el lote.
+ * Worker de reconciliación: empuja a SAP los traspasos despachables que elija el comando (Failed con el
+ * backoff vencido y, opcionalmente, Pending estancados), en un lote acotado. Por cada uno, si SAP
+ * responde bien lo deja Sent; si falla lo deja Failed con el motivo (visible en el panel de
+ * reconciliación) y se reintenta en una corrida posterior. Un fallo aislado no corta el lote.
  *
- * Corre fuera del request de usuario (relay/worker). El empuje a SAP es el ÚNICO I/O externo del
- * contexto y pasa por el puerto SapClient (ADR 002).
+ * Corre fuera del request de usuario y fuera de cualquier transacción larga: lo invocan el job de la
+ * cola `sap` y el comando del scheduler llamando al handler directo (cada save es su propia escritura),
+ * así el HTTP a SAP nunca retiene una transacción abierta. El empuje a SAP pasa por el puerto SapClient.
  *
  * @implements CommandHandler<DispatchPendingTransfers>
  */
@@ -33,6 +37,7 @@ final class DispatchPendingTransfersHandler implements CommandHandler
         private readonly StockTransferRepository $transfers,
         private readonly SapClient $sap,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly Clock $clock,
     ) {}
 
     public function handle(Command $command): void
@@ -44,7 +49,21 @@ final class DispatchPendingTransfersHandler implements CommandHandler
         $this->lastSent = 0;
         $this->lastFailed = 0;
 
-        foreach ($this->transfers->pending() as $transfer) {
+        $now = $this->clock->now();
+        $pendingBefore = $command->includePending
+            ? $now->sub(new DateInterval('PT'.max(0, $command->pendingOlderThanMinutes).'M'))
+            : null;
+        $failedBefore = $now->sub(new DateInterval('PT'.max(0, $command->failedOlderThanMinutes).'M'));
+
+        // Presupuesto de tiempo (opcional): el job de cola corta antes de su timeout; lo que quede lo
+        // retoma la próxima corrida (el estado vive en la base, no en el lote).
+        $deadline = $command->timeBudgetSeconds > 0 ? $now->getTimestamp() + $command->timeBudgetSeconds : null;
+
+        foreach ($this->transfers->dispatchable($pendingBefore, $failedBefore, max(1, $command->limit)) as $transfer) {
+            if ($deadline !== null && $this->clock->now()->getTimestamp() >= $deadline) {
+                break;
+            }
+
             $this->dispatchOne($transfer);
         }
     }

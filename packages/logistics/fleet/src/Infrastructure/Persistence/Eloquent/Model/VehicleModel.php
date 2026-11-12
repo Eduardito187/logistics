@@ -30,6 +30,10 @@ use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
  * @property string|null                                   $photo_back
  * @property string|null                                   $photo_left
  * @property string|null                                   $photo_right
+ * @property string|null                                   $unfit_since
+ * @property string|null                                   $unfit_reason
+ * @property string|null                                   $unfit_inspection_id
+ * @property list<string>|null                             $unfit_items
  * @property-read NodeRecord|null                          $homeBaseNode
  */
 final class VehicleModel extends Model
@@ -52,6 +56,8 @@ final class VehicleModel extends Model
             'capacity_m3' => 'float',
             'documents' => 'array',
             'model_year' => 'integer',
+            // `unfit_since` se deja sin cast: Postgres devuelve la fecha como texto 'Y-m-d'.
+            'unfit_items' => 'array',
         ];
     }
 

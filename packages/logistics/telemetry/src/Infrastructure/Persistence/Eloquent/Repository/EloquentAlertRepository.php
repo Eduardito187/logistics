@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository;
 
+use DateTimeImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Logistics\Telemetry\Domain\Contract\AlertRepository;
 use Logistics\Telemetry\Domain\Model\TelemetryAlert;
@@ -44,8 +45,13 @@ final readonly class EloquentAlertRepository implements AlertRepository
         ?bool $acknowledged = null,
         ?int $limit = null,
         ?int $offset = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
     ): array {
-        $query = $this->filtered($vehicleId, $type, $acknowledged)->orderByDesc('occurred_at');
+        // Orden total estable (occurred_at, id) para que la paginación no repita ni salte filas empatadas.
+        $query = $this->filtered($vehicleId, $type, $acknowledged, $from, $to)
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id');
 
         if ($offset !== null) {
             $query->offset($offset);
@@ -60,9 +66,14 @@ final readonly class EloquentAlertRepository implements AlertRepository
             ->all());
     }
 
-    public function countBy(?string $vehicleId = null, ?string $type = null, ?bool $acknowledged = null): int
-    {
-        return $this->filtered($vehicleId, $type, $acknowledged)->count();
+    public function countBy(
+        ?string $vehicleId = null,
+        ?string $type = null,
+        ?bool $acknowledged = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
+    ): int {
+        return $this->filtered($vehicleId, $type, $acknowledged, $from, $to)->count();
     }
 
     /**
@@ -70,8 +81,13 @@ final readonly class EloquentAlertRepository implements AlertRepository
      *
      * @return Builder<AlertRecord>
      */
-    private function filtered(?string $vehicleId, ?string $type, ?bool $acknowledged): Builder
-    {
+    private function filtered(
+        ?string $vehicleId,
+        ?string $type,
+        ?bool $acknowledged,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
+    ): Builder {
         $query = AlertRecord::query();
 
         if ($vehicleId !== null && $vehicleId !== '') {
@@ -84,6 +100,12 @@ final readonly class EloquentAlertRepository implements AlertRepository
             $query->whereNotNull('acknowledged_at');
         } elseif ($acknowledged === false) {
             $query->whereNull('acknowledged_at');
+        }
+        if ($from !== null) {
+            $query->where('occurred_at', '>=', $from);
+        }
+        if ($to !== null) {
+            $query->where('occurred_at', '<=', $to);
         }
 
         return $query;

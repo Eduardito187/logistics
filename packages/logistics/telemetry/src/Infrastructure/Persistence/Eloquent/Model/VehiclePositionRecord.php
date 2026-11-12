@@ -22,6 +22,10 @@ use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Factory\VehiclePosit
  * @property bool        $moving
  * @property string|null $route_id
  * @property Carbon      $recorded_at
+ * @property string|null $driver_id
+ * @property Carbon|null $speeding_since
+ * @property Carbon|null $off_route_since
+ * @property Carbon|null $updated_at
  */
 final class VehiclePositionRecord extends Model
 {
@@ -56,6 +60,8 @@ final class VehiclePositionRecord extends Model
             'ignition' => 'boolean',
             'moving' => 'boolean',
             'recorded_at' => 'datetime',
+            'speeding_since' => 'datetime',
+            'off_route_since' => 'datetime',
         ];
     }
 }

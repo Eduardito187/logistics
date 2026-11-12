@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Logistics\Fleet\Application\Query\ListPreTripChecklists;
 
+use DateTimeImmutable;
 use Logistics\Fleet\Application\ReadModel\PreTripChecklistView;
 use Logistics\Fleet\Domain\Contract\PreTripInspectionRepository;
 use Logistics\Fleet\Domain\Model\PreTripInspection;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Shared\Application\ReadModel\Page;
 
 /**
- * Devuelve la lista de inspecciones pre-salida como proyecciones de lectura.
+ * Devuelve las inspecciones pre-salida como proyecciones de lectura, filtradas y ordenadas en SQL
+ * (fecha desc, id desc). Con `limit` baja LIMIT/OFFSET a SQL y devuelve una Page con el total.
  *
- * @implements QueryHandler<ListPreTripChecklists, list<PreTripChecklistView>>
+ * @implements QueryHandler<ListPreTripChecklists, list<PreTripChecklistView>|Page<PreTripChecklistView>>
  */
 final readonly class ListPreTripChecklistsHandler implements QueryHandler
 {
@@ -22,31 +25,24 @@ final readonly class ListPreTripChecklistsHandler implements QueryHandler
     ) {}
 
     /**
-     * @return list<PreTripChecklistView>
+     * @return list<PreTripChecklistView>|Page<PreTripChecklistView>
      */
-    public function handle(Query $query): array
+    public function handle(Query $query): array | Page
     {
         assert($query instanceof ListPreTripChecklists);
 
-        $inspections = $this->inspections->all();
+        $from = $query->from !== null ? new DateTimeImmutable($query->from) : null;
+        $to = $query->to !== null ? new DateTimeImmutable($query->to) : null;
 
-        if ($query->vehicleId !== null) {
-            $inspections = array_values(array_filter(
-                $inspections,
-                static fn (PreTripInspection $inspection): bool => $inspection->vehicleId()->toString() === $query->vehicleId,
-            ));
-        }
-
-        if ($query->onlyPassed !== null) {
-            $inspections = array_values(array_filter(
-                $inspections,
-                static fn (PreTripInspection $inspection): bool => $inspection->passed() === $query->onlyPassed,
-            ));
-        }
-
-        return array_map(
+        $views = array_map(
             static fn (PreTripInspection $inspection): PreTripChecklistView => PreTripChecklistView::fromDomain($inspection),
-            $inspections,
+            $this->inspections->listBy($query->vehicleId, $query->onlyPassed, $from, $to, $query->limit, $query->offset),
         );
+
+        if ($query->limit === null) {
+            return $views;
+        }
+
+        return new Page($views, $this->inspections->countBy($query->vehicleId, $query->onlyPassed, $from, $to));
     }
 }

@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Dimensión de fulfillment en la entrega (ADITIVO, ver docs/marketplace-dropship-roadmap.md §8). Todo lo
+ * Dimensión de fulfillment en la entrega (ADITIVO, ver docs/marketplace-dropship-roadmap.md §8). Cada fila
  * existente queda `owned` por defecto: ningún flujo OWNED/FBD cambia.
  *
  * - `fulfillment_mode`          (string, NOT NULL, default 'owned'): owned | fbd | dropship.

@@ -61,6 +61,24 @@ final class EloquentShipmentRepository implements ShipmentRepository
         return $record === null ? null : $this->mapper->toDomain($record);
     }
 
+    public function findByIdForUpdate(ShipmentId $id): ?Shipment
+    {
+        // Bloquea SOLO la fila del envío (las líneas/bultos se cargan aparte, sin bloqueo): basta para
+        // serializar los cambios de estado concurrentes sobre el mismo envío.
+        $record = ShipmentRecord::query()
+            ->whereKey($id->toString())
+            ->lockForUpdate()
+            ->first();
+
+        if ($record === null) {
+            return null;
+        }
+
+        $record->load(['lines', 'units']);
+
+        return $this->mapper->toDomain($record);
+    }
+
     public function findBySourceReference(SourceReference $reference): ?Shipment
     {
         $record = ShipmentRecord::query()

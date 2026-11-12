@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Enriquece la ruta del día del camión con la tripulación que la condujo: chofer y ayudantes. Todo
+ * Enriquece la ruta del día del camión con la tripulación que la condujo: chofer y ayudantes. Cambio
  * ADITIVO y nullable: las rutas ya armadas siguen válidas sin estos datos.
  *
  * Se pueblan (best-effort) al armar la ruta a partir del crew del vehículo+fecha; si quedan vacíos, el

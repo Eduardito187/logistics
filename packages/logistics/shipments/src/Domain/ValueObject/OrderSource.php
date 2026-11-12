@@ -26,4 +26,31 @@ enum OrderSource: string
     case Manual = 'MANUAL';
 
     case Excel = 'EXCEL';
+
+    /**
+     * Traspaso INTERNO de mercadería (reposición CD → tienda, CD → CD): no hay cliente final que retire ni
+     * reciba. Su envío va a un nodo y se recibe en «Recepción de mercadería», nunca en «Recojo en tienda».
+     */
+    case Transfer = 'TRANSFER';
+
+    /**
+     * ¿Es un movimiento interno de mercadería (sin cliente final)? Hoy solo el traspaso.
+     */
+    public function isInternalTransfer(): bool
+    {
+        return $this === self::Transfer;
+    }
+
+    /**
+     * Valores de las fuentes internas (para los filtros SQL del lado de lectura).
+     *
+     * @return list<string>
+     */
+    public static function internalTransferValues(): array
+    {
+        return array_values(array_map(
+            static fn (self $source): string => $source->value,
+            array_filter(self::cases(), static fn (self $source): bool => $source->isInternalTransfer()),
+        ));
+    }
 }

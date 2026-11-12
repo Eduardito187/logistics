@@ -6,7 +6,6 @@ namespace Logistics\Execution\Infrastructure\Persistence\Eloquent\Factory;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
-use Logistics\Execution\Domain\ValueObject\DropshipHandling;
 use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\DeliveryRecord;
 use Logistics\Shared\Domain\ValueObject\FulfillmentMode;
@@ -36,22 +35,18 @@ final class DeliveryRecordFactory extends Factory
             'pod_photo_url' => null,
             'pod_captured_at' => null,
             'failure_reason' => null,
-            // Por defecto retail (OWNED): el comportamiento histórico. La rama dropship usa el estado dropship().
+            // Por defecto retail (OWNED). El modo es solo un dato: no cambia el flujo de la entrega.
             'fulfillment_mode' => FulfillmentMode::Owned->value,
-            'dropship_handling' => null,
-            'dispatch_confirmation_key' => null,
-            'delivery_confirmation_key' => null,
         ];
     }
 
     /**
-     * Entrega dropship por confirmación del seller (sin escaneos propios). Por defecto solo-tracking.
+     * Entrega de un producto dropship: mismo flujo que OWNED, solo cambia el modo registrado.
      */
-    public function dropship(DropshipHandling $handling = DropshipHandling::TrackOnly): self
+    public function dropship(): self
     {
         return $this->state(fn (): array => [
             'fulfillment_mode' => FulfillmentMode::Dropship->value,
-            'dropship_handling' => $handling->value,
         ]);
     }
 

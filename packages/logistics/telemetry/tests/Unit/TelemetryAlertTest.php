@@ -26,7 +26,7 @@ function levantarAlerta(): TelemetryAlert
     );
 }
 
-it('levanta una alerta sin reconocer y graba AlertRaised', function (): void {
+it('levanta una alerta sin reconocer y graba AlertRaised (más el hecho concreto de exceso)', function (): void {
     $alert = levantarAlerta();
 
     expect($alert->isAcknowledged())->toBeFalse()
@@ -34,9 +34,30 @@ it('levanta una alerta sin reconocer y graba AlertRaised', function (): void {
         ->and($alert->severity())->toBe(AlertSeverity::Warning);
 
     $events = $alert->releaseEvents();
-    expect($events)->toHaveCount(1)
+    expect($events)->toHaveCount(2)
         ->and($events[0])->toBeInstanceOf(AlertRaised::class)
-        ->and($events[0]->eventName())->toBe('telemetry.alert_raised');
+        ->and($events[0]->eventName())->toBe('telemetry.alert_raised')
+        ->and($events[1]->eventName())->toBe('telemetry.vehicle_speeding_sustained')
+        ->and($events[1]->payload()['speed_kph'])->toBe(100.0);
+});
+
+it('graba telemetry.vehicle_route_deviated al levantar un desvío de ruta', function (): void {
+    $alert = TelemetryAlert::raise(
+        AlertId::generate(),
+        'veh-1',
+        null,
+        AlertType::RouteDeviation,
+        AlertSeverity::Warning,
+        GeoPoint::of(-16.5, -68.15),
+        ['distance_m' => 450.0, 'sustained_seconds' => 180],
+        new DateTimeImmutable('2026-10-13T10:00:00+00:00'),
+    );
+
+    $events = $alert->releaseEvents();
+    expect($events)->toHaveCount(2)
+        ->and($events[1]->eventName())->toBe('telemetry.vehicle_route_deviated')
+        ->and($events[1]->payload()['distance_m'])->toBe(450.0)
+        ->and($events[1]->payload()['sustained_seconds'])->toBe(180);
 });
 
 it('reconoce la alerta grabando AlertAcknowledged y es idempotente', function (): void {

@@ -10,6 +10,7 @@ use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\Service\DocumentNumberMatcher;
 use Logistics\Execution\Domain\ValueObject\DeliveryEvidenceId;
 use Logistics\Execution\Domain\ValueObject\EvidenceValidationStatus;
+use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 
@@ -20,6 +21,9 @@ use Logistics\Shared\Application\Command\CommandHandler;
  * contra el documento del cliente de la evidencia (DocumentNumberMatcher) y deriva el estado. En
  * cualquier otro caso deja `review` (hay que mirarlo a mano). No toca la captura (auditoría inmutable).
  *
+ * Si el resultado cambió, el agregado graba DeliveryEvidenceValidated y se encola al outbox en la MISMA
+ * transacción del CommandBus (mismo patrón que la captura), para que compensaciones/otros reaccionen.
+ *
  * @implements CommandHandler<RecordEvidenceValidation>
  */
 final class RecordEvidenceValidationHandler implements CommandHandler
@@ -27,6 +31,7 @@ final class RecordEvidenceValidationHandler implements CommandHandler
     public function __construct(
         private readonly DeliveryEvidenceRepository $evidence,
         private readonly DocumentNumberMatcher $matcher,
+        private readonly RecordDomainEvents $recordEvents,
     ) {}
 
     public function handle(Command $command): void
@@ -46,9 +51,11 @@ final class RecordEvidenceValidationHandler implements CommandHandler
             ? new DateTimeImmutable($command->validatedAt)
             : new DateTimeImmutable;
 
-        $evidence->applyValidation($status, $command->detail, $validatedAt);
+        $evidence->applyValidation($status, $command->detail, $validatedAt, $command->validatedBy);
 
         $this->evidence->save($evidence);
+
+        $this->recordEvents->record($evidence->releaseEvents(), 'execution.delivery_evidence');
     }
 
     private function resolveStatus(RecordEvidenceValidation $command, ?string $customerDocument): EvidenceValidationStatus

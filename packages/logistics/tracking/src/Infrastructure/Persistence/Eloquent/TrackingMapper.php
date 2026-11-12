@@ -27,7 +27,7 @@ final class TrackingMapper
     {
         $position = $tracking->lastPosition();
 
-        return [
+        $row = [
             'id' => $tracking->id()->toString(),
             'shipment_id' => $tracking->shipmentId(),
             'order_reference' => $tracking->orderReference(),
@@ -41,6 +41,15 @@ final class TrackingMapper
             'last_lng' => $position !== null ? (string) $position->point->longitude : null,
             'last_position_at' => $position?->reportedAt->format(DateTimeImmutable::ATOM),
         ];
+
+        // `delivered_at` solo se escribe cuando el dominio lo conoce: el dominio nunca lo borra, y omitirlo
+        // en null evita que un guardado concurrente pise el valor que dejó el backfill.
+        $deliveredAt = $tracking->deliveredAt();
+        if ($deliveredAt !== null) {
+            $row['delivered_at'] = $deliveredAt->format(DateTimeImmutable::ATOM);
+        }
+
+        return $row;
     }
 
     /**
@@ -78,6 +87,7 @@ final class TrackingMapper
             $record->route_id,
             $routePosition,
             $record->order_reference,
+            $record->delivered_at?->toDateTimeImmutable(),
         );
     }
 }

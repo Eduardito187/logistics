@@ -17,15 +17,19 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * Es detalle de Infrastructure: nunca cruza hacia Application ni Domain. El mapeo a/desde el agregado lo
  * hace NodeReceptionMapper.
  *
- * @property string       $id
- * @property string       $shipment_id
- * @property string       $origin_node_id
- * @property string       $destination_node_id
- * @property string       $corridor
- * @property string       $status
- * @property list<string> $expected_unit_ids
- * @property string       $opened_at
- * @property string|null  $reconciled_at
+ * @property string                                                                 $id
+ * @property string                                                                 $shipment_id
+ * @property string                                                                 $origin_node_id
+ * @property string                                                                 $destination_node_id
+ * @property string                                                                 $corridor
+ * @property string                                                                 $status
+ * @property list<string>                                                           $expected_unit_ids
+ * @property string                                                                 $opened_at
+ * @property string|null                                                            $reconciled_at
+ * @property string|null                                                            $reconciliation_notes
+ * @property string|null                                                            $reconciliation_photo_path
+ * @property list<array{unit_id: string, reason: string}>|null                      $missing_units
+ * @property list<array{unit_id: string, belongs_to_shipment_id: string|null}>|null $surplus_units
  */
 final class NodeReceptionRecord extends Model
 {
@@ -45,7 +49,19 @@ final class NodeReceptionRecord extends Model
      */
     protected $casts = [
         'expected_unit_ids' => 'array',
+        'missing_units' => 'array',
+        'surplus_units' => 'array',
     ];
+
+    /**
+     * Ubicación en estante vigente de los productos de la recepción (una fila por producto).
+     *
+     * @return HasMany<NodeReceptionUnitLocationRecord, $this>
+     */
+    public function locations(): HasMany
+    {
+        return $this->hasMany(NodeReceptionUnitLocationRecord::class, 'node_reception_id');
+    }
 
     /**
      * Bultos recibidos en el nodo (append-only).

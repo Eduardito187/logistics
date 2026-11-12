@@ -27,6 +27,7 @@ use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Factory\SettlementFac
  * @property string|null                                  $dispute_reason
  * @property string|null                                  $payment_reference
  * @property list<array{type: string, reference: string}> $documents
+ * @property string|null                                  $vehicle_class
  */
 final class SettlementRecord extends Model
 {

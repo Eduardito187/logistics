@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Application\ReadModel;
 
+use DateTimeInterface;
+use Logistics\Execution\Application\Contract\StopEnrichmentReader;
 use Logistics\Execution\Domain\Model\RouteStop;
 use Logistics\Execution\Domain\Model\VehicleRoute;
 
@@ -16,6 +18,10 @@ use Logistics\Execution\Domain\Model\VehicleRoute;
  * Lleva además la GEOMETRÍA de la ruta por calles (GeoJSON LineString, forma primitiva), enriquecida
  * cross-context desde el plan publicado (planning). Es nula hasta que el ruteo la calcula; el dominio de
  * ejecución no la conoce (la resuelve el QueryHandler por lectura directa).
+ *
+ * Ciclo de vida real de la jornada: `started_at` / `closed_at` (inicio y cierre informados por el chofer).
+ *
+ * @phpstan-import-type StopEnrichment from StopEnrichmentReader
  */
 final readonly class DriverRouteView
 {
@@ -34,14 +40,17 @@ final readonly class DriverRouteView
         public ?RouteStopView $currentStop,
         public array $stops,
         public ?array $routeGeometry = null,
+        public ?string $startedAt = null,
+        public ?string $closedAt = null,
+        public ?float $startOdometerKm = null,
+        public ?float $closeOdometerKm = null,
     ) {}
 
     /**
      * Construye la vista desde el agregado, con el enriquecimiento cross-context opcional.
      *
-     * @param array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>, unit_ids: list<string>, destination?: array{type: string, name: string|null, node_code: string|null}}> $enrichmentByShipment
-     *                                                                                                                                                                                                                                                                                                            mapa id de envío => datos del envío (teléfono, referencia, líneas, destino) para cada parada
-     * @param array<string, mixed>|null                                                                                                                                                                                                                                                     $routeGeometry        geometría de la ruta (esquema RouteGeometry) o null
+     * @param array<string, StopEnrichment> $enrichmentByShipment mapa id de envío => datos del envío de cada parada
+     * @param array<string, mixed>|null     $routeGeometry        geometría de la ruta (esquema RouteGeometry) o null
      */
     public static function fromRoute(
         VehicleRoute $route,
@@ -66,15 +75,19 @@ final readonly class DriverRouteView
             $current === null ? null : self::enrichStop($current, $enrichmentByShipment),
             $stops,
             $routeGeometry,
+            $route->startedAt()?->format(DateTimeInterface::ATOM),
+            $route->closedAt()?->format(DateTimeInterface::ATOM),
+            $route->startOdometerKm(),
+            $route->closeOdometerKm(),
         );
     }
 
     /**
      * Construye la vista de una parada aplicando su enriquecimiento (si lo hay) por id de envío.
      *
-     * @param array<string, array{customer_phone: string|null, address_reference: string|null, items: list<array{sku: string, name: string, quantity: int, image_url: string|null}>, unit_ids: list<string>, destination?: array{type: string, name: string|null, node_code: string|null}}> $enrichmentByShipment
+     * @param array<string, StopEnrichment> $enrichmentByShipment
      */
-    private static function enrichStop(RouteStop $stop, array $enrichmentByShipment): RouteStopView
+    public static function enrichStop(RouteStop $stop, array $enrichmentByShipment): RouteStopView
     {
         $data = $enrichmentByShipment[$stop->shipmentId()] ?? null;
 
@@ -89,6 +102,30 @@ final readonly class DriverRouteView
     }
 
     /**
+     * Forma corta del ciclo de vida (respuesta de start/close): sin paradas ni geometría.
+     *
+     * @return array<string, mixed>
+     */
+    public function lifecycleArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'vehicle_id' => $this->vehicleId,
+            'route_date' => $this->routeDate,
+            'status' => $this->status,
+            'started_at' => $this->startedAt,
+            'closed_at' => $this->closedAt,
+            'start_odometer_km' => $this->startOdometerKm,
+            'close_odometer_km' => $this->closeOdometerKm,
+            'total_stops' => $this->totalStops,
+            'completed_stops' => $this->completedStops,
+            'stops_remaining' => $this->stopsRemaining,
+            // Paradas que quedaron sin atender (el cierre no las exige): mismo número que stops_remaining.
+            'pending_stops' => $this->stopsRemaining,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -98,6 +135,8 @@ final readonly class DriverRouteView
             'vehicle_id' => $this->vehicleId,
             'route_date' => $this->routeDate,
             'status' => $this->status,
+            'started_at' => $this->startedAt,
+            'closed_at' => $this->closedAt,
             'total_stops' => $this->totalStops,
             'completed_stops' => $this->completedStops,
             'stops_remaining' => $this->stopsRemaining,

@@ -6,6 +6,7 @@ namespace Logistics\Fleet\Infrastructure\Persistence\Eloquent\Mapper;
 
 use DateTimeImmutable;
 use Logistics\Fleet\Domain\Model\PreTripInspection;
+use Logistics\Fleet\Domain\ValueObject\ChecklistEvaluation;
 use Logistics\Fleet\Domain\ValueObject\DriverId;
 use Logistics\Fleet\Domain\ValueObject\PreTripChecklist;
 use Logistics\Fleet\Domain\ValueObject\PreTripInspectionId;
@@ -29,11 +30,14 @@ final class PreTripInspectionMapper
             PreTripChecklist::of($model->items),
             new DateTimeImmutable($model->performed_on),
             $model->notes,
+            $model->evaluation !== null
+                ? ChecklistEvaluation::fromArray($model->checklist_template_id, $model->evaluation)
+                : ChecklistEvaluation::withoutTemplate(),
         );
     }
 
     /**
-     * @return array{id: string, vehicle_id: string, driver_id: string, items: array<string, bool>, passed: bool, performed_on: string, notes: string|null}
+     * @return array{id: string, vehicle_id: string, driver_id: string, items: array<string, bool>, passed: bool, performed_on: string, notes: string|null, fit_to_dispatch: bool, checklist_template_id: string|null, evaluation: array{failed_critical: list<string>, failed_major: list<string>, failed_minor: list<string>, missing_critical: list<string>}}
      */
     public function toRow(PreTripInspection $inspection): array
     {
@@ -45,6 +49,9 @@ final class PreTripInspectionMapper
             'passed' => $inspection->passed(),
             'performed_on' => $inspection->performedOn()->format('Y-m-d'),
             'notes' => $inspection->notes(),
+            'fit_to_dispatch' => $inspection->fitToDispatch(),
+            'checklist_template_id' => $inspection->evaluation()->templateId,
+            'evaluation' => $inspection->evaluation()->toArray(),
         ];
     }
 }

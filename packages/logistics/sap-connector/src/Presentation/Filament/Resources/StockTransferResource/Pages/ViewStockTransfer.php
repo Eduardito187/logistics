@@ -9,7 +9,7 @@ use Filament\Actions\ActionGroup;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Logistics\SapConnector\Application\Command\AcknowledgeStockTransfer\AcknowledgeStockTransfer;
-use Logistics\SapConnector\Application\Command\DispatchPendingTransfers\DispatchPendingTransfers;
+use Logistics\SapConnector\Application\Command\RequestStockTransferDispatch\RequestStockTransferDispatch;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
 use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 use Logistics\SapConnector\Infrastructure\Persistence\Eloquent\StockTransferRecord;
@@ -66,13 +66,13 @@ final class ViewStockTransfer extends ViewRecord
                 ->label(__('Dispatch pending transfers'))
                 ->icon('heroicon-o-paper-airplane')
                 ->requiresConfirmation()
-                ->modalDescription(__('Push all pending and failed stock transfers to SAP now.'))
+                ->modalDescription(__('Queue a reconciliation run: failed and stale pending transfers are pushed to SAP in the background.'))
                 ->action(function (CommandBus $commandBus): void {
-                    $commandBus->dispatch(new DispatchPendingTransfers);
+                    $commandBus->dispatch(new RequestStockTransferDispatch);
 
                     Notification::make()
                         ->title(__('Dispatch requested'))
-                        ->body(__('Pending stock transfers were scheduled for dispatch to SAP.'))
+                        ->body(__('The reconciliation run was queued. SAP is contacted in the background; this screen is never blocked by SAP.'))
                         ->success()
                         ->send();
                 }),

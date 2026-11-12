@@ -14,6 +14,8 @@ use Logistics\Shipments\Domain\ValueObject\Customer;
 use Logistics\Shipments\Domain\ValueObject\DeliverySlot;
 use Logistics\Shipments\Domain\ValueObject\Fraction;
 use Logistics\Shipments\Domain\ValueObject\GeoPoint;
+use Logistics\Shipments\Domain\ValueObject\LineMeasure;
+use Logistics\Shipments\Domain\ValueObject\MeasurementsSource;
 use Logistics\Shipments\Domain\ValueObject\Money;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\PhysicalUnitId;
@@ -24,6 +26,7 @@ use Logistics\Shipments\Domain\ValueObject\ShipmentLineId;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 use Logistics\Shipments\Domain\ValueObject\Sku;
 use Logistics\Shipments\Domain\ValueObject\SourceReference;
+use Throwable;
 
 /**
  * Traduce entre el agregado Shipment y sus filas Eloquent. Toda la conversión a/desde primitivos vive
@@ -73,6 +76,7 @@ final class ShipmentMapper
     {
         $unitPrice = $line->unitPrice();
         $imageUrl = $line->imageUrl();
+        $measure = $line->measure();
 
         return [
             'id' => $line->id()->toString(),
@@ -83,6 +87,10 @@ final class ShipmentMapper
             'unit_price' => $unitPrice?->amount,
             'unit_price_currency' => $unitPrice?->currency,
             'quantity' => $line->quantity(),
+            // Foto de medidas por unidad (Fase 2.1). Contrato con planning: columnas nullable.
+            'unit_weight_kg' => $measure?->unitWeightKg,
+            'unit_volume_m3' => $measure?->unitVolumeM3,
+            'measurements_source' => $measure?->source->value,
         ];
     }
 
@@ -136,6 +144,7 @@ final class ShipmentMapper
                 $lineRecord->quantity,
                 ProductImageUrl::fromNullable($lineRecord->product_image_url),
                 $unitPrice,
+                self::measureOf($lineRecord),
             );
         }
 
@@ -189,5 +198,26 @@ final class ShipmentMapper
             // Filas viejas sin order_reference caen a su external_id (backfill de la migración).
             is_string($record->order_reference) ? $record->order_reference : null,
         );
+    }
+
+    /**
+     * Reconstruye la foto de medidas de una línea. Tolerante: si falta el peso o el volumen (línea
+     * histórica sin backfill) o el dato está sucio, devuelve null en vez de romper la carga del envío.
+     */
+    private static function measureOf(ShipmentLineRecord $record): ?LineMeasure
+    {
+        if ($record->unit_weight_kg === null || $record->unit_volume_m3 === null) {
+            return null;
+        }
+
+        $source = is_string($record->measurements_source)
+            ? (MeasurementsSource::tryFrom($record->measurements_source) ?? MeasurementsSource::Default)
+            : MeasurementsSource::Default;
+
+        try {
+            return LineMeasure::of((float) $record->unit_weight_kg, (float) $record->unit_volume_m3, $source);
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

@@ -14,6 +14,7 @@ use Logistics\Outbox\Application\Command\RetryMessage\RetryMessageCommand;
 use Logistics\Outbox\Application\Command\RetryMessage\RetryMessageHandler;
 use Logistics\Outbox\Application\Contract\MessageDispatcher;
 use Logistics\Outbox\Application\Contract\OutboxMessageQueue;
+use Logistics\Outbox\Application\Contract\OutboxObserver;
 use Logistics\Outbox\Application\EnqueueOutbox\EnqueueOutboxBatch;
 use Logistics\Outbox\Application\Query\GetOutboxMessage\GetOutboxMessageHandler;
 use Logistics\Outbox\Application\Query\GetOutboxMessage\GetOutboxMessageQuery;
@@ -36,6 +37,8 @@ use Logistics\Outbox\Presentation\Console\PumpOutboxCommand;
 use Logistics\Outbox\Presentation\Console\RelayOutboxCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 use Logistics\Shared\Domain\Clock\Clock;
+use Psr\Log\LoggerInterface;
+use Throwable;
 
 /**
  * Registro del bounded context Outbox.
@@ -112,6 +115,8 @@ final class OutboxServiceProvider extends ServiceProvider
                 $app->make(Clock::class),
                 (int) $config->get('logistics-outbox.relay.max_attempts', 6),
                 $backoff !== [] ? $backoff : null,
+                $this->observers($app),
+                $this->logger($app),
             );
         });
 
@@ -129,6 +134,8 @@ final class OutboxServiceProvider extends ServiceProvider
                 $app->make(MessageDispatcher::class),
                 (int) $config->get('logistics-outbox.relay.max_attempts', 6),
                 $backoff !== [] ? $backoff : null,
+                $this->observers($app),
+                $this->logger($app),
             );
         });
 
@@ -155,6 +162,55 @@ final class OutboxServiceProvider extends ServiceProvider
                 $app->make(Clock::class),
             );
         });
+    }
+
+    /**
+     * Observadores del procesamiento (config `logistics-outbox.observers`), resueltos del contenedor. Se
+     * leen en cada resolución del procesador (no en el boot): así un contexto puede agregarse a la lista
+     * desde su propio provider. Una clase que no se pueda resolver o no cumpla el contrato se descarta y
+     * se loguea: un observador mal configurado jamás debe frenar el despacho del outbox.
+     *
+     * @return list<OutboxObserver>
+     */
+    private function observers(Container $app): array
+    {
+        /** @var Repository $config */
+        $config = $app->make(Repository::class);
+
+        $observers = [];
+        foreach ((array) $config->get('logistics-outbox.observers', []) as $class) {
+            if (!is_string($class) || $class === '') {
+                continue;
+            }
+
+            try {
+                $observer = $app->make($class);
+            } catch (Throwable $error) {
+                $this->logger($app)?->warning('Outbox observer could not be resolved; skipped', [
+                    'observer' => $class,
+                    'error' => $error->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            if ($observer instanceof OutboxObserver) {
+                $observers[] = $observer;
+            }
+        }
+
+        return $observers;
+    }
+
+    private function logger(Container $app): ?LoggerInterface
+    {
+        if (!$app->bound(LoggerInterface::class)) {
+            return null;
+        }
+
+        $logger = $app->make(LoggerInterface::class);
+
+        return $logger instanceof LoggerInterface ? $logger : null;
     }
 
     public function boot(): void

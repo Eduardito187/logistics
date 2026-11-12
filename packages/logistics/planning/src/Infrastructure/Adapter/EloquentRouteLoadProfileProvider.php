@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Infrastructure\Adapter;
 
-use Illuminate\Contracts\Config\Repository as Config;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Planning\Domain\Contract\RouteLoadProfileProvider;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
@@ -16,14 +15,14 @@ use Throwable;
  * Infrastructure: conoce los esquemas de otros contextos (nunca los escribe) y traduce al contrato de
  * dominio.
  *
- * La carga se estima igual que el auto-planificador: cantidad de bultos del envío por el peso/volumen por
- * bulto configurables, hasta que Envíos publique peso/volumen reales. Robusto: si una tabla no existe o
+ * La carga se mide igual que el auto-planificador (ShipmentLoadReader): kg/m3 reales por línea del envío,
+ * con fallback a los defaults por producto para las líneas sin medidas. Robusto: si una tabla no existe o
  * falla, degrada a 0 (carga) o null (capacidad) para que el cálculo de métricas nunca rompa.
  */
 final readonly class EloquentRouteLoadProfileProvider implements RouteLoadProfileProvider
 {
     public function __construct(
-        private Config $config,
+        private ShipmentLoadReader $loads,
     ) {}
 
     public function loadFor(array $shipmentIds): array
@@ -33,25 +32,21 @@ final readonly class EloquentRouteLoadProfileProvider implements RouteLoadProfil
             return ['kg' => 0.0, 'm3' => 0.0];
         }
 
-        $defaultWeight = $this->floatConfig('default_weight_kg_per_package', 10.0);
-        $defaultVolume = $this->floatConfig('default_volume_m3_per_package', 0.05);
-
+        // Solo cuentan los envíos que existen (mismo criterio que antes: un id inexistente no suma carga).
         try {
-            $records = ShipmentRecord::query()
-                ->whereIn('id', $ids)
-                ->withSum('lines', 'quantity')
-                ->get();
+            $existing = [];
+            foreach (ShipmentRecord::query()->whereIn('id', $ids)->pluck('id') as $id) {
+                $existing[] = (string) $id;
+            }
         } catch (Throwable) {
             return ['kg' => 0.0, 'm3' => 0.0];
         }
 
         $kg = 0.0;
         $m3 = 0.0;
-        foreach ($records as $record) {
-            $packagesRaw = $record->getAttribute('lines_sum_quantity');
-            $packages = is_numeric($packagesRaw) ? max(1, (int) $packagesRaw) : 1;
-            $kg += $packages * $defaultWeight;
-            $m3 += $packages * $defaultVolume;
+        foreach ($this->loads->loadsFor($existing) as $load) {
+            $kg += $load['kg'];
+            $m3 += $load['m3'];
         }
 
         return ['kg' => $kg, 'm3' => $m3];
@@ -74,12 +69,5 @@ final readonly class EloquentRouteLoadProfileProvider implements RouteLoadProfil
         }
 
         return ['kg' => (float) $vehicle->capacity_kg, 'm3' => (float) $vehicle->capacity_m3];
-    }
-
-    private function floatConfig(string $key, float $default): float
-    {
-        $value = $this->config->get("logistics-planning.auto_planner.{$key}");
-
-        return is_numeric($value) ? (float) $value : $default;
     }
 }

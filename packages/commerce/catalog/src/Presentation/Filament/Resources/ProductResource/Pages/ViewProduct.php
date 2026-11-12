@@ -6,6 +6,8 @@ namespace Commerce\Catalog\Presentation\Filament\Resources\ProductResource\Pages
 
 use App\Support\Cockpit\ProductHub;
 use Commerce\Catalog\Presentation\Filament\Resources\ProductResource;
+use Commerce\Catalog\Presentation\Filament\Support\PhysicalSpecForm;
+use Filament\Actions\Action;
 use Filament\Resources\Pages\ViewRecord;
 use Livewire\Attributes\Computed;
 
@@ -34,6 +36,18 @@ final class ViewProduct extends ViewRecord
         $name = $this->getRecord()->getAttribute('name');
 
         return is_string($name) && $name !== '' ? $name : 'Producto';
+    }
+
+    /**
+     * Acciones de cabecera del hub: editar las medidas físicas (Fase 2.0) por el bus CQRS.
+     *
+     * @return array<int, Action>
+     */
+    protected function getHeaderActions(): array
+    {
+        return [
+            PhysicalSpecForm::productAction(),
+        ];
     }
 
     /**

@@ -42,7 +42,7 @@ return [
     'allowed_headers' => ['*'],
 
     // Exponemos el id de correlación (M-7) para que el cliente pueda reportarlo en incidencias.
-    'exposed_headers' => ['X-Request-Id'],
+    'exposed_headers' => ['X-Request-Id', 'X-Min-App-Version'],
 
     'max_age' => (int) env('CORS_MAX_AGE', 0),
 

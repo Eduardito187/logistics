@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Domain\Contract;
 
+use DateTimeImmutable;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
 
@@ -33,6 +34,16 @@ interface StockTransferRepository
      * @return list<StockTransfer>
      */
     public function pending(): array;
+
+    /**
+     * Lote acotado de traspasos a (re)empujar por el worker de reconciliación:
+     *  - Failed cuyo último intento (última escritura) es anterior a $failedUpdatedBefore (backoff);
+     *  - Pending sin tocar desde antes de $pendingUpdatedBefore (estancados); null = no incluir Pending.
+     * Ordenados del más viejo al más nuevo.
+     *
+     * @return list<StockTransfer>
+     */
+    public function dispatchable(?DateTimeImmutable $pendingUpdatedBefore, DateTimeImmutable $failedUpdatedBefore, int $limit): array;
 
     /**
      * Traspasos fallidos, para el panel de reconciliación.

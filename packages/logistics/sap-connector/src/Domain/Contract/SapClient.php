@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Domain\Contract;
 
+use Logistics\SapConnector\Domain\Model\SapNotification;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
+use Logistics\SapConnector\Domain\ValueObject\SapResponse;
 
 /**
  * Puerto ÚNICO que habla con SAP. Es la frontera de la capa anti-corrupción (ADR 002): ningún otro
@@ -26,4 +28,12 @@ interface SapClient
      * @return list<array<string, mixed>>
      */
     public function fetchOrders(): array;
+
+    /**
+     * Avisa a SAP (fire-and-forget) un hecho de despacho. Lo invoca SOLO el job de la cola `sap`.
+     *
+     * Devuelve la respuesta cruda de SAP, sea 2xx o no (el llamador decide si cuenta como entregado y la
+     * guarda). Lanza SapConnectorException solo ante fallo de comunicación (red, timeout, breaker abierto).
+     */
+    public function notifyEvent(SapNotification $notification): SapResponse;
 }

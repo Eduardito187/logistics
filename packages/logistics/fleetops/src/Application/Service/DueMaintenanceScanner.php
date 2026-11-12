@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use Logistics\FleetOps\Application\ReadModel\DueMaintenanceView;
 use Logistics\FleetOps\Domain\Contract\MaintenancePlanRepository;
 use Logistics\FleetOps\Domain\Contract\OdometerRepository;
+use Logistics\FleetOps\Domain\Contract\VehiclePlateDirectory;
 use Logistics\FleetOps\Domain\Contract\VehicleProfileRepository;
 use Logistics\FleetOps\Domain\Model\MaintenancePlan;
 use Logistics\FleetOps\Domain\ValueObject\Odometer;
@@ -25,9 +26,13 @@ final readonly class DueMaintenanceScanner
         private MaintenancePlanRepository $plans,
         private OdometerRepository $odometers,
         private VehicleProfileRepository $profiles,
+        // Opcional: placas legibles en lote (sin él, `vehicle_plate` queda null; p. ej. en tests unitarios).
+        private ?VehiclePlateDirectory $plates = null,
     ) {}
 
     /**
+     * Más urgentes primero: vencidos antes que por vencer y, dentro de cada grupo, menos km restantes.
+     *
      * @return list<DueMaintenanceView>
      */
     public function scan(DateTimeImmutable $asOf, int $dueSoonKm, int $dueSoonDays): array
@@ -42,17 +47,67 @@ final readonly class DueMaintenanceScanner
                 continue;
             }
 
+            $nextAt = $plan->nextDueAt();
+
             $results[] = new DueMaintenanceView(
                 $plan->vehicleId(),
                 $plan->serviceKind()->value,
                 $plan->nextDueKm(),
-                $plan->nextDueAt()?->format(DateTimeImmutable::ATOM),
+                $nextAt?->format(DateTimeImmutable::ATOM),
                 $currentKm?->km,
                 $this->isOverdue($plan, $currentKm, $asOf),
+                $plan->id()->toString(),
+                null,
+                $nextAt !== null ? $this->daysBetween($asOf, $nextAt) : null,
             );
         }
 
+        $results = $this->withPlates($results);
+
+        usort($results, static function (DueMaintenanceView $a, DueMaintenanceView $b): int {
+            if ($a->overdue !== $b->overdue) {
+                return $a->overdue ? -1 : 1;
+            }
+
+            return ($a->remainingKm() ?? PHP_INT_MAX) <=> ($b->remainingKm() ?? PHP_INT_MAX);
+        });
+
         return $results;
+    }
+
+    /**
+     * Resuelve las placas en una sola lectura (sin N+1).
+     *
+     * @param  list<DueMaintenanceView> $results
+     * @return list<DueMaintenanceView>
+     */
+    private function withPlates(array $results): array
+    {
+        if ($this->plates === null || $results === []) {
+            return $results;
+        }
+
+        $plates = $this->plates->platesFor(array_values(array_unique(array_map(
+            static fn (DueMaintenanceView $view): string => $view->vehicleId,
+            $results,
+        ))));
+
+        return array_map(
+            static fn (DueMaintenanceView $view): DueMaintenanceView => $view->withPlate($plates[$view->vehicleId] ?? null),
+            $results,
+        );
+    }
+
+    /**
+     * Días de calendario de `$from` a `$to` (negativo si `$to` ya pasó).
+     */
+    private function daysBetween(DateTimeImmutable $from, DateTimeImmutable $to): int
+    {
+        $start = $from->setTime(0, 0);
+        $end = $to->setTime(0, 0);
+        $days = (int) $start->diff($end)->days;
+
+        return $end < $start ? -$days : $days;
     }
 
     private function currentOdometer(string $vehicleId): ?Odometer

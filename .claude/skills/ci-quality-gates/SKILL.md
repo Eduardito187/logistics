@@ -28,14 +28,26 @@ aparte solo si el usuario quiere el PR sin ningún annotation.
 
 ## Paso 1 — No adivinar: preguntar a la API (proyecto público, sin auth)
 
+En este Windows NO hay PHP en el host (y el dueño prohíbe docker salvo pedido): parsear con **python**.
+
 ```bash
 PK=Eduardito187_logistics ; PR=<numero-del-PR>
-# Bugs (Reliability):
-curl -s "https://sonarcloud.io/api/issues/search?componentKeys=$PK&pullRequest=$PR&types=BUG&resolved=false&ps=100" \
- | php -r '$d=json_decode(stream_get_contents(STDIN),true);printf("BUGs=%s\n",$d["total"]);foreach($d["issues"]??[] as $i)printf("[%s] %s %s:%s\n  %s\n",$i["severity"],$i["rule"],$i["component"],$i["line"]??"",$i["message"]);'
-# Vulnerabilities (Security) — cambiar types=VULNERABILITY.
+for T in VULNERABILITY BUG; do
+  curl -s "https://sonarcloud.io/api/issues/search?componentKeys=$PK&pullRequest=$PR&types=$T&resolved=false&ps=100" \
+  | python -c "
+import json,sys;d=json.load(sys.stdin);print('$T',d.get('total'))
+for i in d.get('issues',[]):print(' [%s] %s %s:%s\n   %s'%(i['severity'],i['rule'],i['component'].split(':',1)[1],i.get('line',''),i['message']))"
+done
+# Security Hotspots (también pueden bajar el Security Rating):
+curl -s "https://sonarcloud.io/api/hotspots/search?projectKey=$PK&pullRequest=$PR&ps=100" | python -c "
+import json,sys;d=json.load(sys.stdin);print('HOTSPOTS',d.get('paging',{}).get('total'))
+for i in d.get('hotspots',[]):print(' %s %s:%s %s'%(i['vulnerabilityProbability'],i['component'].split(':',1)[1],i.get('line',''),i['message']))"
 # Comprobar si una supresión surte efecto: &rules=php:S107
 ```
+
+Caso real PR 47 (2026-11-12): la lista pegada tenía ~45 annotations, pero el gate D/C lo causaban SOLO 3:
+`php:S4790` (`sha1()` en un ETag HTTP → `hash('sha256', …)`) y 2× `php:S836` (FP de data-flow en un test →
+`// NOSONAR — <motivo>`). Arreglar esos 3 primero; el resto es mantenibilidad.
 
 Esto da regla + archivo + línea + severidad. Es la **fuente autoritativa**; los annotations de GitHub
 mezclan ruido y a veces están viejos.
@@ -122,6 +134,30 @@ La herramienta Bash de este entorno colapsa `\\` en `sed`/`perl` → un `use App
 `use AppSupport...`. Para imports/namespace con barras invertidas usar el editor (Edit), no sed. Después de
 cualquier reemplazo masivo: `php -l` de cada archivo + PHPStan.
 
+## Paso 3b — Pint SIN poder correr pint (arreglo a mano)
+
+Cuando el dueño pega la salida de Pint (`FAIL … N style issues` + `⨯ archivo regla, regla…`) y no se puede
+usar docker, arreglar a mano con las reglas REALES de `pint.json` (preset laravel + overrides). **Leer
+`pint.json` y un archivo que pase en `origin/production` antes de dar reglas a agentes** — el 2026-11-12 se
+dieron 3 reglas al revés y hubo que corregir a 4 agentes:
+
+| Regla de Pint | Qué exige en ESTE repo |
+|---|---|
+| `phpdoc_separation` | `@param` y `@return` **juntos, SIN** línea ` *` entre ellos. Blanca entre descripción y tags, y entre grupos distintos (`@throws`, `@var`, `@template`). |
+| `phpdoc_align` | Vertical: columna de tipo y de variable rellenadas al más ancho del grupo. Con `@return` en el grupo: `@param  tipo  $var` (2 espacios). `@property-read` NO entra en la alineación por defecto. Molde: `shipments/Infrastructure/ReadModel/DbShipmentListReader.php`. |
+| `types_spaces: single` | Uniones en CÓDIGO con espacios: `): array \| Page` (en phpdoc NO). |
+| `increment_style` | **Post**-incremento `$i++`. |
+| `ordered_imports` alpha / `no_unused_imports` | `use` alfabético (case-insensitive, `\` cuenta como espacio); sin imports muertos. |
+| `fully_qualified_strict_types` | Importar en vez de `\FQCN` en código; **también** `{@see \FQCN}` en docblocks dispara (escribir el nombre en texto plano). |
+| `single_line_empty_body`, `braces_position` | `) {}` en la misma línea. A menudo Pint los lista como **efecto colateral** de otra regla del mismo archivo: si no se encuentra el problema, arreglar la otra regla y listo. |
+| `binary_operator_spaces` | Un espacio alrededor de `=`/`=>`, sin padding de alineación. |
+| `single_quote` | Comillas simples salvo interpolación. |
+
+Verificación sin pint: script Python que reconstruye cada grupo de tags con la alineación esperada y compara
+(lista de archivos = `git diff --name-only` + `git ls-files --others --exclude-standard`, solo `.php`), más
+greps de `++$`/`--$` y de uniones sin espacios fuera de docblocks. Después el dueño corre `make pint-fix`,
+que deja cualquier resto fino.
+
 ## Paso 4 — `composer audit` (job aparte del gate Sonar)
 
 ```bash
@@ -132,7 +168,10 @@ composer audit --locked                                                         
 Laravel 13.x admite symfony 7.4 y 8 (`^7.4||^8.0`): el salto 7.4→8 es válido pero **verificar con la suite
 completa** que no rompe.
 
-## Paso 5 — DoD local antes de reportar (todo en Docker)
+## Paso 5 — DoD local antes de reportar (todo en Docker — SOLO si el dueño lo pide)
+
+Regla del dueño ([[no-docker-unless-asked]]): no levantar docker ni correr estos comandos por iniciativa
+propia; si no los pidió, entregarle esta lista de comandos para que la corra él.
 
 ```bash
 docker compose exec -T app ./vendor/bin/pint <archivos>                      # PASS

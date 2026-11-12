@@ -43,7 +43,7 @@ use Throwable;
  * SOLO LECTURA (sin crear/editar/borrar): sirve al supervisor para ver dónde va cada camión.
  *
  * Datos legibles: el camión por su placa (vehicle.plate) y cada parada por su referencia de pedido,
- * cliente y dirección (foto guardada en la parada), nunca por UUID. Todo el texto visible en inglés.
+ * cliente y dirección (foto guardada en la parada), nunca por UUID. El texto visible completo en inglés.
  *
  * @extends resource<VehicleRouteRecord>
  */
@@ -168,7 +168,7 @@ final class VehicleRouteResource extends Resource
     public static function infolist(Schema $schema): Schema
     {
         return $schema
-            // Una sola columna lógica a nivel de página: cada bloque ocupa todo el ancho para que no
+            // Una sola columna lógica a nivel de página: cada bloque ocupa el ancho completo para que no
             // queden huecos (antes la ficha de ruta quedaba a la izquierda y el mapa a la derecha).
             ->columns(1)
             ->components([
@@ -244,7 +244,7 @@ final class VehicleRouteResource extends Resource
                                     ->dateTime()
                                     ->placeholder('—')
                                     ->columnSpanFull(),
-                                // Hace clickeable TODO el recuadro de la parada: un clic en cualquier parte de la
+                                // Hace clickeable el recuadro ENTERO de la parada: un clic en cualquier parte de la
                                 // tarjeta centra y abre su punto en el mapa de la ruta de arriba (los links de
                                 // texto Pedido/Cliente se respetan y siguen navegando). Es solo cableado, va oculto.
                                 View::make('logistics-execution::filament.route-stop-clickable')

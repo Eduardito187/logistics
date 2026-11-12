@@ -13,7 +13,8 @@ use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shared\Application\ReadModel\Page;
 
 /**
- * Devuelve las liquidaciones (filtrables por transportista y estado) como proyecciones de lectura.
+ * Devuelve las liquidaciones (filtrables por transportista, estado y rango de período) como proyecciones
+ * de lectura.
  *
  * Con `limit` (al paginar) baja LIMIT/OFFSET a SQL y devuelve una Page (ítems + total). Sin `limit`,
  * devuelve la lista completa, por compatibilidad. El nombre del transportista se resuelve EN LOTE solo
@@ -34,7 +35,18 @@ final readonly class ListSettlementsHandler implements QueryHandler
     {
         assert($query instanceof ListSettlements);
 
-        $settlements = $this->settlements->list($query->carrierId, $query->status, $query->limit, $query->offset);
+        // El rango llega en fechas `Y-m-d`; el período persistido es mensual (`YYYY-MM`): se compara por mes.
+        $monthFrom = self::month($query->periodFrom);
+        $monthTo = self::month($query->periodTo);
+
+        $settlements = $this->settlements->list(
+            $query->carrierId,
+            $query->status,
+            $query->limit,
+            $query->offset,
+            $monthFrom,
+            $monthTo,
+        );
 
         // Resolución en lote de los nombres legibles de transportista para evitar N+1 en el listado.
         $carrierIds = array_values(array_unique(array_map(
@@ -62,6 +74,18 @@ final readonly class ListSettlementsHandler implements QueryHandler
             return $views;
         }
 
-        return new Page($views, $this->settlements->countBy($query->carrierId, $query->status));
+        return new Page($views, $this->settlements->countBy($query->carrierId, $query->status, $monthFrom, $monthTo));
+    }
+
+    /**
+     * Mes (`YYYY-MM`) de una fecha `Y-m-d`; null si no hay fecha.
+     */
+    private static function month(?string $date): ?string
+    {
+        if ($date === null || strlen($date) < 7) {
+            return null;
+        }
+
+        return substr($date, 0, 7);
     }
 }

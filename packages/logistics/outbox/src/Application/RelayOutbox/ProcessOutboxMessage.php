@@ -7,8 +7,10 @@ namespace Logistics\Outbox\Application\RelayOutbox;
 use DateInterval;
 use DateTimeImmutable;
 use Logistics\Outbox\Application\Contract\MessageDispatcher;
+use Logistics\Outbox\Application\Contract\OutboxObserver;
 use Logistics\Outbox\Domain\Contract\OutboxStore;
 use Logistics\Outbox\Domain\OutboxMessage;
+use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
@@ -20,6 +22,10 @@ use Throwable;
  * La idempotencia la garantizan aguas arriba la clave event_id del store y, aguas abajo, los consumidores
  * (que se desduplican por eventId): reprocesar un mensaje es inocuo. Si el mensaje ya quedó en un estado
  * terminal (p. ej. otro worker lo despachó entre el pull y este proceso), no se vuelve a despachar.
+ *
+ * Observadores (punto de extensión, ver OutboxObserver): tras persistir el desenlace del despacho se
+ * notifica a cada observador configurado. Cada llamada va aislada en su propio try/catch que traga y
+ * loguea la excepción: un observador NUNCA altera el desenlace, los reintentos ni el dead-letter.
  */
 final readonly class ProcessOutboxMessage
 {
@@ -39,18 +45,30 @@ final readonly class ProcessOutboxMessage
     /** @var array<int, int> */
     private array $backoffMinutes;
 
+    /** @var list<OutboxObserver> */
+    private array $observers;
+
     /**
-     * @param int|null             $maxAttempts    Intentos totales; null usa el valor por defecto.
-     * @param array<int, int>|null $backoffMinutes Tabla de backoff; null usa la por defecto.
+     * @param int|null                 $maxAttempts    Intentos totales; null usa el valor por defecto.
+     * @param array<int, int>|null     $backoffMinutes Tabla de backoff; null usa la por defecto.
+     * @param iterable<OutboxObserver> $observers      Observadores a notificar tras cada procesamiento.
      */
     public function __construct(
         private OutboxStore $store,
         private MessageDispatcher $dispatcher,
         ?int $maxAttempts = null,
         ?array $backoffMinutes = null,
+        iterable $observers = [],
+        private ?LoggerInterface $logger = null,
     ) {
         $this->maxAttempts = $maxAttempts ?? self::DEFAULT_MAX_ATTEMPTS;
         $this->backoffMinutes = $backoffMinutes ?? self::DEFAULT_BACKOFF_MINUTES;
+
+        $list = [];
+        foreach ($observers as $observer) {
+            $list[] = $observer;
+        }
+        $this->observers = $list;
     }
 
     /**
@@ -70,9 +88,34 @@ final readonly class ProcessOutboxMessage
             $message->markDispatched($now);
             $this->store->save($message);
 
-            return Outcome::Dispatched;
+            $outcome = Outcome::Dispatched;
         } catch (Throwable $error) {
-            return $this->handleFailure($message, $error, $now);
+            $outcome = $this->handleFailure($message, $error, $now);
+        }
+
+        // El desenlace ya quedó persistido: recién ahora se avisa a los observadores, aislados.
+        $this->notifyObservers($message);
+
+        return $outcome;
+    }
+
+    /**
+     * Notifica a cada observador por separado. Cualquier excepción se traga y se loguea: el fallo de un
+     * observador no afecta al mensaje ni a los demás observadores.
+     */
+    private function notifyObservers(OutboxMessage $message): void
+    {
+        foreach ($this->observers as $observer) {
+            try {
+                $observer->observe($message);
+            } catch (Throwable $error) {
+                $this->logger?->warning('Outbox observer failed; message outcome is unaffected', [
+                    'observer' => $observer::class,
+                    'event_name' => $message->eventName(),
+                    'event_id' => $message->eventId()->value,
+                    'error' => $error->getMessage(),
+                ]);
+            }
         }
     }
 

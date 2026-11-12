@@ -14,6 +14,7 @@ use Livewire\Attributes\Computed;
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource;
 use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource;
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource;
+use Logistics\Fleet\Presentation\Filament\Resources\VehicleFitnessLogResource;
 use Logistics\Fleet\Presentation\Filament\Resources\VehicleResource;
 use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
 use Logistics\FleetOps\Presentation\Filament\Resources\DepartureResource;
@@ -23,6 +24,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\MaintenancePlanResource;
 use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource;
 use Logistics\FleetOps\Presentation\Filament\Resources\RefuelResource;
 use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource;
+use Logistics\Planning\Presentation\Filament\VehicleRestrictionResource;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Telemetry\Presentation\Filament\Resources\TripResource;
 use Throwable;
@@ -30,7 +32,7 @@ use Throwable;
 /**
  * "Hub 360" de un vehículo: cockpit de detalle que agrega, en una sola pantalla, telemetría en vivo,
  * ruta/entregas de hoy, costos/utilización, documentos con vencimiento, alertas de mal uso e incidentes
- * (todo cross-context vía {@see VehicleHub}, tolerante). Deja de ser un infolist tipo CRUD: usa una vista
+ * (cada dato cross-context vía {@see VehicleHub}, tolerante). Deja de ser un infolist tipo CRUD: usa una vista
  * propia con la capa de diseño `.distrack-cockpit`. Desde la cabecera se edita la ficha y se registran
  * documentos (SOAT, inspección técnica, etc.).
  */
@@ -49,6 +51,8 @@ final class ViewVehicle extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            // Habilitar tras la reparación: solo visible si el vehículo quedó no apto por checklist (#27).
+            VehicleResource::clearFitnessAction(),
             EditAction::make(),
             OwnerDocuments::registerAction('vehicle'),
         ];
@@ -120,6 +124,10 @@ final class ViewVehicle extends ViewRecord
             ['Gastos', ExpenseResource::class, true],
             ['Recorridos', TripResource::class, true],
             ['Checklists pre-salida', PreTripChecklistResource::class, true],
+            // Bitácora de aptitud (no apto / habilitado) del vehículo.
+            ['Bitácora de aptitud', VehicleFitnessLogResource::class, true],
+            // Restricciones de ruteo del camión (tipos de carga, zonas, límites): las usa el planificador.
+            ['Restricciones de ruteo', VehicleRestrictionResource::class, true],
             ['Ficha técnica', VehicleProfileResource::class, true],
             ['Tripulaciones', CrewResource::class, true],
             // Documentos del vehículo (SOAT, inspección): su hogar es esta ficha (acotados por ?vehicle=).

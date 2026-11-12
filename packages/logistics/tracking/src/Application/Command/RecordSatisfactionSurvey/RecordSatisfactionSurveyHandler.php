@@ -8,6 +8,7 @@ use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Shared\Domain\Clock\Clock;
+use Logistics\Tracking\Application\Service\PublicLinkGuard;
 use Logistics\Tracking\Domain\Contract\SatisfactionSurveyRepository;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
@@ -37,6 +38,7 @@ final class RecordSatisfactionSurveyHandler implements CommandHandler
         private readonly TrackingRepository $trackings,
         private readonly RecordDomainEvents $recordEvents,
         private readonly Clock $clock,
+        private readonly PublicLinkGuard $guard,
     ) {}
 
     public function handle(Command $command): void
@@ -50,6 +52,11 @@ final class RecordSatisfactionSurveyHandler implements CommandHandler
         $tracking = $this->trackings->findByToken($token);
         if ($tracking === null) {
             throw TrackingException::because('no existe seguimiento para ese token');
+        }
+
+        // Reconfirmación ante carrera: un enlace vencido (TTL desde la entrega) ya no acepta respuestas.
+        if ($this->guard->isExpired($tracking)) {
+            throw TrackingException::because('el enlace de seguimiento venció');
         }
 
         if ($tracking->status() !== VisibleStatus::Delivered) {
