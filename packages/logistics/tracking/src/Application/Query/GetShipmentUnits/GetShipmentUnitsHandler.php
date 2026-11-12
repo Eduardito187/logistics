@@ -83,9 +83,9 @@ final class GetShipmentUnitsHandler implements QueryHandler
                 $ordinalByLineId[(string) $lineId] = $n;
             }
 
-            // Mapa (ordinal|unit_index|piece_index) → label_id, prefiriendo la vigente.
+            // Mapa (ordinal|unit_index|piece_index) → label_id. Las etiquetas son PERMANENTES: una por bulto.
             $labelByKey = [];
-            foreach (DB::table('labels_emitted')->where('order_id', $order)->get(['label_id', 'signed_json', 'revoked_at']) as $row) {
+            foreach (DB::table('labels_emitted')->where('order_id', $order)->get(['label_id', 'signed_json']) as $row) {
                 if (!is_string($row->signed_json) || $row->signed_json === '') {
                     continue;
                 }
@@ -95,11 +95,7 @@ final class GetShipmentUnitsHandler implements QueryHandler
                     continue;
                 }
                 $key = $p->lineNumber.'|'.$p->unit->index.'|'.$p->piece->index;
-                $revoked = $row->revoked_at !== null;
-                $existing = $labelByKey[$key] ?? null;
-                if ($existing === null || ($existing['revoked'] && !$revoked)) {
-                    $labelByKey[$key] = ['label_id' => (string) $row->label_id, 'revoked' => $revoked];
-                }
+                $labelByKey[$key] ??= (string) $row->label_id;
             }
 
             // Bultos del envío → su label_id por la clave (ordinal, unit_index, piece_index).
@@ -111,7 +107,7 @@ final class GetShipmentUnitsHandler implements QueryHandler
                 }
                 $key = $ordinal.'|'.((int) $u->unit_index).'|'.((int) $u->piece_index);
                 if (isset($labelByKey[$key])) {
-                    $out[(string) $u->id] = $labelByKey[$key]['label_id'];
+                    $out[(string) $u->id] = $labelByKey[$key];
                 }
             }
 

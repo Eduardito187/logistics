@@ -7,6 +7,11 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRoute;
+use Logistics\Execution\Application\Command\RecordLoadScan\RecordLoadScan;
+use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScan;
+use Logistics\Labels\Application\Command\EmitOrderLabels\EmitOrderLabels;
+use Logistics\Shared\Application\Command\CommandBus;
 use Throwable;
 
 /**
@@ -26,9 +31,15 @@ final class DemoOrderCommand extends Command
 {
     protected $signature = 'logistics:demo:order
         {--order=DEMO-FLOW-01 : Referencia del pedido de demo (estable; re-ejecutar la resetea)}
-        {--plate=904U10 : Placa del camión de reparto al que se planifica la orden}';
+        {--plate=904U10 : Placa del camión de reparto al que se planifica la orden}
+        {--stage=planned : planned (recién planificada, 0 etiquetas) | delivery (ya emitida+cargada, entrega ABIERTA lista para POD)}';
 
     protected $description = 'Arma una orden de demo coherente para seguir el flujo de 0 a entregada';
+
+    /** Cliente y dirección fijos del pedido de demo (reusados en el envío, la parada y la ruta). */
+    private const string CUSTOMER_NAME = 'Cliente Demo';
+
+    private const string CUSTOMER_ADDRESS = 'Av. Cristo Redentor 2500, Santa Cruz de la Sierra';
 
     public function handle(): int
     {
@@ -45,11 +56,20 @@ final class DemoOrderCommand extends Command
             $this->warn("No se encontró el camión con placa {$plate}; se usa {$vehicle->plate} (operativo).");
         }
 
+        $stage = trim((string) $this->option('stage')) === 'delivery' ? 'delivery' : 'planned';
+
         try {
-            DB::transaction(function () use ($orderNumber, $vehicle): void {
+            $shipmentId = DB::transaction(function () use ($orderNumber, $vehicle): string {
                 $this->reset($orderNumber);
-                $this->build($orderNumber, (string) $vehicle->id);
+
+                return $this->build($orderNumber, (string) $vehicle->id);
             });
+
+            if ($stage === 'delivery') {
+                // Fuera de la transacción de armado (ya commiteada): emite etiquetas, prepara y carga cada
+                // bulto por el bus CQRS → deja una ENTREGA ABIERTA (Loaded) en el camión, lista para el POD.
+                $this->loadForDelivery($orderNumber, (string) $vehicle->id, $shipmentId);
+            }
         } catch (Throwable $e) {
             $this->error('No se pudo armar la orden de demo: '.$e->getMessage());
 
@@ -57,16 +77,73 @@ final class DemoOrderCommand extends Command
         }
 
         $this->info("Orden de demo lista: {$orderNumber}");
-        $this->line('  Estado: PLANNED · 0 etiquetas · entrega a domicilio (Santa Cruz)');
-        $this->line("  Planificada en el camión: {$vehicle->plate}");
-        $this->newLine();
-        $this->line('Flujo sugerido desde el teléfono:');
-        $this->line("  1. Preparador: abrir {$orderNumber} → emitir etiquetas (POST /app/orders/{$orderNumber}/labels)");
-        $this->line("  2. Andén: asignar vehículo (POST /app/orders/{$orderNumber}/vehicle {vehicle_id: {$vehicle->id}})");
-        $this->line('  3. Chofer: escanear carga (LOAD) → la orden aparece en «Mi ruta de hoy»');
-        $this->line('  4. Chofer: entregar con foto (POST /app/deliveries/proof-of-delivery, photo_path obligatorio)');
+        if ($stage === 'delivery') {
+            $this->line('  Estado: CARGADA · etiquetas emitidas · entrega ABIERTA (Loaded), lista para POD');
+            $this->line("  En «Mi ruta de hoy» del camión: {$vehicle->plate} (id {$vehicle->id})");
+            $this->newLine();
+            $this->line('Para probar el POD desde el teléfono (chofer):');
+            $this->line('  1. Subir foto: POST /app/deliveries/photos (shipment_id, photo) → devuelve photo_path');
+            $this->line('  2. Entregar: POST /app/deliveries/proof-of-delivery (shipment_id, unit_id, confirmation, photo_path OBLIGATORIO, lat, lng, occurred_at)');
+        } else {
+            $this->line('  Estado: PLANNED · 0 etiquetas · entrega a domicilio (Santa Cruz)');
+            $this->line("  Planificada en el camión: {$vehicle->plate}");
+            $this->newLine();
+            $this->line('Flujo sugerido desde el teléfono:');
+            $this->line("  1. Preparador: abrir {$orderNumber} → emitir etiquetas (POST /app/orders/{$orderNumber}/labels)");
+            $this->line("  2. Andén: asignar vehículo (POST /app/orders/{$orderNumber}/vehicle {vehicle_id: {$vehicle->id}})");
+            $this->line('  3. Chofer: escanear carga (LOAD) → la orden aparece en «Mi ruta de hoy»');
+            $this->line('  4. Chofer: entregar con foto (POST /app/deliveries/proof-of-delivery, photo_path obligatorio)');
+            $this->newLine();
+            $this->line('Para saltar directo a la entrega: --stage=delivery (deja la orden cargada y lista para POD).');
+        }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Emite las etiquetas y PREPARA + CARGA cada bulto por el bus CQRS, dejando una entrega ABIERTA (Loaded)
+     * en el camión y la parada en su ruta de hoy. Es lo que necesita el POD: sin esto no hay entrega que cerrar.
+     */
+    private function loadForDelivery(string $orderNumber, string $vehicleId, string $shipmentId): void
+    {
+        $bus = app(CommandBus::class);
+        $now = now();
+
+        // 1) Etiquetas emitidas (idempotente). 2) Parada en la ruta del camión («Mi ruta de hoy»).
+        $bus->dispatch(new EmitOrderLabels($orderNumber));
+        $bus->dispatch(new AttachShipmentToRoute(
+            vehicleId: $vehicleId,
+            shipmentId: $shipmentId,
+            orderReference: $orderNumber,
+            customerName: self::CUSTOMER_NAME,
+            address: self::CUSTOMER_ADDRESS,
+        ));
+
+        // 3) Preparación + carga de cada bulto → la entrega queda Loaded (abierta), con el vehículo asignado.
+        foreach (DB::table('shipment_units')->where('shipment_id', $shipmentId)->pluck('id') as $unitId) {
+            $uid = (string) $unitId;
+            $bus->dispatch(new RecordPreparationScan(
+                shipmentId: $shipmentId,
+                vehicleId: $vehicleId,
+                unitId: $uid,
+                lat: -17.7580,
+                lng: -63.1780,
+                deviceId: 'demo-device',
+                userId: 'demo',
+                occurredAt: $now->toImmutable()->format(DATE_ATOM),
+                idempotencyKey: 'demo-prep-'.$uid,
+            ));
+            $bus->dispatch(new RecordLoadScan(
+                shipmentId: $shipmentId,
+                unitId: $uid,
+                lat: -17.7580,
+                lng: -63.1780,
+                deviceId: 'demo-device',
+                userId: 'demo',
+                occurredAt: $now->toImmutable()->format(DATE_ATOM),
+                idempotencyKey: 'demo-load-'.$uid,
+            ));
+        }
     }
 
     /**
@@ -135,8 +212,9 @@ final class DemoOrderCommand extends Command
     /**
      * Crea el envío (a domicilio, PLANNED), sus líneas y bultos, y un plan PUBLICADO con la parada
      * (autoriza la emisión por orden). Coordenadas en Santa Cruz: el origen resuelve al CD más cercano.
+     * Devuelve el id del envío creado.
      */
-    private function build(string $orderNumber, string $vehicleId): void
+    private function build(string $orderNumber, string $vehicleId): string
     {
         $now = now();
         $shipmentId = (string) Str::uuid7();
@@ -146,8 +224,8 @@ final class DemoOrderCommand extends Command
             'source' => 'demo',
             'external_id' => $orderNumber,
             'order_reference' => $orderNumber,
-            'customer_name' => 'Cliente Demo',
-            'address_text' => 'Av. Cristo Redentor 2500, Santa Cruz de la Sierra',
+            'customer_name' => self::CUSTOMER_NAME,
+            'address_text' => self::CUSTOMER_ADDRESS,
             'address_reference' => 'Portón negro, timbre 2',
             'address_confidence' => 95,
             'address_confidence_level' => 'high',
@@ -221,10 +299,12 @@ final class DemoOrderCommand extends Command
             'shipment_id' => $shipmentId,
             'sequence' => $sequence,
             'order_reference' => $orderNumber,
-            'customer_name' => 'Cliente Demo',
-            'address' => 'Av. Cristo Redentor 2500, Santa Cruz de la Sierra',
+            'customer_name' => self::CUSTOMER_NAME,
+            'address' => self::CUSTOMER_ADDRESS,
             'created_at' => $now,
             'updated_at' => $now,
         ]);
+
+        return $shipmentId;
     }
 }

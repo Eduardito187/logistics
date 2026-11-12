@@ -23,27 +23,21 @@ it('maps a domain label into a flat primitive view', function (): void {
         ->and($view->lineNumber)->toBe(3)
         ->and($view->qrContent)->toBe($signed->toQrContent())
         ->and($view->zpl)->toBe('^XA^XZ')
-        ->and($view->emittedAt)->toBe(1759312800)
-        ->and($view->revoked)->toBeFalse()
-        ->and($view->revokedAt)->toBeNull()
-        ->and($view->revokedReason)->toBeNull();
+        ->and($view->emittedAt)->toBe(1759312800);
 });
 
-it('flags a revoked label in its array shape', function (): void {
+it('exposes a permanent label array shape (no revocation)', function (): void {
     $signed = LabelFixtures::signer()->sign(LabelFixtures::payload());
-    $label = EmittedLabel::of('DM-260012345', $signed, '^XA^XZ', 1759312800, 1759316400, 'reprinted');
+    $label = EmittedLabel::of('DM-260012345', $signed, '^XA^XZ', 1759312800);
 
     $array = EmittedLabelView::fromEmittedLabel($label)->toArray();
 
     expect(array_keys($array))->toBe([
         'order_number', 'label_id', 'key_id', 'sku', 'line_number',
-        'qr_content', 'zpl', 'emitted_at', 'revoked', 'revoked_at', 'revoked_reason',
+        'qr_content', 'zpl', 'emitted_at',
         'product_name', 'image_url', 'origin', 'destination',
         'unit_id', 'shipment_id', 'unit', 'piece',
     ])
-        ->and($array['revoked'])->toBeTrue()
-        ->and($array['revoked_at'])->toBe(1759316400)
-        ->and($array['revoked_reason'])->toBe('reprinted')
         // Sin enriquecer: producto/destino/bulto en null; el origen lleva el código del payload sin nombre.
         ->and($array['product_name'])->toBeNull()
         ->and($array['image_url'])->toBeNull()

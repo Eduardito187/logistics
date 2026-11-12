@@ -2947,33 +2947,6 @@ paths:
           description: Invalid input
       security:
       - appBearer: []
-  /app/orders/{orderNumber}/labels/reprint:
-    parameters:
-    - $ref: '#/components/parameters/OrderNumber'
-    post:
-      tags:
-      - labels
-      operationId: reprintShipmentLabels
-      summary: Reprint the labels of an order
-      description: |
-        Revoca las etiquetas vigentes del pedido (quedan en la base, marcadas como revocadas para auditoría) y emite un lote nuevo con identidades nuevas. Se usa cuando una etiqueta se dañó o cambió el contenido del bulto. Requiere un motivo (ADR 004).
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReprintLabelsRequest'
-      responses:
-        '201':
-          description: New labels emitted; previous labels revoked
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LabelCollection'
-        '422':
-          description: Invalid input
-      security:
-      - appBearer: []
   /app/orders/{orderNumber}/labels/zpl:
     parameters:
     - $ref: '#/components/parameters/OrderNumber'
@@ -12880,7 +12853,6 @@ components:
       - qr_content
       - zpl
       - emitted_at
-      - revoked
       properties:
         order_number:
           type: string
@@ -12902,18 +12874,7 @@ components:
           description: Representación ZPL para la impresora Zebra
         emitted_at:
           type: integer
-          description: Marca de tiempo de emisión (epoch en segundos)
-        revoked:
-          type: boolean
-          description: true si la etiqueta fue revocada (p. ej. por reimpresión) y ya no es válida
-        revoked_at:
-          type: integer
-          nullable: true
-          description: Marca de tiempo de revocación (epoch en segundos), o null si está vigente
-        revoked_reason:
-          type: string
-          nullable: true
-          description: Motivo de la revocación, o null si está vigente
+          description: Marca de tiempo de emisión (epoch en segundos). Las etiquetas son permanentes.
         product_name:
           type: string
           nullable: true
@@ -15291,17 +15252,6 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/RelayOutboxResult'
-    ReprintLabelsRequest:
-      allOf:
-      - $ref: '#/components/schemas/EmitLabelsRequest'
-      - type: object
-        required:
-        - reason
-        properties:
-          reason:
-            type: string
-            maxLength: 255
-            description: Motivo de la reimpresión; queda registrado al revocar el lote anterior
     ReservePromiseRequest:
       type: object
       required:

@@ -55,7 +55,7 @@ it('rejects a second label with the same label id', function (): void {
     expect(fn () => $repository->add($label))->toThrow(DuplicateLabelException::class);
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 
-it('revokes the active labels of an order, keeping the rows for audit', function (): void {
+it('treats all emitted labels as permanent: activeForOrder == forOrder', function (): void {
     /** @var EmittedLabelRepository $repository */
     $repository = $this->repository;
 
@@ -63,26 +63,6 @@ it('revokes the active labels of an order, keeping the rows for audit', function
         $repository->add(emittedLabelFrom($this, $payload, 'DM-260040001'));
     }
 
-    $revoked = $repository->revokeForOrder('DM-260040001', 1759316400, 'repacked');
-
-    expect($revoked)->toHaveCount(2)
-        ->and($repository->activeForOrder('DM-260040001'))->toBe([])
+    expect($repository->activeForOrder('DM-260040001'))->toHaveCount(2)
         ->and($repository->forOrder('DM-260040001'))->toHaveCount(2);
-
-    $first = $repository->forOrder('DM-260040001')[0];
-    expect($first->isRevoked())->toBeTrue()
-        ->and($first->revokedReason)->toBe('repacked');
-})->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
-
-it('is a no-op when revoking an order that has no active labels', function (): void {
-    /** @var EmittedLabelRepository $repository */
-    $repository = $this->repository;
-
-    foreach (batchPayloads(1) as $payload) {
-        $repository->add(emittedLabelFrom($this, $payload, 'DM-260040001'));
-    }
-
-    $repository->revokeForOrder('DM-260040001', 1759316400, 'repacked');
-
-    expect($repository->revokeForOrder('DM-260040001', 1759320000, 'again'))->toBe([]);
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
