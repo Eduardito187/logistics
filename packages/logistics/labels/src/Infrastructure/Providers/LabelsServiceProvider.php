@@ -17,8 +17,6 @@ use Logistics\Labels\Application\Command\RegisterPrinter\RegisterPrinter;
 use Logistics\Labels\Application\Command\RegisterPrinter\RegisterPrinterHandler;
 use Logistics\Labels\Application\Command\RemovePrinter\RemovePrinter;
 use Logistics\Labels\Application\Command\RemovePrinter\RemovePrinterHandler;
-use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
-use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabelsHandler;
 use Logistics\Labels\Application\Command\UpdatePrinter\UpdatePrinter;
 use Logistics\Labels\Application\Command\UpdatePrinter\UpdatePrinterHandler;
 use Logistics\Labels\Application\Contract\DispatchLinesReader;
@@ -186,7 +184,6 @@ final class LabelsServiceProvider extends ServiceProvider
         $registry->register(EmitShipmentLabels::class, EmitShipmentLabelsHandler::class);
         $registry->register(EmitOrderLabels::class, EmitOrderLabelsHandler::class);
         $registry->register(PreEmitOrderLabels::class, PreEmitOrderLabelsHandler::class);
-        $registry->register(ReprintOrderLabels::class, ReprintOrderLabelsHandler::class);
         $registry->register(GetShipmentLabels::class, GetShipmentLabelsHandler::class);
         $registry->register(GetDispatchLines::class, GetDispatchLinesHandler::class);
         $registry->register(ResolveLabelUnit::class, ResolveLabelUnitHandler::class);

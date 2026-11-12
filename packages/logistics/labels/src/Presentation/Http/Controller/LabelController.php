@@ -8,7 +8,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Logistics\Labels\Application\Command\EmitOrderLabels\EmitOrderLabels;
 use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
-use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
 use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLines;
 use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
 use Logistics\Labels\Application\Query\ResolveLabelUnit\ResolveLabelUnit;
@@ -17,7 +16,6 @@ use Logistics\Labels\Application\ReadModel\EmittedLabelView;
 use Logistics\Labels\Application\ReadModel\LabelUnitView;
 use Logistics\Labels\Domain\Exception\DuplicateLabelException;
 use Logistics\Labels\Presentation\Http\Request\EmitShipmentLabelsRequest;
-use Logistics\Labels\Presentation\Http\Request\ReprintOrderLabelsRequest;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 
@@ -108,36 +106,12 @@ final readonly class LabelController
     }
 
     /**
-     * Reimprime las etiquetas del pedido: revoca las vigentes y emite un lote nuevo (ADR 004).
-     *
-     * Devuelve el estado completo del pedido (las revocadas con su flag y las nuevas vigentes), para
-     * que la app refresque su caché offline de una sola vez.
-     */
-    public function reprint(ReprintOrderLabelsRequest $request, string $orderNumber): JsonResponse
-    {
-        $this->commandBus->dispatch(new ReprintOrderLabels(
-            orderNumber: $orderNumber,
-            origin: $request->origin(),
-            destination: $request->destination(),
-            lines: $request->orderLines(),
-            reason: $request->reason(),
-        ));
-
-        return new JsonResponse(['data' => $this->labelsFor($orderNumber)], Response::HTTP_CREATED);
-    }
-
-    /**
-     * ZPL concatenado de las etiquetas VIGENTES del pedido, listo para enviar a la impresora Zebra.
-     *
-     * Las etiquetas revocadas se excluyen: no deben reimprimirse. Content-Type `application/x-zpl`
-     * (texto plano): se envía tal cual al stream de la impresora.
+     * ZPL concatenado de las etiquetas del pedido, listo para enviar a la impresora Zebra. Las etiquetas
+     * son PERMANENTES: no se revocan ni se re-emiten. Content-Type `application/x-zpl` (texto plano).
      */
     public function zpl(string $orderNumber): Response
     {
-        $views = array_values(array_filter(
-            $this->views($orderNumber),
-            static fn (EmittedLabelView $view): bool => !$view->revoked,
-        ));
+        $views = $this->views($orderNumber);
         if ($views === []) {
             return new Response('', Response::HTTP_NOT_FOUND);
         }

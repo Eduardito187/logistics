@@ -34,10 +34,9 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
         $record->key_id = $label->keyId();
         $record->zpl = $label->zpl;
         $record->signed_json = $label->signedJson();
-        // Se guarda como texto ISO-8601 con offset; la columna es timestamptz.
+        // Se guarda como texto ISO-8601 con offset; la columna es timestamptz. Las etiquetas son PERMANENTES:
+        // nunca se revocan, así que las columnas revoked_* quedan en null (se conservan en la base por historia).
         $record->created_at = self::toTimestamptz($label->emittedAt);
-        $record->revoked_at = $label->revokedAt === null ? null : self::toTimestamptz($label->revokedAt);
-        $record->revoked_reason = $label->revokedReason;
         $record->save();
     }
 
@@ -59,43 +58,13 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
     }
 
     /**
+     * Como las etiquetas son permanentes, "vigentes" == todas las emitidas.
+     *
      * @return list<EmittedLabel>
      */
     public function activeForOrder(string $orderNumber): array
     {
-        return $this->baseQuery($orderNumber)
-            ->whereNull('revoked_at')
-            ->get()
-            ->map(fn (EmittedLabelRecord $record): EmittedLabel => $this->toDomain($record))
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function revokeForOrder(string $orderNumber, int $revokedAt, string $reason): array
-    {
-        $labelIds = EmittedLabelRecord::query()
-            ->where('order_id', $orderNumber)
-            ->whereNull('revoked_at')
-            ->pluck('label_id')
-            ->all();
-
-        if ($labelIds === []) {
-            return [];
-        }
-
-        EmittedLabelRecord::query()
-            ->where('order_id', $orderNumber)
-            ->whereNull('revoked_at')
-            ->update([
-                'revoked_at' => self::toTimestamptz($revokedAt),
-                'revoked_reason' => $reason,
-            ]);
-
-        /** @var list<string> $labelIds */
-        return $labelIds;
+        return $this->forOrder($orderNumber);
     }
 
     /**
@@ -116,8 +85,6 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
             SignedLabel::fromQrContent($record->signed_json),
             $record->zpl,
             (new DateTimeImmutable($record->created_at))->getTimestamp(),
-            $record->revoked_at === null ? null : (new DateTimeImmutable($record->revoked_at))->getTimestamp(),
-            $record->revoked_reason,
         );
     }
 

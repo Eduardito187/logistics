@@ -20,8 +20,6 @@ final readonly class EmittedLabel
         public SignedLabel $label,
         public string $zpl,
         public int $emittedAt,
-        public ?int $revokedAt,
-        public ?string $revokedReason,
     ) {}
 
     public static function of(
@@ -29,16 +27,8 @@ final readonly class EmittedLabel
         SignedLabel $label,
         string $zpl,
         int $emittedAt,
-        ?int $revokedAt = null,
-        ?string $revokedReason = null,
     ): self {
-        return new self($orderNumber, $label, $zpl, $emittedAt, $revokedAt, $revokedReason);
-    }
-
-    /** Una etiqueta revocada (p. ej. por reimpresión) sigue almacenada pero ya no es válida (ADR 004). */
-    public function isRevoked(): bool
-    {
-        return $this->revokedAt !== null;
+        return new self($orderNumber, $label, $zpl, $emittedAt);
     }
 
     /** Identidad de negocio: el `id` del payload, único por bulto físico. */

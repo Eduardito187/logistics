@@ -25,21 +25,19 @@ final readonly class LabelUnitView
         public ?int $unitTotal,
         public ?int $pieceIndex,
         public ?int $pieceTotal,
-        // ADITIVOS para la app de campo: `revoked` → rechazar el Code128 de una etiqueta anulada; `orderNumber`
-        // → contexto/validación "no es de este pedido". Con default para no romper construcciones posicionales.
-        public bool $revoked = false,
+        // `orderNumber` → contexto/validación "pertenece a este pedido". Las etiquetas son PERMANENTES:
+        // no existe el concepto de etiqueta anulada. Default para no romper construcciones posicionales.
         public ?string $orderNumber = null,
     ) {}
 
     /**
-     * @return array{label_id: string, resolved: bool, revoked: bool, order_number: string|null, unit_id: string|null, shipment_id: string|null, sku: string|null, product_name: string|null, line_number: int|null, unit: array{index: int, total: int}|null, piece: array{index: int, total: int}|null}
+     * @return array{label_id: string, resolved: bool, order_number: string|null, unit_id: string|null, shipment_id: string|null, sku: string|null, product_name: string|null, line_number: int|null, unit: array{index: int, total: int}|null, piece: array{index: int, total: int}|null}
      */
     public function toArray(): array
     {
         return [
             'label_id' => $this->labelId,
             'resolved' => $this->resolved,
-            'revoked' => $this->revoked,
             'order_number' => $this->orderNumber,
             'unit_id' => $this->unitId,
             'shipment_id' => $this->shipmentId,

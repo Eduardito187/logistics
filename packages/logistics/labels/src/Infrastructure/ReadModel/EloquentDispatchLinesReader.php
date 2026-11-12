@@ -286,10 +286,10 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader, OrderLab
     }
 
     /**
-     * Mapa de etiquetas emitidas de la orden → {status, origin_code}, indexado por TRES claves para que el
+     * Mapa de etiquetas emitidas de la orden → {status, origin_code}, indexado por DOS claves para que el
      * reader resuelva de más específico a más laxo (multishipping): `dst|sku|lineNumber` (acotado al destino
-     * del envío por el `dst` del QR) y `sku|lineNumber` (a nivel orden, retrocompatible). status: emitted si
-     * hay una vigente; revoked si solo hay revocadas; (ausente = pending).
+     * del envío por el `dst` del QR) y `sku|lineNumber` (a nivel orden, retrocompatible). Las etiquetas son
+     * PERMANENTES: si existe una, el estado es `emitted` (ausente = pending). No hay estado `revoked`.
      *
      * @return array<string, array{status: string, origin_code: string}>
      */
@@ -299,16 +299,11 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader, OrderLab
             $out = [];
             foreach ($this->labels->forOrder($orderNumber) as $label) {
                 assert($label instanceof EmittedLabel);
-                $status = $label->isRevoked() ? 'revoked' : 'emitted';
-                $value = ['status' => $status, 'origin_code' => $label->originCode()];
+                $value = ['status' => 'emitted', 'origin_code' => $label->originCode()];
                 $suffix = $label->sku().'|'.$label->lineNumber();
 
-                // Clave acotada al destino (dst del QR) y clave a nivel orden; una vigente pisa revocadas.
                 foreach ([$label->destinationCode().'|'.$suffix, $suffix] as $key) {
-                    $existing = $out[$key] ?? null;
-                    if ($existing === null || ($existing['status'] === 'revoked' && $status === 'emitted')) {
-                        $out[$key] = $value;
-                    }
+                    $out[$key] ??= $value;
                 }
             }
 

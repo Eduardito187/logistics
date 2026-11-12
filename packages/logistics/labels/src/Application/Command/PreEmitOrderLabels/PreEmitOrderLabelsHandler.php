@@ -13,9 +13,9 @@ use Logistics\Shared\Domain\Clock\Clock;
 /**
  * Pre-emite las etiquetas de un pedido al planificar.
  *
- * Idempotente por diseño: si el pedido ya tiene etiquetas vigentes, no reemite (el relay del outbox
- * puede reentregar el evento planning.plan_published sin que eso genere etiquetas duplicadas). La
- * reimpresión real —que revoca y vuelve a emitir— es otro caso de uso (ReprintOrderLabels).
+ * Idempotente por diseño: si el pedido ya tiene etiquetas, no reemite (el relay del outbox puede
+ * reentregar el evento planning.plan_published sin que eso genere etiquetas duplicadas). Las etiquetas
+ * son PERMANENTES: no se revocan ni se re-emiten con id nuevo; para volver a imprimir se reusa su ZPL.
  *
  * @implements CommandHandler<PreEmitOrderLabels>
  */

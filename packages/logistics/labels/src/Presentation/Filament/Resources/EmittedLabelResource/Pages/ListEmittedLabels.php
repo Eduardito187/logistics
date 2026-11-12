@@ -14,7 +14,6 @@ use Filament\Schemas\Components\Component;
 use Illuminate\Support\HtmlString;
 use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
 use Logistics\Labels\Application\Command\PreEmitOrderLabels\PreEmitOrderLabels;
-use Logistics\Labels\Application\Command\ReprintOrderLabels\ReprintOrderLabels;
 use Logistics\Labels\Application\Dto\OrderLineInput;
 use Logistics\Labels\Application\Query\GetPublicKeysBundle\GetPublicKeysBundle;
 use Logistics\Labels\Application\ReadModel\PublicKeyBundleView;
@@ -33,10 +32,10 @@ use Logistics\Shared\Application\Query\QueryBus;
  *
  *  - Emit labels        → EmitShipmentLabels   (emite el lote de un pedido)
  *  - Pre-emit labels    → PreEmitOrderLabels   (deja el lote listo al planificar; idempotente)
- *  - Reprint labels     → ReprintOrderLabels   (revoca las vigentes y emite un lote nuevo)
  *  - Signing keys        → GetPublicKeysBundle  (ver las claves públicas vigentes)
  *
- * Nunca se escribe el Record directamente para operaciones de negocio.
+ * Las etiquetas son PERMANENTES: no se revocan ni se re-emiten. Para volver a imprimir una, se reusa su
+ * ZPL ya emitido (no se genera un id nuevo). Nunca se escribe el Record directamente para operaciones de negocio.
  */
 final class ListEmittedLabels extends ListRecords
 {
@@ -50,7 +49,6 @@ final class ListEmittedLabels extends ListRecords
         return [
             $this->emitLabelsAction(),
             $this->preEmitLabelsAction(),
-            $this->reprintLabelsAction(),
             $this->publicKeysAction(),
         ];
     }
@@ -130,54 +128,6 @@ final class ListEmittedLabels extends ListRecords
                 Notification::make()
                     ->title(__('Labels pre-emitted'))
                     ->body(__('Order :order now has its labels ready (no-op if they already existed).', ['order' => $data['order_number']]))
-                    ->success()
-                    ->send();
-            });
-    }
-
-    /**
-     * Reimprimir las etiquetas de un pedido (ReprintOrderLabels): revoca las vigentes (quedan en la base
-     * para auditoría) y emite un lote nuevo con `id` nuevos. Lleva un motivo para dejar rastro.
-     */
-    private function reprintLabelsAction(): Action
-    {
-        return Action::make('reprintLabels')
-            ->label(__('Reprint labels'))
-            ->icon('heroicon-o-arrow-path')
-            ->color('warning')
-            ->modalHeading(__('Reprint order labels'))
-            ->modalDescription(__('Revokes the current labels of the order (kept for audit) and emits a fresh batch.'))
-            ->modalSubmitActionLabel(__('Reprint labels'))
-            ->schema([
-                ...self::orderFormSchema(),
-                TextInput::make('reason')
-                    ->label(__('Reprint reason'))
-                    ->placeholder(__('e.g. Damaged label, repacked box'))
-                    ->required()
-                    ->maxLength(255),
-            ])
-            ->action(function (array $data): void {
-                try {
-                    app(CommandBus::class)->dispatch(new ReprintOrderLabels(
-                        orderNumber: (string) $data['order_number'],
-                        origin: (string) $data['origin'],
-                        destination: (string) $data['destination'],
-                        lines: self::linesFrom($data),
-                        reason: (string) $data['reason'],
-                    ));
-                } catch (InvalidLabelException $e) {
-                    Notification::make()
-                        ->title(__('Labels could not be reprinted'))
-                        ->body($e->getMessage())
-                        ->danger()
-                        ->send();
-
-                    return;
-                }
-
-                Notification::make()
-                    ->title(__('Labels reprinted'))
-                    ->body(__('Order :order labels were revoked and re-emitted.', ['order' => $data['order_number']]))
                     ->success()
                     ->send();
             });

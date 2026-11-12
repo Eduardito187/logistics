@@ -91,7 +91,7 @@ final class LabelLifecycle
     private function baseEvents(string $labelId): array
     {
         try {
-            $row = DB::table('labels_emitted')->where('label_id', $labelId)->first(['created_at', 'revoked_at', 'revoked_reason']);
+            $row = DB::table('labels_emitted')->where('label_id', $labelId)->first(['created_at']);
         } catch (Throwable) {
             return [];
         }
@@ -99,35 +99,20 @@ final class LabelLifecycle
             return [];
         }
 
-        $out = [];
-        // La emisión puede llevar actor si se registró en la bitácora; si no, queda sin actor (automática).
-        $genActor = $this->actorFor($labelId, 'generated');
-        $out[] = [
+        // Las etiquetas son PERMANENTES: solo el hecho de GENERADA (no hay revocación). La emisión puede
+        // llevar actor si se registró en la bitácora; si no, queda sin actor (automática).
+        return [[
             'at' => (string) ($row->created_at ?? ''),
             'when' => $this->human((string) ($row->created_at ?? '')),
             'event' => 'Generada',
             'label' => 'etiqueta',
-            'actor' => $genActor ?? '—',
+            'actor' => $this->actorFor($labelId, 'generated') ?? '—',
             'detail' => '',
             'tone' => 'ok',
-        ];
-        if (is_string($row->revoked_at ?? null) && $row->revoked_at !== '') {
-            $revActor = $this->actorFor($labelId, 'revoked');
-            $out[] = [
-                'at' => (string) $row->revoked_at,
-                'when' => $this->human((string) $row->revoked_at),
-                'event' => 'Revocada',
-                'label' => 'etiqueta',
-                'actor' => $revActor ?? '—',
-                'detail' => is_string($row->revoked_reason ?? null) ? (string) $row->revoked_reason : '',
-                'tone' => 'danger',
-            ];
-        }
-
-        return $out;
+        ]];
     }
 
-    /** Nombre del actor registrado para un evento puntual (generated/revoked) en la bitácora, o null. */
+    /** Nombre del actor registrado para un evento puntual (generated) en la bitácora, o null. */
     private function actorFor(string $labelId, string $event): ?string
     {
         try {
