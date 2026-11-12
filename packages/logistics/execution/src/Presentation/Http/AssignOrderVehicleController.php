@@ -139,7 +139,7 @@ final class AssignOrderVehicleController extends ExecutionController
      * Vehículo actual de la entrega de cada envío (shipmentId → vehicle_id), para detectar reasignación.
      * Lectura directa a `execution_deliveries` (los envíos sin entrega abierta no aparecen).
      *
-     * @param list<string> $shipmentIds
+     * @param  list<string>          $shipmentIds
      * @return array<string, string>
      */
     private function deliveryVehicles(array $shipmentIds): array

@@ -47,7 +47,7 @@ final readonly class GetShipmentLabelsHandler implements QueryHandler
      * cantidad > 1 (unidades legítimas distintas tienen otro `unitIndex`/`pieceIndex`) ni depende de
      * `lineNumber` (la re-emisión puede swapear líneas del mismo bulto).
      *
-     * @param list<EmittedLabelView> $views
+     * @param  list<EmittedLabelView> $views
      * @return list<EmittedLabelView>
      */
     private function latestPerPhysicalUnit(array $views): array

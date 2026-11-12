@@ -33,7 +33,7 @@ function aovVehicle(string $status = 'available'): string
     $id = Uuid::generate()->value;
     DB::table('fleet_vehicles')->insert([
         'id' => $id,
-        'plate' => strtoupper(substr($id, 0, 6)),
+        'plate' => strtoupper(substr(str_replace('-', '', $id), -6)),
         'capacity_kg' => 3000,
         'capacity_m3' => 12,
         'home_base_node_id' => Uuid::generate()->value,
