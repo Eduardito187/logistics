@@ -113,7 +113,7 @@ final readonly class DbShipmentSummaryReader implements ShipmentSummaryReader
             $query->where($prefix.'delivery_date', '<=', $deliveryDateTo);
         }
         if ($deliveryMode !== null) {
-            ShipmentSqlFilters::deliveryMode($query, $deliveryMode, $prefix.'destination_node_id');
+            ShipmentSqlFilters::deliveryMode($query, $deliveryMode, $prefix.'destination_node_id', $prefix.'source');
         }
     }
 

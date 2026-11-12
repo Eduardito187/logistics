@@ -12,6 +12,7 @@ use Logistics\Carriers\Presentation\Http\Controller\DisputeSettlementController;
 use Logistics\Carriers\Presentation\Http\Controller\GetSettlementController;
 use Logistics\Carriers\Presentation\Http\Controller\GetTariffForCorridorController;
 use Logistics\Carriers\Presentation\Http\Controller\ListCarrierAssignmentsController;
+use Logistics\Carriers\Presentation\Http\Controller\ListCarrierCorridorsController;
 use Logistics\Carriers\Presentation\Http\Controller\ListCarriersController;
 use Logistics\Carriers\Presentation\Http\Controller\ListSettlementsController;
 use Logistics\Carriers\Presentation\Http\Controller\MarkSettlementPaidController;
@@ -84,6 +85,13 @@ return [
                 ->middleware($scope(EnsureCarrierScope::MODE_LIST))
                 ->name('assignments.index');
 
+            // Corredores tarifados (selector de la app): distintos, con clases de vehículo y etiquetas legibles.
+            // `from`/`to` son los slugs que acepta `{carrierId}/tariff`. Transportista: solo los de su
+            // transportista (se ignora ?carrier_id=); oficina: todos, con ?carrier_id= opcional.
+            Route::get('corridors', ListCarrierCorridorsController::class)
+                ->middleware($scope(EnsureCarrierScope::MODE_LIST))
+                ->name('corridors.index');
+
             // Iniciar / cerrar un viaje (idempotentes): oficina o el transportista dueño del viaje.
             Route::post('trips/{tripId}/start', StartCarrierTripController::class)
                 ->middleware($scope(EnsureCarrierScope::MODE_TRIP))
@@ -109,8 +117,9 @@ return [
                 ->middleware($scope(EnsureCarrierScope::MODE_OFFICE))
                 ->name('assignment');
 
-            // Liquidaciones: listado (filtros ?carrier_id= y ?status=; el transportista recibe SIEMPRE solo
-            // las suyas, se ignora su ?carrier_id=) y detalle (403 si es ajena).
+            // Liquidaciones: listado (filtros ?carrier_id=, ?status= y ?period_from= / ?period_to= Y-m-d
+            // inclusivos; el transportista recibe SIEMPRE solo las suyas, se ignora su ?carrier_id=) y
+            // detalle (403 si es ajena).
             Route::get('settlements', ListSettlementsController::class)
                 ->middleware($scope(EnsureCarrierScope::MODE_LIST))
                 ->name('settlements.index');

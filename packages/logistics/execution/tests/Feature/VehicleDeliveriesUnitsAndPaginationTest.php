@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\IdempotentRequests;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRoute;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\RouteStopInput;
@@ -18,6 +19,7 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  */
 beforeEach(function (): void {
     $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+    $this->actingAs(User::factory()->create(), 'sanctum');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',
     'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',
@@ -33,8 +35,8 @@ function vdupShipment(string $shipmentId, int $units, ?string $nodeId = null): a
     DB::table('shipments')->insert([
         'id' => $shipmentId,
         'source' => 'TEST',
-        'external_id' => 'EXT-'.substr($shipmentId, 0, 8),
-        'order_reference' => 'ORD-'.substr($shipmentId, 0, 6),
+        'external_id' => 'EXT-'.$shipmentId,
+        'order_reference' => 'ORD-'.strtoupper(substr(str_replace('-', '', $shipmentId), -8)),
         'customer_name' => 'Cliente Bultos',
         'address_text' => 'Av. Banzer 123, Equipetrol, Santa Cruz',
         'address_confidence' => 90,

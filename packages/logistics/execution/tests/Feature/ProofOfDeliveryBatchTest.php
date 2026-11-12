@@ -7,6 +7,7 @@ use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\IdempotentRequests;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Logistics\Execution\Application\Command\RecordLoadScan\RecordLoadScan;
 use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScan;
 use Logistics\Shared\Application\Command\CommandBus;
@@ -17,6 +18,15 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  */
 beforeEach(function (): void {
     $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+    $this->actingAs(User::factory()->create(), 'sanctum');
+
+    // La foto del POD debe existir en el disco de evidencia (se rechaza una referencia no subida).
+    Storage::fake('pod');
+    Storage::disk('pod')->put('pod/a.jpg', 'jpg');
+    Storage::disk('pod')->put('pod/b.jpg', 'jpg');
+    Storage::disk('pod')->put('pod/c.jpg', 'jpg');
+    Storage::disk('pod')->put('pod/d.jpg', 'jpg');
+    Storage::disk('pod')->put('pod/e.jpg', 'jpg');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',
     'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',
@@ -27,7 +37,7 @@ const PODB_AT = '2026-11-12T11:00:00-04:00';
 const PODB_PHOTO_A = 'pod/a.jpg';
 
 /**
- * Prepara y carga los bultos dados para dejar la entrega lista para el POD.
+ * Prepara y carga los productos dados para dejar la entrega lista para el POD.
  *
  * @param list<string> $units
  */
@@ -37,8 +47,11 @@ function podbLoaded(string $shipment, array $units): void
     $bus = app(CommandBus::class);
     $vehicle = Uuid::generate()->value;
 
+    // Primero se preparan todos los productos y después se cargan (la entrega no vuelve a Prepared desde Loaded).
     foreach ($units as $unit) {
         $bus->dispatch(new RecordPreparationScan($shipment, $vehicle, $unit, -16.5, -68.15, 'dev', 'usr', '2026-11-12T08:00:00-04:00', 'podb-prep-'.$shipment.$unit));
+    }
+    foreach ($units as $unit) {
         $bus->dispatch(new RecordLoadScan($shipment, $unit, -16.5, -68.15, 'dev', 'usr', '2026-11-12T08:30:00-04:00', 'podb-load-'.$shipment.$unit));
     }
 }
@@ -56,6 +69,8 @@ it('cierra la entrega con varios bultos en un solo POD y vincula las evidencias'
         'evidence_ids' => [$evidence],
         'occurred_at' => PODB_AT,
         'idempotency_key' => 'podb-batch-1',
+        'device_id' => 'dev',
+        'user_id' => 'usr',
     ];
 
     test()->postJson('/api/v1/app/deliveries/proof-of-delivery', $body)
@@ -85,6 +100,8 @@ it('acepta el POD por envío en /complete y sin GPS no guarda 0,0', function ():
         'lng' => 0,
         'occurred_at' => PODB_AT,
         'idempotency_key' => 'podb-complete-1',
+        'device_id' => 'dev',
+        'user_id' => 'usr',
     ])
         ->assertOk()
         ->assertJsonPath('data.status', 'DELIVERED');
@@ -105,6 +122,8 @@ it('guarda la ubicación con precisión cuando viene location', function (): voi
         'location' => ['lat' => -16.52, 'lng' => -68.11, 'accuracy_m' => 12.5, 'captured_at' => '2026-11-12T10:59:00-04:00'],
         'occurred_at' => PODB_AT,
         'idempotency_key' => 'podb-loc-1',
+        'device_id' => 'dev',
+        'user_id' => 'usr',
     ])->assertOk();
 
     $scan = DB::table('execution_scan_events')->where('idempotency_key', 'podb-loc-1')->first(['lat', 'accuracy_m', 'location_captured_at']);
@@ -122,6 +141,8 @@ it('el transportista entrega sin QR del cliente; el resto sigue exigiendo confir
         'photo_path' => 'pod/e.jpg',
         'occurred_at' => PODB_AT,
         'idempotency_key' => 'podb-carrier-1',
+        'device_id' => 'dev',
+        'user_id' => 'usr',
     ];
 
     // Chofer sin confirmación → 422.
@@ -152,6 +173,8 @@ it('exige la foto también en el POD en lote', function (): void {
         'confirmation' => 'FIRMA_DIGITAL',
         'occurred_at' => PODB_AT,
         'idempotency_key' => 'podb-nophoto-1',
+        'device_id' => 'dev',
+        'user_id' => 'usr',
     ])
         ->assertStatus(422)
         ->assertJsonPath('code', 'validation_failed');

@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\IdempotentRequests;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScan;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Domain\ValueObject\Uuid;
@@ -17,6 +18,10 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  */
 beforeEach(function (): void {
     $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+
+    // La foto del POD debe existir en el disco de evidencia (se rechaza una referencia no subida).
+    Storage::fake('pod');
+    Storage::disk('pod')->put('evidence/pod.jpg', 'jpg');
 
     // Rol de campo (no Tienda): el POD opera cross-nodo, sin el chequeo de nodo de la tienda.
     $user = User::factory()->create();

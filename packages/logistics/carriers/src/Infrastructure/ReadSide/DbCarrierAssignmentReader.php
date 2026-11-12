@@ -228,6 +228,7 @@ final readonly class DbCarrierAssignmentReader implements CarrierAssignmentReade
     /**
      * Forma primitiva de un producto físico (unidad + línea): nombre + SKU siempre, nunca vacío.
      *
+     * @param  object{id: mixed, sku: mixed, product_name: mixed, piece_index: mixed, piece_total: mixed} $row
      * @return UnitShape
      */
     private static function unitShape(object $row): array

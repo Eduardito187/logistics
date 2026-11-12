@@ -34,6 +34,7 @@ use Illuminate\Support\Str;
  * @property string|null $os_version     Versión del SO (cabecera X-Device-Os-Version)
  * @property string|null $app_version    Versión de la app instalada (cabecera X-App-Version)
  * @property string|null $app_build      Build de la app instalada (cabecera X-App-Build)
+ * @property string|null $last_ip        Última IP del cliente (la registra EnsureDeviceToken)
  */
 class Device extends Model
 {
@@ -62,6 +63,7 @@ class Device extends Model
         'os_version',
         'app_version',
         'app_build',
+        'last_ip',
     ];
 
     /** Nombre genérico que manda la app vieja en el login; no distingue teléfonos. */
@@ -214,7 +216,7 @@ class Device extends Model
      * A diferencia de {@see revoke()}, NO borra los tokens: los deja vivos a propósito para que la guarda
      * de la puerta app ({@see EnsureDeviceToken}) los intercepte en el próximo request y responda un 401
      * con código distinguible (`session_superseded`), y así la app muestre "iniciaste sesión en otro
-     * dispositivo" en vez de un cierre genérico. El token queda inerte igual: el guard corta todo acceso,
+     * dispositivo" en vez de un cierre genérico. El token queda inerte igual: el guard corta el acceso por completo,
      * y expira solo por la expiración de Sanctum. Idempotente si ya estaba revocado.
      */
     public function supersede(): void

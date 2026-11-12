@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Infrastructure\Adapter;
 
+use DateTimeImmutable;
+use DateTimeZone;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Logistics\Coverage\Domain\Contract\DepartmentLocator;
 use Logistics\Coverage\Domain\ValueObject\GeoPoint;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\CrewModel;
@@ -24,11 +28,20 @@ use Throwable;
  * Disponible = vehículo en estado 'available'. Tripulación = existe una tripulación armada para ese
  * camión y ese día (tabla fleet_crews, assembled_for). El departamento sale del nodo base del camión;
  * si no se puede resolver, el camión queda flexible (lo liga el primer pedido que reciba).
+ *
+ * Aptitud (auditoría #27): un vehículo NO APTO (fleet_vehicles.unfit_since no nulo y ya vigente) nunca se
+ * ofrece al auto-planificador, aunque su estado sea 'available'. Vigente = unfit_since <= la fecha de corte,
+ * que es la mayor entre hoy (America/La_Paz, fecha operativa del negocio) y el día del plan: un camión no apto
+ * hoy sigue no apto mañana hasta que un supervisor lo habilite. Si la columna aún no existe (migración de
+ * Flota sin aplicar) el filtro se omite y se mantiene el comportamiento previo.
  */
 final readonly class FleetVehicleAvailabilityProvider implements FleetAvailabilityProvider
 {
     /** Estado del vehículo apto para salir a ruta. */
     private const AVAILABLE_STATUS = 'available';
+
+    /** Zona horaria de la fecha operativa del negocio (la misma que usa Ejecución para la aptitud). */
+    private const TIMEZONE = 'America/La_Paz';
 
     public function __construct(
         private DepartmentLocator $locator,
@@ -38,9 +51,18 @@ final readonly class FleetVehicleAvailabilityProvider implements FleetAvailabili
     {
         $crewedVehicleIds = $this->crewedVehicleIdsFor($date);
 
+        $query = VehicleModel::query()->where('status', self::AVAILABLE_STATUS);
+
+        // Excluye los camiones no aptos para despachar (checklist pre-salida con ítem crítico fallido).
+        if (Schema::hasColumn('fleet_vehicles', 'unfit_since')) {
+            $cutoff = $this->fitnessCutoff($date);
+            $query->where(static function (Builder $fit) use ($cutoff): void {
+                $fit->whereNull('unfit_since')->orWhereDate('unfit_since', '>', $cutoff);
+            });
+        }
+
         /** @var list<VehicleModel> $vehicles */
-        $vehicles = VehicleModel::query()
-            ->where('status', self::AVAILABLE_STATUS)
+        $vehicles = $query
             ->with('homeBaseNode')
             ->orderBy('id')
             ->get()
@@ -73,6 +95,17 @@ final readonly class FleetVehicleAvailabilityProvider implements FleetAvailabili
         }
 
         return $specs;
+    }
+
+    /**
+     * Fecha de corte de la aptitud ('Y-m-d'): la mayor entre hoy en America/La_Paz y el día del plan.
+     */
+    private function fitnessCutoff(PlanDate $date): string
+    {
+        $today = (new DateTimeImmutable('now', new DateTimeZone(self::TIMEZONE)))->format('Y-m-d');
+        $planDay = $date->toString();
+
+        return $planDay > $today ? $planDay : $today;
     }
 
     /**

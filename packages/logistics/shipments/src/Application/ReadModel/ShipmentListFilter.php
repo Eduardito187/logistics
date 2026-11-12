@@ -14,7 +14,11 @@ namespace Logistics\Shipments\Application\ReadModel;
  *  - `lowConfidenceOnly`: acota a las direcciones de confianza baja;
  *  - `deliveryDateFrom` / `deliveryDateTo`: rango de fecha prometida (Y-m-d, ambos inclusive);
  *  - `statuses`: varios estados a la vez (IN), se combina con `status` por AND;
- *  - `deliveryMode`: modalidad derivada del tipo del nodo destino (home_delivery / store_pickup).
+ *  - `deliveryMode`: modalidad derivada de la fuente y del tipo del nodo destino (home_delivery /
+ *    store_pickup / transfer);
+ *  - `pendingPreparation`: solo envíos asignados (PLANNED / IN_EXECUTION) cuya entrega en ejecución aún no
+ *    tiene escaneo de PREPARACIÓN (o no tiene entrega todavía). Incluye los que ya tienen etiquetas emitidas
+ *    pero no se prepararon.
  */
 final readonly class ShipmentListFilter
 {
@@ -30,5 +34,6 @@ final readonly class ShipmentListFilter
         public ?string $deliveryDateTo = null,
         public ?array $statuses = null,
         public ?string $deliveryMode = null,
+        public bool $pendingPreparation = false,
     ) {}
 }

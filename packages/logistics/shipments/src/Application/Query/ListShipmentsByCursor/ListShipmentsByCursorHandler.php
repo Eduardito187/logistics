@@ -52,6 +52,7 @@ final class ListShipmentsByCursorHandler implements QueryHandler
                 deliveryDateTo: $query->deliveryDateTo,
                 statuses: $statuses,
                 deliveryMode: $deliveryMode,
+                pendingPreparation: $query->pendingPreparation,
             ),
         );
 

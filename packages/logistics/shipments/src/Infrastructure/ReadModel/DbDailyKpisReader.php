@@ -86,6 +86,10 @@ final readonly class DbDailyKpisReader implements DailyKpisReader
         }
 
         /** @var \stdClass|null $row */
+        if ($row === null) {
+            return DailyKpisView::empty($date, $scope, $generatedAt);
+        }
+
         $total = self::int($row->total ?? 0);
         $delivered = self::int($row->delivered ?? 0);
         $failed = self::int($row->failed ?? 0);
@@ -147,6 +151,12 @@ final readonly class DbDailyKpisReader implements DailyKpisReader
         return $query;
     }
 
+    /**
+     * SELECT de los agregados del día, armado SOLO con constantes de la clase (literal-string, sin datos
+     * de entrada): los valores dinámicos del filtro viajan como bindings en stops().
+     *
+     * @return literal-string
+     */
     private function aggregateSelect(bool $hasArrivedAt): string
     {
         $completedAt = self::COMPLETED_AT;
@@ -167,12 +177,12 @@ final readonly class DbDailyKpisReader implements DailyKpisReader
             .'ELSE 0 END) AS on_time, '
             ."SUM(CASE WHEN {$delivered} AND {$firstAttempt} THEN 1 ELSE 0 END) AS first_attempt_ok";
 
-        if ($hasArrivedAt) {
-            $select .= ", AVG(CASE WHEN ({$delivered} OR {$failed}) AND s.arrived_at IS NOT NULL AND {$completedAt} >= s.arrived_at "
-                ."THEN EXTRACT(EPOCH FROM ({$completedAt} - s.arrived_at)) / 60.0 END) AS avg_stop_minutes";
+        if (!$hasArrivedAt) {
+            return $select;
         }
 
-        return $select;
+        return $select.", AVG(CASE WHEN ({$delivered} OR {$failed}) AND s.arrived_at IS NOT NULL AND {$completedAt} >= s.arrived_at "
+            ."THEN EXTRACT(EPOCH FROM ({$completedAt} - s.arrived_at)) / 60.0 END) AS avg_stop_minutes";
     }
 
     /**

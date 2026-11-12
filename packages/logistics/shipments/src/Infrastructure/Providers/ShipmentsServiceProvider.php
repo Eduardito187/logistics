@@ -204,6 +204,8 @@ final class ShipmentsServiceProvider extends ServiceProvider
                 (string) $config->get('logistics-shipments.magento.status', 'processing'),
                 (int) $config->get('logistics-shipments.magento.page_size', 100),
                 (int) $config->get('logistics-shipments.magento.timeout', 10),
+                self::stringMap($config->get('logistics-shipments.magento.pickup_location_map', [])),
+                self::stringList($config->get('logistics-shipments.magento.pickup_code_attributes', ['pickup_location_code'])),
             );
         });
 
@@ -317,5 +319,39 @@ final class ShipmentsServiceProvider extends ServiceProvider
                 SyncShipmentStatusCommand::class,
             ]);
         }
+    }
+
+    /**
+     * Mapa de config a `array<string, string>` (descarta claves o valores no texto o vacíos).
+     *
+     * @return array<string, string>
+     */
+    private static function stringMap(mixed $raw): array
+    {
+        $map = [];
+        foreach (is_array($raw) ? $raw : [] as $key => $value) {
+            if (is_string($key) && is_scalar($value) && trim($key) !== '' && trim((string) $value) !== '') {
+                $map[trim($key)] = trim((string) $value);
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Lista de config a `list<string>` (descarta valores no texto o vacíos).
+     *
+     * @return list<string>
+     */
+    private static function stringList(mixed $raw): array
+    {
+        $list = [];
+        foreach (is_array($raw) ? $raw : [] as $value) {
+            if (is_string($value) && trim($value) !== '') {
+                $list[] = trim($value);
+            }
+        }
+
+        return $list;
     }
 }

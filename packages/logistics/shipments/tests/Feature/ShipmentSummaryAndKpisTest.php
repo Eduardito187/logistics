@@ -205,6 +205,8 @@ it('deriva delivery_mode del tipo del nodo destino y filtra por él', function (
     ]);
     $transfer = ShipmentRecord::factory()->forNode($dc)->withDeliverySlot($date, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create();
     $home = ShipmentRecord::factory()->withDeliverySlot($date, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create();
+    // Reposición CD → tienda (traspaso interno): va a la MISMA tienda pero NO es recojo del cliente.
+    $replenishment = ShipmentRecord::factory()->transfer()->forNode($store)->withDeliverySlot($date, SHIPMENT_SUMMARY_KPIS_WINDOW_START, SHIPMENT_SUMMARY_KPIS_WINDOW_END)->create();
 
     $ids = fn (string $mode): array => collect(
         $this->getJson("/api/v1/app/shipments?delivery_date_from={$date}&delivery_date_to={$date}&delivery_mode={$mode}")
@@ -218,7 +220,12 @@ it('deriva delivery_mode del tipo del nodo destino y filtra por él', function (
     ksort($expectedHome);
 
     expect($ids('store_pickup'))->toBe([$pickup->id => 'store_pickup'])
-        ->and($homeDelivery)->toBe($expectedHome);
+        ->and($homeDelivery)->toBe($expectedHome)
+        ->and($ids('transfer'))->toBe([$replenishment->id => 'transfer']);
+
+    $this->getJson("/api/v1/app/shipments/{$replenishment->id}")
+        ->assertOk()
+        ->assertJsonPath('data.delivery_mode', 'transfer');
 
     $this->getJson('/api/v1/app/shipments?delivery_mode=courier')->assertStatus(422);
 
@@ -237,6 +244,9 @@ it('deriva delivery_mode del tipo del nodo destino y filtra por él', function (
 
     // El resumen también filtra por modalidad.
     $this->getJson("/api/v1/app/shipments/summary?date={$date}&delivery_mode=store_pickup")
+        ->assertOk()
+        ->assertJsonPath('data.total', 1);
+    $this->getJson("/api/v1/app/shipments/summary?date={$date}&delivery_mode=transfer")
         ->assertOk()
         ->assertJsonPath('data.total', 1);
 });

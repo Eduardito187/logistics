@@ -140,7 +140,7 @@ final class PreferencesController
      */
     private function present(?UserPreference $preference): array
     {
-        $values = $preference?->preferences ?? [];
+        $values = $preference !== null ? $preference->preferences : [];
         // Orden estable por clave (jsonb de Postgres no conserva el orden de inserción).
         ksort($values);
 

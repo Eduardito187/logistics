@@ -155,7 +155,8 @@ final class EnsureDeviceToken
      * En el MISMO UPDATE se registran los datos del cliente que viajan por cabecera (versión/build de la
      * app, modelo y versión del SO; auditoría app #28), así se sabe qué versiones siguen en la calle y se
      * distinguen los teléfonos en `GET /app/devices` sin escrituras extra. Solo se tocan las columnas
-     * cuya cabecera vino (una app vieja sin cabeceras no borra lo ya registrado).
+     * cuya cabecera vino (una app vieja sin cabeceras no borra lo ya registrado). También la IP del cliente
+     * (`last_ip`), solo si es una IP válida; no se escribe en logs.
      */
     private function touchLastSeen(int $deviceId, Request $request): void
     {
@@ -166,7 +167,10 @@ final class EnsureDeviceToken
         }
 
         Cache::put($marker, true, Device::LAST_SEEN_RESOLUTION_SECONDS);
-        Device::query()->whereKey($deviceId)->update(['last_seen_at' => now()] + $this->clientDetails($request));
+        // toBase(): UPDATE directo sobre el query builder (las claves son columnas reales de `devices`).
+        Device::query()->whereKey($deviceId)->toBase()->update(
+            ['last_seen_at' => now()] + $this->clientDetails($request) + $this->clientIp($request),
+        );
     }
 
     /**
@@ -192,6 +196,22 @@ final class EnsureDeviceToken
         }
 
         return $details;
+    }
+
+    /**
+     * IP del cliente para `last_ip` (vacío si no hay una IP válida). Respeta la configuración de proxies
+     * confiables de la aplicación (`trustProxies` en bootstrap/app.php).
+     *
+     * @return array<string, string>
+     */
+    private function clientIp(Request $request): array
+    {
+        $ip = $request->ip();
+        if (!is_string($ip) || filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            return [];
+        }
+
+        return ['last_ip' => mb_substr($ip, 0, 45)];
     }
 
     private function problem(Request $request, ErrorCode $code, string $detail): Response

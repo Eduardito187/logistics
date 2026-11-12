@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Infrastructure\Storage;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
 use Logistics\Execution\Application\ReadModel\StoredEvidence;
@@ -50,7 +51,7 @@ final readonly class FilesystemEvidenceStorage implements EvidenceStorage
         if ($key !== '') {
             $name = self::deterministicName($kind, $shipment, $key, $file);
             $existingPath = $directory.'/'.$name;
-            if ($this->exists($diskName, $existingPath)) {
+            if ($this->existsOn($diskName, $existingPath)) {
                 return new StoredEvidence($kind->value, $diskName, $existingPath, $this->publicUrl($diskName, $existingPath));
             }
 
@@ -104,7 +105,7 @@ final readonly class FilesystemEvidenceStorage implements EvidenceStorage
      */
     private static function deterministicName(EvidenceKind $kind, string $shipmentId, string $key, UploadedFile $file): string
     {
-        $extension = strtolower($file->extension());
+        $extension = strtolower($file->extension() ?? '');
         if ($extension === '' || preg_match('/^[a-z0-9]{1,8}$/', $extension) !== 1) {
             $extension = 'jpg';
         }
@@ -113,9 +114,72 @@ final readonly class FilesystemEvidenceStorage implements EvidenceStorage
     }
 
     /**
+     * Verifica que la referencia exista en su disco de evidencia.
+     *
+     * El path que devuelve store() es `<tipo>/<envío>/<archivo>`: si el primer segmento es un tipo conocido
+     * se consulta SOLO su disco; si no (referencias de otra forma), se consultan todos los discos de
+     * evidencia configurados, el de prueba de entrega primero. El disco es el mismo que usa la subida, sea
+     * S3 o el respaldo local (config/filesystems.php), así que la verificación sigue al driver vigente.
+     *
+     * Un path vacío, absoluto o con `..` nunca es una referencia válida (false). Si algún disco falla al
+     * consultar y ninguno confirma el archivo, responde null (no verificable) en vez de un falso "no existe".
+     */
+    public function exists(string $path): ?bool
+    {
+        $reference = trim($path);
+        if ($reference === '' || str_starts_with($reference, '/') || str_contains($reference, '..') || str_contains($reference, '\\')) {
+            return false;
+        }
+
+        $unknown = false;
+        foreach ($this->candidateDisks($reference) as $diskName) {
+            try {
+                if (Storage::disk($diskName)->exists($reference)) {
+                    return true;
+                }
+            } catch (Throwable $error) {
+                $unknown = true;
+                Log::warning('No se pudo verificar la evidencia en el disco', [
+                    'disk' => $diskName,
+                    'path' => $reference,
+                    'error' => $error->getMessage(),
+                ]);
+            }
+        }
+
+        return $unknown ? null : false;
+    }
+
+    /**
+     * Discos donde puede vivir la referencia: el de su tipo (primer segmento del path) o, si el segmento no
+     * es un tipo conocido, todos los discos de evidencia sin repetir, empezando por el de prueba de entrega.
+     *
+     * @return list<string>
+     */
+    private function candidateDisks(string $path): array
+    {
+        $segment = explode('/', $path, 2)[0];
+        if (isset($this->disksByKind[$segment])) {
+            return [$this->disksByKind[$segment]];
+        }
+
+        $disks = [];
+        if (isset($this->disksByKind[EvidenceKind::ProofOfDelivery->value])) {
+            $disks[] = $this->disksByKind[EvidenceKind::ProofOfDelivery->value];
+        }
+        foreach ($this->disksByKind as $diskName) {
+            if (!in_array($diskName, $disks, true)) {
+                $disks[] = $diskName;
+            }
+        }
+
+        return $disks;
+    }
+
+    /**
      * ¿Ya existe el archivo en el disco? Ante un error del driver responde false (se intentará subir).
      */
-    private function exists(string $diskName, string $path): bool
+    private function existsOn(string $diskName, string $path): bool
     {
         try {
             return Storage::disk($diskName)->exists($path);

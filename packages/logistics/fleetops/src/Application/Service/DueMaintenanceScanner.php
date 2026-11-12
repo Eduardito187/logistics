@@ -72,7 +72,7 @@ final readonly class DueMaintenanceScanner
             return ($a->remainingKm() ?? PHP_INT_MAX) <=> ($b->remainingKm() ?? PHP_INT_MAX);
         });
 
-        return array_values($results);
+        return $results;
     }
 
     /**

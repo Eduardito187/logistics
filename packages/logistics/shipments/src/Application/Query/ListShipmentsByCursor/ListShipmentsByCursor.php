@@ -29,7 +29,9 @@ final readonly class ListShipmentsByCursor implements Query
         public ?string $deliveryDateTo = null,
         // Aditivo: VARIOS estados a la vez (status[]=…), cualquier capitalización; null = sin filtro.
         public ?array $statuses = null,
-        // Aditivo: modalidad de entrega derivada (home_delivery / store_pickup); null = sin filtro.
+        // Aditivo: modalidad de entrega derivada (home_delivery / store_pickup / transfer); null = sin filtro.
         public ?string $deliveryMode = null,
+        // Aditivo (#1b): solo envíos asignados (PLANNED / IN_EXECUTION) aún SIN escaneo de preparación.
+        public bool $pendingPreparation = false,
     ) {}
 }

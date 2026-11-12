@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\IdempotentRequests;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRoute;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\RouteStopInput;
@@ -20,6 +21,7 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  */
 beforeEach(function (): void {
     $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+    $this->actingAs(User::factory()->create(), 'sanctum');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',
     'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',

@@ -29,10 +29,14 @@ use Logistics\Shipments\Presentation\Http\Support\JsonEnvelope;
  *
  * Aditivos (auditoría app #16/#22/#26):
  *  - `status` acepta VARIOS estados: `status[]=PLANNED&status[]=RECEIVED` o `status=planned,received`;
- *  - `delivery_mode` (home_delivery / store_pickup) filtra por la modalidad derivada del nodo destino;
+ *  - `delivery_mode` (home_delivery / store_pickup / transfer) filtra por la modalidad derivada (fuente +
+ *    nodo destino): un traspaso interno a una tienda es `transfer`, nunca `store_pickup`;
  *  - `include=count_by_status` agrega `meta.count_by_status` (conteo por estado con los mismos filtros
  *    salvo el de estado, para las pestañas), con agregado SQL y caché corta;
- *  - cada ítem trae `delivery_mode`, `address_parts` y `short_address`.
+ *  - cada ítem trae `delivery_mode`, `address_parts` y `short_address`;
+ *  - `pending_preparation=true` (#1b) deja solo los envíos asignados (PLANNED / IN_EXECUTION) sin escaneo
+ *    de preparación (incluye los que ya tienen etiquetas emitidas). `false` o ausente = sin filtro. No
+ *    entra en `count_by_status` (ese conteo usa los filtros SIN el de estado, y este filtro fija estados).
  *
  * Lee vía QueryBus (ListShipments → list<ShipmentView>). La validación es inline por ser filtros
  * simples de query string.
@@ -67,7 +71,7 @@ final class ListShipmentsController
         $isMultiStatus = $statusList !== null && count($statusList) > 1;
         $this->normalizeQuery($request, $statusList, $isMultiStatus);
 
-        /** @var array{source?: string|null, destination_node_id?: string|null, delivery_date_from?: string|null, delivery_date_to?: string|null, delivery_mode?: string|null, include?: string|null} $filters */
+        /** @var array{source?: string|null, destination_node_id?: string|null, delivery_date_from?: string|null, delivery_date_to?: string|null, delivery_mode?: string|null, include?: string|null, pending_preparation?: bool|string|int|null} $filters */
         $filters = $request->validate([
             'status' => $isMultiStatus ? ['array', 'max:'.count($statuses)] : ['nullable', 'string', Rule::in($statuses)],
             'status.*' => ['string', Rule::in($statuses)],
@@ -78,6 +82,7 @@ final class ListShipmentsController
             'delivery_date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:delivery_date_from'],
             'delivery_mode' => ['nullable', 'string', Rule::in($modes)],
             'include' => ['nullable', 'string', 'max:200'],
+            'pending_preparation' => ['nullable', 'boolean'],
         ]);
 
         // Resuelve el filtro de nodo destino: para el rol Tienda se FUERZA su nodo asignado (server-side,
@@ -115,7 +120,8 @@ final class ListShipmentsController
     }
 
     /**
-     * Normaliza la query string ANTES de validar: estado(s) en mayúsculas y `delivery_mode` en minúsculas.
+     * Normaliza la query string ANTES de validar: estado(s) en mayúsculas, `delivery_mode` en minúsculas y
+     * `pending_preparation` true/false a 1/0.
      *
      * @param list<mixed>|null $statusList
      */
@@ -128,6 +134,18 @@ final class ListShipmentsController
         $rawMode = $request->query('delivery_mode');
         if (is_string($rawMode) && trim($rawMode) !== '') {
             $request->merge(['delivery_mode' => strtolower(trim($rawMode))]);
+        }
+
+        // `pending_preparation=true|false` llega como texto en la query string: la regla `boolean` de Laravel
+        // solo acepta 1/0, así que true/false (cualquier capitalización) se traducen antes de validar.
+        $rawPending = $request->query('pending_preparation');
+        if (is_string($rawPending)) {
+            $normalized = strtolower(trim($rawPending));
+            $request->merge(['pending_preparation' => match ($normalized) {
+                'true' => '1',
+                'false' => '0',
+                default => $normalized,
+            }]);
         }
     }
 
@@ -151,8 +169,8 @@ final class ListShipmentsController
      * Arma los filtros del listado (sin recorte). Un estado → filtro `status` (camino histórico); varios →
      * filtro `statuses` (IN).
      *
-     * @param list<mixed>|null           $statusList
-     * @param array<string, string|null> $filters
+     * @param list<mixed>|null                    $statusList
+     * @param array<string, bool|int|string|null> $filters
      */
     private function criteria(?array $statusList, bool $isMultiStatus, array $filters, ?string $destinationNodeId): ListShipments
     {
@@ -160,13 +178,22 @@ final class ListShipmentsController
 
         return new ListShipments(
             status: $isMultiStatus ? null : ($validStatuses[0] ?? null),
-            source: $filters['source'] ?? null,
+            source: self::stringOrNull($filters['source'] ?? null),
             destinationNodeId: $destinationNodeId,
-            deliveryDateFrom: $filters['delivery_date_from'] ?? null,
-            deliveryDateTo: $filters['delivery_date_to'] ?? null,
+            deliveryDateFrom: self::stringOrNull($filters['delivery_date_from'] ?? null),
+            deliveryDateTo: self::stringOrNull($filters['delivery_date_to'] ?? null),
             statuses: $isMultiStatus ? $validStatuses : null,
-            deliveryMode: $filters['delivery_mode'] ?? null,
+            deliveryMode: self::stringOrNull($filters['delivery_mode'] ?? null),
+            pendingPreparation: filter_var($filters['pending_preparation'] ?? false, FILTER_VALIDATE_BOOLEAN),
         );
+    }
+
+    /**
+     * Valor de filtro de texto ya validado, o null.
+     */
+    private static function stringOrNull(mixed $value): ?string
+    {
+        return is_string($value) ? $value : null;
     }
 
     /**
@@ -197,6 +224,7 @@ final class ListShipmentsController
             deliveryDateTo: $criteria->deliveryDateTo,
             statuses: $criteria->statuses,
             deliveryMode: $criteria->deliveryMode,
+            pendingPreparation: $criteria->pendingPreparation,
         ));
 
         $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
@@ -236,6 +264,7 @@ final class ListShipmentsController
             deliveryDateTo: $criteria->deliveryDateTo,
             statuses: $criteria->statuses,
             deliveryMode: $criteria->deliveryMode,
+            pendingPreparation: $criteria->pendingPreparation,
         ));
 
         $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);

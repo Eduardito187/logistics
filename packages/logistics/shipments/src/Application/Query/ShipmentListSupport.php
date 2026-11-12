@@ -9,6 +9,7 @@ use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\ReadModel\ShipmentProgressView;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\ValueObject\DeliveryMode;
+use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 
 /**
@@ -66,7 +67,7 @@ final class ShipmentListSupport
     }
 
     /**
-     * Valor normalizado del filtro de modalidad de entrega (home_delivery / store_pickup) o null.
+     * Valor normalizado del filtro de modalidad de entrega (home_delivery / store_pickup / transfer) o null.
      */
     public static function deliveryMode(?string $value): ?string
     {
@@ -74,8 +75,9 @@ final class ShipmentListSupport
     }
 
     /**
-     * Adjunta a cada vista su modalidad de entrega (domicilio / recojo en tienda), resuelta en UN lote por
-     * el tipo de los nodos destino de la página (sin N+1). Sin nodo destino = domicilio.
+     * Adjunta a cada vista su modalidad de entrega (domicilio / recojo en tienda / traspaso), resuelta en UN
+     * lote por el tipo de los nodos destino de la página (sin N+1). Sin nodo destino = domicilio; un traspaso
+     * interno (OrderSource::Transfer) con nodo destino = traspaso, nunca recojo en tienda.
      *
      * @param  list<ShipmentView> $views
      * @return list<ShipmentView>
@@ -96,11 +98,17 @@ final class ShipmentListSupport
         $modes = $nodeIds === [] ? [] : $reader->forDestinationNodes($nodeIds);
 
         return array_map(
-            static fn (ShipmentView $view): ShipmentView => $view->withDeliveryMode(
-                $view->destinationNodeId !== null
-                    ? ($modes[$view->destinationNodeId] ?? DeliveryMode::HomeDelivery)
-                    : DeliveryMode::HomeDelivery,
-            ),
+            static function (ShipmentView $view) use ($modes): ShipmentView {
+                $node = $view->destinationNodeId;
+                if ($node === null || $node === '') {
+                    return $view->withDeliveryMode(DeliveryMode::HomeDelivery);
+                }
+                if (OrderSource::tryFrom($view->source)?->isInternalTransfer() === true) {
+                    return $view->withDeliveryMode(DeliveryMode::Transfer);
+                }
+
+                return $view->withDeliveryMode($modes[$node] ?? DeliveryMode::HomeDelivery);
+            },
             $views,
         );
     }

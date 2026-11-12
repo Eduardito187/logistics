@@ -27,6 +27,8 @@ final class DeviceController
      * Además de los campos originales, cada equipo trae lo necesario para distinguir teléfonos
      * (auditoría app #28): `display_name` (nombre del usuario, o modelo, o plataforma), `model`,
      * `os_version`, `app_version`, `app_build` e `is_current` (el equipo del token en uso). Aditivo.
+     * `last_ip` (última IP desde la que se usó el equipo) solo sale aquí: la lista es SIEMPRE la de los
+     * equipos del propio usuario autenticado, así que nadie ve la IP de equipos ajenos.
      */
     public function index(Request $request): JsonResponse
     {
@@ -92,6 +94,7 @@ final class DeviceController
             'app_version' => $device->app_version,
             'app_build' => $device->app_build,
             'last_seen_at' => $device->last_seen_at?->toIso8601String(),
+            'last_ip' => $device->last_ip,
             'revoked' => $device->isRevoked(),
             'is_current' => $currentId !== null && $device->getKey() === $currentId,
         ];

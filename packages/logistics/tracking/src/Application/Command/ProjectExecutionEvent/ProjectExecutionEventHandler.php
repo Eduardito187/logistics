@@ -10,6 +10,8 @@ use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Shared\Domain\Clock\Clock;
+use Logistics\Tracking\Application\Contract\CustomerContactReader;
+use Logistics\Tracking\Application\Contract\RatingRequestStore;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
 use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
@@ -29,6 +31,8 @@ final class ProjectExecutionEventHandler implements CommandHandler
         private readonly TrackingRepository $trackings,
         private readonly RecordDomainEvents $recordEvents,
         private readonly Clock $clock,
+        private readonly CustomerContactReader $contacts,
+        private readonly RatingRequestStore $ratingRequests,
     ) {}
 
     public function handle(Command $command): void
@@ -66,6 +70,12 @@ final class ProjectExecutionEventHandler implements CommandHandler
 
         $this->recordEvents->record($tracking->releaseEvents(), 'tracking.shipment_tracking');
 
+        // Prerrequisito de la calificación: el evento de entrega no trae el email del cliente, así que se
+        // copia del lado lectura de shipments al read model del seguimiento (sin acoplar a execution).
+        if ($status === VisibleStatus::Delivered) {
+            $this->captureCustomerEmail($command->shipmentId);
+        }
+
         // Una parada se completó (entregada o fallida) POR PRIMERA VEZ. Si el envío tiene ubicación en la
         // ruta, los envíos de atrás en la MISMA ruta quedan una parada más cerca del cliente: se baja su
         // stops_remaining en cascada. Es un ajuste de proyección (no graba eventos), una vez por parada.
@@ -89,6 +99,20 @@ final class ProjectExecutionEventHandler implements CommandHandler
         } catch (Exception) {
             return $this->clock->now();
         }
+    }
+
+    /**
+     * Copia el email del cliente al seguimiento entregado. Sin envío o sin email válido no hace nada: ese
+     * envío simplemente no será invitado a calificar.
+     */
+    private function captureCustomerEmail(string $shipmentId): void
+    {
+        $email = $this->contacts->forShipment($shipmentId)?->email;
+        if ($email === null) {
+            return;
+        }
+
+        $this->ratingRequests->attachCustomerEmail($shipmentId, $email);
     }
 
     /** Una parada queda resuelta cuando el envío se entrega o falla el intento. */

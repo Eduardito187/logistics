@@ -80,19 +80,22 @@ final class BackfillShipmentLineMeasurementsCommand extends Command
                 foreach ($idsBySku as $key => $ids) {
                     $measure = $measures[(string) $key] ?? $resolver->fallback();
 
-                    // Valores generados por el dominio (floats y enum), no entrada de usuario: seguros de
-                    // interpolar. COALESCE garantiza que solo se completan los nulls.
-                    $weight = sprintf('%.3F', $measure->unitWeightKg);
-                    $volume = sprintf('%.6F', $measure->unitVolumeM3);
-                    $source = $measure->source->value;
+                    // Solo se completan los nulls (equivale al COALESCE de antes), con los valores como
+                    // bindings: nunca se interpola SQL. Mismo redondeo que las columnas (3 y 6 decimales).
+                    $fill = [
+                        'unit_weight_kg' => round($measure->unitWeightKg, 3),
+                        'unit_volume_m3' => round($measure->unitVolumeM3, 6),
+                        'measurements_source' => $measure->source->value,
+                    ];
+                    foreach ($fill as $column => $value) {
+                        $connection->table(self::TABLE)
+                            ->whereIn('id', $ids)
+                            ->whereNull($column)
+                            ->update([$column => $value]);
+                    }
 
-                    $updated += $connection->table(self::TABLE)
-                        ->whereIn('id', $ids)
-                        ->update([
-                            'unit_weight_kg' => $connection->raw("COALESCE(unit_weight_kg, {$weight})"),
-                            'unit_volume_m3' => $connection->raw("COALESCE(unit_volume_m3, {$volume})"),
-                            'measurements_source' => $connection->raw("COALESCE(measurements_source, '{$source}')"),
-                        ]);
+                    // Líneas visitadas del grupo (antes: filas alcanzadas por el UPDATE con COALESCE).
+                    $updated += count($ids);
                 }
             });
 

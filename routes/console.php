@@ -92,6 +92,17 @@ Schedule::command('cockpit:metrics:snapshot')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Auto-planificador NOCTURNO (Ola 0): planifica el día siguiente (America/La_Paz) a la hora configurada
+// (PLANNING_AUTO_PLAN_AT, 21:00 por defecto). Solo encola la corrida; el cálculo pesado lo hace el worker.
+// Idempotente por día+modo y nunca pisa planes publicados. Se apaga con PLANNING_AUTO_PLAN_ENABLED=false.
+Schedule::command('logistics:planning:auto-plan')
+    ->dailyAt((string) config('logistics-planning.auto_planner.nightly.at', '21:00'))
+    ->timezone('America/La_Paz')
+    ->when(static fn (): bool => (bool) config('logistics-planning.auto_planner.nightly.enabled', true))
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 /*
 |--------------------------------------------------------------------------
 | Mantenimiento físico de base de datos (no destructivo)

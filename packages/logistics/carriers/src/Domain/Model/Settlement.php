@@ -15,6 +15,7 @@ use Logistics\Carriers\Domain\ValueObject\CorridorRef;
 use Logistics\Carriers\Domain\ValueObject\Money;
 use Logistics\Carriers\Domain\ValueObject\SettlementId;
 use Logistics\Carriers\Domain\ValueObject\SettlementStatus;
+use Logistics\Carriers\Domain\ValueObject\VehicleClass;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
 /**
@@ -25,6 +26,9 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * marca pagada (Paid), o la objeta (Disputed) si hay una discrepancia. Desde Disputed se puede volver a
  * enviar/aprobar. El agregado protege las transiciones válidas y acumula sus documentos (factura,
  * comprobantes). Referencia al transportista por id como texto para no acoplarse al agregado Carrier.
+ *
+ * Guarda además la clase de vehículo con la que se tarifó el servicio (opcional: null en liquidaciones
+ * históricas o cuando no se pudo determinar sin ambigüedad).
  */
 final class Settlement extends AggregateRoot
 {
@@ -42,6 +46,7 @@ final class Settlement extends AggregateRoot
         private ?string $disputeReason,
         private ?string $paymentReference,
         private array $documents,
+        private readonly ?VehicleClass $vehicleClass = null,
     ) {}
 
     /**
@@ -57,6 +62,7 @@ final class Settlement extends AggregateRoot
         Money $amount,
         string $reference,
         array $documents = [],
+        ?VehicleClass $vehicleClass = null,
     ): self {
         $carrierId = trim($carrierId);
         if ($carrierId === '') {
@@ -81,6 +87,7 @@ final class Settlement extends AggregateRoot
             null,
             null,
             array_values($documents),
+            $vehicleClass,
         );
         $settlement->recordEvent(new SettlementSubmitted(
             $id->toString(),
@@ -113,6 +120,7 @@ final class Settlement extends AggregateRoot
         ?string $disputeReason,
         ?string $paymentReference,
         array $documents,
+        ?VehicleClass $vehicleClass = null,
     ): self {
         return new self(
             $id,
@@ -125,6 +133,7 @@ final class Settlement extends AggregateRoot
             $disputeReason,
             $paymentReference,
             array_values($documents),
+            $vehicleClass,
         );
     }
 
@@ -249,5 +258,13 @@ final class Settlement extends AggregateRoot
     public function documents(): array
     {
         return $this->documents;
+    }
+
+    /**
+     * Clase de vehículo con la que se tarifó el servicio; null si es histórica o no se pudo determinar.
+     */
+    public function vehicleClass(): ?VehicleClass
+    {
+        return $this->vehicleClass;
     }
 }

@@ -6,6 +6,7 @@ namespace Logistics\Planning\Application\Query\ListPlansByDate;
 
 use DateInterval;
 use Logistics\Planning\Application\ReadModel\PlanView;
+use Logistics\Planning\Application\Service\PlanViewAssembler;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Domain\Model\DeliveryPlan;
@@ -20,13 +21,16 @@ use Logistics\Shared\Application\ReadModel\Page;
  * Volumen: un plan por camión y por día, así que incluso un rango de 31 días son a lo sumo unos pocos
  * cientos de planes; filtrar y paginar en memoria sobre lo que devuelve el repositorio es aceptable y no
  * obliga a cambiar el contrato de persistencia. Orden estable: día ascendente y, dentro del día, el orden
- * del repositorio (por vehículo).
+ * del repositorio (por vehículo). Placa y chofer de cada plan se resuelven en lote (PlanViewAssembler).
  *
  * @implements QueryHandler<ListPlansByDate, list<PlanView>|Page<PlanView>>
  */
 final readonly class ListPlansByDateHandler implements QueryHandler
 {
-    public function __construct(private PlanRepository $plans) {}
+    public function __construct(
+        private PlanRepository $plans,
+        private PlanViewAssembler $views,
+    ) {}
 
     /**
      * @return list<PlanView>|Page<PlanView>
@@ -60,12 +64,13 @@ final readonly class ListPlansByDateHandler implements QueryHandler
 
         // Sin página pedida: comportamiento histórico (lista completa del filtro).
         if ($query->limit === null) {
-            return array_map(PlanView::fromPlan(...), $plans);
+            return $this->views->assemble($plans);
         }
 
         $slice = \array_slice($plans, max(0, $query->offset), max(1, $query->limit));
 
-        return new Page(array_map(PlanView::fromPlan(...), $slice), \count($plans));
+        // Placa y chofer se resuelven en lote SOLO para la página devuelta.
+        return new Page($this->views->assemble($slice), \count($plans));
     }
 
     /**

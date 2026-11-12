@@ -115,9 +115,28 @@ it('exige autenticación', function (): void {
 });
 
 it('lista las fallas en el admin para supervisores, sin UUIDs', function (): void {
-    [$token, , $device] = outboxFailureBearer();
-    $this->withToken($token)->postJson('/api/v1/app/outbox-failures', outboxFailureBatch())->assertStatus(202);
-    app('auth')->forgetGuards();
+    // Se siembra la fila directamente (sin pasar por el token de la puerta app): así el GET del admin
+    // corre con la sesión web del supervisor, sin que el Bearer del chofer se cuele por Sanctum y lo pise.
+    $reporter = User::factory()->create(['name' => 'Chofer Reportero']);
+    $device = Device::create([
+        'user_id' => $reporter->getKey(),
+        'fingerprint' => 'fp-failures-'.uniqid(),
+        'platform' => 'android',
+        'name' => 'Phone of the north route',
+    ]);
+    AppOutboxFailure::create([
+        'client_id' => '01JA2B3C4D5E6F7G8H9J0KLMNP',
+        'user_id' => $reporter->getKey(),
+        'device_id' => $device->getKey(),
+        'queue' => 'action',
+        'kind' => 'recordLoadScan',
+        'reason' => 'rejected',
+        'http_status' => 409,
+        'problem_code' => 'conflict',
+        'endpoint' => '/api/v1/app/shipments/{id}/scans',
+        'attempts' => 1,
+        'occurred_at' => '2026-10-16T14:03:11+00:00',
+    ]);
 
     $supervisor = User::factory()->create();
     $supervisor->assignRole(Role::Supervisor);

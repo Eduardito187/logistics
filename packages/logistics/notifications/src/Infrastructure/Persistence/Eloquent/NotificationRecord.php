@@ -16,16 +16,18 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * Es detalle de Infrastructure: nunca cruza hacia Application ni Domain. El mapeo a/desde el agregado
  * lo hace NotificationMapper. La política y los intentos se guardan como jsonb (forma primitiva).
  *
- * @property string              $id
- * @property string              $shipment_id
- * @property string              $message_type
- * @property string              $status
- * @property string              $current_channel
- * @property array<string,mixed> $policy
- * @property array<string,int>   $attempts
- * @property string|null         $email
- * @property string|null         $phone
- * @property string|null         $telegram_chat_id
+ * @property string                          $id
+ * @property string                          $shipment_id
+ * @property string                          $message_type
+ * @property string                          $status
+ * @property string                          $current_channel
+ * @property array<string,mixed>             $policy
+ * @property array<string,int>               $attempts
+ * @property string|null                     $email
+ * @property string|null                     $phone
+ * @property string|null                     $telegram_chat_id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
  */
 final class NotificationRecord extends Model
 {

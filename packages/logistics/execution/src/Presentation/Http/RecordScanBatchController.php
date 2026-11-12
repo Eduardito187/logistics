@@ -11,6 +11,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Validator as LaravelValidator;
+use Logistics\Execution\Application\Contract\DeliveryEvidenceReader;
+use Logistics\Execution\Application\Contract\EvidenceStorage;
 use Logistics\Execution\Application\Contract\ScanBatchLedger;
 use Logistics\Execution\Presentation\Http\Request\FailedDeliveryRequest;
 use Logistics\Execution\Presentation\Http\Request\LoadScanRequest;
@@ -52,6 +55,8 @@ final class RecordScanBatchController extends ExecutionController
         CommandBus $commandBus,
         QueryBus $queryBus,
         private readonly ScanBatchLedger $ledger,
+        private readonly EvidenceStorage $evidenceStorage,
+        private readonly DeliveryEvidenceReader $evidenceReader,
     ) {
         parent::__construct($commandBus, $queryBus);
     }
@@ -112,7 +117,12 @@ final class RecordScanBatchController extends ExecutionController
 
         try {
             /** @var array<string, mixed> $validated */
-            $validated = Validator::make($data, $this->rulesFor($kind, $request))->validate();
+            $validator = Validator::make($data, $this->rulesFor($kind, $request));
+            if ($kind === 'proof_of_delivery') {
+                // Igual que el endpoint individual: la foto debe existir en el disco de evidencia.
+                $validator->after(fn (LaravelValidator $v) => ProofOfDeliveryRequest::verifyPhotoEvidence($v, $this->evidenceStorage, $this->evidenceReader));
+            }
+            $validated = $validator->validate();
             $shipmentId = is_string($validated['shipment_id'] ?? null) ? $validated['shipment_id'] : null;
 
             if ($kind === 'proof_of_delivery' && $shipmentId !== null && !StoreNodeScope::allows($request->user(), $shipmentId)) {

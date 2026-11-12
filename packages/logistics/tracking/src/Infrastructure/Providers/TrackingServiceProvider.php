@@ -12,6 +12,8 @@ use Logistics\Tracking\Application\Command\AdvanceTracking\AdvanceTracking;
 use Logistics\Tracking\Application\Command\AdvanceTracking\AdvanceTrackingHandler;
 use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentToTracking;
 use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentToTrackingHandler;
+use Logistics\Tracking\Application\Command\MarkRatingRequested\MarkRatingRequested;
+use Logistics\Tracking\Application\Command\MarkRatingRequested\MarkRatingRequestedHandler;
 use Logistics\Tracking\Application\Command\OpenTracking\OpenTracking;
 use Logistics\Tracking\Application\Command\OpenTracking\OpenTrackingHandler;
 use Logistics\Tracking\Application\Command\PlaceShipmentOnRoute\PlaceShipmentOnRoute;
@@ -24,8 +26,11 @@ use Logistics\Tracking\Application\Command\RecordSatisfactionSurvey\RecordSatisf
 use Logistics\Tracking\Application\Command\RecordSatisfactionSurvey\RecordSatisfactionSurveyHandler;
 use Logistics\Tracking\Application\Command\UpdateTruckPosition\UpdateTruckPosition;
 use Logistics\Tracking\Application\Command\UpdateTruckPosition\UpdateTruckPositionHandler;
+use Logistics\Tracking\Application\Contract\CustomerContactReader;
+use Logistics\Tracking\Application\Contract\CustomerEmailBackfill;
 use Logistics\Tracking\Application\Contract\DeliveredAtBackfill;
 use Logistics\Tracking\Application\Contract\PublicLinkTtl;
+use Logistics\Tracking\Application\Contract\RatingRequestStore;
 use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
 use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkStateHandler;
 use Logistics\Tracking\Application\Query\GetPublicSurveyState\GetPublicSurveyState;
@@ -40,14 +45,20 @@ use Logistics\Tracking\Application\Query\GetShipmentTracking\GetShipmentTracking
 use Logistics\Tracking\Application\Query\GetShipmentTracking\GetShipmentTrackingHandler;
 use Logistics\Tracking\Application\Query\GetShipmentUnits\GetShipmentUnits;
 use Logistics\Tracking\Application\Query\GetShipmentUnits\GetShipmentUnitsHandler;
+use Logistics\Tracking\Application\Query\ListDeliveredAwaitingRating\ListDeliveredAwaitingRating;
+use Logistics\Tracking\Application\Query\ListDeliveredAwaitingRating\ListDeliveredAwaitingRatingHandler;
 use Logistics\Tracking\Domain\Contract\SatisfactionSurveyRepository;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Contract\UnitTrackingRepository;
+use Logistics\Tracking\Infrastructure\Persistence\Backfill\SqlCustomerEmailBackfill;
 use Logistics\Tracking\Infrastructure\Persistence\Backfill\SqlDeliveredAtBackfill;
+use Logistics\Tracking\Infrastructure\Persistence\DbRatingRequestStore;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentSatisfactionSurveyRepository;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentTrackingRepository;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentUnitTrackingRepository;
+use Logistics\Tracking\Infrastructure\ReadSide\DbCustomerContactReader;
 use Logistics\Tracking\Infrastructure\Settings\SettingsPublicLinkTtl;
+use Logistics\Tracking\Presentation\Console\BackfillCustomerEmailCommand;
 use Logistics\Tracking\Presentation\Console\BackfillDeliveredAtCommand;
 use Logistics\Tracking\Presentation\Http\Controller\PublicTrackingPageController;
 use Logistics\Tracking\Presentation\Http\Controller\RecordSatisfactionSurveyController;
@@ -77,6 +88,29 @@ final class TrackingServiceProvider extends ServiceProvider
 
             return new SqlDeliveredAtBackfill($connections);
         });
+
+        // Prerrequisito de la calificación: contacto del cliente desde el lado lectura de shipments y store
+        // de invitaciones sobre tracking_shipments (email capturado, candidatos, marca de invitado).
+        $this->app->bind(CustomerContactReader::class, static function ($app): DbCustomerContactReader {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+
+            return new DbCustomerContactReader($connections);
+        });
+        $this->app->bind(RatingRequestStore::class, static function ($app): DbRatingRequestStore {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+
+            return new DbRatingRequestStore($connections);
+        });
+
+        // Backfill idempotente de customer_email (comando logistics:tracking:backfill-customer-email).
+        $this->app->bind(CustomerEmailBackfill::class, static function ($app): SqlCustomerEmailBackfill {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+
+            return new SqlCustomerEmailBackfill($connections);
+        });
     }
 
     public function boot(): void
@@ -89,7 +123,7 @@ final class TrackingServiceProvider extends ServiceProvider
         $this->registerPublicPageRoute();
 
         if ($this->app->runningInConsole()) {
-            $this->commands([BackfillDeliveredAtCommand::class]);
+            $this->commands([BackfillDeliveredAtCommand::class, BackfillCustomerEmailCommand::class]);
         }
 
         // Los handlers se registran contra el HandlerRegistry singleton del núcleo compartido.
@@ -103,6 +137,7 @@ final class TrackingServiceProvider extends ServiceProvider
         $registry->register(PlaceShipmentOnRoute::class, PlaceShipmentOnRouteHandler::class);
         $registry->register(UpdateTruckPosition::class, UpdateTruckPositionHandler::class);
         $registry->register(RecordSatisfactionSurvey::class, RecordSatisfactionSurveyHandler::class);
+        $registry->register(MarkRatingRequested::class, MarkRatingRequestedHandler::class);
         $registry->register(GetPublicTracking::class, GetPublicTrackingHandler::class);
         $registry->register(GetShipmentTracking::class, GetShipmentTrackingHandler::class);
         $registry->register(GetShipmentUnits::class, GetShipmentUnitsHandler::class);
@@ -110,6 +145,7 @@ final class TrackingServiceProvider extends ServiceProvider
         $registry->register(GetPublicSurveyState::class, GetPublicSurveyStateHandler::class);
         $registry->register(GetPublicLinkState::class, GetPublicLinkStateHandler::class);
         $registry->register(GetSatisfactionSummary::class, GetSatisfactionSummaryHandler::class);
+        $registry->register(ListDeliveredAwaitingRating::class, ListDeliveredAwaitingRatingHandler::class);
     }
 
     /**

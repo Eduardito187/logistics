@@ -56,7 +56,7 @@ final readonly class DbNodeReceptionListReader implements NodeReceptionListReade
             ]);
 
         $receivedByReception = $this->receivedUnitIds(
-            $rows->map(static fn (object $row): string => (string) ($row->id ?? ''))->values()->all(),
+            array_values($rows->map(static fn (object $row): string => (string) ($row->id ?? ''))->values()->all()),
         );
 
         $items = [];

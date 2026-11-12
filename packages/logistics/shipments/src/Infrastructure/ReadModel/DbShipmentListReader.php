@@ -124,6 +124,10 @@ final class DbShipmentListReader implements ShipmentListReader
         if ($filter->deliveryMode !== null) {
             ShipmentSqlFilters::deliveryMode($query->getQuery(), $filter->deliveryMode);
         }
+        // Pendientes de preparar (#1b): asignados sin escaneo PREPARATION (NOT EXISTS indexado).
+        if ($filter->pendingPreparation) {
+            ShipmentSqlFilters::pendingPreparation($query->getQuery());
+        }
 
         return $query;
     }

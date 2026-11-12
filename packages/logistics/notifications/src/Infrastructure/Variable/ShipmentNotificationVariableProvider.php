@@ -103,17 +103,17 @@ final readonly class ShipmentNotificationVariableProvider implements Notificatio
      * Referencia humana de la orden (agrupa los envíos del multishipping): la del envío, la del
      * seguimiento o la parte de external_id antes de '#n:'. Null si no hay ninguna que no sea un UUID.
      *
-     * @param object{external_id?: string|null, order_reference?: string|null}|null $shipment
-     * @param object{order_reference?: string|null}|null                            $tracking
+     * @param object{external_id: string|null, order_reference: string|null}|null $shipment
+     * @param object{order_reference: string|null}|null                           $tracking
      */
     private function humanReference(?object $shipment, ?object $tracking): ?string
     {
         $candidates = [
-            $shipment?->order_reference ?? null,
-            $tracking?->order_reference ?? null,
+            $shipment !== null ? $shipment->order_reference : null,
+            $tracking !== null ? $tracking->order_reference : null,
         ];
 
-        $externalId = $this->stringOrNull($shipment?->external_id ?? null);
+        $externalId = $this->stringOrNull($shipment !== null ? $shipment->external_id : null);
         if ($externalId !== null) {
             $candidates[] = explode('#n:', $externalId, 2)[0];
         }

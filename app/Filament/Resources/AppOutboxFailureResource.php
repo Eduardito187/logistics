@@ -218,12 +218,19 @@ final class AppOutboxFailureResource extends Resource
             ->badge()
             ->getStateUsing(static fn (AppOutboxFailure $record): string => $record->isResolved() ? __('Resolved') : __('Open'))
             ->color(static fn (AppOutboxFailure $record): string => $record->isResolved() ? 'success' : 'danger')
-            ->tooltip(static fn (AppOutboxFailure $record): ?string => $record->isResolved()
-                ? __('Resolved by :actor on :date', [
+            ->tooltip(static function (AppOutboxFailure $record): ?string {
+                if (!$record->isResolved()) {
+                    return null;
+                }
+
+                // __() puede devolver array (clave de grupo): solo se usa si es texto.
+                $text = __('Resolved by :actor on :date', [
                     'actor' => $record->resolved_by ?? '—',
                     'date' => $record->resolved_at?->toDayDateTimeString() ?? '—',
-                ])
-                : null);
+                ]);
+
+                return is_string($text) ? $text : null;
+            });
     }
 
     /**
@@ -238,6 +245,7 @@ final class AppOutboxFailureResource extends Resource
                 DatePicker::make('until')->label(__('To'))->native(false),
             ])
             ->query(static function (Builder $query, array $data): Builder {
+                /** @var Builder<AppOutboxFailure> $query */
                 $from = $data['from'] ?? null;
                 $until = $data['until'] ?? null;
                 if (is_string($from) && $from !== '') {

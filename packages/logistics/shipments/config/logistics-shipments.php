@@ -117,6 +117,30 @@ return [
 
         // Timeout por request en segundos. Traer pedidos nunca debe colgar un worker.
         'timeout' => (int) env('SHIPMENTS_MAGENTO_TIMEOUT', 10),
+
+        // RECOJO EN TIENDA (nodo destino del pedido). Atributos de extensión (del pedido o del envío) donde
+        // Magento manda el código del punto de retiro, en orden. Por defecto el de Magento MSI In-Store
+        // Pickup (`pickup_location_code`). CSV en env.
+        'pickup_code_attributes' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('SHIPMENTS_MAGENTO_PICKUP_CODE_ATTRIBUTES', 'pickup_location_code')),
+        ), static fn (string $attribute): bool => $attribute !== '')),
+
+        // Mapa código de retiro (o método de envío) de Magento => código de nodo de la red
+        // (`network_nodes.code`). Un código sin entrada se usa tal cual; un método de envío solo cuenta si
+        // está en el mapa. Formato env: "CODIGO_MAGENTO:CODIGO_NODO,storepickup_SCZ01:T-SCZ-01". Vacío = sin
+        // traducción (Magento usa los mismos códigos que la red).
+        'pickup_location_map' => (static function (string $raw): array {
+            $map = [];
+            foreach (explode(',', $raw) as $pair) {
+                $parts = explode(':', $pair, 2);
+                if (count($parts) === 2 && trim($parts[0]) !== '' && trim($parts[1]) !== '') {
+                    $map[trim($parts[0])] = trim($parts[1]);
+                }
+            }
+
+            return $map;
+        })((string) env('SHIPMENTS_MAGENTO_PICKUP_LOCATION_MAP', '')),
     ],
 
     // Caché CORTA de las lecturas agregadas de tablero (resumen de envíos, conteos por estado y KPIs del

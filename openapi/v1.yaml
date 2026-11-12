@@ -392,6 +392,20 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/SettlementStatus'
+      - name: period_from
+        in: query
+        required: false
+        description: Inclusive lower bound (Y-m-d). Matches settlements whose billing month (YYYY-MM) is >= this date's month.
+        schema:
+          type: string
+          format: date
+      - name: period_to
+        in: query
+        required: false
+        description: Inclusive upper bound (Y-m-d), must be >= period_from. Matches settlements whose billing month is <= this date's month.
+        schema:
+          type: string
+          format: date
       - $ref: '#/components/parameters/PageNumber'
       - $ref: '#/components/parameters/PerPage'
       - $ref: '#/components/parameters/Cursor'
@@ -409,6 +423,55 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Settlement'
+                  meta:
+                    $ref: '#/components/schemas/ListMeta'
+        '403':
+          $ref: '#/components/responses/CarrierScopeForbidden'
+        '422':
+          description: Invalid or inverted period (validation_failed)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/carriers/corridors:
+    get:
+      tags:
+      - Carriers
+      summary: List tariffed carrier corridors
+      operationId: listCarrierCorridors
+      description: >-
+        Distinct corridors built from carrier tariffs, with the tariffed vehicle classes. `from`/`to` are the exact
+        slugs accepted by GET /app/carriers/{carrierId}/tariff (they stay slugs; they are not network node ids);
+        `from_label`/`to_label` are display-only (network node name when the slug matches a node code/id,
+        otherwise the humanized slug). Carrier role: only its own carrier (carrier_id ignored). Office: all,
+        optional carrier_id. Pagination is opt-in (no meta without page/cursor/per_page).
+      parameters:
+      - name: carrier_id
+        in: query
+        required: false
+        description: Office filter. Ignored for the carrier role.
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Corridor list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CarrierCorridor'
                   meta:
                     $ref: '#/components/schemas/ListMeta'
         '403':
@@ -3582,6 +3645,85 @@ paths:
           description: Notification suppressed.
       security:
       - appBearer: []
+  /app/orders/{orderNumber}/vehicle:
+    post:
+      tags:
+      - execution
+      operationId: assignOrderVehicle
+      summary: Assign every shipment of an order to a truck (attaches it to the route of the day)
+      description: >-
+        Adjunta cada envío del pedido a la ruta del vehículo (crea la parada si falta). El vehículo debe estar
+        operativo (available / in_service) y APTO (sin ítem crítico fallado en el pre-viaje sin habilitar).
+      parameters:
+      - name: orderNumber
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - vehicle_id
+              properties:
+                vehicle_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Shipments attached to the vehicle route
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                    - order_reference
+                    - vehicle_id
+                    - plate
+                    - shipments
+                    properties:
+                      order_reference:
+                        type: string
+                      vehicle_id:
+                        type: string
+                        format: uuid
+                      plate:
+                        type: string
+                      shipments:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                          - shipment_id
+                          - status
+                          properties:
+                            shipment_id:
+                              type: string
+                              format: uuid
+                            status:
+                              type: string
+        '404':
+          description: No order found for the reference
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Vehicle not operative or not fit to dispatch (business_rule_violation), or invalid body
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
   /app/orders/{orderNumber}/labels:
     parameters:
     - $ref: '#/components/parameters/OrderNumber'
@@ -4510,6 +4652,14 @@ paths:
         schema:
           type: string
           example: count_by_status
+      - name: pending_preparation
+        in: query
+        required: false
+        description: >-
+          true = only assigned shipments (PLANNED / IN_EXECUTION) whose delivery has no PREPARATION scan yet
+          (includes labels emitted but not prepared). Accepts true/false/1/0. Not applied to meta.count_by_status.
+        schema:
+          type: boolean
       - name: source
         in: query
         required: false
@@ -5374,6 +5524,122 @@ paths:
                       status:
                         type: string
                         example: recorded
+      security:
+      - serviceCredential: []
+  /integrations/catalog/products/{sku}/physical-spec:
+    put:
+      tags:
+      - catalog
+      operationId: setProductPhysicalSpec
+      summary: Set the measurements of one product (weight and dimensions) by SKU
+      parameters:
+      - name: sku
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductPhysicalSpecInput'
+      responses:
+        '200':
+          description: Product measurements after the update
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      canonical_sku:
+                        type: string
+                      name:
+                        type: string
+                      physical_spec:
+                        $ref: '#/components/schemas/ProductPhysicalSpec'
+        '404':
+          description: No product found for the SKU
+        '422':
+          description: Invalid measurements (at least one field, positive, within limits)
+      security:
+      - serviceCredential: []
+  /integrations/catalog/products/physical-specs:
+    post:
+      tags:
+      - catalog
+      operationId: batchSetProductPhysicalSpecs
+      summary: Set the measurements of many products in one request (per-item result)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    allOf:
+                    - $ref: '#/components/schemas/ProductPhysicalSpecInput'
+                    - type: object
+                      required:
+                      - sku
+                      properties:
+                        sku:
+                          type: string
+                          maxLength: 255
+      responses:
+        '200':
+          description: Per-item results and summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                          - sku
+                          - status
+                          properties:
+                            sku:
+                              type: string
+                            status:
+                              type: string
+                              enum:
+                              - updated
+                              - not_found
+                              - invalid
+                            message:
+                              type: string
+                      summary:
+                        type: object
+                        properties:
+                          updated:
+                            type: integer
+                          not_found:
+                            type: integer
+                          invalid:
+                            type: integer
+        '422':
+          description: Invalid payload
       security:
       - serviceCredential: []
   /integrations/capacity/buckets:
@@ -11065,6 +11331,70 @@ components:
       description: Token de integración de la plataforma (prefix.secret) enviado como Bearer y validado por
         el middleware access.token. Convive con serviceCredential en la puerta /integrations/*.
   schemas:
+    CarrierCorridor:
+      type: object
+      required:
+      - from
+      - to
+      - from_label
+      - to_label
+      - corridor_type
+      - vehicle_classes
+      properties:
+        from:
+          type: string
+          description: Exact corridor origin slug as stored in the tariff
+          example: cd-santa-cruz
+        to:
+          type: string
+          example: store-scz-centro
+        from_label:
+          type: string
+          example: CD Santa Cruz
+        to_label:
+          type: string
+          example: Store SCZ Centro
+        corridor_type:
+          $ref: '#/components/schemas/CorridorType'
+        vehicle_classes:
+          type: array
+          items:
+            $ref: '#/components/schemas/VehicleClass'
+    ProductPhysicalSpecInput:
+      type: object
+      description: At least one field is required; values must be positive (weight in kg, dimensions in cm).
+      properties:
+        weight_kg:
+          type: number
+          nullable: true
+        length_cm:
+          type: number
+          nullable: true
+        width_cm:
+          type: number
+          nullable: true
+        height_cm:
+          type: number
+          nullable: true
+    ProductPhysicalSpec:
+      type: object
+      properties:
+        weight_kg:
+          type: number
+          nullable: true
+        length_cm:
+          type: number
+          nullable: true
+        width_cm:
+          type: number
+          nullable: true
+        height_cm:
+          type: number
+          nullable: true
+        volume_m3:
+          type: number
+          nullable: true
+          description: Derived from the three dimensions when all are present.
     MissingUnitReason:
       type: string
       enum:
@@ -11189,7 +11519,10 @@ components:
       enum:
       - home_delivery
       - store_pickup
-      description: Derived from the destination node type (store/pickup_point → store_pickup; none/CD/unknown → home_delivery).
+      - transfer
+      description: >-
+        Derived. transfer = internal replenishment/transfer (source TRANSFER) to a node, never offered for counter
+        pickup; store_pickup = customer order to a store/pickup point; home_delivery otherwise.
     ShipmentAddressParts:
       type: object
       description: Best-effort parse of the free-text address (no ingest source sends a structured address yet).
@@ -12771,6 +13104,13 @@ components:
           app_build:
             type: string
             nullable: true
+          last_ip:
+            type: string
+            nullable: true
+            maxLength: 45
+            description: >-
+              Last client IP (IPv4 or IPv6) seen by the app gate, refreshed at most once per minute with
+              last_seen_at. Only returned for the caller's own devices; null if never seen. Informational only.
           is_current:
             type: boolean
             description: True for the device of the token making the request.
@@ -16616,6 +16956,7 @@ components:
       - STORE
       - MANUAL
       - EXCEL
+      - TRANSFER
     OutboxActionEnvelope:
       type: object
       required:
@@ -16780,6 +17121,16 @@ components:
       - status
       - stops
       properties:
+        plate:
+          type: string
+          nullable: true
+          description: Plate of the plan's truck (Fleet). Null if unknown.
+        driver_name:
+          type: string
+          nullable: true
+          description: >-
+            Driver of the truck for the plan date (route driver if dispatched, else the crew assembled for that
+            truck and day). Null if no crew is assigned.
         id:
           type: string
           format: uuid
@@ -17231,14 +17582,20 @@ components:
           type: string
           maxLength: 1024
           nullable: true
-          description: Referencia durable devuelta por la subida de fotos. Requerida si no se manda photo_paths.
+          description: >-
+            Durable `path` returned by POST /app/deliveries/photos; it must exist on the evidence disk, else 422
+            errors.photo_path. Required unless photo_paths or evidence_ids are sent.
         photo_paths:
           type: array
+          description: Each entry must exist on the evidence disk (same 422 as photo_path).
           items:
             type: string
             maxLength: 1024
         evidence_ids:
           type: array
+          description: >-
+            Without photos, at least one id must be evidence already captured for this shipment
+            (POST /app/deliveries/evidence); otherwise 422 on photo_path.
           items:
             type: string
             format: uuid
@@ -18258,6 +18615,15 @@ components:
       - status
       - documents
       properties:
+        vehicle_class:
+          type: string
+          nullable: true
+          enum:
+          - trailer
+          - truck
+          - third_party
+          - null
+          description: Vehicle class the service was tariffed with; null for historical settlements or when ambiguous.
         id:
           type: string
           format: uuid
@@ -18675,6 +19041,15 @@ components:
       - currency
       - reference
       properties:
+        vehicle_class:
+          type: string
+          enum:
+          - trailer
+          - truck
+          - third_party
+          description: >-
+            Optional. If omitted, derived from the carrier's tariff for the corridor when exactly one class is
+            tariffed; otherwise null.
         corridor_from:
           type: string
         corridor_to:
@@ -19692,6 +20067,8 @@ components:
       type: object
       required: [id, name, canonical_sku, status, variants, media]
       properties:
+        physical_spec:
+          $ref: '#/components/schemas/ProductPhysicalSpec'
         id:
           type: string
           format: uuid

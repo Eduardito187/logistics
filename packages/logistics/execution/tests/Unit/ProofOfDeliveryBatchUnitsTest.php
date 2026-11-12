@@ -11,15 +11,19 @@ use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
 use Logistics\Execution\Domain\ValueObject\ScanType;
 
-// POD en lote en el agregado: una confirmación cierra la entrega con varios bultos, sin GPS si no hay señal.
+// POD en lote en el agregado: una confirmación cierra la entrega con varios productos, sin GPS si no hay señal.
 
 function podbuLoadedDelivery(): Delivery
 {
     $delivery = Delivery::start(DeliveryId::generate(), 'SHIP-1', 'VEH-1');
     $device = DeviceContext::of('dev', 'usr');
     $geo = GeoPoint::of(-16.5, -68.1);
+    // Orden real del andén: se preparan TODOS los productos y recién después se cargan (la entrega no vuelve
+    // a Prepared desde Loaded).
     foreach (['U-1', 'U-2'] as $unit) {
         $delivery->recordPreparationScan($unit, $geo, $device, new DateTimeImmutable('2026-11-12T08:00:00Z'), 'prep-'.$unit);
+    }
+    foreach (['U-1', 'U-2'] as $unit) {
         $delivery->recordLoadScan($unit, $geo, $device, new DateTimeImmutable('2026-11-12T08:30:00Z'), 'load-'.$unit);
     }
     $delivery->releaseEvents();

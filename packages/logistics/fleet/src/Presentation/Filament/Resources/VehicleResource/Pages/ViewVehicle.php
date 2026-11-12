@@ -24,6 +24,7 @@ use Logistics\FleetOps\Presentation\Filament\Resources\MaintenancePlanResource;
 use Logistics\FleetOps\Presentation\Filament\Resources\OdometerReadingResource;
 use Logistics\FleetOps\Presentation\Filament\Resources\RefuelResource;
 use Logistics\FleetOps\Presentation\Filament\Resources\VehicleProfileResource;
+use Logistics\Planning\Presentation\Filament\VehicleRestrictionResource;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Telemetry\Presentation\Filament\Resources\TripResource;
 use Throwable;
@@ -31,7 +32,7 @@ use Throwable;
 /**
  * "Hub 360" de un vehículo: cockpit de detalle que agrega, en una sola pantalla, telemetría en vivo,
  * ruta/entregas de hoy, costos/utilización, documentos con vencimiento, alertas de mal uso e incidentes
- * (todo cross-context vía {@see VehicleHub}, tolerante). Deja de ser un infolist tipo CRUD: usa una vista
+ * (cada dato cross-context vía {@see VehicleHub}, tolerante). Deja de ser un infolist tipo CRUD: usa una vista
  * propia con la capa de diseño `.distrack-cockpit`. Desde la cabecera se edita la ficha y se registran
  * documentos (SOAT, inspección técnica, etc.).
  */
@@ -125,6 +126,8 @@ final class ViewVehicle extends ViewRecord
             ['Checklists pre-salida', PreTripChecklistResource::class, true],
             // Bitácora de aptitud (no apto / habilitado) del vehículo.
             ['Bitácora de aptitud', VehicleFitnessLogResource::class, true],
+            // Restricciones de ruteo del camión (tipos de carga, zonas, límites): las usa el planificador.
+            ['Restricciones de ruteo', VehicleRestrictionResource::class, true],
             ['Ficha técnica', VehicleProfileResource::class, true],
             ['Tripulaciones', CrewResource::class, true],
             // Documentos del vehículo (SOAT, inspección): su hogar es esta ficha (acotados por ?vehicle=).

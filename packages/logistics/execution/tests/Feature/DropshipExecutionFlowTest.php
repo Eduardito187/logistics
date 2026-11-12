@@ -30,7 +30,7 @@ function dropshipFlowSeedShipment(string $id, string $fulfillmentMode, ?string $
     DB::table('shipments')->insert([
         'id' => $id,
         'source' => 'test',
-        'external_id' => 'EXT-'.substr($id, 0, 8),
+        'external_id' => 'EXT-'.$id,
         'customer_name' => 'Cliente Demo',
         'address_text' => 'Av. Siempre Viva 123',
         'address_confidence' => 80,

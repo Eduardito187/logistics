@@ -10,6 +10,7 @@ use Logistics\Carriers\Domain\ValueObject\CorridorRef;
 use Logistics\Carriers\Domain\ValueObject\Money;
 use Logistics\Carriers\Domain\ValueObject\SettlementId;
 use Logistics\Carriers\Domain\ValueObject\SettlementStatus;
+use Logistics\Carriers\Domain\ValueObject\VehicleClass;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\SettlementRecord;
 
 /**
@@ -30,11 +31,13 @@ final class SettlementMapper
             $record->dispute_reason,
             $record->payment_reference,
             array_values($record->documents),
+            // Filas previas a la columna (o con un valor desconocido) quedan sin clase: null.
+            $record->vehicle_class !== null ? VehicleClass::tryFrom($record->vehicle_class) : null,
         );
     }
 
     /**
-     * @return array{id: string, carrier_id: string, corridor_from: string, corridor_to: string, corridor_type: string, period: string, amount_cents: int, currency: string, reference: string, status: string, dispute_reason: string|null, payment_reference: string|null, documents: list<array{type: string, reference: string}>}
+     * @return array{id: string, carrier_id: string, corridor_from: string, corridor_to: string, corridor_type: string, period: string, amount_cents: int, currency: string, reference: string, status: string, dispute_reason: string|null, payment_reference: string|null, documents: list<array{type: string, reference: string}>, vehicle_class: string|null}
      */
     public function toRow(Settlement $settlement): array
     {
@@ -52,6 +55,7 @@ final class SettlementMapper
             'dispute_reason' => $settlement->disputeReason(),
             'payment_reference' => $settlement->paymentReference(),
             'documents' => array_values($settlement->documents()),
+            'vehicle_class' => $settlement->vehicleClass()?->value,
         ];
     }
 }

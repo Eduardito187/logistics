@@ -76,4 +76,28 @@ final readonly class EloquentTariffRepository implements TariffRepository
 
         return $record instanceof TariffRecord ? $this->mapper->toDomain($record) : null;
     }
+
+    public function vehicleClassesFor(string $carrierId, CorridorRef $corridor): array
+    {
+        $values = TariffRecord::query()
+            ->where('carrier_id', $carrierId)
+            ->where('corridor_from', $corridor->from)
+            ->where('corridor_to', $corridor->to)
+            ->where('corridor_type', $corridor->type)
+            ->distinct()
+            ->orderBy('vehicle_class')
+            ->pluck('vehicle_class')
+            ->all();
+
+        $classes = [];
+        foreach ($values as $value) {
+            // Valores fuera del enum (datos viejos o manuales) se descartan en vez de romper la lectura.
+            $class = is_string($value) ? VehicleClass::tryFrom($value) : null;
+            if ($class !== null) {
+                $classes[] = $class;
+            }
+        }
+
+        return $classes;
+    }
 }

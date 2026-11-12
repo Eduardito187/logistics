@@ -11,6 +11,10 @@ use Logistics\Shared\Application\Command\Command;
  *
  * El corredor llega como sus tres primitivos, el monto como centavos + moneda y el período como texto
  * `YYYY-MM`, para no acoplar la entrada a los VO del dominio; el handler los convierte.
+ *
+ * `vehicleClass` (trailer, truck, third_party) es opcional: si no llega, el handler la deriva de las
+ * tarifas del transportista para ese corredor (solo si hay UNA clase tarifada; si hay varias o ninguna,
+ * queda en null para no inventar).
  */
 final readonly class SubmitSettlement implements Command
 {
@@ -27,5 +31,6 @@ final readonly class SubmitSettlement implements Command
         public string $currency,
         public string $reference,
         public array $documents = [],
+        public ?string $vehicleClass = null,
     ) {}
 }

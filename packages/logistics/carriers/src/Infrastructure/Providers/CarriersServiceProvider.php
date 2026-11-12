@@ -38,6 +38,7 @@ use Logistics\Carriers\Application\Command\SubmitSettlement\SubmitSettlementHand
 use Logistics\Carriers\Application\Command\SuspendCarrier\SuspendCarrier;
 use Logistics\Carriers\Application\Command\SuspendCarrier\SuspendCarrierHandler;
 use Logistics\Carriers\Application\Contract\CarrierAssignmentReader;
+use Logistics\Carriers\Application\Contract\CarrierCorridorReader;
 use Logistics\Carriers\Application\Query\AssignCarrierForVolume\AssignCarrierForVolume;
 use Logistics\Carriers\Application\Query\AssignCarrierForVolume\AssignCarrierForVolumeHandler;
 use Logistics\Carriers\Application\Query\CheapestCarrierForCorridor\CheapestCarrierForCorridor;
@@ -50,6 +51,8 @@ use Logistics\Carriers\Application\Query\GetTariffForCorridor\GetTariffForCorrid
 use Logistics\Carriers\Application\Query\GetTariffForCorridor\GetTariffForCorridorHandler;
 use Logistics\Carriers\Application\Query\ListCarrierAssignments\ListCarrierAssignments;
 use Logistics\Carriers\Application\Query\ListCarrierAssignments\ListCarrierAssignmentsHandler;
+use Logistics\Carriers\Application\Query\ListCarrierCorridors\ListCarrierCorridors;
+use Logistics\Carriers\Application\Query\ListCarrierCorridors\ListCarrierCorridorsHandler;
 use Logistics\Carriers\Application\Query\ListCarriers\ListCarriers;
 use Logistics\Carriers\Application\Query\ListCarriers\ListCarriersHandler;
 use Logistics\Carriers\Application\Query\ListSettlements\ListSettlements;
@@ -63,6 +66,7 @@ use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentCa
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentSettlementRepository;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentTariffRepository;
 use Logistics\Carriers\Infrastructure\ReadSide\DbCarrierAssignmentReader;
+use Logistics\Carriers\Infrastructure\ReadSide\DbCarrierCorridorReader;
 use Logistics\Shared\Application\HandlerRegistry;
 
 /**
@@ -104,6 +108,8 @@ final class CarriersServiceProvider extends ServiceProvider
         CancelCarrierTrip::class => CancelCarrierTripHandler::class,
         GetCarrierTrip::class => GetCarrierTripHandler::class,
         ListCarrierAssignments::class => ListCarrierAssignmentsHandler::class,
+        // Corredores tarifados (selector de corredor de la app, sin escribir slugs a mano).
+        ListCarrierCorridors::class => ListCarrierCorridorsHandler::class,
     ];
 
     public function register(): void
@@ -113,6 +119,7 @@ final class CarriersServiceProvider extends ServiceProvider
         $this->app->bind(SettlementRepository::class, EloquentSettlementRepository::class);
         $this->app->bind(CarrierTripRepository::class, EloquentCarrierTripRepository::class);
         $this->app->bind(CarrierAssignmentReader::class, DbCarrierAssignmentReader::class);
+        $this->app->bind(CarrierCorridorReader::class, DbCarrierCorridorReader::class);
     }
 
     public function boot(): void

@@ -24,6 +24,7 @@ use Logistics\Carriers\Application\Command\CancelCarrierTrip\CancelCarrierTrip;
 use Logistics\Carriers\Application\Command\CloseCarrierTrip\CloseCarrierTrip;
 use Logistics\Carriers\Application\Command\RemoveShipmentFromCarrierTrip\RemoveShipmentFromCarrierTrip;
 use Logistics\Carriers\Application\Command\StartCarrierTrip\StartCarrierTrip;
+use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\CarrierRecord;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Model\CarrierTripRecord;
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierTripResource\Pages\CreateCarrierTrip;
 use Logistics\Carriers\Presentation\Filament\Resources\CarrierTripResource\Pages\ListCarrierTrips;
@@ -117,7 +118,10 @@ final class CarrierTripResource extends Resource
                         ->relationship(
                             'carrier',
                             'name',
-                            static fn (Builder $query): Builder => $query->where('status', 'active'),
+                            static function (Builder $query): Builder {
+                                /** @var Builder<CarrierRecord> $query */
+                                return $query->where('status', 'active');
+                            },
                         )
                         ->required()
                         ->native(false)

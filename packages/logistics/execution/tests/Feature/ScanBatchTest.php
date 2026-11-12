@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Http\Middleware\IdempotentRequests;
 use App\Http\Problem\ProblemExceptionRenderer;
+use App\Models\User;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,7 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  */
 beforeEach(function (): void {
     $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+    $this->actingAs(User::factory()->create(), 'sanctum');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',
     'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',
@@ -54,7 +56,7 @@ it('acepta, deduplica y rechaza por ítem con 207', function (): void {
         sbatchItem('sb-dep-1', 'departure', ['shipment_id' => $shipment]),
     ];
 
-    test()->postJson(SBATCH_URL, ['items' => $items])
+    test()->postJson(SBATCH_URL, ['items' => $items, 'device_id' => 'dev', 'user_id' => 'usr'])
         ->assertStatus(207)
         ->assertJsonPath('data.0.result', 'accepted')
         ->assertJsonPath('data.1.result', 'accepted')
@@ -72,7 +74,7 @@ it('acepta, deduplica y rechaza por ítem con 207', function (): void {
         ->and(DB::table('execution_scan_batch_items')->where('idempotency_key', 'sb-load-1')->value('result'))->toBe('accepted');
 
     // Reenvío del lote entero: lo aceptado vuelve como duplicate, sin duplicar escaneos.
-    test()->postJson(SBATCH_URL, ['items' => array_slice($items, 0, 2)])
+    test()->postJson(SBATCH_URL, ['items' => array_slice($items, 0, 2), 'device_id' => 'dev', 'user_id' => 'usr'])
         ->assertStatus(207)
         ->assertJsonPath('data.0.result', 'duplicate')
         ->assertJsonPath('data.1.result', 'duplicate');
@@ -90,10 +92,12 @@ it('reconoce como duplicate un escaneo ya enviado por su endpoint individual', f
         'lng' => -68.15,
         'occurred_at' => SBATCH_AT,
         'idempotency_key' => 'sb-single-1',
+        'device_id' => 'dev',
+        'user_id' => 'usr',
     ];
     test()->postJson('/api/v1/app/deliveries/scans/preparation', $body)->assertOk();
 
-    test()->postJson(SBATCH_URL, ['items' => [sbatchItem('sb-single-1', 'preparation', $body)]])
+    test()->postJson(SBATCH_URL, ['items' => [sbatchItem('sb-single-1', 'preparation', $body)], 'device_id' => 'dev', 'user_id' => 'usr'])
         ->assertStatus(207)
         ->assertJsonPath('data.0.result', 'duplicate');
 });
