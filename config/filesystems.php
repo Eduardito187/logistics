@@ -7,14 +7,34 @@ declare(strict_types=1);
 // sin S3), sin 500. Regla "funciona en docker nuevo": los defaults operan sin depender de infra externa.
 $evidenceDriver = (env('AWS_BUCKET') || env('AWS_ENDPOINT')) ? 's3' : 'local';
 
-// Raíz de un disco de evidencia según el driver: en S3, el prefijo (o '' si tiene bucket propio); en local,
-// una carpeta bajo storage/app. Centralizado para no repetir el ternario en cada disco (sin anidar ternarios).
-$evidenceRoot = static function (string $bucketEnv, string $prefix, string $localBase = 'app/private') use ($evidenceDriver): string {
+// Bases locales (una sola definición de cada literal, para no duplicarlo entre discos).
+$privateBase = 'app/private';
+$publicBase = 'app/public';
+
+// Fábrica de un disco de evidencia (S3-compatible o local): todos comparten la misma forma; solo cambian el
+// bucket/prefijo y la visibilidad. Evita repetir el bloque idéntico en cada disco. En S3, root es el prefijo
+// (o '' si el disco tiene bucket propio); en local, una carpeta bajo storage/app. Sin anidar ternarios.
+$evidenceDisk = static function (string $bucketEnv, string $prefix, bool $public = false) use ($evidenceDriver, $privateBase, $publicBase): array {
     if ($evidenceDriver === 's3') {
-        return env($bucketEnv) ? '' : $prefix;
+        $root = env($bucketEnv) ? '' : $prefix;
+    } else {
+        $root = storage_path(($public ? $publicBase : $privateBase).'/'.$prefix);
     }
 
-    return storage_path($localBase.'/'.$prefix);
+    return [
+        'driver' => $evidenceDriver,
+        'key' => env('AWS_ACCESS_KEY_ID'),
+        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+        'region' => env('AWS_DEFAULT_REGION'),
+        'bucket' => env($bucketEnv, env('AWS_BUCKET')),
+        'root' => $root,
+        'url' => env('AWS_URL'),
+        'endpoint' => env('AWS_ENDPOINT'),
+        'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+        'visibility' => $public ? 'public' : 'private',
+        'throw' => false,
+        'report' => false,
+    ];
 };
 
 return [
@@ -49,7 +69,7 @@ return [
 
         'local' => [
             'driver' => 'local',
-            'root' => storage_path('app/private'),
+            'root' => storage_path($privateBase),
             'serve' => true,
             'throw' => false,
             'report' => false,
@@ -57,7 +77,7 @@ return [
 
         'public' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
+            'root' => storage_path($publicBase),
             'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
             'visibility' => 'public',
             'throw' => false,
@@ -104,101 +124,14 @@ return [
         | manda al cliente en la notificación (ADR 006).
         */
 
-        // Prueba de entrega: firma y fotos que registra el repartidor al entregar.
-        'pod' => [
-            'driver' => $evidenceDriver,
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_POD_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceRoot('AWS_POD_BUCKET', 'pod'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'visibility' => 'private',
-            'throw' => false,
-            'report' => false,
-        ],
-
-        // Checklist de carga / salida de vehículo.
-        'checklist' => [
-            'driver' => $evidenceDriver,
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_CHECKLIST_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceRoot('AWS_CHECKLIST_BUCKET', 'checklists'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'visibility' => 'private',
-            'throw' => false,
-            'report' => false,
-        ],
-
-        // Evidencia de daños (reclamos / siniestros).
-        'damage' => [
-            'driver' => $evidenceDriver,
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_DAMAGE_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceRoot('AWS_DAMAGE_BUCKET', 'damages'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'visibility' => 'private',
-            'throw' => false,
-            'report' => false,
-        ],
-
-        // Firma manuscrita del cliente (evidencia anti-fraude): privado, PII.
-        'signature' => [
-            'driver' => $evidenceDriver,
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_SIGNATURE_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceRoot('AWS_SIGNATURE_BUCKET', 'signatures'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'visibility' => 'private',
-            'throw' => false,
-            'report' => false,
-        ],
-
-        // Foto del documento de identidad del cliente (evidencia anti-fraude): privado, PII sensible.
-        'id_document' => [
-            'driver' => $evidenceDriver,
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_ID_DOCUMENT_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceRoot('AWS_ID_DOCUMENT_BUCKET', 'id-documents'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'visibility' => 'private',
-            'throw' => false,
-            'report' => false,
-        ],
-
-        // Collage PNG público que acompaña la notificación al cliente (ADR 006).
-        'collages' => [
-            'driver' => $evidenceDriver === 's3' ? 's3' : 'local',
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_COLLAGE_BUCKET', env('AWS_BUCKET')),
-            'root' => $evidenceRoot('AWS_COLLAGE_BUCKET', 'collages', 'app/public'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'visibility' => 'public',
-            'throw' => false,
-            'report' => false,
-        ],
+        // Discos de evidencia (todos con la misma forma; varían bucket/prefijo y visibilidad). Privados salvo
+        // `collages`. Sin S3 configurado caen a local (ver $evidenceDriver) para funcionar en cualquier entorno.
+        'pod' => $evidenceDisk('AWS_POD_BUCKET', 'pod'),              // Prueba de entrega: firma y fotos del repartidor.
+        'checklist' => $evidenceDisk('AWS_CHECKLIST_BUCKET', 'checklists'), // Checklist de carga / salida de vehículo.
+        'damage' => $evidenceDisk('AWS_DAMAGE_BUCKET', 'damages'),    // Evidencia de daños (reclamos / siniestros).
+        'signature' => $evidenceDisk('AWS_SIGNATURE_BUCKET', 'signatures'), // Firma manuscrita del cliente (PII).
+        'id_document' => $evidenceDisk('AWS_ID_DOCUMENT_BUCKET', 'id-documents'), // Documento de identidad (PII sensible).
+        'collages' => $evidenceDisk('AWS_COLLAGE_BUCKET', 'collages', true), // Collage público (ADR 006).
 
         // Documentos de flota (SOAT, inspección técnica, etc.).
         'documents' => [
