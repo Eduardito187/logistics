@@ -9,7 +9,10 @@ use Logistics\Telemetry\Presentation\Http\Controller\DeactivateGeofenceControlle
 use Logistics\Telemetry\Presentation\Http\Controller\DefineGeofenceController;
 use Logistics\Telemetry\Presentation\Http\Controller\DeleteGeofenceController;
 use Logistics\Telemetry\Presentation\Http\Controller\GetLiveFleetPositionsController;
+use Logistics\Telemetry\Presentation\Http\Controller\GetShipmentBreadcrumbsController;
+use Logistics\Telemetry\Presentation\Http\Controller\GetShipmentEtaController;
 use Logistics\Telemetry\Presentation\Http\Controller\GetStreetTrafficController;
+use Logistics\Telemetry\Presentation\Http\Controller\GetVehicleEtasController;
 use Logistics\Telemetry\Presentation\Http\Controller\GetVehicleTelemetrySummaryController;
 use Logistics\Telemetry\Presentation\Http\Controller\GetVehicleTrackController;
 use Logistics\Telemetry\Presentation\Http\Controller\ListAlertsController;
@@ -32,20 +35,32 @@ return [
     // (torre de control / planning).
     'app' => static function (): void {
         Route::prefix('telemetry')->name('telemetry.')->group(function (): void {
-            // Ingesta de un lote de lecturas GPS desde el app interno (origen 'app').
+            // Ingesta de un lote de lecturas GPS desde el app interno (origen 'app'). Camino recomendado:
+            // hasta ingest.max_batch lecturas por POST, idempotente por lectura, resultado por ítem (202/207).
             Route::post('pings', RecordAppVehiclePingsController::class)->name('pings.record');
 
-            // Posición en vivo de toda la flota.
+            // Posición en vivo de toda la flota (placa + chofer; ETag/If-None-Match → 304 y ?since=).
             Route::get('fleet/live', GetLiveFleetPositionsController::class)->name('fleet.live');
+
+            // Seguimiento por envío: migas de pan (traza a bordo) y ETA dinámica de su parada.
+            Route::get('shipments/{shipmentId}/breadcrumbs', GetShipmentBreadcrumbsController::class)
+                ->name('shipments.breadcrumbs')
+                ->where('shipmentId', '[0-9a-fA-F-]{36}');
+            Route::get('shipments/{shipmentId}/eta', GetShipmentEtaController::class)
+                ->name('shipments.eta')
+                ->where('shipmentId', '[0-9a-fA-F-]{36}');
 
             // Traza (?from&to) y resumen diario (?date) de un vehículo.
             Route::get('vehicles/{vehicleId}/track', GetVehicleTrackController::class)->name('vehicles.track');
             Route::get('vehicles/{vehicleId}/summary', GetVehicleTelemetrySummaryController::class)->name('vehicles.summary');
 
+            // ETA dinámica de las paradas restantes de la ruta del día del vehículo.
+            Route::get('vehicles/{vehicleId}/etas', GetVehicleEtasController::class)->name('vehicles.etas');
+
             // Trips (?vehicle_id&date).
             Route::get('trips', ListTripsController::class)->name('trips.index');
 
-            // Alertas (?vehicle_id&type&acknowledged) y su reconocimiento.
+            // Alertas (?vehicle_id&type&acknowledged&from&to, paginadas) y su reconocimiento.
             Route::get('alerts', ListAlertsController::class)->name('alerts.index');
             Route::post('alerts/{alertId}/acknowledge', AcknowledgeAlertController::class)->name('alerts.acknowledge');
 

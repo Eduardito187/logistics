@@ -35,9 +35,18 @@ Schedule::command('logistics:outbox:pump')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Reconciliación hacia SAP: empuja los traspasos de stock pendientes (idempotente
-// por event_id). Worker de respaldo del flujo evento → outbox → SAP.
+// Reconciliación hacia SAP: reintenta SOLO los traspasos Failed cuyo backoff venció
+// (lotes chicos, idempotente por event_id). Nunca toma los Pending: los traspasos
+// nuevos los empuja únicamente el reactor del outbox (sin doble envío).
 Schedule::command('logistics:sap:dispatch-transfers')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Avisos fire-and-forget a SAP: re-encola en la cola `sap` los avisos Pending/Failed
+// con intentos < máximo y backoff vencido (lote chico, fuera de transacción). No
+// habla con SAP: el envío lo hace el job; agotados los intentos se dejan Failed.
+Schedule::command('logistics:sap:retry-notifications')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();

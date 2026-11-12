@@ -37,48 +37,60 @@ final readonly class FleetVehicleAvailabilityProvider implements FleetAvailabili
     public function availableFor(PlanDate $date): array
     {
         $crewedVehicleIds = $this->crewedVehicleIdsFor($date);
-        $restrictions = $this->restrictionProfiles();
 
-        $specs = [];
-
-        VehicleModel::query()
+        /** @var list<VehicleModel> $vehicles */
+        $vehicles = VehicleModel::query()
             ->where('status', self::AVAILABLE_STATUS)
             ->with('homeBaseNode')
             ->orderBy('id')
             ->get()
-            ->each(function (VehicleModel $vehicle) use (&$specs, $crewedVehicleIds, $restrictions): void {
-                $node = $vehicle->homeBaseNode;
-                $lat = $node !== null && is_numeric($node->lat) ? (float) $node->lat : null;
-                $lng = $node !== null && is_numeric($node->lng) ? (float) $node->lng : null;
-                $vehicleId = (string) $vehicle->id;
+            ->all();
 
-                $specs[] = VehicleCapacitySpec::of(
-                    vehicleId: $vehicleId,
-                    capacityKg: (float) $vehicle->capacity_kg,
-                    capacityM3: (float) $vehicle->capacity_m3,
-                    homeBaseNodeId: (string) $vehicle->home_base_node_id,
-                    hasCrew: isset($crewedVehicleIds[$vehicleId]),
-                    departmentId: $this->departmentOf($vehicle),
-                    homeBaseLatitude: $lat,
-                    homeBaseLongitude: $lng,
-                    profile: $restrictions[$vehicleId] ?? null,
-                );
-            });
+        // Restricciones SOLO de los camiones en alcance (disponibles), en una consulta whereIn.
+        $restrictions = $this->restrictionProfiles(array_map(
+            static fn (VehicleModel $vehicle): string => (string) $vehicle->id,
+            $vehicles,
+        ));
+
+        $specs = [];
+        foreach ($vehicles as $vehicle) {
+            $node = $vehicle->homeBaseNode;
+            $lat = $node !== null && is_numeric($node->lat) ? (float) $node->lat : null;
+            $lng = $node !== null && is_numeric($node->lng) ? (float) $node->lng : null;
+            $vehicleId = (string) $vehicle->id;
+
+            $specs[] = VehicleCapacitySpec::of(
+                vehicleId: $vehicleId,
+                capacityKg: (float) $vehicle->capacity_kg,
+                capacityM3: (float) $vehicle->capacity_m3,
+                homeBaseNodeId: (string) $vehicle->home_base_node_id,
+                hasCrew: isset($crewedVehicleIds[$vehicleId]),
+                departmentId: $this->departmentOf($vehicle),
+                homeBaseLatitude: $lat,
+                homeBaseLongitude: $lng,
+                profile: $restrictions[$vehicleId] ?? null,
+            );
+        }
 
         return $specs;
     }
 
     /**
-     * Perfiles de restricción de ruteo (R-04) por vehículo, leídos EN LOTE del read-side propio de
-     * Planificación (planning_vehicle_restrictions). Tolerante: si la tabla aún no existe (migración sin
-     * aplicar), degrada a sin restricciones para no romper la planificación.
+     * Perfiles de restricción de ruteo (R-04) de los vehículos dados, leídos EN LOTE (whereIn) del
+     * read-side propio de Planificación (planning_vehicle_restrictions). Tolerante: si la tabla aún no
+     * existe (migración sin aplicar), degrada a sin restricciones para no romper la planificación.
      *
+     * @param  list<string>                       $vehicleIds
      * @return array<string, VehicleRouteProfile>
      */
-    private function restrictionProfiles(): array
+    private function restrictionProfiles(array $vehicleIds): array
     {
+        if ($vehicleIds === []) {
+            return [];
+        }
+
         try {
-            $rows = DB::table('planning_vehicle_restrictions')->get();
+            $rows = DB::table('planning_vehicle_restrictions')->whereIn('vehicle_id', $vehicleIds)->get();
         } catch (Throwable) {
             return [];
         }
@@ -86,7 +98,7 @@ final readonly class FleetVehicleAvailabilityProvider implements FleetAvailabili
         $profiles = [];
         foreach ($rows as $row) {
             $data = (array) $row;
-            $vehicleId = isset($data['vehicle_id']) ? (string) $data['vehicle_id'] : '';
+            $vehicleId = isset($data['vehicle_id']) && is_scalar($data['vehicle_id']) ? (string) $data['vehicle_id'] : '';
             if ($vehicleId === '') {
                 continue;
             }

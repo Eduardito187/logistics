@@ -21,6 +21,9 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentLi
  * @property string|null $unit_price
  * @property string|null $unit_price_currency
  * @property int         $quantity
+ * @property string|null $unit_weight_kg      foto de medidas por unidad (Fase 2.1), kg
+ * @property string|null $unit_volume_m3      foto de medidas por unidad (Fase 2.1), m³
+ * @property string|null $measurements_source product | category | default
  */
 final class ShipmentLineRecord extends Model
 {
@@ -40,6 +43,8 @@ final class ShipmentLineRecord extends Model
      */
     protected $casts = [
         'unit_price' => 'decimal:2',
+        'unit_weight_kg' => 'decimal:3',
+        'unit_volume_m3' => 'decimal:6',
     ];
 
     /**

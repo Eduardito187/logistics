@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\EnsureAppVersion;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequestId;
 use App\Http\Problem\ProblemExceptionRenderer;
@@ -32,6 +33,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // M-7: request-id de correlación lo más temprano posible (antes que cualquier otro middleware),
         // para que X-Request-Id ya esté en el Context y en los logs del resto de la cadena del request.
         $middleware->prepend(RequestId::class);
+
+        // Versión mínima de la app interna: cabecera X-Min-App-Version en toda respuesta /api/v1/app/* y
+        // 426 Upgrade Required si X-App-Version está por debajo. Global (se autolimita a la puerta app)
+        // para cubrir también el login público y los 404 de la puerta. Sin mínima configurada es no-op.
+        $middleware->append(EnsureAppVersion::class);
 
         // Detrás de un proxy/túnel (nginx, Cloudflare, cloudflared/ngrok para acceso móvil): confiar en
         // las cabeceras X-Forwarded-* para detectar el HOST y el ESQUEMA (HTTPS) reales. Sin esto, tras un

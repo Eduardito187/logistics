@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Presentation\Filament\Resources\DepartureResource\Pages;
 
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Filament\Support\Exceptions\Halt;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Logistics\FleetOps\Application\Command\RegisterDeparture\RegisterDeparture;
+use Logistics\FleetOps\Domain\Exception\FleetOpsException;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Model\DepartureRecord;
 use Logistics\FleetOps\Presentation\Filament\Resources\DepartureResource;
 use Logistics\Shared\Application\Command\CommandBus;
@@ -53,6 +56,33 @@ final class CreateDeparture extends CreateRecord
             'items' => $items,
         ];
 
+        try {
+            $this->dispatchDeparture($vehicleId, $data, $load);
+        } catch (FleetOpsException $e) {
+            // Regla de negocio (p. ej. vehículo no apto por checklist crítico): motivo visible, nada se guarda.
+            Notification::make()
+                ->title(__('Could not register the departure'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+
+            throw new Halt;
+        }
+
+        return DepartureRecord::query()
+            ->where('vehicle_id', $vehicleId)
+            ->orderByDesc('id')
+            ->firstOrFail();
+    }
+
+    /**
+     * Despacha RegisterDeparture por el CommandBus con los datos del formulario.
+     *
+     * @param array<string, mixed>                                                                             $data
+     * @param array{description: string|null, weight_kg: float|null, items: list<array{name: string, qty: int}>} $load
+     */
+    private function dispatchDeparture(string $vehicleId, array $data, array $load): void
+    {
         app(CommandBus::class)->dispatch(new RegisterDeparture(
             vehicleId: $vehicleId,
             driverId: null,
@@ -66,10 +96,5 @@ final class CreateDeparture extends CreateRecord
             departedAt: Carbon::parse((string) $data['departed_at'])->toIso8601String(),
             note: isset($data['note']) && is_string($data['note']) && $data['note'] !== '' ? $data['note'] : null,
         ));
-
-        return DepartureRecord::query()
-            ->where('vehicle_id', $vehicleId)
-            ->orderByDesc('id')
-            ->firstOrFail();
     }
 }

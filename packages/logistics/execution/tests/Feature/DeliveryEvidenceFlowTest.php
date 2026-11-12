@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidence;
 use Logistics\Execution\Application\Command\RecordEvidenceValidation\RecordEvidenceValidation;
@@ -130,4 +131,42 @@ it('registra la validación por el endpoint de integraciones', function (): void
         ->assertOk();
 
     expect(DeliveryEvidenceRecord::query()->whereKey($id)->value('validation_status'))->toBe('ok');
+});
+
+it('encola execution.delivery_evidence_validated al outbox al validar, sin duplicar en reenvíos', function (): void {
+    $shipmentId = Uuid::generate()->value;
+    app(CommandBus::class)->dispatch(captureCmd($shipmentId, ['kind' => 'damage']));
+    $id = DeliveryEvidenceRecord::query()->where('shipment_id', $shipmentId)->value('id');
+
+    app(CommandBus::class)->dispatch(new RecordEvidenceValidation(
+        evidenceId: $id,
+        status: 'ok',
+        validatedAt: '2026-11-05T13:00:00+00:00',
+        validatedBy: 'evidence-sidecar',
+    ));
+
+    $rows = DB::table('outbox_messages')
+        ->where('event_name', 'execution.delivery_evidence_validated')
+        ->where('aggregate_id', $id)
+        ->get();
+
+    expect($rows)->toHaveCount(1);
+
+    /** @var array<string, mixed> $payload */
+    $payload = json_decode((string) $rows[0]->payload, true);
+    expect($rows[0]->aggregate_type)->toBe('execution.delivery_evidence')
+        ->and($payload['shipment_id'])->toBe($shipmentId)
+        ->and($payload['kind'])->toBe('damage')
+        ->and($payload['validation_status'])->toBe('ok')
+        ->and($payload['previous_status'])->toBe('pending')
+        ->and($payload['validated_by'])->toBe('evidence-sidecar')
+        ->and($payload['occurred_at'])->toBe('2026-11-05T13:00:00+00:00');
+
+    // Reenvío del mismo resultado (reintento del validador): no graba un segundo hecho.
+    app(CommandBus::class)->dispatch(new RecordEvidenceValidation(evidenceId: $id, status: 'ok'));
+
+    expect(DB::table('outbox_messages')
+        ->where('event_name', 'execution.delivery_evidence_validated')
+        ->where('aggregate_id', $id)
+        ->count())->toBe(1);
 });

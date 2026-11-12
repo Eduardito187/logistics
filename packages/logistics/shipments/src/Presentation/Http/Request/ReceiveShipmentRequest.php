@@ -50,6 +50,10 @@ final class ReceiveShipmentRequest extends FormRequest
             'lines.*.image_url' => ['nullable', 'string', 'url', 'max:2048'],
             'lines.*.price' => ['nullable', 'numeric', 'min:0'],
             'lines.*.currency' => ['nullable', 'string', 'size:3'],
+            // Retiro en tienda / traspaso: nodo destino por UUID o por código de tienda/CD
+            // (network_nodes.code). Ambos opcionales; sin ninguno (ni sufijo "#n:{uuid}") es a domicilio.
+            'destination_node_id' => ['nullable', 'uuid'],
+            'destination_node_code' => ['nullable', 'string', 'max:64'],
         ];
     }
 
@@ -58,7 +62,7 @@ final class ReceiveShipmentRequest extends FormRequest
      */
     public function toCommand(): ReceiveShipment
     {
-        /** @var array{source: string, external_id: string, customer_name: string, customer_document_id?: string|null, customer_phone?: string|null, customer_email?: string|null, address_text: string, address_reference?: string|null, lat?: float|int|string|null, lng?: float|int|string|null, lines: list<array{sku: string, product_name: string, quantity: int|string, image_url?: string|null, price?: float|int|string|null, currency?: string|null}>} $data */
+        /** @var array{source: string, external_id: string, customer_name: string, destination_node_id?: string|null, destination_node_code?: string|null, customer_document_id?: string|null, customer_phone?: string|null, customer_email?: string|null, address_text: string, address_reference?: string|null, lat?: float|int|string|null, lng?: float|int|string|null, lines: list<array{sku: string, product_name: string, quantity: int|string, image_url?: string|null, price?: float|int|string|null, currency?: string|null}>} $data */
         $data = $this->validated();
 
         $lines = [];
@@ -96,6 +100,12 @@ final class ReceiveShipmentRequest extends FormRequest
                 : null,
             customerEmail: isset($data['customer_email']) && $data['customer_email'] !== ''
                 ? (string) $data['customer_email']
+                : null,
+            destinationNodeId: isset($data['destination_node_id']) && $data['destination_node_id'] !== ''
+                ? (string) $data['destination_node_id']
+                : null,
+            destinationNodeCode: isset($data['destination_node_code']) && $data['destination_node_code'] !== ''
+                ? (string) $data['destination_node_code']
                 : null,
         );
     }

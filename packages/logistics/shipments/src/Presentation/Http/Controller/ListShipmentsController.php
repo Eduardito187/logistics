@@ -21,7 +21,9 @@ use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 use Logistics\Shipments\Presentation\Http\Support\JsonEnvelope;
 
 /**
- * Puerta app: lista los pedidos recibidos, con filtros opcionales por estado y fuente.
+ * Puerta app: lista los pedidos recibidos, con filtros opcionales por estado (cualquier capitalización),
+ * fuente, nodo destino y rango de fecha prometida (`delivery_date_from` / `delivery_date_to`). Cada ítem
+ * trae además su objeto `progress` (camión, preparado, cargado, entregado, etiquetas; aditivo).
  *
  * Lee vía QueryBus (ListShipments → list<ShipmentView>). La validación es inline por ser filtros
  * simples de query string.
@@ -48,12 +50,25 @@ final class ListShipmentsController
         $statuses = array_map(static fn (ShipmentStatus $status): string => $status->value, ShipmentStatus::cases());
         $sources = array_map(static fn (OrderSource $source): string => $source->value, OrderSource::cases());
 
-        /** @var array{status?: string|null, source?: string|null, destination_node_id?: string|null} $filters */
+        // El estado se acepta en cualquier capitalización (planned / PLANNED / Planned): se normaliza a
+        // mayúsculas ANTES de validar, así solo un valor realmente desconocido devuelve 422.
+        $rawStatus = $request->query('status');
+        if (is_string($rawStatus) && trim($rawStatus) !== '') {
+            $request->merge(['status' => strtoupper(trim($rawStatus))]);
+        }
+
+        /** @var array{status?: string|null, source?: string|null, destination_node_id?: string|null, delivery_date_from?: string|null, delivery_date_to?: string|null} $filters */
         $filters = $request->validate([
             'status' => ['nullable', 'string', Rule::in($statuses)],
             'source' => ['nullable', 'string', Rule::in($sources)],
             'destination_node_id' => ['nullable', 'uuid'],
+            // Rango de fecha PROMETIDA de entrega (Y-m-d, ambos inclusive).
+            'delivery_date_from' => ['nullable', 'date_format:Y-m-d'],
+            'delivery_date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:delivery_date_from'],
         ]);
+
+        $deliveryDateFrom = $filters['delivery_date_from'] ?? null;
+        $deliveryDateTo = $filters['delivery_date_to'] ?? null;
 
         // Resuelve el filtro de nodo destino: para el rol Tienda se FUERZA su nodo asignado (server-side,
         // ignorando lo que mande el cliente); el resto de roles puede pasar el filtro opcional.
@@ -85,6 +100,8 @@ final class ListShipmentsController
                 status: $filters['status'] ?? null,
                 source: $filters['source'] ?? null,
                 destinationNodeId: $destinationNodeId,
+                deliveryDateFrom: $deliveryDateFrom,
+                deliveryDateTo: $deliveryDateTo,
             ));
 
             $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
@@ -112,6 +129,8 @@ final class ListShipmentsController
                 destinationNodeId: $destinationNodeId,
                 limit: ApiPagination::limit($request),
                 offset: ApiPagination::offset($request),
+                deliveryDateFrom: $deliveryDateFrom,
+                deliveryDateTo: $deliveryDateTo,
             ));
 
             $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
@@ -124,6 +143,8 @@ final class ListShipmentsController
             status: $filters['status'] ?? null,
             source: $filters['source'] ?? null,
             destinationNodeId: $destinationNodeId,
+            deliveryDateFrom: $deliveryDateFrom,
+            deliveryDateTo: $deliveryDateTo,
         ));
 
         return $this->data(array_map(static fn (ShipmentView $view): array => $view->toArray(), $views));

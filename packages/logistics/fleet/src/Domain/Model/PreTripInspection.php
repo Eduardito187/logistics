@@ -6,6 +6,7 @@ namespace Logistics\Fleet\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Fleet\Domain\Event\PreTripChecklistConducted;
+use Logistics\Fleet\Domain\ValueObject\ChecklistEvaluation;
 use Logistics\Fleet\Domain\ValueObject\DriverId;
 use Logistics\Fleet\Domain\ValueObject\PreTripChecklist;
 use Logistics\Fleet\Domain\ValueObject\PreTripInspectionId;
@@ -18,6 +19,9 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * Es el checklist pre-salida "ejecutado": lleva qué vehículo y qué chofer, los ítems verificados (VO
  * PreTripChecklist) y la fecha. Está aprobada (apta para salir) solo si el checklist quedó completo;
  * si queda algún ítem sin verificar, la inspección no pasa y la tripulación no debería salir.
+ *
+ * Además lleva la evaluación contra la plantilla del servidor (ChecklistEvaluation): si un ítem CRÍTICO
+ * se reportó fallido, `fitToDispatch()` es falso y el vehículo queda no apto (lo marca el handler).
  */
 final class PreTripInspection extends AggregateRoot
 {
@@ -28,6 +32,7 @@ final class PreTripInspection extends AggregateRoot
         private readonly PreTripChecklist $checklist,
         private readonly DateTimeImmutable $performedOn,
         private readonly ?string $notes,
+        private readonly ChecklistEvaluation $evaluation,
     ) {}
 
     /**
@@ -40,8 +45,10 @@ final class PreTripInspection extends AggregateRoot
         PreTripChecklist $checklist,
         DateTimeImmutable $performedOn,
         ?string $notes = null,
+        ?ChecklistEvaluation $evaluation = null,
     ): self {
-        $inspection = new self($id, $vehicleId, $driverId, $checklist, $performedOn, $notes);
+        $evaluation ??= ChecklistEvaluation::withoutTemplate();
+        $inspection = new self($id, $vehicleId, $driverId, $checklist, $performedOn, $notes, $evaluation);
         $inspection->recordEvent(new PreTripChecklistConducted(
             $id->toString(),
             $vehicleId->toString(),
@@ -49,6 +56,9 @@ final class PreTripInspection extends AggregateRoot
             $checklist->toArray(),
             $checklist->isComplete(),
             $performedOn->format('Y-m-d'),
+            $evaluation->fitToDispatch,
+            $evaluation->failedCritical,
+            $evaluation->templateId,
         ));
 
         return $inspection;
@@ -64,8 +74,30 @@ final class PreTripInspection extends AggregateRoot
         PreTripChecklist $checklist,
         DateTimeImmutable $performedOn,
         ?string $notes,
+        ?ChecklistEvaluation $evaluation = null,
     ): self {
-        return new self($id, $vehicleId, $driverId, $checklist, $performedOn, $notes);
+        return new self(
+            $id,
+            $vehicleId,
+            $driverId,
+            $checklist,
+            $performedOn,
+            $notes,
+            $evaluation ?? ChecklistEvaluation::withoutTemplate(),
+        );
+    }
+
+    /**
+     * ¿Apto para despachar? Falso si algún ítem CRÍTICO de la plantilla se reportó fallido.
+     */
+    public function fitToDispatch(): bool
+    {
+        return $this->evaluation->fitToDispatch;
+    }
+
+    public function evaluation(): ChecklistEvaluation
+    {
+        return $this->evaluation;
     }
 
     /**

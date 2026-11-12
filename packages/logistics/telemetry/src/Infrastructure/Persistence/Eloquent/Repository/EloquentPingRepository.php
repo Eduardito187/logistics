@@ -46,9 +46,32 @@ final readonly class EloquentPingRepository implements PingRepository
             return $row;
         }, $pings);
 
+        // ON CONFLICT DO NOTHING sobre el índice único (vehicle_id, recorded_at, fix_key): un reintento
+        // concurrente del mismo lote no duplica lecturas (idempotencia por lectura).
         foreach (array_chunk($rows, self::INSERT_CHUNK) as $chunk) {
-            PingRecord::query()->insert($chunk);
+            PingRecord::query()->insertOrIgnore($chunk);
         }
+    }
+
+    public function existingFixKeys(string $vehicleId, array $fixKeys, DateTimeImmutable $from, DateTimeImmutable $to): array
+    {
+        if ($fixKeys === []) {
+            return [];
+        }
+
+        $known = [];
+        foreach (array_chunk($fixKeys, self::INSERT_CHUNK) as $chunk) {
+            /** @var list<string> $found */
+            $found = PingRecord::query()
+                ->where('vehicle_id', $vehicleId)
+                ->whereBetween('recorded_at', [$from, $to])
+                ->whereIn('fix_key', $chunk)
+                ->pluck('fix_key')
+                ->all();
+            array_push($known, ...$found);
+        }
+
+        return array_values(array_unique($known));
     }
 
     public function latestForVehicle(string $vehicleId): ?VehiclePing

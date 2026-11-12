@@ -10,7 +10,6 @@ use Logistics\Execution\Domain\Model\ScanEvent;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\DropshipHandling;
 use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
@@ -41,12 +40,9 @@ final class DeliveryMapper
             'pod_photo_path' => $proof?->photoPath,
             'pod_captured_at' => $proof?->capturedAt->format(DATE_ATOM),
             'failure_reason' => $delivery->failureReason()?->value,
-            // Dimensión de fulfillment (aditiva): modo y, en dropship, cómo lo maneja Dismac + claves de
-            // idempotencia de las confirmaciones del seller.
+            // Dimensión de fulfillment: solo el modo (dato para reportes/liquidaciones). Las columnas
+            // dropship_handling / *_confirmation_key quedan en la tabla sin uso (no se borran: regla aditiva).
             'fulfillment_mode' => $delivery->fulfillmentMode()->value,
-            'dropship_handling' => $delivery->dropshipHandling()?->value,
-            'dispatch_confirmation_key' => $delivery->dispatchConfirmationKey(),
-            'delivery_confirmation_key' => $delivery->deliveryConfirmationKey(),
         ];
     }
 
@@ -107,9 +103,6 @@ final class DeliveryMapper
             $proof,
             $record->failure_reason !== null ? FailureReason::from($record->failure_reason) : null,
             FulfillmentMode::from($record->fulfillment_mode),
-            $record->dropship_handling !== null ? DropshipHandling::from($record->dropship_handling) : null,
-            $record->dispatch_confirmation_key,
-            $record->delivery_confirmation_key,
         );
     }
 }

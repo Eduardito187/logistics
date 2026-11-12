@@ -22,15 +22,30 @@ use Logistics\Telemetry\Application\Command\DeleteGeofence\DeleteGeofenceHandler
 use Logistics\Telemetry\Application\Command\RecordVehiclePings\RecordVehiclePings;
 use Logistics\Telemetry\Application\Command\RecordVehiclePings\RecordVehiclePingsHandler;
 use Logistics\Telemetry\Application\Command\RedrawGeofence\RedrawGeofence;
+use Logistics\Telemetry\Application\Command\RefreshVehicleEtas\RefreshVehicleEtas;
+use Logistics\Telemetry\Application\Command\RefreshVehicleEtas\RefreshVehicleEtasHandler;
 use Logistics\Telemetry\Application\Command\RedrawGeofence\RedrawGeofenceHandler;
 use Logistics\Telemetry\Application\Command\RenameGeofence\RenameGeofence;
 use Logistics\Telemetry\Application\Command\RenameGeofence\RenameGeofenceHandler;
+use Logistics\Telemetry\Application\Contract\ActiveRouteReader;
+use Logistics\Telemetry\Application\Contract\FleetDirectory;
+use Logistics\Telemetry\Application\Contract\ShipmentCustodyReader;
+use Logistics\Telemetry\Application\Query\ClassifyPingFixes\ClassifyPingFixes;
+use Logistics\Telemetry\Application\Query\ClassifyPingFixes\ClassifyPingFixesHandler;
+use Logistics\Telemetry\Application\Query\CountAlerts\CountAlerts;
+use Logistics\Telemetry\Application\Query\CountAlerts\CountAlertsHandler;
 use Logistics\Telemetry\Application\Query\GetGeofence\GetGeofence;
 use Logistics\Telemetry\Application\Query\GetGeofence\GetGeofenceHandler;
 use Logistics\Telemetry\Application\Query\GetLiveFleetPositions\GetLiveFleetPositions;
 use Logistics\Telemetry\Application\Query\GetLiveFleetPositions\GetLiveFleetPositionsHandler;
+use Logistics\Telemetry\Application\Query\GetShipmentBreadcrumbs\GetShipmentBreadcrumbs;
+use Logistics\Telemetry\Application\Query\GetShipmentBreadcrumbs\GetShipmentBreadcrumbsHandler;
+use Logistics\Telemetry\Application\Query\GetShipmentEta\GetShipmentEta;
+use Logistics\Telemetry\Application\Query\GetShipmentEta\GetShipmentEtaHandler;
 use Logistics\Telemetry\Application\Query\GetStreetTraffic\GetStreetTraffic;
 use Logistics\Telemetry\Application\Query\GetStreetTraffic\GetStreetTrafficHandler;
+use Logistics\Telemetry\Application\Query\GetVehicleEtas\GetVehicleEtas;
+use Logistics\Telemetry\Application\Query\GetVehicleEtas\GetVehicleEtasHandler;
 use Logistics\Telemetry\Application\Query\GetVehicleTelemetrySummary\GetVehicleTelemetrySummary;
 use Logistics\Telemetry\Application\Query\GetVehicleTelemetrySummary\GetVehicleTelemetrySummaryHandler;
 use Logistics\Telemetry\Application\Query\GetVehicleTrack\GetVehicleTrack;
@@ -46,21 +61,29 @@ use Logistics\Telemetry\Domain\Contract\GeofenceRepository;
 use Logistics\Telemetry\Domain\Contract\LivePositionBroadcaster;
 use Logistics\Telemetry\Domain\Contract\MapMatcher;
 use Logistics\Telemetry\Domain\Contract\PingRepository;
+use Logistics\Telemetry\Domain\Contract\RoadDurationEstimator;
+use Logistics\Telemetry\Domain\Contract\StopEtaRepository;
 use Logistics\Telemetry\Domain\Contract\StreetStatsRepository;
 use Logistics\Telemetry\Domain\Contract\TripRepository;
 use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
 use Logistics\Telemetry\Infrastructure\Console\AggregateStreetTrafficCommand;
 use Logistics\Telemetry\Infrastructure\Console\PruneTelemetryPingsCommand;
+use Logistics\Telemetry\Infrastructure\Console\RefreshStopEtasCommand;
+use Logistics\Telemetry\Infrastructure\CrossContext\DbActiveRouteReader;
+use Logistics\Telemetry\Infrastructure\CrossContext\DbFleetDirectory;
+use Logistics\Telemetry\Infrastructure\CrossContext\DbShipmentCustodyReader;
 use Logistics\Telemetry\Infrastructure\LiveState\BroadcastingLivePositionBroadcaster;
 use Logistics\Telemetry\Infrastructure\LiveState\FleetPlateResolver;
 use Logistics\Telemetry\Infrastructure\LiveState\LiveVehicleState;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentAlertRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentGeofenceRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentPingRepository;
+use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentStopEtaRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentStreetStatsRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentTripRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentVehiclePositionRepository;
 use Logistics\Telemetry\Infrastructure\Routing\OsrmMapMatcher;
+use Logistics\Telemetry\Infrastructure\Routing\OsrmRoadDurationEstimator;
 
 /**
  * Registro del bounded context Telemetría: ingesta de GPS, posición en vivo, trips, geocercas, alertas
@@ -77,10 +100,17 @@ final class TelemetryServiceProvider extends ServiceProvider
     private const HANDLERS = [
         // Ingesta + posición en vivo + trips.
         RecordVehiclePings::class => RecordVehiclePingsHandler::class,
+        ClassifyPingFixes::class => ClassifyPingFixesHandler::class,
         GetLiveFleetPositions::class => GetLiveFleetPositionsHandler::class,
         GetVehicleTrack::class => GetVehicleTrackHandler::class,
         ListTrips::class => ListTripsHandler::class,
         GetVehicleTelemetrySummary::class => GetVehicleTelemetrySummaryHandler::class,
+
+        // Seguimiento por envío: migas de pan + ETA dinámica (y su recálculo programado).
+        GetShipmentBreadcrumbs::class => GetShipmentBreadcrumbsHandler::class,
+        GetVehicleEtas::class => GetVehicleEtasHandler::class,
+        GetShipmentEta::class => GetShipmentEtaHandler::class,
+        RefreshVehicleEtas::class => RefreshVehicleEtasHandler::class,
 
         // Geocercas + alertas de mal uso.
         DefineGeofence::class => DefineGeofenceHandler::class,
@@ -93,6 +123,7 @@ final class TelemetryServiceProvider extends ServiceProvider
         ListGeofences::class => ListGeofencesHandler::class,
         GetGeofence::class => GetGeofenceHandler::class,
         ListAlerts::class => ListAlertsHandler::class,
+        CountAlerts::class => CountAlertsHandler::class,
 
         // Analítica de calles (worker + consulta).
         AggregateStreetTraffic::class => AggregateStreetTrafficHandler::class,
@@ -110,6 +141,14 @@ final class TelemetryServiceProvider extends ServiceProvider
         $this->app->bind(AlertRepository::class, EloquentAlertRepository::class);
         $this->app->bind(StreetStatsRepository::class, EloquentStreetStatsRepository::class);
         $this->app->bind(MapMatcher::class, OsrmMapMatcher::class);
+        $this->app->bind(StopEtaRepository::class, EloquentStopEtaRepository::class);
+        // Duraciones viales para ETA (OSRM). Solo lo usa el comando programado; sin host configurado devuelve null.
+        $this->app->bind(RoadDurationEstimator::class, OsrmRoadDurationEstimator::class);
+
+        // Lecturas cross-context de solo lectura (fleet / execution / planning / shipments) por query builder.
+        $this->app->bind(FleetDirectory::class, DbFleetDirectory::class);
+        $this->app->bind(ShipmentCustodyReader::class, DbShipmentCustodyReader::class);
+        $this->app->bind(ActiveRouteReader::class, DbActiveRouteReader::class);
 
         // Fan-out en vivo: adaptador que difunde por WebSockets + mantiene el hot-state en Valkey.
         // El resolver de placas es singleton para memoizar id→placa (cross-context read-only) y evitar N+1.
@@ -130,7 +169,11 @@ final class TelemetryServiceProvider extends ServiceProvider
         }
 
         if ($this->app->runningInConsole()) {
-            $this->commands([AggregateStreetTrafficCommand::class, PruneTelemetryPingsCommand::class]);
+            $this->commands([
+                AggregateStreetTrafficCommand::class,
+                PruneTelemetryPingsCommand::class,
+                RefreshStopEtasCommand::class,
+            ]);
 
             // Agregación diaria de calles en el scheduler (map-matching del día anterior).
             $this->app->booted(function (): void {
@@ -138,6 +181,11 @@ final class TelemetryServiceProvider extends ServiceProvider
                 $schedule->command('telemetry:aggregate-streets')
                     ->dailyAt('01:15')
                     ->withoutOverlapping();
+
+                // ETA dinámica por parada desde la última posición (OSRM solo acá, fuera de los requests).
+                $schedule->command('telemetry:refresh-etas')
+                    ->everyMinute()
+                    ->withoutOverlapping(5);
             });
         }
     }

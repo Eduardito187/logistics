@@ -16,6 +16,7 @@ final readonly class ProductView
     /**
      * @param list<array{sku: string, name: string, attributes: array<string, string>}> $variants
      * @param list<array{path: string, alt: string, position: int}>                     $media
+     * @param array{weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float, volume_m3: ?float} $physicalSpec
      */
     private function __construct(
         public string $id,
@@ -27,6 +28,7 @@ final readonly class ProductView
         public string $status,
         public array $variants,
         public array $media,
+        public array $physicalSpec,
     ) {}
 
     public static function fromDomain(Product $product): self
@@ -41,11 +43,12 @@ final readonly class ProductView
             $product->status()->value,
             array_map(static fn (ProductVariant $variant): array => $variant->toArray(), $product->variants()),
             array_map(static fn (MediaAsset $media): array => $media->toArray(), $product->media()),
+            $product->physicalSpec()->toArray(),
         );
     }
 
     /**
-     * @return array{id: string, seller_id: ?string, category_id: ?string, name: string, description: ?string, canonical_sku: string, status: string, variants: list<array{sku: string, name: string, attributes: array<string, string>}>, media: list<array{path: string, alt: string, position: int}>}
+     * @return array{id: string, seller_id: ?string, category_id: ?string, name: string, description: ?string, canonical_sku: string, status: string, variants: list<array{sku: string, name: string, attributes: array<string, string>}>, media: list<array{path: string, alt: string, position: int}>, physical_spec: array{weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float, volume_m3: ?float}}
      */
     public function toArray(): array
     {
@@ -59,6 +62,8 @@ final readonly class ProductView
             'status' => $this->status,
             'variants' => $this->variants,
             'media' => $this->media,
+            // Medidas físicas (Fase 2.0); el volumen es derivado (null si falta alguna dimensión).
+            'physical_spec' => $this->physicalSpec,
         ];
     }
 }

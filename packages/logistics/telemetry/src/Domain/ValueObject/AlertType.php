@@ -24,8 +24,11 @@ enum AlertType: string
     /** Uso del vehículo sin una ruta asignada activa. */
     case UnauthorizedUse = 'unauthorized_use';
 
-    /** Exceso de velocidad por sobre el límite configurado. */
+    /** Exceso de velocidad por sobre el límite configurado (sostenido el tiempo mínimo configurado). */
     case Speeding = 'speeding';
+
+    /** Desvío de la geometría de la ruta planificada más allá del umbral, sostenido el tiempo mínimo. */
+    case RouteDeviation = 'route_deviation';
 
     /**
      * Texto en inglés para el admin y la consola (regla 5 de CLAUDE.md).
@@ -38,6 +41,7 @@ enum AlertType: string
             self::GeofenceViolation => 'Geofence violation',
             self::UnauthorizedUse => 'Unauthorized use',
             self::Speeding => 'Speeding',
+            self::RouteDeviation => 'Route deviation',
         };
     }
 }

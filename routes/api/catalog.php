@@ -2,16 +2,21 @@
 
 declare(strict_types=1);
 
+use Commerce\Catalog\Presentation\Http\Controller\BatchSetProductPhysicalSpecsController;
 use Commerce\Catalog\Presentation\Http\Controller\GetProductAvailabilityController;
 use Commerce\Catalog\Presentation\Http\Controller\GetProductController;
 use Commerce\Catalog\Presentation\Http\Controller\ListCategoriesController;
 use Commerce\Catalog\Presentation\Http\Controller\ListProductsController;
+use Commerce\Catalog\Presentation\Http\Controller\SetProductPhysicalSpecController;
 use Illuminate\Support\Facades\Route;
 
 /*
  * Rutas del contexto Catalog (frente comercial). Las lecturas del catálogo viven en la puerta
  * `channels` (storefront / clientes): las consume la app y el storefront, no las integraciones de
  * servicio. Todo es lectura (CQRS query side). Contrato en openapi/v1.yaml.
+ *
+ * Puerta `integrations` (Roadmap 02, Fase 2.0): Magento/POS envía las medidas físicas de los productos
+ * por SKU (uno por uno o en lote). SAP NO es fuente de medidas.
  *
  * Devuelve un mapa puerta => closure; el integrador invoca cada closure dentro del grupo de su puerta
  * (prefijo + middleware los pone routes/api.php). Rutas relativas a la puerta.
@@ -23,6 +28,18 @@ return [
             Route::get('products/{id}', GetProductController::class)->name('products.show');
             Route::get('products/{id}/availability', GetProductAvailabilityController::class)->name('products.availability');
             Route::get('categories', ListCategoriesController::class)->name('categories.index');
+        });
+    },
+
+    'integrations' => static function (): void {
+        Route::prefix('catalog')->name('catalog.')->group(function (): void {
+            // POST /api/v1/integrations/catalog/products/physical-specs — lote de medidas por SKU (200).
+            Route::post('products/physical-specs', BatchSetProductPhysicalSpecsController::class)
+                ->name('products.physical-specs.batch');
+            // PUT /api/v1/integrations/catalog/products/{sku}/physical-spec — medidas de un SKU (200).
+            Route::put('products/{sku}/physical-spec', SetProductPhysicalSpecController::class)
+                ->where('sku', '[^/]+')
+                ->name('products.physical-spec.put');
         });
     },
 ];

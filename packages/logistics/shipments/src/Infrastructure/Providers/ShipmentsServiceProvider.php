@@ -10,6 +10,8 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
+use Logistics\Shipments\Application\Command\AdvanceShipmentStatus\AdvanceShipmentStatus;
+use Logistics\Shipments\Application\Command\AdvanceShipmentStatus\AdvanceShipmentStatusHandler;
 use Logistics\Shipments\Application\Command\CancelShipment\CancelShipment;
 use Logistics\Shipments\Application\Command\CancelShipment\CancelShipmentHandler;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddress;
@@ -20,10 +22,14 @@ use Logistics\Shipments\Application\Command\RescheduleShipmentDelivery\Reschedul
 use Logistics\Shipments\Application\Command\RescheduleShipmentDelivery\RescheduleShipmentDeliveryHandler;
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlot;
 use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlotHandler;
+use Logistics\Shipments\Application\Contract\CatalogMeasurementsReader;
 use Logistics\Shipments\Application\Contract\MagentoOrderReader;
+use Logistics\Shipments\Application\Contract\NetworkNodeLookup;
 use Logistics\Shipments\Application\Contract\ReturnsWarehouseResolver;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
+use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Contract\ShipmentSpreadsheetParser;
+use Logistics\Shipments\Application\Measurement\LineMeasureResolver;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipment;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipmentHandler;
 use Logistics\Shipments\Application\Query\ListLowConfidenceAddresses\ListLowConfidenceAddresses;
@@ -37,6 +43,8 @@ use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByC
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
 use Logistics\Shipments\Domain\Contract\Geocoder;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
+use Logistics\Shipments\Infrastructure\Console\BackfillShipmentLineMeasurementsCommand;
+use Logistics\Shipments\Infrastructure\Console\SyncShipmentStatusCommand;
 use Logistics\Shipments\Infrastructure\Geocoding\CachingGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\GeocodeScoring;
 use Logistics\Shipments\Infrastructure\Geocoding\NominatimGeocoder;
@@ -47,7 +55,10 @@ use Logistics\Shipments\Infrastructure\Ingestion\DelegatingShipmentSpreadsheetPa
 use Logistics\Shipments\Infrastructure\Magento\HttpMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Magento\NullMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\EloquentShipmentRepository;
+use Logistics\Shipments\Infrastructure\ReadModel\CatalogTablesMeasurementsReader;
+use Logistics\Shipments\Infrastructure\ReadModel\DbNetworkNodeLookup;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentListReader;
+use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentProgressReader;
 use Logistics\Shipments\Infrastructure\ReadModel\NetworkReturnsWarehouseResolver;
 use Logistics\Shipments\Presentation\Console\PullMagentoOrdersCommand;
 use Logistics\Shipments\Presentation\Console\ReceiveManualShipmentCommand;
@@ -68,6 +79,7 @@ final class ShipmentsServiceProvider extends ServiceProvider
     private const HANDLERS = [
         ReceiveShipment::class => ReceiveShipmentHandler::class,
         CancelShipment::class => CancelShipmentHandler::class,
+        AdvanceShipmentStatus::class => AdvanceShipmentStatusHandler::class,
         SetDeliverySlot::class => SetDeliverySlotHandler::class,
         RescheduleShipmentDelivery::class => RescheduleShipmentDeliveryHandler::class,
         GeocodeShipmentAddress::class => GeocodeShipmentAddressHandler::class,
@@ -88,11 +100,38 @@ final class ShipmentsServiceProvider extends ServiceProvider
         // base y no reconstruye el agregado (ver ShipmentListReader).
         $this->app->bind(ShipmentListReader::class, DbShipmentListReader::class);
 
+        // Avance operativo de los envíos (camión, preparado, cargado, entregado, etiquetas) para el listado
+        // de la app: lectura cruzada de solo lectura de ejecución/planificación/flota/etiquetas, en lote.
+        $this->app->bind(ShipmentProgressReader::class, function ($app): ShipmentProgressReader {
+            return new DbShipmentProgressReader($app->make(ConnectionInterface::class));
+        });
+
+        // Código de tienda/CD → id de nodo (regla del nodo destino del ingreso): lectura de la red.
+        $this->app->bind(NetworkNodeLookup::class, function ($app): NetworkNodeLookup {
+            return new DbNetworkNodeLookup($app->make(ConnectionInterface::class));
+        });
+
         // Resolución del almacén central de retornos (cancelación con logística inversa): lee la red en
         // solo lectura por el query builder, sin acoplar el dominio de `network`. Es el último recurso de
         // OrderCancelledFulfillmentDispatcher (tras el nodo destino del envío y el id por env).
         $this->app->bind(ReturnsWarehouseResolver::class, function ($app): ReturnsWarehouseResolver {
             return new NetworkReturnsWarehouseResolver($app->make(ConnectionInterface::class));
+        });
+
+        // Foto de medidas por línea (Roadmap 02, Fase 2.1): lectura cruzada read-only de las tablas del
+        // catálogo (sin depender de su dominio) + resolutor de la cascada producto → categoría → default.
+        $this->app->bind(CatalogMeasurementsReader::class, function ($app): CatalogMeasurementsReader {
+            return new CatalogTablesMeasurementsReader($app->make(ConnectionInterface::class));
+        });
+        $this->app->bind(LineMeasureResolver::class, function ($app): LineMeasureResolver {
+            /** @var Config $config */
+            $config = $app->make(Config::class);
+
+            return new LineMeasureResolver(
+                $app->make(CatalogMeasurementsReader::class),
+                (float) $config->get('logistics-shipments.measurements.default_unit_weight_kg', LineMeasureResolver::FALLBACK_WEIGHT_KG),
+                (float) $config->get('logistics-shipments.measurements.default_unit_volume_m3', LineMeasureResolver::FALLBACK_VOLUME_M3),
+            );
         });
 
         // Parser de planillas de carga (SHP-06): detecta el formato por el contenido. Hoy procesa CSV
@@ -230,6 +269,8 @@ final class ShipmentsServiceProvider extends ServiceProvider
             $this->commands([
                 ReceiveManualShipmentCommand::class,
                 PullMagentoOrdersCommand::class,
+                BackfillShipmentLineMeasurementsCommand::class,
+                SyncShipmentStatusCommand::class,
             ]);
         }
     }

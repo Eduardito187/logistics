@@ -60,7 +60,13 @@ return [
         // Holgura de capacidad (0..1): fracción del kg/m3 nominal que se reserva (0.1 = usar el 90 %).
         'capacity_slack' => (float) env('PLANNING_CAPACITY_SLACK', 0.1),
 
-        // Peso y volumen asumidos por bulto cuando el envío no trae datos reales (para el bin-packing).
+        // Respetar las reglas de turnos de la tripulación (contexto Flota): la salida no se planifica antes
+        // del inicio permitido y se quitan de la ruta las paradas cuya ETA excede la ventana o la jornada
+        // máxima (quedan sin asignar). false = comportamiento anterior (sin acotar).
+        'respect_crew_shifts' => (bool) env('PLANNING_RESPECT_CREW_SHIFTS', true),
+
+        // Peso y volumen asumidos POR PRODUCTO cuando la línea del envío no trae medidas reales
+        // (unit_weight_kg / unit_volume_m3); el envío queda marcado como carga estimada.
         'default_weight_kg_per_package' => (float) env('PLANNING_DEFAULT_WEIGHT_KG', 10.0),
         'default_volume_m3_per_package' => (float) env('PLANNING_DEFAULT_VOLUME_M3', 0.05),
 

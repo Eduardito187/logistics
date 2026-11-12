@@ -82,6 +82,23 @@ return [
         'warehouse_id' => env('SHIPMENTS_RETURNS_WAREHOUSE_ID', ''),
     ],
 
+    // Foto de medidas por línea (Roadmap 02, Fase 2.1): cascada producto → categoría → default global.
+    // El default global es por UNIDAD de producto y, si no se fija aparte, reutiliza el mismo env que
+    // planning (PLANNING_DEFAULT_WEIGHT_KG / PLANNING_DEFAULT_VOLUME_M3: 10 kg y 0,05 m³), para que el
+    // ingreso y el plan usen el mismo supuesto. Medidas faltantes nunca bloquean: caen acá y se marcan.
+    'measurements' => [
+        'default_unit_weight_kg' => (float) env(
+            'SHIPMENTS_DEFAULT_UNIT_WEIGHT_KG',
+            env('PLANNING_DEFAULT_WEIGHT_KG', 10.0),
+        ),
+        'default_unit_volume_m3' => (float) env(
+            'SHIPMENTS_DEFAULT_UNIT_VOLUME_M3',
+            env('PLANNING_DEFAULT_VOLUME_M3', 0.05),
+        ),
+        // Tamaño de tramo del backfill de líneas históricas.
+        'backfill_chunk' => (int) env('SHIPMENTS_MEASUREMENTS_BACKFILL_CHUNK', 500),
+    ],
+
     // Fuente Magento (SHP-07): lectura de pedidos pendientes para ingresarlos por la API única.
     // Sin base_url configurada, el contexto cae al lector stub (no trae pedidos), para arrancar y
     // desarrollar sin credenciales. Si Magento no entra al piloto, se deja vacío.

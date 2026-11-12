@@ -8,13 +8,15 @@ use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shared\Application\ReadModel\Page;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
+use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
+use Logistics\Shipments\Application\Query\ShipmentListSupport;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
-use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 
 /**
- * Lista envíos aplicando los filtros opcionales por estado, fuente y nodo destino.
+ * Lista envíos aplicando los filtros opcionales por estado, fuente, nodo destino y rango de fecha
+ * prometida, y adjunta a cada uno su AVANCE operativo (ShipmentProgressReader, en lote por página).
  *
  * Lado de lectura CQRS: delega en ShipmentListReader, que empuja los filtros a SQL y arma los
  * ShipmentView sin reconstruir el agregado ni cargar la tabla entera en memoria. Antes se recorría
@@ -30,6 +32,7 @@ final class ListShipmentsHandler implements QueryHandler
 {
     public function __construct(
         private readonly ShipmentListReader $reader,
+        private readonly ShipmentProgressReader $progress,
     ) {}
 
     /**
@@ -42,8 +45,9 @@ final class ListShipmentsHandler implements QueryHandler
         }
 
         // Se normaliza/valida vía el enum (lanza ante un valor inválido, igual que antes) y se pasa el
-        // valor string del enum al lector, que lo compara contra la columna persistida.
-        $status = $query->status !== null ? ShipmentStatus::from($query->status)->value : null;
+        // valor string del enum al lector, que lo compara contra la columna persistida. El estado se acepta
+        // en cualquier capitalización (planned/PLANNED).
+        $status = $query->status !== null ? ShipmentListSupport::status($query->status) : null;
         $source = $query->source !== null ? OrderSource::from($query->source)->value : null;
 
         $views = $this->reader->list(
@@ -52,7 +56,11 @@ final class ListShipmentsHandler implements QueryHandler
             destinationNodeId: $query->destinationNodeId,
             limit: $query->limit,
             offset: $query->offset,
+            deliveryDateFrom: $query->deliveryDateFrom,
+            deliveryDateTo: $query->deliveryDateTo,
         );
+
+        $views = ShipmentListSupport::withProgress($views, $this->progress);
 
         if ($query->limit === null) {
             return $views;
@@ -62,6 +70,8 @@ final class ListShipmentsHandler implements QueryHandler
             status: $status,
             source: $source,
             destinationNodeId: $query->destinationNodeId,
+            deliveryDateFrom: $query->deliveryDateFrom,
+            deliveryDateTo: $query->deliveryDateTo,
         ));
     }
 }

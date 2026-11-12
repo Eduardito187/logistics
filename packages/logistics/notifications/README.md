@@ -134,6 +134,16 @@ Comandos: `QueueNotification`, `AdvanceCascade`, `MarkNotificationSent`, `Suppre
 `ListNotifications`, `GetNotification`, `ListMessageTypeRules`, `ListMessageTemplates`,
 `GetMessageTemplate`, `GetSmsBudget`. Todos registrados en el `HandlerRegistry`.
 
+### Estado de lectura por usuario (bandeja de la app)
+
+Comandos `MarkNotificationRead` (idempotente, conserva el primer `read_at`) y `MarkAllNotificationsRead`
+(marca de agua monótona por usuario hasta `up_to`); query `CountUnreadNotifications`. Escritura por
+`NotificationReadStateRepository` (Domain), lectura por `NotificationInboxReader` (Application).
+Tablas `notification_reads` (PK `user_id, notification_id`) y `notification_read_marks` (una fila por
+usuario). Endpoints: `POST /app/notifications/{id}/read`, `POST /app/notifications/read-all`,
+`GET /app/notifications/all?unread=true` con `read_at`/`created_at` por ítem y `meta.unread_count`.
+El dueño del estado es siempre el usuario del token: nunca se acepta un `user_id` del cliente.
+
 ## Estado
 
 Dominio, aplicación (CQRS), infraestructura (Eloquent + canales reales + outbox dispatcher),

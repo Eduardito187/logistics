@@ -33,9 +33,12 @@ final class DbShipmentListReader implements ShipmentListReader
         bool $lowConfidenceOnly = false,
         ?int $limit = null,
         ?int $offset = null,
+        ?string $deliveryDateFrom = null,
+        ?string $deliveryDateTo = null,
     ): array {
         // Orden estable por id (UUID v7 = orden temporal), igual que el listado histórico.
-        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly)->orderBy('id');
+        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo)
+            ->orderBy('id');
 
         if ($offset !== null) {
             $query->offset($offset);
@@ -57,8 +60,10 @@ final class DbShipmentListReader implements ShipmentListReader
         ?string $source = null,
         ?string $destinationNodeId = null,
         bool $lowConfidenceOnly = false,
+        ?string $deliveryDateFrom = null,
+        ?string $deliveryDateTo = null,
     ): ShipmentPage {
-        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly);
+        $query = $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo);
 
         // Keyset: avanza por el último id visto en vez de OFFSET. `id > $afterId` se apoya en el índice de
         // la PK (UUID v7, orden temporal), así la página profunda no escanea-y-descarta.
@@ -88,9 +93,12 @@ final class DbShipmentListReader implements ShipmentListReader
         ?string $source = null,
         ?string $destinationNodeId = null,
         bool $lowConfidenceOnly = false,
+        ?string $deliveryDateFrom = null,
+        ?string $deliveryDateTo = null,
     ): int {
         // COUNT(*) acotado al filtro (no toca la tabla de líneas ni reconstruye agregados).
-        return $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly)->count();
+        return $this->filtered($status, $source, $destinationNodeId, $lowConfidenceOnly, $deliveryDateFrom, $deliveryDateTo)
+            ->count();
     }
 
     /**
@@ -104,6 +112,8 @@ final class DbShipmentListReader implements ShipmentListReader
         ?string $source,
         ?string $destinationNodeId,
         bool $lowConfidenceOnly,
+        ?string $deliveryDateFrom = null,
+        ?string $deliveryDateTo = null,
     ): Builder {
         $query = ShipmentRecord::query();
 
@@ -118,6 +128,14 @@ final class DbShipmentListReader implements ShipmentListReader
         }
         if ($lowConfidenceOnly) {
             $query->where('address_confidence_level', AddressConfidenceLevel::Low->value);
+        }
+        // Rango de fecha prometida (columna indexada `delivery_date`, ambos extremos inclusive). Un envío
+        // sin fecha no cumple ninguna cota (comparar con NULL es falso), que es lo esperado.
+        if ($deliveryDateFrom !== null) {
+            $query->where('delivery_date', '>=', $deliveryDateFrom);
+        }
+        if ($deliveryDateTo !== null) {
+            $query->where('delivery_date', '<=', $deliveryDateTo);
         }
 
         return $query;

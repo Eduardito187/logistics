@@ -146,8 +146,8 @@ services:
     app:
         <<: *app
 
-    # -------------------- Workers (supervisor: 4 colas + scheduler) --------------------
-    # Un solo contenedor con supervisord (.docker/supervisor/supervisord.conf): workers default/outbox/
+    # -------------------- Workers (supervisor: 5 colas + scheduler) --------------------
+    # Un solo contenedor con supervisord (.docker/supervisor/supervisord.conf): workers default/outbox/sap/
     # notifications/planning y el ÚNICO scheduler. Sobrescribe el healthcheck de la imagen (FPM :9000),
     # que aquí no aplica.
     worker:

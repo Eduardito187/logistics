@@ -11,8 +11,12 @@ use Logistics\Fleet\Application\Command\AssembleCrew\AssembleCrew;
 use Logistics\Fleet\Application\Command\AssembleCrew\AssembleCrewHandler;
 use Logistics\Fleet\Application\Command\ChangeVehicleStatus\ChangeVehicleStatus;
 use Logistics\Fleet\Application\Command\ChangeVehicleStatus\ChangeVehicleStatusHandler;
+use Logistics\Fleet\Application\Command\ClearVehicleFitness\ClearVehicleFitness;
+use Logistics\Fleet\Application\Command\ClearVehicleFitness\ClearVehicleFitnessHandler;
 use Logistics\Fleet\Application\Command\ConductPreTripChecklist\ConductPreTripChecklist;
 use Logistics\Fleet\Application\Command\ConductPreTripChecklist\ConductPreTripChecklistHandler;
+use Logistics\Fleet\Application\Command\DefineChecklistTemplate\DefineChecklistTemplate;
+use Logistics\Fleet\Application\Command\DefineChecklistTemplate\DefineChecklistTemplateHandler;
 use Logistics\Fleet\Application\Command\RegisterDocument\RegisterDocument;
 use Logistics\Fleet\Application\Command\RegisterDocument\RegisterDocumentHandler;
 use Logistics\Fleet\Application\Command\RegisterDriver\RegisterDriver;
@@ -29,10 +33,16 @@ use Logistics\Fleet\Application\Command\UpdateHelperProfile\UpdateHelperProfile;
 use Logistics\Fleet\Application\Command\UpdateHelperProfile\UpdateHelperProfileHandler;
 use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfile;
 use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfileHandler;
+use Logistics\Fleet\Application\Query\GetChecklistTemplate\GetChecklistTemplate;
+use Logistics\Fleet\Application\Query\GetChecklistTemplate\GetChecklistTemplateHandler;
 use Logistics\Fleet\Application\Query\GetDriverHistory\GetDriverHistory;
 use Logistics\Fleet\Application\Query\GetDriverHistory\GetDriverHistoryHandler;
+use Logistics\Fleet\Application\Query\GetLatestPreTripChecklist\GetLatestPreTripChecklist;
+use Logistics\Fleet\Application\Query\GetLatestPreTripChecklist\GetLatestPreTripChecklistHandler;
 use Logistics\Fleet\Application\Query\GetMyCrew\GetMyCrew;
 use Logistics\Fleet\Application\Query\GetMyCrew\GetMyCrewHandler;
+use Logistics\Fleet\Application\Query\GetVehicleFitness\GetVehicleFitness;
+use Logistics\Fleet\Application\Query\GetVehicleFitness\GetVehicleFitnessHandler;
 use Logistics\Fleet\Application\Query\ListDocuments\ListDocuments;
 use Logistics\Fleet\Application\Query\ListDocuments\ListDocumentsHandler;
 use Logistics\Fleet\Application\Query\ListDrivers\ListDrivers;
@@ -45,6 +55,7 @@ use Logistics\Fleet\Application\Query\ListPreTripChecklists\ListPreTripChecklist
 use Logistics\Fleet\Application\Query\ListPreTripChecklists\ListPreTripChecklistsHandler;
 use Logistics\Fleet\Application\Query\ListVehicles\ListVehicles;
 use Logistics\Fleet\Application\Query\ListVehicles\ListVehiclesHandler;
+use Logistics\Fleet\Domain\Contract\ChecklistTemplateRepository;
 use Logistics\Fleet\Domain\Contract\CrewRepository;
 use Logistics\Fleet\Domain\Contract\DocumentExpiryPolicy;
 use Logistics\Fleet\Domain\Contract\DocumentRepository;
@@ -52,14 +63,17 @@ use Logistics\Fleet\Domain\Contract\DriverRepository;
 use Logistics\Fleet\Domain\Contract\HelperRepository;
 use Logistics\Fleet\Domain\Contract\PreTripInspectionRepository;
 use Logistics\Fleet\Domain\Contract\ShiftRulesPolicy;
+use Logistics\Fleet\Domain\Contract\VehicleFitnessLog;
 use Logistics\Fleet\Domain\Contract\VehicleRepository;
 use Logistics\Fleet\Domain\ValueObject\ShiftRules;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
+use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentChecklistTemplateRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentCrewRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentDocumentRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentDriverRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentHelperRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentPreTripInspectionRepository;
+use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentVehicleFitnessLog;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentVehicleRepository;
 use Logistics\Fleet\Infrastructure\Settings\SettingsDocumentExpiryPolicy;
 use Logistics\Fleet\Infrastructure\Settings\SettingsShiftRulesPolicy;
@@ -104,6 +118,12 @@ final class FleetServiceProvider extends ServiceProvider
         GetDriverHistory::class => GetDriverHistoryHandler::class,
         GetMyCrew::class => GetMyCrewHandler::class,
         AlertExpiringDocuments::class => AlertExpiringDocumentsHandler::class,
+        // Plantilla del checklist y aptitud para despachar (auditoría #27).
+        DefineChecklistTemplate::class => DefineChecklistTemplateHandler::class,
+        ClearVehicleFitness::class => ClearVehicleFitnessHandler::class,
+        GetChecklistTemplate::class => GetChecklistTemplateHandler::class,
+        GetVehicleFitness::class => GetVehicleFitnessHandler::class,
+        GetLatestPreTripChecklist::class => GetLatestPreTripChecklistHandler::class,
     ];
 
     public function register(): void
@@ -116,6 +136,8 @@ final class FleetServiceProvider extends ServiceProvider
         $this->app->bind(CrewRepository::class, EloquentCrewRepository::class);
         $this->app->bind(PreTripInspectionRepository::class, EloquentPreTripInspectionRepository::class);
         $this->app->bind(DocumentRepository::class, EloquentDocumentRepository::class);
+        $this->app->bind(ChecklistTemplateRepository::class, EloquentChecklistTemplateRepository::class);
+        $this->app->bind(VehicleFitnessLog::class, EloquentVehicleFitnessLog::class);
 
         // Política de ventana de alerta de vencimiento: la lee de settings (versionado) por el QueryBus,
         // con respaldo por config (fleet.expiry_alert_days). Así el umbral es configurable sin tocar código.

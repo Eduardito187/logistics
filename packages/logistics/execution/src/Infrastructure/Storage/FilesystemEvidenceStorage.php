@@ -33,7 +33,7 @@ final readonly class FilesystemEvidenceStorage implements EvidenceStorage
         private int $maxAttempts,
     ) {}
 
-    public function store(EvidenceKind $kind, string $shipmentId, UploadedFile $file): StoredEvidence
+    public function store(EvidenceKind $kind, string $shipmentId, UploadedFile $file, ?string $idempotencyKey = null): StoredEvidence
     {
         $shipment = trim($shipmentId);
         if ($shipment === '') {
@@ -43,7 +43,21 @@ final readonly class FilesystemEvidenceStorage implements EvidenceStorage
         $diskName = $this->disksByKind[$kind->value] ?? $kind->value;
         $directory = $kind->value.'/'.$shipment;
 
-        $path = $this->storeWithRetry($file, $directory, $diskName);
+        // Subida idempotente (reintento offline de la app): el nombre del archivo se DERIVA de la clave, así
+        // la misma clave siempre apunta al mismo path. Si ya existe, se devuelve la referencia original sin
+        // reescribir: nunca se guarda una foto duplicada. Sin clave, nombre aleatorio como siempre.
+        $key = $idempotencyKey !== null ? trim($idempotencyKey) : '';
+        if ($key !== '') {
+            $name = self::deterministicName($kind, $shipment, $key, $file);
+            $existingPath = $directory.'/'.$name;
+            if ($this->exists($diskName, $existingPath)) {
+                return new StoredEvidence($kind->value, $diskName, $existingPath, $this->publicUrl($diskName, $existingPath));
+            }
+
+            $path = $this->storeWithRetry($file, $directory, $diskName, $name);
+        } else {
+            $path = $this->storeWithRetry($file, $directory, $diskName);
+        }
         if ($path === false || $path === '') {
             throw ExecutionException::because('no se pudo guardar la evidencia en el almacenamiento');
         }
@@ -56,14 +70,16 @@ final readonly class FilesystemEvidenceStorage implements EvidenceStorage
      * intentos fallaron por resultado falso (sin excepción); una excepción en el último intento se
      * reempaqueta como ExecutionException para no filtrar detalles del driver a la Presentation.
      */
-    private function storeWithRetry(UploadedFile $file, string $directory, string $diskName): string | false
+    private function storeWithRetry(UploadedFile $file, string $directory, string $diskName, ?string $name = null): string | false
     {
         $attempts = max(1, $this->maxAttempts);
         $lastError = null;
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
             try {
-                $path = $file->store($directory, ['disk' => $diskName]);
+                $path = $name !== null
+                    ? $file->storeAs($directory, $name, ['disk' => $diskName])
+                    : $file->store($directory, ['disk' => $diskName]);
                 if ($path !== false && $path !== '') {
                     return $path;
                 }
@@ -79,6 +95,33 @@ final readonly class FilesystemEvidenceStorage implements EvidenceStorage
         }
 
         return false;
+    }
+
+    /**
+     * Nombre estable del archivo para una subida con clave de idempotencia: hash de (tipo, envío, clave)
+     * + extensión según el contenido de la foto. No expone la clave (es un hash) y no colisiona entre
+     * envíos ni tipos distintos.
+     */
+    private static function deterministicName(EvidenceKind $kind, string $shipmentId, string $key, UploadedFile $file): string
+    {
+        $extension = strtolower($file->extension());
+        if ($extension === '' || preg_match('/^[a-z0-9]{1,8}$/', $extension) !== 1) {
+            $extension = 'jpg';
+        }
+
+        return substr(hash('sha256', $kind->value.'|'.$shipmentId.'|'.$key), 0, 40).'.'.$extension;
+    }
+
+    /**
+     * ¿Ya existe el archivo en el disco? Ante un error del driver responde false (se intentará subir).
+     */
+    private function exists(string $diskName, string $path): bool
+    {
+        try {
+            return Storage::disk($diskName)->exists($path);
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

@@ -29,6 +29,7 @@ use Logistics\Tracking\Database\Factories\TrackingRecordFactory;
  * @property string|null $last_lat
  * @property string|null $last_lng
  * @property Carbon|null $last_position_at
+ * @property Carbon|null $delivered_at
  */
 final class TrackingRecord extends Model
 {
@@ -55,6 +56,7 @@ final class TrackingRecord extends Model
         'last_lat',
         'last_lng',
         'last_position_at',
+        'delivered_at',
     ];
 
     /** @var array<string, string> */
@@ -63,6 +65,7 @@ final class TrackingRecord extends Model
         'route_position' => 'integer',
         'eta' => 'datetime',
         'last_position_at' => 'datetime',
+        'delivered_at' => 'datetime',
     ];
 
     /**

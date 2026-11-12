@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Infrastructure\Providers;
 
+use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
@@ -23,6 +24,10 @@ use Logistics\Tracking\Application\Command\RecordSatisfactionSurvey\RecordSatisf
 use Logistics\Tracking\Application\Command\RecordSatisfactionSurvey\RecordSatisfactionSurveyHandler;
 use Logistics\Tracking\Application\Command\UpdateTruckPosition\UpdateTruckPosition;
 use Logistics\Tracking\Application\Command\UpdateTruckPosition\UpdateTruckPositionHandler;
+use Logistics\Tracking\Application\Contract\DeliveredAtBackfill;
+use Logistics\Tracking\Application\Contract\PublicLinkTtl;
+use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
+use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkStateHandler;
 use Logistics\Tracking\Application\Query\GetPublicSurveyState\GetPublicSurveyState;
 use Logistics\Tracking\Application\Query\GetPublicSurveyState\GetPublicSurveyStateHandler;
 use Logistics\Tracking\Application\Query\GetPublicTracking\GetPublicTracking;
@@ -38,9 +43,12 @@ use Logistics\Tracking\Application\Query\GetShipmentUnits\GetShipmentUnitsHandle
 use Logistics\Tracking\Domain\Contract\SatisfactionSurveyRepository;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Contract\UnitTrackingRepository;
+use Logistics\Tracking\Infrastructure\Persistence\Backfill\SqlDeliveredAtBackfill;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentSatisfactionSurveyRepository;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentTrackingRepository;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentUnitTrackingRepository;
+use Logistics\Tracking\Infrastructure\Settings\SettingsPublicLinkTtl;
+use Logistics\Tracking\Presentation\Console\BackfillDeliveredAtCommand;
 use Logistics\Tracking\Presentation\Http\Controller\PublicTrackingPageController;
 use Logistics\Tracking\Presentation\Http\Controller\RecordSatisfactionSurveyController;
 
@@ -57,6 +65,18 @@ final class TrackingServiceProvider extends ServiceProvider
         $this->app->bind(TrackingRepository::class, EloquentTrackingRepository::class);
         $this->app->bind(UnitTrackingRepository::class, EloquentUnitTrackingRepository::class);
         $this->app->bind(SatisfactionSurveyRepository::class, EloquentSatisfactionSurveyRepository::class);
+
+        // TTL del enlace público desde Configuración, con default 72 h si no está publicado. `scoped`:
+        // memoiza dentro del request/job (la página pública se pollea) y se reinicia entre requests.
+        $this->app->scoped(PublicLinkTtl::class, SettingsPublicLinkTtl::class);
+
+        // Backfill idempotente de delivered_at (comando logistics:tracking:backfill-delivered-at).
+        $this->app->bind(DeliveredAtBackfill::class, static function ($app): SqlDeliveredAtBackfill {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+
+            return new SqlDeliveredAtBackfill($connections);
+        });
     }
 
     public function boot(): void
@@ -67,6 +87,10 @@ final class TrackingServiceProvider extends ServiceProvider
         $this->loadViewsFrom(__DIR__.'/../../../resources/views', 'tracking');
 
         $this->registerPublicPageRoute();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([BackfillDeliveredAtCommand::class]);
+        }
 
         // Los handlers se registran contra el HandlerRegistry singleton del núcleo compartido.
         // El bus los resuelve del contenedor, así reciben sus dependencias inyectadas.
@@ -84,6 +108,7 @@ final class TrackingServiceProvider extends ServiceProvider
         $registry->register(GetShipmentUnits::class, GetShipmentUnitsHandler::class);
         $registry->register(GetPublicUnits::class, GetPublicUnitsHandler::class);
         $registry->register(GetPublicSurveyState::class, GetPublicSurveyStateHandler::class);
+        $registry->register(GetPublicLinkState::class, GetPublicLinkStateHandler::class);
         $registry->register(GetSatisfactionSummary::class, GetSatisfactionSummaryHandler::class);
     }
 

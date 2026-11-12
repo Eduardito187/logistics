@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Infrastructure\Outbox;
 
+use DateTimeImmutable;
 use Logistics\Outbox\Application\Contract\MessageDispatcher;
 use Logistics\Outbox\Domain\OutboxMessage;
 use Logistics\Shared\Application\Command\CommandBus;
@@ -32,6 +33,26 @@ final readonly class ProjectExecutionTracking implements MessageDispatcher
         $this->commandBus->dispatch(new ProjectExecutionEvent(
             executionEventType: $message->eventName(),
             shipmentId: $shipmentId,
+            occurredAt: $this->occurredAt($message),
         ));
+    }
+
+    /**
+     * Momento del hecho de ejecución (alimenta `delivered_at`). El mensaje del outbox no persiste el
+     * `occurredAt` del evento de dominio, así que se prefiere un `occurred_at` (o `delivered_at`) explícito
+     * del payload si el emisor lo trae; si no, el `created_at` del mensaje, que se graba en la MISMA
+     * transacción que el hecho (RecordDomainEvents), así que coincide con él salvo capturas offline.
+     */
+    private function occurredAt(OutboxMessage $message): string
+    {
+        $payload = $message->payload();
+        foreach (['occurred_at', 'delivered_at'] as $key) {
+            $value = $payload[$key] ?? null;
+            if (is_string($value) && trim($value) !== '') {
+                return $value;
+            }
+        }
+
+        return $message->createdAt()->format(DateTimeImmutable::ATOM);
     }
 }

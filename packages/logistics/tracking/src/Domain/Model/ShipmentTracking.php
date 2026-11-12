@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Domain\Model;
 
+use DateInterval;
+use DateTimeImmutable;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 use Logistics\Tracking\Domain\Event\ShipmentPlacedOnRoute;
 use Logistics\Tracking\Domain\Event\TrackingOpened;
@@ -41,6 +43,7 @@ final class ShipmentTracking extends AggregateRoot
         private ?string $routeId,
         private ?RoutePosition $routePosition,
         private readonly ?string $orderReference = null,
+        private ?DateTimeImmutable $deliveredAt = null,
     ) {}
 
     /**
@@ -100,6 +103,7 @@ final class ShipmentTracking extends AggregateRoot
         ?string $routeId = null,
         ?RoutePosition $routePosition = null,
         ?string $orderReference = null,
+        ?DateTimeImmutable $deliveredAt = null,
     ): self {
         return new self(
             $id,
@@ -112,6 +116,7 @@ final class ShipmentTracking extends AggregateRoot
             $routeId,
             $routePosition,
             $orderReference,
+            $deliveredAt,
         );
     }
 
@@ -155,10 +160,19 @@ final class ShipmentTracking extends AggregateRoot
     /**
      * Aplica un nuevo estado visible respetando la máquina de estados. Idempotente: si no cambia, no graba
      * evento. Rechaza con excepción cualquier transición NO admitida (regla dura: sin saltos en el flujo).
+     *
+     * `$at` es el momento del hecho que provoca el cambio (p. ej. el `occurred_at` de la entrega). Al pasar a
+     * ENTREGADO fija `deliveredAt` (la primera vez; un reenvío no lo mueve). Si el seguimiento ya estaba
+     * entregado sin fecha (filas previas a la columna), el reenvío del hecho la completa. Sin `$at` se usa
+     * el momento actual.
      */
-    public function applyStatus(VisibleStatus $status): void
+    public function applyStatus(VisibleStatus $status, ?DateTimeImmutable $at = null): void
     {
         if ($this->status === $status) {
+            if ($status === VisibleStatus::Delivered && $this->deliveredAt === null && $at !== null) {
+                $this->deliveredAt = $at;
+            }
+
             return;
         }
         if (!$this->status->canTransitionTo($status)) {
@@ -169,6 +183,10 @@ final class ShipmentTracking extends AggregateRoot
 
         $previous = $this->status;
         $this->status = $status;
+
+        if ($status === VisibleStatus::Delivered && $this->deliveredAt === null) {
+            $this->deliveredAt = $at ?? new DateTimeImmutable;
+        }
 
         $this->recordEvent(new TrackingStatusChanged(
             $this->id->toString(),
@@ -203,10 +221,10 @@ final class ShipmentTracking extends AggregateRoot
         $this->applyStatus(VisibleStatus::OnTheWay);
     }
 
-    /** Entregada al cliente. */
-    public function markDelivered(): void
+    /** Entregada al cliente (en `$at`, o ahora si no se informa). */
+    public function markDelivered(?DateTimeImmutable $at = null): void
     {
-        $this->applyStatus(VisibleStatus::Delivered);
+        $this->applyStatus(VisibleStatus::Delivered, $at);
     }
 
     /** Intento de entrega fallido. */
@@ -360,5 +378,37 @@ final class ShipmentTracking extends AggregateRoot
     public function routePosition(): ?RoutePosition
     {
         return $this->routePosition;
+    }
+
+    /** Momento de la entrega al cliente; null si todavía no se entregó (o fila previa sin backfill). */
+    public function deliveredAt(): ?DateTimeImmutable
+    {
+        return $this->deliveredAt;
+    }
+
+    /**
+     * Vencimiento del ENLACE PÚBLICO de seguimiento (/t/{token} y sus endpoints públicos).
+     *
+     * Regla: el TTL (`tracking.public_link_ttl_hours`) se cuenta DESDE LA ENTREGA (`deliveredAt`). Mientras
+     * el pedido no se entregó, el enlace NO vence: el cliente lo necesita durante todo el ciclo (un pedido
+     * agendado a 5 días no puede perder su seguimiento a las 72 h de creado). Una devolución posterior a la
+     * entrega conserva `deliveredAt`, así que sigue contando desde la entrega. Un TTL ≤ 0 desactiva el
+     * vencimiento. Devuelve null cuando el enlace no vence.
+     */
+    public function publicLinkExpiresAt(int $ttlHours): ?DateTimeImmutable
+    {
+        if ($ttlHours <= 0 || $this->deliveredAt === null) {
+            return null;
+        }
+
+        return $this->deliveredAt->add(new DateInterval('PT'.$ttlHours.'H'));
+    }
+
+    /** ¿El enlace público ya venció en `$now`? (ver {@see publicLinkExpiresAt()}). */
+    public function isPublicLinkExpiredAt(DateTimeImmutable $now, int $ttlHours): bool
+    {
+        $expiresAt = $this->publicLinkExpiresAt($ttlHours);
+
+        return $expiresAt !== null && $now >= $expiresAt;
     }
 }

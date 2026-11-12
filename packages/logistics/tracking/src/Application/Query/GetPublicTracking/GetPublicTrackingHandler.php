@@ -8,6 +8,7 @@ use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Tracking\Application\ReadModel\PublicTrackingView;
+use Logistics\Tracking\Application\Service\PublicLinkGuard;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
 use Logistics\Tracking\Domain\ValueObject\TrackingToken;
@@ -23,6 +24,7 @@ final class GetPublicTrackingHandler implements QueryHandler
     public function __construct(
         private readonly TrackingRepository $trackings,
         private readonly Clock $clock,
+        private readonly PublicLinkGuard $guard,
     ) {}
 
     public function handle(Query $query): ?PublicTrackingView
@@ -39,6 +41,12 @@ final class GetPublicTrackingHandler implements QueryHandler
 
         $tracking = $this->trackings->findByToken($token);
         if ($tracking === null) {
+            return null;
+        }
+
+        // Enlace vencido (TTL desde la entrega): no se sirven datos. Presentation distingue "vencido" de
+        // "inexistente" con GetPublicLinkState.
+        if ($this->guard->isExpired($tracking)) {
             return null;
         }
 

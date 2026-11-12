@@ -7,6 +7,7 @@ namespace Logistics\Tracking\Application\Query\GetPublicSurveyState;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Tracking\Application\ReadModel\PublicSurveyStateView;
+use Logistics\Tracking\Application\Service\PublicLinkGuard;
 use Logistics\Tracking\Domain\Contract\SatisfactionSurveyRepository;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
@@ -25,6 +26,7 @@ final class GetPublicSurveyStateHandler implements QueryHandler
     public function __construct(
         private readonly TrackingRepository $trackings,
         private readonly SatisfactionSurveyRepository $surveys,
+        private readonly PublicLinkGuard $guard,
     ) {}
 
     public function handle(Query $query): ?PublicSurveyStateView
@@ -40,7 +42,8 @@ final class GetPublicSurveyStateHandler implements QueryHandler
         }
 
         $tracking = $this->trackings->findByToken($token);
-        if ($tracking === null) {
+        if ($tracking === null || $this->guard->isExpired($tracking)) {
+            // Inexistente o enlace vencido: no hay encuesta por este enlace.
             return null;
         }
 

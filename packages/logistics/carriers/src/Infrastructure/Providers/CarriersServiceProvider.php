@@ -7,8 +7,14 @@ namespace Logistics\Carriers\Infrastructure\Providers;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Carriers\Application\Command\ApproveSettlement\ApproveSettlement;
 use Logistics\Carriers\Application\Command\ApproveSettlement\ApproveSettlementHandler;
+use Logistics\Carriers\Application\Command\AssignShipmentsToCarrierTrip\AssignShipmentsToCarrierTrip;
+use Logistics\Carriers\Application\Command\AssignShipmentsToCarrierTrip\AssignShipmentsToCarrierTripHandler;
 use Logistics\Carriers\Application\Command\AttachSettlementDocument\AttachSettlementDocument;
 use Logistics\Carriers\Application\Command\AttachSettlementDocument\AttachSettlementDocumentHandler;
+use Logistics\Carriers\Application\Command\CancelCarrierTrip\CancelCarrierTrip;
+use Logistics\Carriers\Application\Command\CancelCarrierTrip\CancelCarrierTripHandler;
+use Logistics\Carriers\Application\Command\CloseCarrierTrip\CloseCarrierTrip;
+use Logistics\Carriers\Application\Command\CloseCarrierTrip\CloseCarrierTripHandler;
 use Logistics\Carriers\Application\Command\DisputeSettlement\DisputeSettlement;
 use Logistics\Carriers\Application\Command\DisputeSettlement\DisputeSettlementHandler;
 use Logistics\Carriers\Application\Command\MarkSettlementPaid\MarkSettlementPaid;
@@ -19,30 +25,44 @@ use Logistics\Carriers\Application\Command\ReactivateCarrier\ReactivateCarrier;
 use Logistics\Carriers\Application\Command\ReactivateCarrier\ReactivateCarrierHandler;
 use Logistics\Carriers\Application\Command\RegisterCarrier\RegisterCarrier;
 use Logistics\Carriers\Application\Command\RegisterCarrier\RegisterCarrierHandler;
+use Logistics\Carriers\Application\Command\RemoveShipmentFromCarrierTrip\RemoveShipmentFromCarrierTrip;
+use Logistics\Carriers\Application\Command\RemoveShipmentFromCarrierTrip\RemoveShipmentFromCarrierTripHandler;
+use Logistics\Carriers\Application\Command\ScheduleCarrierTrip\ScheduleCarrierTrip;
+use Logistics\Carriers\Application\Command\ScheduleCarrierTrip\ScheduleCarrierTripHandler;
 use Logistics\Carriers\Application\Command\SetTariff\SetTariff;
 use Logistics\Carriers\Application\Command\SetTariff\SetTariffHandler;
+use Logistics\Carriers\Application\Command\StartCarrierTrip\StartCarrierTrip;
+use Logistics\Carriers\Application\Command\StartCarrierTrip\StartCarrierTripHandler;
 use Logistics\Carriers\Application\Command\SubmitSettlement\SubmitSettlement;
 use Logistics\Carriers\Application\Command\SubmitSettlement\SubmitSettlementHandler;
 use Logistics\Carriers\Application\Command\SuspendCarrier\SuspendCarrier;
 use Logistics\Carriers\Application\Command\SuspendCarrier\SuspendCarrierHandler;
+use Logistics\Carriers\Application\Contract\CarrierAssignmentReader;
 use Logistics\Carriers\Application\Query\AssignCarrierForVolume\AssignCarrierForVolume;
 use Logistics\Carriers\Application\Query\AssignCarrierForVolume\AssignCarrierForVolumeHandler;
 use Logistics\Carriers\Application\Query\CheapestCarrierForCorridor\CheapestCarrierForCorridor;
 use Logistics\Carriers\Application\Query\CheapestCarrierForCorridor\CheapestCarrierForCorridorHandler;
+use Logistics\Carriers\Application\Query\GetCarrierTrip\GetCarrierTrip;
+use Logistics\Carriers\Application\Query\GetCarrierTrip\GetCarrierTripHandler;
 use Logistics\Carriers\Application\Query\GetSettlement\GetSettlement;
 use Logistics\Carriers\Application\Query\GetSettlement\GetSettlementHandler;
 use Logistics\Carriers\Application\Query\GetTariffForCorridor\GetTariffForCorridor;
 use Logistics\Carriers\Application\Query\GetTariffForCorridor\GetTariffForCorridorHandler;
+use Logistics\Carriers\Application\Query\ListCarrierAssignments\ListCarrierAssignments;
+use Logistics\Carriers\Application\Query\ListCarrierAssignments\ListCarrierAssignmentsHandler;
 use Logistics\Carriers\Application\Query\ListCarriers\ListCarriers;
 use Logistics\Carriers\Application\Query\ListCarriers\ListCarriersHandler;
 use Logistics\Carriers\Application\Query\ListSettlements\ListSettlements;
 use Logistics\Carriers\Application\Query\ListSettlements\ListSettlementsHandler;
 use Logistics\Carriers\Domain\Contract\CarrierRepository;
+use Logistics\Carriers\Domain\Contract\CarrierTripRepository;
 use Logistics\Carriers\Domain\Contract\SettlementRepository;
 use Logistics\Carriers\Domain\Contract\TariffRepository;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentCarrierRepository;
+use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentCarrierTripRepository;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentSettlementRepository;
 use Logistics\Carriers\Infrastructure\Persistence\Eloquent\Repository\EloquentTariffRepository;
+use Logistics\Carriers\Infrastructure\ReadSide\DbCarrierAssignmentReader;
 use Logistics\Shared\Application\HandlerRegistry;
 
 /**
@@ -75,6 +95,15 @@ final class CarriersServiceProvider extends ServiceProvider
         AssignCarrierForVolume::class => AssignCarrierForVolumeHandler::class,
         ListSettlements::class => ListSettlementsHandler::class,
         GetSettlement::class => GetSettlementHandler::class,
+        // Viajes de transportista (carga asignada, auditoría app #4).
+        ScheduleCarrierTrip::class => ScheduleCarrierTripHandler::class,
+        AssignShipmentsToCarrierTrip::class => AssignShipmentsToCarrierTripHandler::class,
+        RemoveShipmentFromCarrierTrip::class => RemoveShipmentFromCarrierTripHandler::class,
+        StartCarrierTrip::class => StartCarrierTripHandler::class,
+        CloseCarrierTrip::class => CloseCarrierTripHandler::class,
+        CancelCarrierTrip::class => CancelCarrierTripHandler::class,
+        GetCarrierTrip::class => GetCarrierTripHandler::class,
+        ListCarrierAssignments::class => ListCarrierAssignmentsHandler::class,
     ];
 
     public function register(): void
@@ -82,6 +111,8 @@ final class CarriersServiceProvider extends ServiceProvider
         $this->app->bind(CarrierRepository::class, EloquentCarrierRepository::class);
         $this->app->bind(TariffRepository::class, EloquentTariffRepository::class);
         $this->app->bind(SettlementRepository::class, EloquentSettlementRepository::class);
+        $this->app->bind(CarrierTripRepository::class, EloquentCarrierTripRepository::class);
+        $this->app->bind(CarrierAssignmentReader::class, DbCarrierAssignmentReader::class);
     }
 
     public function boot(): void

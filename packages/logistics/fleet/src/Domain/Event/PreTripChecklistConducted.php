@@ -16,6 +16,7 @@ final readonly class PreTripChecklistConducted extends BaseDomainEvent
 {
     /**
      * @param array<string, bool> $items
+     * @param list<string>        $failedCritical
      */
     public function __construct(
         string $aggregateId,
@@ -24,6 +25,9 @@ final readonly class PreTripChecklistConducted extends BaseDomainEvent
         public array $items,
         public bool $passed,
         public string $performedOn,
+        public bool $fitToDispatch = true,
+        public array $failedCritical = [],
+        public ?string $templateId = null,
     ) {
         parent::__construct($aggregateId);
     }
@@ -41,6 +45,9 @@ final readonly class PreTripChecklistConducted extends BaseDomainEvent
             'items' => $this->items,
             'passed' => $this->passed,
             'performed_on' => $this->performedOn,
+            'fit_to_dispatch' => $this->fitToDispatch,
+            'failed_critical' => $this->failedCritical,
+            'checklist_template_id' => $this->templateId,
         ];
     }
 }

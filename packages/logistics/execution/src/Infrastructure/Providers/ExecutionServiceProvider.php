@@ -11,10 +11,6 @@ use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipment
 use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRouteHandler;
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidence;
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidenceHandler;
-use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDropshipDelivery;
-use Logistics\Execution\Application\Command\ConfirmDropshipDelivery\ConfirmDropshipDeliveryHandler;
-use Logistics\Execution\Application\Command\ConfirmDropshipDispatch\ConfirmDropshipDispatch;
-use Logistics\Execution\Application\Command\ConfirmDropshipDispatch\ConfirmDropshipDispatchHandler;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDeparted;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDepartedHandler;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReception;
@@ -109,8 +105,6 @@ final class ExecutionServiceProvider extends ServiceProvider
         RecordProofOfDelivery::class => RecordProofOfDeliveryHandler::class,
         RecordFailedDelivery::class => RecordFailedDeliveryHandler::class,
         RecordNodeReception::class => RecordNodeReceptionHandler::class,
-        ConfirmDropshipDispatch::class => ConfirmDropshipDispatchHandler::class,
-        ConfirmDropshipDelivery::class => ConfirmDropshipDeliveryHandler::class,
         OpenNodeReception::class => OpenNodeReceptionHandler::class,
         ReceiveUnitAtNode::class => ReceiveUnitAtNodeHandler::class,
         ReconcileNodeReception::class => ReconcileNodeReceptionHandler::class,

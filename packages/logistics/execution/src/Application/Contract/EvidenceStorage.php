@@ -24,7 +24,11 @@ interface EvidenceStorage
     /**
      * Persiste la foto de evidencia del envío y devuelve su referencia.
      *
+     * Con `$idempotencyKey` (la clave del reintento offline de la app) la subida es IDEMPOTENTE: la misma
+     * clave para el mismo envío y tipo siempre resuelve a la MISMA referencia; si la foto ya se guardó, se
+     * devuelve la referencia original sin volver a escribirla (nunca se duplica la foto).
+     *
      * @throws ExecutionException si no se pudo guardar tras los reintentos.
      */
-    public function store(EvidenceKind $kind, string $shipmentId, UploadedFile $file): StoredEvidence;
+    public function store(EvidenceKind $kind, string $shipmentId, UploadedFile $file, ?string $idempotencyKey = null): StoredEvidence;
 }

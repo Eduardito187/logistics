@@ -16,6 +16,9 @@ use Logistics\Shared\Application\Command\Command;
  *    documento del cliente (DocumentNumberMatcher) y deriva el estado. `status` gana si viene.
  *
  * La validación es SEÑAL: nunca bloquea la entrega; review/mismatch escalan a revisión humana.
+ *
+ * `validatedBy` (opcional) identifica a quien validó (nombre de la integración / usuario revisor); viaja
+ * en el evento `execution.delivery_evidence_validated` para auditoría aguas abajo.
  */
 final readonly class RecordEvidenceValidation implements Command
 {
@@ -25,5 +28,6 @@ final readonly class RecordEvidenceValidation implements Command
         public ?string $ocrDocumentNumber = null,
         public ?string $detail = null,
         public ?string $validatedAt = null,
+        public ?string $validatedBy = null,
     ) {}
 }

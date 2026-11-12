@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace Logistics\Fleet\Domain\Model;
 
 use DateTimeImmutable;
+use Logistics\Fleet\Domain\Event\VehicleCleared;
+use Logistics\Fleet\Domain\Event\VehicleMarkedUnfit;
 use Logistics\Fleet\Domain\Event\VehicleProfileUpdated;
 use Logistics\Fleet\Domain\Event\VehicleRegistered;
 use Logistics\Fleet\Domain\Event\VehicleStatusChanged;
 use Logistics\Fleet\Domain\ValueObject\Capacity;
+use Logistics\Fleet\Domain\Exception\FleetException;
 use Logistics\Fleet\Domain\ValueObject\DocumentExpiry;
 use Logistics\Fleet\Domain\ValueObject\PlateNumber;
+use Logistics\Fleet\Domain\ValueObject\VehicleFitness;
 use Logistics\Fleet\Domain\ValueObject\VehicleId;
 use Logistics\Fleet\Domain\ValueObject\VehicleProfile;
 use Logistics\Fleet\Domain\ValueObject\VehicleStatus;
@@ -49,6 +53,8 @@ final class Vehicle extends AggregateRoot
         private ?string $photoBack = null,
         private ?string $photoLeft = null,
         private ?string $photoRight = null,
+        // Aptitud para despachar (null = apto). Ver markUnfit()/clearFitness().
+        private ?VehicleFitness $fitness = null,
     ) {}
 
     /**
@@ -101,6 +107,7 @@ final class Vehicle extends AggregateRoot
         ?string $photoBack = null,
         ?string $photoLeft = null,
         ?string $photoRight = null,
+        ?VehicleFitness $fitness = null,
     ): self {
         return new self(
             $id,
@@ -119,7 +126,86 @@ final class Vehicle extends AggregateRoot
             $photoBack,
             $photoLeft,
             $photoRight,
+            $fitness,
         );
+    }
+
+    /**
+     * Deja al vehículo NO APTO para despachar desde `$on` por ítems críticos fallidos del checklist.
+     *
+     * Idempotente: si ya estaba no apto, no cambia nada ni graba evento (el bloqueo vigente sigue hasta
+     * que un supervisor lo levante).
+     *
+     * @param list<string> $failedItems
+     */
+    public function markUnfit(DateTimeImmutable $on, string $reason, ?string $inspectionId, array $failedItems): void
+    {
+        if ($this->fitness()->isUnfit()) {
+            return;
+        }
+
+        $this->fitness = VehicleFitness::unfit($on, $reason, $inspectionId, $failedItems);
+
+        $this->recordEvent(new VehicleMarkedUnfit(
+            $this->id->toString(),
+            $this->plate->value,
+            $on->format('Y-m-d'),
+            $reason,
+            $inspectionId,
+            array_values($failedItems),
+        ));
+    }
+
+    /**
+     * Un supervisor habilita de nuevo al vehículo tras la reparación. Exige una nota (qué se reparó) y
+     * falla si el vehículo ya estaba apto (no hay nada que habilitar).
+     */
+    public function clearFitness(?string $clearedById, string $clearedByLabel, string $note): void
+    {
+        $fitness = $this->fitness();
+        if (!$fitness->isUnfit() || $fitness->unfitSince === null) {
+            throw FleetException::because("El vehículo {$this->plate->value} ya está apto para despachar.");
+        }
+        $note = trim($note);
+        if ($note === '') {
+            throw FleetException::because('Para habilitar el vehículo hay que indicar qué se reparó.');
+        }
+
+        $this->fitness = VehicleFitness::fit();
+
+        $this->recordEvent(new VehicleCleared(
+            $this->id->toString(),
+            $this->plate->value,
+            $fitness->unfitSince->format('Y-m-d'),
+            $fitness->failedItems,
+            $clearedById,
+            $clearedByLabel,
+            $note,
+        ));
+    }
+
+    /**
+     * Regla de negocio: un vehículo NO APTO no se asigna ni sale a ruta en esa fecha (ni después) hasta
+     * que lo habiliten. Lanza FleetException (422) con el motivo legible.
+     */
+    public function ensureFitToDispatchOn(DateTimeImmutable $date): void
+    {
+        $fitness = $this->fitness();
+        if ($fitness->isFitOn($date)) {
+            return;
+        }
+
+        $since = $fitness->unfitSince?->format('Y-m-d') ?? $date->format('Y-m-d');
+
+        throw FleetException::because(
+            "El vehículo {$this->plate->value} no está apto para despachar desde {$since}: {$fitness->reason}. "
+            .'Un supervisor debe habilitarlo tras la reparación.',
+        );
+    }
+
+    public function fitness(): VehicleFitness
+    {
+        return $this->fitness ?? VehicleFitness::fit();
     }
 
     /**

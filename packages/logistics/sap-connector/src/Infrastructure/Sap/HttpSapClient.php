@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Infrastructure\Sap;
 
+use DateTimeInterface;
 use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Http\Client\PendingRequest;
 use Logistics\Outbox\Infrastructure\Resilience\CircuitBreaker;
 use Logistics\SapConnector\Domain\Contract\SapClient;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
+use Logistics\SapConnector\Domain\Model\SapNotification;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
+use Logistics\SapConnector\Domain\ValueObject\SapResponse;
 use Throwable;
 
 /**
@@ -36,6 +39,9 @@ final readonly class HttpSapClient implements SapClient
         private string $ordersPath,
         private string $stockTransfersPath,
         private int $timeout,
+        // Aviso fire-and-forget de hechos de despacho (aditivo, con defaults para no romper llamadores).
+        private string $eventsPath = '/events',
+        private int $notificationTimeout = 5,
     ) {}
 
     public function pushStockTransfer(StockTransfer $transfer): void
@@ -93,13 +99,43 @@ final readonly class HttpSapClient implements SapClient
     }
 
     /**
-     * Construye el request base con timeout y, si hay credenciales, autenticación básica de servicio.
+     * Aviso fire-and-forget: POST {base_url}{events_path} con el hecho de despacho. Timeout corto (el de
+     * notificaciones, no el de traspasos), Idempotency-Key = event_id para que un reintento no duplique
+     * el aviso del lado SAP, y el mismo breaker del destino 'sap'. Devuelve la respuesta cruda tal cual
+     * (2xx o no); solo lanza ante fallo de comunicación.
      */
-    private function request(): PendingRequest
+    public function notifyEvent(SapNotification $notification): SapResponse
     {
+        $timeout = max(1, $this->notificationTimeout);
+
+        try {
+            $response = $this->breaker()->call(self::BREAKER_DESTINATION, fn () => $this->request($timeout)
+                ->withHeaders(['Idempotency-Key' => $notification->eventId()])
+                ->post($this->url($this->eventsPath), [
+                    'event_id' => $notification->eventId(),
+                    'event_name' => $notification->eventName(),
+                    'occurred_at' => $notification->occurredAt()->format(DateTimeInterface::ATOM),
+                    'aggregate_id' => $notification->aggregateId(),
+                    'payload' => (object) $notification->payload(),
+                ]));
+        } catch (Throwable $exception) {
+            throw SapConnectorException::because('fallo de comunicación con SAP al enviar el aviso: '.$exception->getMessage());
+        }
+
+        return new SapResponse($response->status(), $response->body());
+    }
+
+    /**
+     * Construye el request base con timeout y, si hay credenciales, autenticación básica de servicio.
+     * El handshake de conexión nunca supera el timeout total pedido.
+     */
+    private function request(?int $timeout = null): PendingRequest
+    {
+        $total = $timeout ?? $this->timeout;
+
         $request = $this->http
-            ->timeout($this->timeout)
-            ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS)
+            ->timeout($total)
+            ->connectTimeout(min(self::CONNECT_TIMEOUT_SECONDS, $total))
             ->acceptJson();
 
         if (is_string($this->username) && $this->username !== '') {

@@ -138,7 +138,7 @@ final class MessageTemplateResource extends Resource
                 ->maxLength(255),
             Textarea::make('body')
                 ->label(__('Body'))
-                ->helperText(__('Variables: {{order}}, {{shipment_id}}, {{tracking_topic}}, {{customer}}, {{eta}}, {{stops}}.'))
+                ->helperText(__('Variables: {{order}}, {{order_reference}}, {{shipment_id}}, {{tracking_topic}}, {{tracking_url}}, {{customer}}, {{eta}}, {{stops}}.'))
                 ->required()
                 ->rows(4),
         ]);

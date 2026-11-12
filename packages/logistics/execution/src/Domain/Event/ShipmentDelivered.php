@@ -35,6 +35,8 @@ final readonly class ShipmentDelivered extends BaseDomainEvent
             'shipment_id' => $this->shipmentId,
             'confirmation' => $this->confirmation,
             'photo_url' => $this->photoUrl,
+            // Hora real de la entrega (capturas offline incluidas): la usan tracking (delivered_at) y el aviso a SAP.
+            'occurred_at' => $this->occurredAt->format(DATE_ATOM),
         ];
     }
 }

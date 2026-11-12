@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\Role;
 use App\Http\Middleware\AuthenticateChannel;
 use App\Http\Middleware\AuthenticateServiceClient;
 use App\Http\Middleware\EnsureDeviceToken;
@@ -88,7 +89,10 @@ it('valida GET /app/shipments con paginación por cursor contra el contrato', fu
 
 it('valida GET /app/carriers con paginación por página contra el contrato', function (): void {
     $this->withoutMiddleware(EnsureDeviceToken::class);
-    Sanctum::actingAs(User::factory()->create());
+    // /app/carriers exige oficina o transportista vinculado (EnsureCarrierScope): se usa un supervisor.
+    $supervisor = User::factory()->create();
+    $supervisor->assignRole(Role::Supervisor);
+    Sanctum::actingAs($supervisor);
 
     $this->getJson('/api/v1/app/carriers?page=1&per_page=10')
         ->assertValidRequest()

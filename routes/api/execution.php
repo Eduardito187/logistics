@@ -110,8 +110,12 @@ return [
             Route::post('deliveries/{shipmentId}/issues', ReportDeliveryIssueController::class)
                 ->name('issues.report');
 
-            // Subida de fotos de evidencia (devuelve la URL para el POD).
+            // Subida de fotos de evidencia (devuelve la URL para el POD). Idempotente por Idempotency-Key en
+            // la puerta de almacenamiento (misma clave → misma referencia, sin duplicar la foto). Se excluye
+            // el middleware genérico `idempotency`: compara el cuerpo crudo y un multipart reintentado trae
+            // otro boundary, lo que respondía 409 en vez de la referencia original.
             Route::post('deliveries/photos', UploadDeliveryPhotoController::class)
+                ->withoutMiddleware('idempotency')
                 ->name('photos.store');
 
             // Evidencia anti-fraude LIGADA AL CLIENTE (firma, documento, POD, daño): captura con hash de

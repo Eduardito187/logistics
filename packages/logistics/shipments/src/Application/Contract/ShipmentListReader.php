@@ -24,7 +24,8 @@ interface ShipmentListReader
      *
      * Todos los filtros son opcionales y se combinan con AND. `$status` y `$source` reciben el valor del
      * enum ya validado (string) o null; `$destinationNodeId` el UUID del nodo o null; `$lowConfidenceOnly`
-     * acota a las direcciones de confianza baja. `$limit`/`$offset` son opcionales (null = sin recorte):
+     * acota a las direcciones de confianza baja. `$deliveryDateFrom`/`$deliveryDateTo` (Y-m-d, inclusive)
+     * acotan la fecha prometida de entrega. `$limit`/`$offset` son opcionales (null = sin recorte):
      * permiten paginar en SQL cuando el consumidor lo pida, sin cambiar la forma del resultado.
      *
      * El orden es estable por `id` (UUID v7, orden temporal), igual que el listado histórico.
@@ -38,6 +39,8 @@ interface ShipmentListReader
         bool $lowConfidenceOnly = false,
         ?int $limit = null,
         ?int $offset = null,
+        ?string $deliveryDateFrom = null,
+        ?string $deliveryDateTo = null,
     ): array;
 
     /**
@@ -57,6 +60,8 @@ interface ShipmentListReader
         ?string $source = null,
         ?string $destinationNodeId = null,
         bool $lowConfidenceOnly = false,
+        ?string $deliveryDateFrom = null,
+        ?string $deliveryDateTo = null,
     ): ShipmentPage;
 
     /**
@@ -69,5 +74,7 @@ interface ShipmentListReader
         ?string $source = null,
         ?string $destinationNodeId = null,
         bool $lowConfidenceOnly = false,
+        ?string $deliveryDateFrom = null,
+        ?string $deliveryDateTo = null,
     ): int;
 }

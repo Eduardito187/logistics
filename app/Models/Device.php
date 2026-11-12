@@ -30,6 +30,10 @@ use Illuminate\Support\Str;
  * @property Carbon|null $last_seen_at
  * @property Carbon|null $revoked_at
  * @property string|null $revoked_reason
+ * @property string|null $model          Modelo del equipo que reporta la app (cabecera X-Device-Model)
+ * @property string|null $os_version     Versión del SO (cabecera X-Device-Os-Version)
+ * @property string|null $app_version    Versión de la app instalada (cabecera X-App-Version)
+ * @property string|null $app_build      Build de la app instalada (cabecera X-App-Build)
  */
 class Device extends Model
 {
@@ -54,7 +58,14 @@ class Device extends Model
         'last_seen_at',
         'revoked_at',
         'revoked_reason',
+        'model',
+        'os_version',
+        'app_version',
+        'app_build',
     ];
+
+    /** Nombre genérico que manda la app vieja en el login; no distingue teléfonos. */
+    public const string GENERIC_NAME = 'App interna';
 
     /**
      * @return array<string, string>
@@ -122,6 +133,33 @@ class Device extends Model
         $normalized = is_string($platform) ? strtolower(trim($platform)) : '';
 
         return in_array($normalized, ['web', 'desktop', 'browser'], true) ? self::BUCKET_WEB : self::BUCKET_APP;
+    }
+
+    /**
+     * Nombre legible para listar el equipo: el nombre que le puso el usuario si no es el genérico de la
+     * app; si no, el modelo reportado; si no, la plataforma. Nunca vacío.
+     */
+    public function displayName(): string
+    {
+        $name = is_string($this->name) ? trim($this->name) : '';
+        if ($name !== '' && strcasecmp($name, self::GENERIC_NAME) !== 0) {
+            return $name;
+        }
+
+        $model = is_string($this->model) ? trim($this->model) : '';
+        if ($model !== '') {
+            return $model;
+        }
+
+        $platform = is_string($this->platform) ? strtolower(trim($this->platform)) : '';
+
+        return match ($platform) {
+            'android' => 'Android device',
+            'ios' => 'iOS device',
+            'web', 'browser', 'desktop' => 'Web browser',
+            '' => 'Unknown device',
+            default => ucfirst($platform).' device',
+        };
     }
 
     public function isRevoked(): bool

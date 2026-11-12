@@ -8,9 +8,11 @@ use Logistics\SapConnector\Domain\Contract\StockTransferRepository;
 use Logistics\SapConnector\Domain\Event\StockTransferAcknowledged;
 use Logistics\SapConnector\Domain\Event\StockTransferEnqueued;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
+use Logistics\SapConnector\Domain\Model\SapNotification;
 use Logistics\SapConnector\Domain\Model\StockTransfer;
 use Logistics\SapConnector\Domain\ValueObject\SapCenter;
 use Logistics\SapConnector\Domain\ValueObject\SapMaterial;
+use Logistics\SapConnector\Domain\ValueObject\SapResponse;
 use Logistics\SapConnector\Domain\ValueObject\SapWarehouse;
 use Logistics\SapConnector\Domain\ValueObject\StockTransferId;
 use Logistics\SapConnector\Domain\ValueObject\TransferKind;
@@ -82,6 +84,15 @@ function inMemoryTransferRepository(StockTransfer ...$seed): StockTransferReposi
                 static fn (StockTransfer $t): bool => $t->status() === TransferStatus::Failed,
             ));
         }
+
+        public function dispatchable(?DateTimeImmutable $pendingUpdatedBefore, DateTimeImmutable $failedUpdatedBefore, int $limit): array
+        {
+            return array_slice(array_values(array_filter(
+                $this->byId,
+                static fn (StockTransfer $t): bool => $t->status() === TransferStatus::Failed
+                    || ($pendingUpdatedBefore !== null && $t->status() === TransferStatus::Pending),
+            )), 0, $limit);
+        }
     };
 }
 
@@ -107,6 +118,11 @@ function recordingSapClient(bool $fails = false): SapClient
         public function fetchOrders(): array
         {
             return [];
+        }
+
+        public function notifyEvent(SapNotification $notification): SapResponse
+        {
+            return new SapResponse(204, '');
         }
     };
 }
@@ -170,15 +186,15 @@ it('es idempotente: no reenvía un traspaso que ya fue enviado (reentrega del ou
         ->and($repository->findByEventId('REC-5001')?->status())->toBe(TransferStatus::Sent);
 });
 
-it('marca Failed y relanza cuando SAP falla, para que el relay reintente', function (): void {
+it('marca Failed SIN relanzar cuando SAP falla: el reintento es del worker de reconciliación', function (): void {
     $transfer = pendingTransfer();
     $repository = inMemoryTransferRepository($transfer);
     $sap = recordingSapClient(fails: true);
 
     $dispatcher = new SapMessageDispatcher($repository, $sap);
 
-    expect(fn () => $dispatcher->dispatch(enqueuedOutboxMessage($transfer)))
-        ->toThrow(SapConnectorException::class, 'SAP caído');
+    // Un SAP caído no debe reintentar por el outbox (sin doble push con el scheduler ni dead-letters).
+    $dispatcher->dispatch(enqueuedOutboxMessage($transfer));
 
     $failed = $repository->findByEventId('REC-5001');
     expect($failed?->status())->toBe(TransferStatus::Failed)

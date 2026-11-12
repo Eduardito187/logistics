@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string      $plan_date
  * @property string      $reason
  * @property string|null $source_route_id
+ * @property string|null $processed_at    momento en que un plan generado consumió la fila (null = pendiente)
  */
 final class ShipmentReplanRecord extends Model
 {

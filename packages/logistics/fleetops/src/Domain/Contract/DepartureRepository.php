@@ -21,7 +21,8 @@ interface DepartureRepository
 
     /**
      * Lista salidas con filtros opcionales: por vehículo, por estado ('out'|'returned') y por rango de la
-     * fecha de salida.
+     * fecha de salida. Orden determinista: fecha de salida desc, id desc. `$limit`/`$offset` bajan
+     * LIMIT/OFFSET a SQL al paginar (null = sin recorte).
      *
      * @return list<Departure>
      */
@@ -30,7 +31,19 @@ interface DepartureRepository
         ?string $status = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
+        ?int $limit = null,
+        ?int $offset = null,
     ): array;
+
+    /**
+     * Cuenta las salidas que cumplen los MISMOS filtros que `listBy` (total de la paginación).
+     */
+    public function countBy(
+        ?string $vehicleId = null,
+        ?string $status = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
+    ): int;
 
     /**
      * Salida en ruta (Out) del vehículo, si existe. Sirve para impedir dos salidas abiertas a la vez.

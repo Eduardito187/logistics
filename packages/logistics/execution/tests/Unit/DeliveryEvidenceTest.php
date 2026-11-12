@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Logistics\Execution\Domain\Event\DeliveryEvidenceCaptured;
+use Logistics\Execution\Domain\Event\DeliveryEvidenceValidated;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\Model\DeliveryEvidence;
 use Logistics\Execution\Domain\ValueObject\CustomerIdentitySnapshot;
@@ -57,4 +58,37 @@ it('aplica el resultado de validación sin tocar la captura', function (): void 
         ->and($evidence->validationDetail())->toBe('número no coincide')
         ->and($evidence->validatedAt())->not->toBeNull()
         ->and($evidence->sha256())->toBe(hash('sha256', 'file-bytes'));
+});
+
+it('graba DeliveryEvidenceValidated al cambiar el resultado de validación, una sola vez', function (): void {
+    $evidence = captureEvidence();
+    $evidence->releaseEvents();
+
+    $at = new DateTimeImmutable('2026-11-05T13:00:00+00:00');
+    $evidence->applyValidation(EvidenceValidationStatus::Ok, null, $at, 'evidence-sidecar');
+
+    $events = $evidence->releaseEvents();
+    expect($events)->toHaveCount(1)
+        ->and($events[0])->toBeInstanceOf(DeliveryEvidenceValidated::class)
+        ->and($events[0]->eventName())->toBe('execution.delivery_evidence_validated')
+        ->and($events[0]->occurredAt())->toEqual($at)
+        ->and($events[0]->payload())->toMatchArray([
+            'evidence_id' => $evidence->id()->toString(),
+            'shipment_id' => 'SHIP-1',
+            'kind' => 'id_document',
+            'validation_status' => 'ok',
+            'previous_status' => 'pending',
+            'validated_by' => 'evidence-sidecar',
+            'occurred_at' => '2026-11-05T13:00:00+00:00',
+        ]);
+
+    // Mismo resultado reenviado (reintento del validador): no se duplica el hecho.
+    $evidence->applyValidation(EvidenceValidationStatus::Ok, null, $at, 'evidence-sidecar');
+    expect($evidence->releaseEvents())->toBe([]);
+
+    // Un "pending" no es una validación: tampoco graba.
+    $other = captureEvidence();
+    $other->releaseEvents();
+    $other->applyValidation(EvidenceValidationStatus::Pending, null, $at);
+    expect($other->releaseEvents())->toBe([]);
 });

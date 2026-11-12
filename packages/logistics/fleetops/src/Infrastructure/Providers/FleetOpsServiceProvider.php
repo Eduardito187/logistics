@@ -99,8 +99,12 @@ use Logistics\FleetOps\Domain\Contract\MaintenanceOrderRepository;
 use Logistics\FleetOps\Domain\Contract\MaintenancePlanRepository;
 use Logistics\FleetOps\Domain\Contract\OdometerRepository;
 use Logistics\FleetOps\Domain\Contract\RefuelRepository;
+use Logistics\FleetOps\Domain\Contract\VehicleFitnessGate;
+use Logistics\FleetOps\Domain\Contract\VehiclePlateDirectory;
 use Logistics\FleetOps\Domain\Contract\VehicleProfileRepository;
 use Logistics\FleetOps\Infrastructure\Console\AlertDueMaintenanceCommand;
+use Logistics\FleetOps\Infrastructure\Fleet\FleetTableVehicleFitnessGate;
+use Logistics\FleetOps\Infrastructure\Fleet\FleetTableVehiclePlateDirectory;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Repository\EloquentDepartureRepository;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Repository\EloquentExpenseRepository;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Repository\EloquentFuelPriceRepository;
@@ -193,6 +197,10 @@ final class FleetOpsServiceProvider extends ServiceProvider
         OdometerRepository::class => EloquentOdometerRepository::class,
         VehicleProfileRepository::class => EloquentVehicleProfileRepository::class,
         ExpenseRepository::class => EloquentExpenseRepository::class,
+        // Aptitud para despachar que decide Flota (#27): lectura por valor, sin depender del package fleet.
+        VehicleFitnessGate::class => FleetTableVehicleFitnessGate::class,
+        // Placas legibles en lote para las proyecciones (#24: `vehicle_plate` en maintenance/due).
+        VehiclePlateDirectory::class => FleetTableVehiclePlateDirectory::class,
     ];
 
     public function register(): void

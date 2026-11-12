@@ -32,7 +32,6 @@ use Logistics\Promise\Domain\Contract\AvailabilityProvider;
 use Logistics\Promise\Domain\Contract\CapacityCalendar;
 use Logistics\Promise\Domain\Contract\CorridorAvailabilityProvider;
 use Logistics\Promise\Domain\Contract\CoverageProfileProvider;
-use Logistics\Promise\Domain\Contract\FulfillmentLeadTimeProvider;
 use Logistics\Promise\Domain\Contract\MunicipalityDispatchCalendar;
 use Logistics\Promise\Domain\Contract\MunicipalityDispatchGate;
 use Logistics\Promise\Domain\Contract\MunicipalityResolver;
@@ -52,8 +51,6 @@ use Logistics\Promise\Infrastructure\Cache\CacheInvalidatingPromiseRepository;
 use Logistics\Promise\Infrastructure\Cache\CachingGetPromiseHandler;
 use Logistics\Promise\Infrastructure\Coverage\CoverageBackedMunicipalityResolver;
 use Logistics\Promise\Infrastructure\Coverage\CoverageBackedProfileProvider;
-use Logistics\Promise\Infrastructure\Fulfillment\ConfigurableFulfillmentLeadTimeProvider;
-use Logistics\Promise\Infrastructure\Fulfillment\SellerBackedFulfillmentLeadTimeProvider;
 use Logistics\Promise\Infrastructure\Network\NetworkBackedCorridorProvider;
 use Logistics\Promise\Infrastructure\Persistence\Eloquent\EloquentPromiseRepository;
 use Logistics\Promise\Infrastructure\Shipments\ShipmentsOrderDeliverySlotGateway;
@@ -142,18 +139,9 @@ final class PromiseServiceProvider extends ServiceProvider
         $this->app->bind(MunicipalityDispatchGate::class, DispatchDayGate::class);
         $this->app->bind(MunicipalitySlotReserver::class, CapacityBackedMunicipalitySlotReserver::class);
 
-        // Lead time adicional del marketplace en la promesa (ver docs/marketplace-dropship-roadmap.md §8.1):
-        // para retail (OWNED) es cero y la promesa no cambia; para FBD/DROPSHIP se suma el lead del seller.
-        // La política de días por modo sale de config con un fallback conservador; el adaptador por seller
-        // la decora para respetar un lead por seller cuando su ficha lo tenga (hoy cae al default por modo).
-        $this->app->bind(FulfillmentLeadTimeProvider::class, function ($app): FulfillmentLeadTimeProvider {
-            $fbdDays = (int) config('promise.fulfillment_lead_days.fbd', 2);
-            $dropshipDays = (int) config('promise.fulfillment_lead_days.dropship', 3);
-
-            return new SellerBackedFulfillmentLeadTimeProvider(
-                new ConfigurableFulfillmentLeadTimeProvider($fbdDays, $dropshipDays),
-            );
-        });
+        // Regla de negocio: la promesa nunca depende del stock ni del tipo de propiedad
+        // (OWNED/FBD/DROPSHIP). La plataforma hace despacho; todo pedido se promete igual, así que no
+        // hay puerto de lead time por modo de fulfillment.
     }
 
     public function boot(): void

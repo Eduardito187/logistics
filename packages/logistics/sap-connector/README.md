@@ -63,6 +63,39 @@ Cuatro capas (ver `docs/architecture.md`), con `Domain` en PHP puro (sin Laravel
 - **Seeder**: `Infrastructure\Persistence\Seeders\SapConnectorSeeder` con datos de demo (mapa de
   traducción realista y traspasos en todos los estados), idempotente; lo integra el `DatabaseSeeder`.
 
+## Avisos fire-and-forget a SAP
+
+Principio del dueño: a SAP le importan el stock y los registros; a nuestra plataforma de despacho, no.
+Tras cada hecho relevante se **avisa** a SAP sin esperar nada de vuelta:
+
+1. `SapNotificationRecorder` (observador del outbox, no reactor) ve cada mensaje procesado; si su
+   `event_name` está en `notifications.events`, registra UNA fila en `sap_notifications`
+   (insert-or-ignore por `event_id`) y encola `SendSapNotificationJob` en la cola `sap`.
+2. El job (`DeliverSapNotification`) hace `POST {base_url}{events_path}` con
+   `{event_id, event_name, occurred_at, aggregate_id, payload}`, header `Idempotency-Key = event_id`,
+   timeout corto (`notifications.timeout`, 5 s) y el breaker del grupo `sap`. 2xx ⇒ `sent` con la
+   respuesta cruda (≤ 4 KB); otro código o error de red ⇒ `failed` con motivo y backoff.
+3. `logistics:sap:retry-notifications` (scheduler, cada minuto) re-encola los `pending`/`failed` con
+   intentos < `notifications.max_attempts` (3) y backoff vencido, en lotes chicos. Agotados, quedan
+   `failed` y se dejan: sin dead-letter ni acción manual obligatoria (hay un «Retry» opcional en el panel).
+4. Conector apagado (`sap.enabled = false`, que el panel overlaya desde `integrations.sap.enabled`) o
+   sin `base_url` ⇒ el aviso se registra `skipped` y no se envía nada.
+
+Nada de lo que haga SAP (errores, lentitud, caída) afecta a la plataforma: el observador nunca lanza,
+el job nunca lanza, y todo corre en la cola `sap`, aislada del resto. Panel: **Integrations → SAP
+notifications** (solo lectura, sin UUID). Configuración: **Configuration → Integrations → SAP
+connector** (ruta de eventos, eventos a avisar, intentos máximos, timeout del aviso).
+
+### Sin HTTP a SAP dentro de un request
+
+- `POST /app/sap/stock-transfers/dispatch` y la acción «Dispatch pending transfers» solo encolan
+  `DispatchStockTransfersJob` (cola `sap`) y responden 202.
+- `POST /integrations/sap/orders/import` solo encola `ImportSapOrdersJob` y responde 202.
+- Sin doble envío de traspasos: los nuevos los empuja solo el reactor del outbox
+  (`SapMessageDispatcher`, que ya no relanza: marca `Failed`); el scheduler
+  (`logistics:sap:dispatch-transfers`) reintenta únicamente los `Failed` con backoff vencido
+  (`transfers.retry_backoff_minutes`); la corrida manual además rescata `Pending` estancados.
+
 ## Estado
 
 Dominio, aplicación (CQRS), infraestructura (Eloquent + adaptador SAP real y stub + adapter del relay

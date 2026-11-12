@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Logistics\Carriers\Application\Query\ListSettlements\ListSettlements;
 use Logistics\Carriers\Application\ReadModel\SettlementView;
 use Logistics\Carriers\Presentation\Http\ApiController;
+use Logistics\Carriers\Presentation\Http\Middleware\EnsureCarrierScope;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Application\ReadModel\Page;
 
@@ -19,6 +20,9 @@ use Logistics\Shared\Application\ReadModel\Page;
  *
  * Tabla de crecimiento ilimitado: paginación OBLIGATORIA (per_page por defecto 50), con recorte en SQL
  * (LIMIT/OFFSET + COUNT(*) aparte).
+ *
+ * Rol transportista: el `?carrier_id=` del cliente se IGNORA; el filtro es siempre el transportista del
+ * usuario que {@see EnsureCarrierScope} deja en el request (defensa en profundidad además del middleware).
  */
 final class ListSettlementsController extends ApiController
 {
@@ -31,6 +35,11 @@ final class ListSettlementsController extends ApiController
         return $this->guard(function () use ($request): JsonResponse {
             $carrierId = $request->query('carrier_id');
             $carrierId = is_string($carrierId) && $carrierId !== '' ? $carrierId : null;
+
+            $scopedCarrierId = $request->attributes->get(EnsureCarrierScope::ATTRIBUTE);
+            if (is_string($scopedCarrierId) && $scopedCarrierId !== '') {
+                $carrierId = $scopedCarrierId;
+            }
 
             $status = $request->query('status');
             $status = is_string($status) && $status !== '' ? $status : null;

@@ -9,7 +9,7 @@ use Logistics\Shared\Application\Query\Query;
 /**
  * Lista envíos con paginación por CURSOR (keyset), el modo preferido para la colección de envíos (crece
  * sin techo). Mismos filtros opcionales que ListShipments (estado, fuente, nodo destino), más el tamaño
- * de página y el cursor (`afterId` = id del último envío de la página previa; null = primera página).
+ * de página y el cursor (y el rango de fecha prometida de entrega) (`afterId` = id del último envío de la página previa; null = primera página).
  *
  * El nodo destino lo FUERZA la puerta app para el rol Tienda (server-side), igual que ListShipments.
  */
@@ -21,5 +21,8 @@ final readonly class ListShipmentsByCursor implements Query
         public ?string $status = null,
         public ?string $source = null,
         public ?string $destinationNodeId = null,
+        // Rango de fecha prometida de entrega (Y-m-d, ambos inclusive); null = sin cota.
+        public ?string $deliveryDateFrom = null,
+        public ?string $deliveryDateTo = null,
     ) {}
 }

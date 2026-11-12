@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Application\Command\ProjectExecutionEvent;
 
+use DateTimeImmutable;
+use Exception;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandHandler;
+use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
 use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
@@ -25,6 +28,7 @@ final class ProjectExecutionEventHandler implements CommandHandler
     public function __construct(
         private readonly TrackingRepository $trackings,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly Clock $clock,
     ) {}
 
     public function handle(Command $command): void
@@ -55,7 +59,8 @@ final class ProjectExecutionEventHandler implements CommandHandler
         // volver a avanzar la cascada (evita el doble descuento en reintentos).
         $wasResolved = $this->isStopResolved($tracking->status());
 
-        $tracking->applyStatus($status);
+        // El momento del hecho (p. ej. la entrega) fija delivered_at; ver ShipmentTracking::applyStatus().
+        $tracking->applyStatus($status, $this->occurredAt($command->occurredAt));
 
         $this->trackings->save($tracking);
 
@@ -66,6 +71,23 @@ final class ProjectExecutionEventHandler implements CommandHandler
         // stops_remaining en cascada. Es un ajuste de proyección (no graba eventos), una vez por parada.
         if (!$wasResolved && $this->isStopResolved($status)) {
             $this->advanceLaterStops($tracking->routeId(), $tracking->routePosition()?->value);
+        }
+    }
+
+    /**
+     * Interpreta el `occurredAt` del hecho; vacío o con formato inválido cae al reloj (la proyección es
+     * tolerante: un dato de fecha malo no debe tumbar el avance del estado).
+     */
+    private function occurredAt(?string $raw): DateTimeImmutable
+    {
+        if ($raw === null || trim($raw) === '') {
+            return $this->clock->now();
+        }
+
+        try {
+            return new DateTimeImmutable($raw);
+        } catch (Exception) {
+            return $this->clock->now();
         }
     }
 

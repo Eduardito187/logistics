@@ -69,6 +69,9 @@ it('raises speeding and geofence_violation alerts for a reading at 100 km/h insi
         ])
         ->create();
 
+    // Exceso instantáneo (sin tiempo sostenido mínimo) para que una sola lectura alcance a alertar.
+    config()->set('logistics-telemetry.speeding.sustained_seconds', 0);
+
     // Lectura a 100 km/h (> límite 90) dentro de la zona prohibida, en horario laboral.
     $pings = [
         ['lat' => -16.50, 'lng' => -68.15, 'recorded_at' => '2026-10-13T10:00:00-04:00', 'speed_kph' => 100.0, 'ignition' => true],

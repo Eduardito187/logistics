@@ -36,7 +36,39 @@ final readonly class ShipmentView
         public ?string $deliveryWindowEnd,
         public ?string $destinationNodeId,
         public array $lines,
+        // Avance operativo (camión, preparado, cargado, entregado, etiquetas): enriquecimiento del lado de
+        // lectura que agrega el listado de la app. Null = no enriquecido (no se serializa).
+        public ?ShipmentProgressView $progress = null,
     ) {}
+
+    /**
+     * Copia de la vista con su avance operativo adjunto (la vista es inmutable).
+     */
+    public function withProgress(ShipmentProgressView $progress): self
+    {
+        return new self(
+            $this->id,
+            $this->source,
+            $this->externalId,
+            $this->customerName,
+            $this->customerDocumentId,
+            $this->customerPhone,
+            $this->customerEmail,
+            $this->addressText,
+            $this->addressReference,
+            $this->lat,
+            $this->lng,
+            $this->addressConfidenceScore,
+            $this->addressConfidenceLevel,
+            $this->status,
+            $this->deliveryDate,
+            $this->deliveryWindowStart,
+            $this->deliveryWindowEnd,
+            $this->destinationNodeId,
+            $this->lines,
+            $progress,
+        );
+    }
 
     public static function fromShipment(Shipment $shipment): self
     {
@@ -162,7 +194,7 @@ final readonly class ShipmentView
      */
     public function toArray(): array
     {
-        return [
+        $data = [
             'id' => $this->id,
             'source' => $this->source,
             'external_id' => $this->externalId,
@@ -183,5 +215,13 @@ final readonly class ShipmentView
             'destination_node_id' => $this->destinationNodeId,
             'lines' => array_map(static fn (ShipmentLineView $line): array => $line->toArray(), $this->lines),
         ];
+
+        // Aditivo: solo cuando la consulta lo enriqueció (listado de la app), para no cambiar las demás
+        // respuestas que comparten esta vista.
+        if ($this->progress !== null) {
+            $data['progress'] = $this->progress->toArray();
+        }
+
+        return $data;
     }
 }

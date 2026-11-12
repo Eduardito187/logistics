@@ -45,6 +45,10 @@ Route::get('metrics', MetricsController::class)->name('api.metrics');
 // throttle) y no puede vivir bajo el middleware auth:sanctum de la puerta app.
 require __DIR__.'/api/auth.php';
 
+// ── Cliente app: app-config (público), preferencias, acciones rechazadas y dispositivos. ──
+// Autocontenido como auth.php: app-config es público y no puede vivir bajo auth:sanctum.
+require __DIR__.'/api/app-client.php';
+
 /*
 | Fragmentos de contexto: cada require devuelve ['app' => closure, 'channels' => ..., 'integrations' => ...].
 | Se cargan una sola vez; las closures se invocan dentro del grupo de su puerta (así heredan prefijo

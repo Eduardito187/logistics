@@ -19,6 +19,12 @@ use Logistics\Execution\Presentation\Http\Request\UploadPhotoRequest;
  * red y devuelve la referencia durable (disco + path). Esa referencia viaja luego como photo_path en el
  * escaneo de prueba de entrega. No invoca un bus de comandos porque no es un hecho de dominio, solo un
  * adjunto. No habla con Infrastructure directo: depende de la puerta de Application.
+ *
+ * IDEMPOTENTE por `Idempotency-Key` (header) o `idempotency_key` (campo): la cola offline de la app
+ * reintenta la subida, y la misma clave devuelve SIEMPRE la referencia original sin guardar otra foto. La
+ * deduplicación vive en la puerta de almacenamiento (nombre de archivo derivado de la clave), no en el
+ * middleware genérico: ese compara el cuerpo crudo, y un multipart reintentado trae otro boundary, lo que
+ * daba 409 `idempotency_key_reused` en vez de la referencia original.
  */
 final class UploadDeliveryPhotoController
 {
@@ -37,7 +43,7 @@ final class UploadDeliveryPhotoController
         $kind = EvidenceKind::fromCode(isset($data['kind']) && is_string($data['kind']) ? $data['kind'] : null);
 
         try {
-            $stored = $this->storage->store($kind, (string) $data['shipment_id'], $photo);
+            $stored = $this->storage->store($kind, (string) $data['shipment_id'], $photo, $this->idempotencyKey($request));
         } catch (ExecutionException $exception) {
             return new JsonResponse([
                 'error' => [
@@ -48,5 +54,20 @@ final class UploadDeliveryPhotoController
         }
 
         return new JsonResponse(['data' => $stored->toArray()], 201);
+    }
+
+    /**
+     * Clave de idempotencia del reintento offline: header `Idempotency-Key` o, de respaldo, el campo
+     * `idempotency_key` del formulario. Null si no viene (la subida no se deduplica, como antes).
+     */
+    private function idempotencyKey(UploadPhotoRequest $request): ?string
+    {
+        foreach ([$request->header('Idempotency-Key'), $request->input('idempotency_key')] as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                return trim($candidate);
+            }
+        }
+
+        return null;
     }
 }

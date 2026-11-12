@@ -71,7 +71,7 @@ final class EnsureDeviceToken
             return $this->problem($request, ErrorCode::DeviceRevoked, 'Device is bound to another user.');
         }
 
-        $this->touchLastSeen($deviceId);
+        $this->touchLastSeen($deviceId, $request);
 
         return $next($request);
     }
@@ -151,8 +151,13 @@ final class EnsureDeviceToken
      * La ventana se controla con un marcador en cache (no leyendo `last_seen_at` de la base): así el
      * camino caliente no hace ni SELECT ni UPDATE salvo una vez por {@see Device::LAST_SEEN_RESOLUTION_SECONDS}.
      * El UPDATE directo evita materializar el modelo (el snapshot vive en cache como primitivo).
+     *
+     * En el MISMO UPDATE se registran los datos del cliente que viajan por cabecera (versión/build de la
+     * app, modelo y versión del SO; auditoría app #28), así se sabe qué versiones siguen en la calle y se
+     * distinguen los teléfonos en `GET /app/devices` sin escrituras extra. Solo se tocan las columnas
+     * cuya cabecera vino (una app vieja sin cabeceras no borra lo ya registrado).
      */
-    private function touchLastSeen(int $deviceId): void
+    private function touchLastSeen(int $deviceId, Request $request): void
     {
         $marker = 'app:device:seen:'.$deviceId;
 
@@ -161,7 +166,32 @@ final class EnsureDeviceToken
         }
 
         Cache::put($marker, true, Device::LAST_SEEN_RESOLUTION_SECONDS);
-        Device::query()->whereKey($deviceId)->update(['last_seen_at' => now()]);
+        Device::query()->whereKey($deviceId)->update(['last_seen_at' => now()] + $this->clientDetails($request));
+    }
+
+    /**
+     * Columnas del dispositivo a actualizar desde las cabeceras del cliente (solo las presentes).
+     *
+     * @return array<string, string>
+     */
+    private function clientDetails(Request $request): array
+    {
+        $map = [
+            'app_version' => 'X-App-Version',
+            'app_build' => 'X-App-Build',
+            'model' => 'X-Device-Model',
+            'os_version' => 'X-Device-Os-Version',
+        ];
+
+        $details = [];
+        foreach ($map as $column => $header) {
+            $value = $request->header($header);
+            if (is_string($value) && trim($value) !== '') {
+                $details[$column] = mb_substr(trim($value), 0, 120);
+            }
+        }
+
+        return $details;
     }
 
     private function problem(Request $request, ErrorCode $code, string $detail): Response

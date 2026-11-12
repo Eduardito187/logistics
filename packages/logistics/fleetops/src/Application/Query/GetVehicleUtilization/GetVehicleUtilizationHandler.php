@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use Logistics\FleetOps\Application\ReadModel\UtilizationView;
 use Logistics\FleetOps\Domain\Contract\DepartureRepository;
 use Logistics\FleetOps\Domain\Contract\OdometerRepository;
+use Logistics\FleetOps\Domain\Contract\VehiclePlateDirectory;
 use Logistics\FleetOps\Domain\ValueObject\DepartureStatus;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
@@ -24,6 +25,8 @@ final readonly class GetVehicleUtilizationHandler implements QueryHandler
     public function __construct(
         private DepartureRepository $departures,
         private OdometerRepository $readings,
+        // Opcional: placa legible del vehículo (sin él, `vehicle_plate` queda null).
+        private ?VehiclePlateDirectory $plates = null,
     ) {}
 
     public function handle(Query $query): UtilizationView
@@ -60,6 +63,7 @@ final readonly class GetVehicleUtilizationHandler implements QueryHandler
             round($seconds / 3600, 2),
             $latest?->odometer()->km,
             $latest?->readAt()->format(DateTimeImmutable::ATOM),
+            $this->plates?->platesFor([$query->vehicleId])[$query->vehicleId] ?? null,
         );
     }
 }

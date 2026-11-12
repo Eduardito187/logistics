@@ -14,6 +14,7 @@ use Livewire\Attributes\Computed;
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource;
 use Logistics\Fleet\Presentation\Filament\Resources\DocumentResource;
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource;
+use Logistics\Fleet\Presentation\Filament\Resources\VehicleFitnessLogResource;
 use Logistics\Fleet\Presentation\Filament\Resources\VehicleResource;
 use Logistics\Fleet\Presentation\Filament\Support\OwnerDocuments;
 use Logistics\FleetOps\Presentation\Filament\Resources\DepartureResource;
@@ -49,6 +50,8 @@ final class ViewVehicle extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            // Habilitar tras la reparación: solo visible si el vehículo quedó no apto por checklist (#27).
+            VehicleResource::clearFitnessAction(),
             EditAction::make(),
             OwnerDocuments::registerAction('vehicle'),
         ];
@@ -120,6 +123,8 @@ final class ViewVehicle extends ViewRecord
             ['Gastos', ExpenseResource::class, true],
             ['Recorridos', TripResource::class, true],
             ['Checklists pre-salida', PreTripChecklistResource::class, true],
+            // Bitácora de aptitud (no apto / habilitado) del vehículo.
+            ['Bitácora de aptitud', VehicleFitnessLogResource::class, true],
             ['Ficha técnica', VehicleProfileResource::class, true],
             ['Tripulaciones', CrewResource::class, true],
             // Documentos del vehículo (SOAT, inspección): su hogar es esta ficha (acotados por ?vehicle=).

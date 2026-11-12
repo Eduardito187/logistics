@@ -10,6 +10,9 @@ use Logistics\Telemetry\Domain\Model\TelemetryAlert;
 /**
  * Proyección de lectura de una alerta para listados, admin y API. Primitivos: no expone objetos de
  * dominio. Las fechas salen en ISO 8601 (ATOM).
+ *
+ * `plate` / `driver_name` (aditivo, auditoría #17) los completa el listado de la API en lote con
+ * `withNames()`; en las demás lecturas quedan null.
  */
 final readonly class AlertView
 {
@@ -28,7 +31,31 @@ final readonly class AlertView
         public string $occurredAt,
         public ?string $acknowledgedAt,
         public ?string $acknowledgedBy,
+        public ?string $plate = null,
+        public ?string $driverName = null,
     ) {}
+
+    /**
+     * Copia con los valores legibles del vehículo y del chofer (resueltos en lote por el handler).
+     */
+    public function withNames(?string $plate, ?string $driverName): self
+    {
+        return new self(
+            $this->id,
+            $this->vehicleId,
+            $this->driverId,
+            $this->type,
+            $this->severity,
+            $this->lat,
+            $this->lng,
+            $this->detail,
+            $this->occurredAt,
+            $this->acknowledgedAt,
+            $this->acknowledgedBy,
+            $plate,
+            $driverName,
+        );
+    }
 
     public static function fromDomain(TelemetryAlert $alert): self
     {
@@ -51,7 +78,7 @@ final readonly class AlertView
     }
 
     /**
-     * @return array{id: string, vehicle_id: string, driver_id: string|null, type: string, severity: string, lat: float|null, lng: float|null, detail: array<string, mixed>, occurred_at: string, acknowledged_at: string|null, acknowledged_by: string|null}
+     * @return array{id: string, vehicle_id: string, driver_id: string|null, type: string, severity: string, lat: float|null, lng: float|null, detail: array<string, mixed>, occurred_at: string, acknowledged_at: string|null, acknowledged_by: string|null, plate: string|null, driver_name: string|null}
      */
     public function toArray(): array
     {
@@ -67,6 +94,8 @@ final readonly class AlertView
             'occurred_at' => $this->occurredAt,
             'acknowledged_at' => $this->acknowledgedAt,
             'acknowledged_by' => $this->acknowledgedBy,
+            'plate' => $this->plate,
+            'driver_name' => $this->driverName,
         ];
     }
 }

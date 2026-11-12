@@ -39,6 +39,7 @@ use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDateHandler;
 use Logistics\Planning\Application\Service\PlanGeometryRefresher;
 use Logistics\Planning\Domain\Contract\AutoPlanRunRepository;
 use Logistics\Planning\Domain\Contract\AutoPlanSettingsProvider;
+use Logistics\Planning\Domain\Contract\CrewShiftRulesProvider;
 use Logistics\Planning\Domain\Contract\DailyPlanDispatcher;
 use Logistics\Planning\Domain\Contract\FleetAvailabilityProvider;
 use Logistics\Planning\Domain\Contract\PendingDeliveryProvider;
@@ -62,8 +63,10 @@ use Logistics\Planning\Infrastructure\Adapter\EloquentPendingDeliveryProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentRouteComparisonProblemProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentRouteLoadProfileProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentShipmentCoordinatesProvider;
+use Logistics\Planning\Infrastructure\Adapter\FleetCrewShiftRulesProvider;
 use Logistics\Planning\Infrastructure\Adapter\FleetVehicleAvailabilityProvider;
 use Logistics\Planning\Infrastructure\Adapter\NetworkNodeOriginLocator;
+use Logistics\Planning\Infrastructure\Adapter\ShipmentLoadReader;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentAutoPlanRunRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentPlanRepository;
@@ -131,6 +134,14 @@ final class PlanningServiceProvider extends ServiceProvider
             );
         });
         $this->app->bind(FleetAvailabilityProvider::class, FleetVehicleAvailabilityProvider::class);
+
+        // Ventana de turno de las tripulaciones (reglas de Flota traducidas a primitivos de Planificación):
+        // acota la hora de salida y la duración de cada ruta del auto-planificador.
+        $this->app->bind(CrewShiftRulesProvider::class, FleetCrewShiftRulesProvider::class);
+
+        // Lector de la carga real (kg/m3 por línea de envío, con fallback a defaults). `scoped`: una
+        // instancia por request/job, así la inspección del esquema de shipment_lines se hace una sola vez.
+        $this->app->scoped(ShipmentLoadReader::class);
         $this->app->bind(AutoPlanSettingsProvider::class, ConfiguredAutoPlanSettings::class);
         $this->app->bind(DailyPlanDispatcher::class, QueuedDailyPlanDispatcher::class);
 
