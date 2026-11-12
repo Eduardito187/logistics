@@ -9,6 +9,7 @@ use App\Http\Problem\ProblemDetails;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Logistics\Execution\Application\Command\AttachShipmentToRoute\AttachShipmentToRoute;
+use Logistics\Execution\Application\Command\OpenDelivery\OpenDelivery;
 use Logistics\Execution\Application\Contract\VehicleFitnessReader;
 use Logistics\Execution\Presentation\Http\Request\AssignOrderVehicleRequest;
 
@@ -59,14 +60,22 @@ final class AssignOrderVehicleController extends ExecutionController
 
         $assigned = [];
         foreach ($shipments as $shipment) {
+            $shipmentId = (string) $shipment->id;
+
             $this->commandBus->dispatch(new AttachShipmentToRoute(
                 vehicleId: $vehicleId,
-                shipmentId: (string) $shipment->id,
+                shipmentId: $shipmentId,
                 orderReference: $orderNumber,
                 customerName: is_string($shipment->customer_name ?? null) ? $shipment->customer_name : null,
                 address: is_string($shipment->address_text ?? null) ? $shipment->address_text : null,
             ));
-            $assigned[] = ['shipment_id' => (string) $shipment->id, 'status' => (string) $shipment->status];
+
+            // Flujo nuevo del dueño: asignar el vehículo ES preparar (ya no hay escaneo de preparación).
+            // Abrir la entrega acá deja al chofer habilitado para cargar y registrar el POD; sin esto, el
+            // POD falla en dominio ("no hay entrega abierta"). Idempotente: reasignar no duplica.
+            $this->commandBus->dispatch(new OpenDelivery($shipmentId, $vehicleId));
+
+            $assigned[] = ['shipment_id' => $shipmentId, 'status' => (string) $shipment->status];
         }
 
         return new JsonResponse([

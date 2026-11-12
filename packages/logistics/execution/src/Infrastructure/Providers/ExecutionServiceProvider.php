@@ -21,6 +21,8 @@ use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDep
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDepartedHandler;
 use Logistics\Execution\Application\Command\MarkStopArrived\MarkStopArrived;
 use Logistics\Execution\Application\Command\MarkStopArrived\MarkStopArrivedHandler;
+use Logistics\Execution\Application\Command\OpenDelivery\OpenDelivery;
+use Logistics\Execution\Application\Command\OpenDelivery\OpenDeliveryHandler;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReception;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReceptionHandler;
 use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNode;
@@ -126,6 +128,7 @@ final class ExecutionServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     private const HANDLERS = [
+        OpenDelivery::class => OpenDeliveryHandler::class,
         RecordPreparationScan::class => RecordPreparationScanHandler::class,
         RecordLoadScan::class => RecordLoadScanHandler::class,
         MarkShipmentDeparted::class => MarkShipmentDepartedHandler::class,

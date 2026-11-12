@@ -6,6 +6,7 @@ namespace Logistics\Execution\Infrastructure\ReadModel;
 
 use Illuminate\Database\ConnectionInterface;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
+use Logistics\Shared\Domain\ValueObject\FulfillmentMode;
 use Logistics\Shared\Domain\ValueObject\Ownership;
 
 /**
@@ -33,8 +34,16 @@ final readonly class DbShipmentFulfillmentReader implements ShipmentFulfillmentR
             return Ownership::dismacOwned();
         }
 
+        // Tolerante a datos sucios: el valor canónico es minúscula (`owned`/`fbd`/`dropship`), pero una
+        // fila heredada podría tenerlo en otra caja. Se normaliza y, si aún no mapea a un modo conocido,
+        // se degrada a OWNED en vez de lanzar (asignar vehículo / POD jamás deben romper por este dato).
+        $mode = FulfillmentMode::tryFrom(strtolower(trim((string) $row->fulfillment_mode)));
+        if ($mode === null) {
+            return Ownership::dismacOwned();
+        }
+
         return Ownership::fromPrimitives(
-            (string) $row->fulfillment_mode,
+            $mode->value,
             $row->owner_party_id !== null ? (string) $row->owner_party_id : null,
             $row->seller_sku_ref !== null ? (string) $row->seller_sku_ref : null,
         );
