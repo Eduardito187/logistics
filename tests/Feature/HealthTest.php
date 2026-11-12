@@ -8,7 +8,7 @@ it('reports healthy dependencies on the v1 health endpoint', function (): void {
         ->assertExactJson([
             'status' => 'ok',
             'api_version' => 'v1',
-            'checks' => ['database' => true, 'cache' => true],
+            'checks' => ['database' => true, 'schema' => true, 'cache' => true],
         ]);
 });
 
