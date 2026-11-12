@@ -5,6 +5,16 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+// Detección de PgBouncer por la convención de infra (servicio `pgbouncer`, puerto 6432): si la app habla
+// con el pooler en transaction pooling HAY que emular prepares (ver el bloque de la conexión `pgsql`), o
+// los prepared statements con nombre del lado del servidor dejan un plan cacheado que, tras una migración
+// que cambia la forma de una tabla, revienta con `0A000 cached plan must not change result type` y tumba
+// TODA petición autenticada (falla ya en el guard de Sanctum al cargar el usuario). Se deriva el default
+// así para que funcione en cualquier entorno sin depender de recordar `DB_EMULATE_PREPARES=true`; el env
+// explícito, si se define, siempre manda. Contra PG directo queda en false (prepares reales, más eficientes).
+$behindPgBouncer = (string) env('DB_PORT', '5432') === '6432'
+    || str_contains((string) env('DB_HOST', '127.0.0.1'), 'pgbouncer');
+
 return [
 
     /*
@@ -125,7 +135,7 @@ return [
             // evita dejar prepared statements con estado en el backend. Conexiones persistentes apagadas
             // por defecto (PgBouncer ya hace el pooling; persistir del lado de PHP lo contradice).
             'options' => [
-                PDO::ATTR_EMULATE_PREPARES => (bool) env('DB_EMULATE_PREPARES', false),
+                PDO::ATTR_EMULATE_PREPARES => (bool) env('DB_EMULATE_PREPARES', $behindPgBouncer),
                 PDO::ATTR_PERSISTENT => (bool) env('DB_PERSISTENT', false),
             ],
         ],

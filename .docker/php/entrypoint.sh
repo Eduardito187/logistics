@@ -87,6 +87,16 @@ fi
 # réplica es seguro e idempotente. Dev lo deja apagado (OPTIMIZE_ON_BOOT=false).
 if [ "${OPTIMIZE_ON_BOOT:-false}" = "true" ]; then
     echo "[entrypoint] OPTIMIZE_ON_BOOT=true → cacheando config/route/view/event..."
+    # Limpiar los caches LOCALES (archivos en bootstrap/cache) antes de regenerarlos: en un
+    # `docker restart` el filesystem del contenedor persiste, así que `route:cache` sobre rutas
+    # ya cacheadas carga una CompiledRouteCollection (no una RouteCollection fresca) y revienta
+    # con TypeError en RouteCacheCommand::buildRouteCacheFile(). NO usar `optimize:clear` aquí:
+    # ese también hace `cache:clear` y vaciaría el Valkey COMPARTIDO en cada arranque de cada
+    # réplica. Estos `*:clear` solo tocan archivos locales y son idempotentes.
+    php artisan route:clear
+    php artisan config:clear
+    php artisan view:clear
+    php artisan event:clear
     php artisan config:cache
     php artisan route:cache
     php artisan view:cache

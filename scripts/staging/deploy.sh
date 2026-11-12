@@ -80,7 +80,10 @@ endstep
 step "Migraciones (una sola vez, contenedor efímero con la imagen nueva)"
 # Antes de recrear el web: migraciones aditivas (expand/contract, docs/deploy.md §6). Sin caches de
 # arranque en este contenedor descartable (OPTIMIZE_ON_BOOT=false) para que sea rápido.
-dc run --rm --no-deps -e OPTIMIZE_ON_BOOT=false app php artisan migrate --force --no-interaction
+# El DDL va por la conexión DIRECTA a Postgres (`pgsql_direct`, DB_DIRECT_HOST=postgres), NO por
+# PgBouncer: el pooler en transaction pooling no debe cargar DDL/estado de sesión, y así el cambio de
+# esquema no interactúa con los planes preparados del pool (ver config/database.php y deploy.md).
+dc run --rm --no-deps -e OPTIMIZE_ON_BOOT=false app php artisan migrate --force --no-interaction --database=pgsql_direct
 endstep
 
 step "Deploy: up -d --build --remove-orphans (espera healthy de todos los servicios)"
