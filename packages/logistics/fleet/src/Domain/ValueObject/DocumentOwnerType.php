@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Fleet\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * A quién pertenece un documento de flota: un vehículo, un chofer o un ayudante.
  *
@@ -12,6 +14,8 @@ namespace Logistics\Fleet\Domain\ValueObject;
  */
 enum DocumentOwnerType: string
 {
+    use CaseInsensitiveEnum;
+
     case Vehicle = 'vehicle';
 
     case Driver = 'driver';

@@ -37,7 +37,7 @@ final class ListShipmentsByCursorHandler implements QueryHandler
 
         // Se valida/normaliza vía el enum (lanza ante un valor inválido), igual que ListShipments.
         $status = $query->status !== null ? ShipmentListSupport::status($query->status) : null;
-        $source = $query->source !== null ? OrderSource::from($query->source)->value : null;
+        $source = $query->source !== null ? OrderSource::fromLoose($query->source)->value : null;
         $statuses = ShipmentListSupport::statuses($query->statuses);
         $deliveryMode = ShipmentListSupport::deliveryMode($query->deliveryMode);
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Returns\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de una devolución.
  *
@@ -12,6 +14,8 @@ namespace Logistics\Returns\Domain\ValueObject;
  */
 enum ReturnStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Iniciada: se declaró la devolución, aún no llega al almacén. */
     case Initiated = 'initiated';
 

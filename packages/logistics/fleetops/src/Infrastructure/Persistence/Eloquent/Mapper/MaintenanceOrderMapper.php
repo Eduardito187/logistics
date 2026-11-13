@@ -33,8 +33,8 @@ final class MaintenanceOrderMapper
         return MaintenanceOrder::reconstitute(
             MaintenanceOrderId::fromString($record->id),
             $record->vehicle_id,
-            MaintenanceType::from($record->type),
-            MaintenanceStatus::from($record->status),
+            MaintenanceType::fromLoose($record->type),
+            MaintenanceStatus::fromLoose($record->status),
             $record->odometer_km !== null ? Odometer::km($record->odometer_km) : null,
             $record->workshop,
             $items,

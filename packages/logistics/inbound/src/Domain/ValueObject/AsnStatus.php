@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Inbound\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de un ASN / cita de recepción.
  *
@@ -13,6 +15,8 @@ namespace Logistics\Inbound\Domain\ValueObject;
  */
 enum AsnStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Anunciado: el seller declaró qué va a enviar, sin cita aún. */
     case Announced = 'announced';
 

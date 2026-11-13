@@ -34,7 +34,7 @@ final readonly class RegisterDocumentHandler implements CommandHandler
 
         $document = FleetDocument::register(
             $this->documents->nextIdentity(),
-            DocumentOwnerType::from($command->ownerType),
+            DocumentOwnerType::fromLoose($command->ownerType),
             $command->ownerId,
             DocumentExpiry::of($command->documentType, new DateTimeImmutable($command->expiresOn)),
             $command->issuedOn !== null ? new DateTimeImmutable($command->issuedOn) : null,

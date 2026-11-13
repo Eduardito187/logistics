@@ -31,7 +31,7 @@ final readonly class DefineGeofenceHandler implements CommandHandler
         $geofence = Geofence::define(
             $this->geofences->nextIdentity(),
             $command->name,
-            GeofenceType::from($command->type),
+            GeofenceType::fromLoose($command->type),
             Polygon::fromArray($command->polygon),
             $command->nodeRef,
         );

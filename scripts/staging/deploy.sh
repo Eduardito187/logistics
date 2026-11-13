@@ -100,6 +100,15 @@ dc exec -T app php artisan commerce:orders:backfill-from-shipments --force --no-
     || echo "AVISO: el backfill de Pedidos falló; el deploy sigue. Revisar commerce:orders:backfill-from-shipments."
 endstep
 
+step "Recuperar tracking: reproyectar entregas DELIVERED/FAILED desde execution (idempotente, automático)"
+# Un ShipmentDelivered que se despachó del outbox contra el read model viejo se descartó y dejó el envío
+# atascado en «Cargada»/«Procesando»; el mensaje ya quedó Despachado y no se re-dispara solo. Este reconcile
+# reproyecta el tracking desde la fuente de verdad (execution_deliveries) tras subir el código nuevo (ya con la
+# guardia ampliada). Idempotente (no-op si el tracking ya está al día). NO bloquea el deploy si falla.
+dc exec -T app php artisan logistics:tracking:reconcile-from-execution --force \
+    || echo "AVISO: el reconcile de tracking falló; el deploy sigue. Revisar logistics:tracking:reconcile-from-execution."
+endstep
+
 step "Smoke test HTTP"
 port="$(grep -E '^STAGING_HTTP_PORT=' "$env_file" | tail -1 | cut -d= -f2)"
 port="${port:-8110}"

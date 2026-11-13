@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Planning\Domain\ValueObject;
 
 use Logistics\Planning\Domain\Exception\PlanningException;
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
 
 /**
  * Modo del auto-planificador diario. Es un contrato de negocio, no un detalle técnico: define CÓMO se
@@ -19,6 +20,8 @@ use Logistics\Planning\Domain\Exception\PlanningException;
  */
 enum PlanStrategy: string
 {
+    use CaseInsensitiveEnum;
+
     case Optimization = 'optimization';
 
     case Slots = 'slots';
@@ -28,7 +31,9 @@ enum PlanStrategy: string
      */
     public static function fromString(string $value): self
     {
-        $strategy = self::tryFrom(trim($value));
+        // Case-insensitive: el comando/API/CLI puede mandar 'Optimization'/'SLOTS'; igual valida (tryFromLoose
+        // ya normaliza caja y recorta espacios). Error de dominio claro si no es una estrategia válida.
+        $strategy = self::tryFromLoose($value);
         if ($strategy === null) {
             throw PlanningException::because("estrategia de planificación inválida: {$value} (optimization|slots)");
         }

@@ -32,7 +32,7 @@ final class ListNodeReceptionsHandler implements QueryHandler
         // El estado llega en minúsculas desde la app ('open'); se normaliza al valor del dominio.
         $status = null;
         if ($query->status !== null && trim($query->status) !== '') {
-            $status = (NodeReceptionStatus::tryFrom(strtoupper(trim($query->status)))
+            $status = (NodeReceptionStatus::tryFromLoose($query->status)
                 ?? throw ExecutionException::because("estado de recepción desconocido: {$query->status}"))->value;
         }
 

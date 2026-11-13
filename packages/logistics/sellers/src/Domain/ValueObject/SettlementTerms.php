@@ -47,7 +47,7 @@ final readonly class SettlementTerms
         return self::of(
             $commissionBasisPoints,
             Money::of($fixedFeeCents, $currency),
-            PaymentCycle::from($paymentCycle),
+            PaymentCycle::fromLoose($paymentCycle),
         );
     }
 

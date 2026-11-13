@@ -31,7 +31,7 @@ final readonly class ListAccountsHandler implements QueryHandler
 
         $accounts = $this->accounts->all();
         if ($query->type !== null) {
-            $type = AccountType::from($query->type);
+            $type = AccountType::fromLoose($query->type);
             $accounts = array_values(array_filter(
                 $accounts,
                 static fn (Account $account): bool => $account->type() === $type,

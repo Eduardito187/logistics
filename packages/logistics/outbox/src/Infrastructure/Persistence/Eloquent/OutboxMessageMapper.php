@@ -56,7 +56,7 @@ final class OutboxMessageMapper
             aggregateId: $record->aggregate_id,
             eventName: $record->event_name,
             payload: $record->payload,
-            status: OutboxStatus::from($record->status),
+            status: OutboxStatus::fromLoose($record->status),
             attempts: $record->attempts,
             availableAt: DateTimeImmutable::createFromInterface($record->available_at),
             createdAt: DateTimeImmutable::createFromInterface($record->created_at),

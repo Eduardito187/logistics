@@ -27,12 +27,12 @@ final class SettlementMapper
             BillingPeriod::of($record->period),
             Money::of($record->amount_cents, $record->currency),
             $record->reference,
-            SettlementStatus::from($record->status),
+            SettlementStatus::fromLoose($record->status),
             $record->dispute_reason,
             $record->payment_reference,
             array_values($record->documents),
             // Filas previas a la columna (o con un valor desconocido) quedan sin clase: null.
-            $record->vehicle_class !== null ? VehicleClass::tryFrom($record->vehicle_class) : null,
+            $record->vehicle_class !== null ? VehicleClass::tryFromLoose($record->vehicle_class) : null,
         );
     }
 

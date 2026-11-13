@@ -22,11 +22,11 @@ final class PromotionMapper
             PromotionId::fromString($record->id),
             $record->name,
             $record->code,
-            PromotionType::from($record->type),
+            PromotionType::fromLoose($record->type),
             $record->value,
             $record->currency,
             PromotionConditions::fromArray($record->conditions),
-            PromotionStatus::from($record->status),
+            PromotionStatus::fromLoose($record->status),
             $record->version,
         );
     }

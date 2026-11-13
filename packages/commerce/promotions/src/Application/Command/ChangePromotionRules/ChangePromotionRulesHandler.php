@@ -35,7 +35,7 @@ final readonly class ChangePromotionRulesHandler implements CommandHandler
         }
 
         $promotion->changeRules(
-            PromotionType::from($command->type),
+            PromotionType::fromLoose($command->type),
             $command->value,
             PromotionConditions::of(
                 $command->minSubtotalCents,

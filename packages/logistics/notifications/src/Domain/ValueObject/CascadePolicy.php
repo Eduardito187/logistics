@@ -89,9 +89,9 @@ final readonly class CascadePolicy
      */
     public static function fromArray(array $data): self
     {
-        $channels = array_map(static fn (string $c): Channel => Channel::from($c), $data['channels']);
+        $channels = array_map(static fn (string $c): Channel => Channel::fromLoose($c), $data['channels']);
         $escalateWhen = isset($data['escalate_when'])
-            ? EscalateCondition::from($data['escalate_when'])
+            ? EscalateCondition::fromLoose($data['escalate_when'])
             : EscalateCondition::NoOpen;
 
         return self::of($channels, $escalateWhen);
@@ -116,7 +116,7 @@ final readonly class CascadePolicy
         }
 
         $escalateWhen = isset($data['escalate_when'])
-            ? EscalateCondition::from($data['escalate_when'])
+            ? EscalateCondition::fromLoose($data['escalate_when'])
             : EscalateCondition::NoOpen;
 
         return self::of($channels, $escalateWhen);

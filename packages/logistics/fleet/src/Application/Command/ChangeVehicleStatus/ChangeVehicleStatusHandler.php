@@ -36,7 +36,7 @@ final readonly class ChangeVehicleStatusHandler implements CommandHandler
             throw FleetException::because("No existe el vehículo {$command->vehicleId}.");
         }
 
-        $vehicle->changeStatus(VehicleStatus::from($command->status));
+        $vehicle->changeStatus(VehicleStatus::fromLoose($command->status));
 
         $this->vehicles->save($vehicle);
 

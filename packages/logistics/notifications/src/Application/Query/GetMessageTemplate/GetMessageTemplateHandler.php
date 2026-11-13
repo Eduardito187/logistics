@@ -28,8 +28,8 @@ final class GetMessageTemplateHandler implements QueryHandler
         }
 
         $template = $this->templates->findFor(
-            MessageType::from($query->messageType),
-            Channel::from($query->channel),
+            MessageType::fromLoose($query->messageType),
+            Channel::fromLoose($query->channel),
             $query->locale,
         );
 

@@ -20,7 +20,7 @@ final class FuelPriceMapper
     {
         return FuelPrice::reconstitute(
             FuelPriceId::fromString($record->id),
-            FuelType::from($record->fuel_type),
+            FuelType::fromLoose($record->fuel_type),
             Money::of($record->price_cents, $record->currency),
             new DateTimeImmutable($record->effective_from),
             $record->source,

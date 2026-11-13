@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Pricing\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Canal comercial al que aplica una lista de precios. Un mismo SKU puede valer distinto por canal.
  *
@@ -11,6 +13,8 @@ namespace Commerce\Pricing\Domain\ValueObject;
  */
 enum Channel: string
 {
+    use CaseInsensitiveEnum;
+
     /** Venta al público (B2C). */
     case Retail = 'retail';
 

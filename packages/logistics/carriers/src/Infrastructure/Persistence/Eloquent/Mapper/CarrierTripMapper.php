@@ -29,7 +29,7 @@ final class CarrierTripMapper
             $record->corridor_to,
             self::immutable($record->scheduled_at) ?? new DateTimeImmutable,
             $record->reference,
-            CarrierTripStatus::from($record->status),
+            CarrierTripStatus::fromLoose($record->status),
             $shipmentIds,
             self::immutable($record->started_at),
             self::immutable($record->closed_at),

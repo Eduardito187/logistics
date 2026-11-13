@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Modalidad de entrega del envío: reparto a domicilio por un chofer, recojo del cliente en tienda o
  * traspaso interno de mercadería.
@@ -18,6 +20,8 @@ namespace Logistics\Shipments\Domain\ValueObject;
  */
 enum DeliveryMode: string
 {
+    use CaseInsensitiveEnum;
+
     /** Reparto a domicilio (última milla con chofer). */
     case HomeDelivery = 'home_delivery';
 

@@ -34,12 +34,12 @@ final class SetMessageTypeRuleHandler implements CommandHandler
             throw NotificationsException::because('SetMessageTypeRuleHandler solo maneja SetMessageTypeRule');
         }
 
-        $messageType = MessageType::from($command->messageType);
+        $messageType = MessageType::fromLoose($command->messageType);
         $channels = array_map(
-            static fn (string $channel): Channel => Channel::from($channel),
+            static fn (string $channel): Channel => Channel::fromLoose($channel),
             array_values($command->channels),
         );
-        $escalateWhen = EscalateCondition::from($command->escalateWhen);
+        $escalateWhen = EscalateCondition::fromLoose($command->escalateWhen);
 
         $this->rules->save($messageType, CascadePolicy::of($channels, $escalateWhen), $command->createdBy);
     }

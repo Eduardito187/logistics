@@ -38,7 +38,7 @@ final readonly class SetSettlementTermsHandler implements CommandHandler
         $seller->changeSettlementTerms(SettlementTerms::of(
             $command->commissionBasisPoints,
             Money::of($command->fixedFeeCents, $command->currency),
-            PaymentCycle::from($command->paymentCycle),
+            PaymentCycle::fromLoose($command->paymentCycle),
         ));
 
         $this->sellers->save($seller);

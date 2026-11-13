@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de evidencia fotográfica que se captura en terreno y se sube al almacenamiento.
  *
@@ -13,6 +15,8 @@ namespace Logistics\Execution\Domain\ValueObject;
  */
 enum EvidenceKind: string
 {
+    use CaseInsensitiveEnum;
+
     /** Prueba de entrega: foto o firma del cliente en el punto de entrega. */
     case ProofOfDelivery = 'pod';
 
@@ -31,6 +35,6 @@ enum EvidenceKind: string
      */
     public static function fromCode(?string $code): self
     {
-        return self::tryFrom(trim((string) $code)) ?? self::ProofOfDelivery;
+        return self::tryFromLoose($code) ?? self::ProofOfDelivery;
     }
 }

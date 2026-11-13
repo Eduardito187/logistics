@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Invoicing\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de una factura.
  *
@@ -13,6 +15,8 @@ namespace Commerce\Invoicing\Domain\ValueObject;
  */
 enum InvoiceStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Borrador: calculada desde las líneas, aún sin número fiscal. */
     case Draft = 'draft';
 

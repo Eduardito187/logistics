@@ -20,7 +20,7 @@ final class GeofenceMapper
         return Geofence::reconstitute(
             GeofenceId::fromString($record->id),
             $record->name,
-            GeofenceType::from($record->type),
+            GeofenceType::fromLoose($record->type),
             Polygon::fromArray($record->polygon),
             $record->active,
             $record->node_ref,

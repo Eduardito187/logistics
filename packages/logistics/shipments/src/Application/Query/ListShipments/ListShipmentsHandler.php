@@ -51,7 +51,7 @@ final class ListShipmentsHandler implements QueryHandler
         // valor string del enum al lector, que lo compara contra la columna persistida. El estado se acepta
         // en cualquier capitalización (planned/PLANNED).
         $status = $query->status !== null ? ShipmentListSupport::status($query->status) : null;
-        $source = $query->source !== null ? OrderSource::from($query->source)->value : null;
+        $source = $query->source !== null ? OrderSource::fromLoose($query->source)->value : null;
         $statuses = ShipmentListSupport::statuses($query->statuses);
         $deliveryMode = ShipmentListSupport::deliveryMode($query->deliveryMode);
 

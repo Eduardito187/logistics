@@ -48,7 +48,7 @@ final class SellerSettlementMapper
             Money::of($record->gross_cents, $currency),
             $fees,
             Money::of($record->net_cents, $currency),
-            SettlementStatus::from($record->status),
+            SettlementStatus::fromLoose($record->status),
             $record->payment_reference,
         );
     }

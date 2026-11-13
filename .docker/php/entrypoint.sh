@@ -144,6 +144,11 @@ if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_BACKFILL_ORDERS:-false
     echo "[entrypoint] AUTO_BACKFILL_ORDERS=true → reconciliando Pedidos desde envíos..."
     php artisan commerce:orders:backfill-from-shipments --force --no-interaction \
         || echo "[entrypoint] AVISO: el backfill de Pedidos falló; el arranque sigue."
+    # Recupera el tracking de entregas ya hechas en execution que quedaron atascadas en el estado visible
+    # (p. ej. «Cargada»/«Procesando») por un evento perdido. Idempotente. Misma puerta turnkey.
+    echo "[entrypoint] → reproyectando tracking desde las entregas de execution..."
+    php artisan logistics:tracking:reconcile-from-execution --force \
+        || echo "[entrypoint] AVISO: el reconcile de tracking falló; el arranque sigue."
 fi
 
 # ------------------------------------------------------------
@@ -175,8 +180,10 @@ fi
 # solo (vive en Valkey, no en el proceso). Esta limpieza al arrancar lo borra, así el outbox se recupera en el
 # deploy. Tolerante: Valkey puede no estar listo; no debe tumbar el arranque.
 if [ "$1" = "php-fpm" ]; then
-    echo "[entrypoint] Limpiando locks colgados del scheduler (schedule:clear-mutex)..."
-    php artisan schedule:clear-mutex > /dev/null 2>&1 \
+    # OJO: el comando es `schedule:clear-cache` (ScheduleClearCacheCommand), NO `schedule:clear-mutex` (ese NO
+    # existe en Laravel). Borra los mutex de withoutOverlapping/onOneServer cacheados (Valkey) por el scheduler.
+    echo "[entrypoint] Limpiando locks colgados del scheduler (schedule:clear-cache)..."
+    php artisan schedule:clear-cache > /dev/null 2>&1 \
         || echo "[entrypoint] AVISO: no se pudo limpiar los mutex del scheduler (¿Valkey no disponible?)."
 fi
 

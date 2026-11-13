@@ -171,7 +171,7 @@ final class RefuelResource extends Resource
                 TextColumn::make('fuel_type')
                     ->label(__('Fuel type'))
                     ->badge()
-                    ->formatStateUsing(static fn (string $state): string => __(FuelType::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(FuelType::fromLoose($state)->label())),
                 TextColumn::make('liters')
                     ->label(__('Liters'))
                     ->numeric(decimalPlaces: 2)

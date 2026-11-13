@@ -29,10 +29,10 @@ final class ReturnOrderMapper
             $record->original_reference,
             $record->owner_party_id,
             $record->warehouse_id,
-            ReturnKind::from($record->kind),
+            ReturnKind::fromLoose($record->kind),
             $lines,
-            ReturnStatus::from($record->status),
-            $record->disposition !== null ? Disposition::from($record->disposition) : null,
+            ReturnStatus::fromLoose($record->status),
+            $record->disposition !== null ? Disposition::fromLoose($record->disposition) : null,
         );
     }
 

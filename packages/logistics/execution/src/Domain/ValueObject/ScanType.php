@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de escaneo registrado en terreno. Cada escaneo es un hecho inmutable (hora, GPS, usuario,
  * dispositivo); el tipo dice en qué etapa de la operación ocurrió.
  */
 enum ScanType: string
 {
+    use CaseInsensitiveEnum;
+
     /** Preparación: escaneo de EAN → etiqueta → carril antes de cargar. */
     case Preparation = 'PREPARATION';
 

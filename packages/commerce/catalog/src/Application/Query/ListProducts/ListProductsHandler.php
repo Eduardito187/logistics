@@ -30,7 +30,7 @@ final readonly class ListProductsHandler implements QueryHandler
         assert($query instanceof ListProducts);
 
         $products = $query->status !== null
-            ? $this->products->listByStatus(ProductStatus::from($query->status))
+            ? $this->products->listByStatus(ProductStatus::fromLoose($query->status))
             : $this->products->all();
 
         return array_map(

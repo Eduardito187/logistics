@@ -28,7 +28,7 @@ final class DepartureMapper
             $record->route_ref,
             Load::of($record->load_description, $record->load_weight_kg, array_values($record->load_items)),
             $record->odometer_out_km === null ? null : Odometer::km($record->odometer_out_km),
-            DepartureStatus::from($record->status),
+            DepartureStatus::fromLoose($record->status),
             $record->odometer_in_km === null ? null : Odometer::km($record->odometer_in_km),
             $record->departed_at->toDateTimeImmutable(),
             $record->returned_at?->toDateTimeImmutable(),

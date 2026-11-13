@@ -51,7 +51,7 @@ final class PromiseMapper
             $record->shipment_ref,
             $record->zone_id,
             $slot,
-            PromiseStatus::from($record->status),
+            PromiseStatus::fromLoose($record->status),
             $reservedUntil,
         );
     }

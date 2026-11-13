@@ -76,7 +76,7 @@ final class VehicleRouteMapper
             RouteId::fromString($record->id),
             $record->vehicle_id,
             RouteDate::fromString($record->route_date),
-            RouteStatus::from($record->status),
+            RouteStatus::fromLoose($record->status),
             $stops,
             new RouteLifecycleSnapshot(
                 self::date($record->started_at),
@@ -99,7 +99,7 @@ final class VehicleRouteMapper
             $record->eta !== null ? new DateTimeImmutable($record->eta) : null,
             $record->lat !== null ? (float) $record->lat : null,
             $record->lng !== null ? (float) $record->lng : null,
-            RouteStopStatus::from($record->status),
+            RouteStopStatus::fromLoose($record->status),
             $record->settled_at !== null ? new DateTimeImmutable($record->settled_at) : null,
             self::date($record->arrived_at),
             $record->arrival_source !== null ? ArrivalSource::tryFrom($record->arrival_source) : null,

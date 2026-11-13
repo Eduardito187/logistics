@@ -142,7 +142,7 @@ final class CsvShipmentSpreadsheetParser implements ShipmentSpreadsheetParser
         if ($source === '') {
             return 'source vacío';
         }
-        if (OrderSource::tryFrom($source) === null) {
+        if (OrderSource::tryFromLoose($source) === null) {
             return "source inválido: {$source}";
         }
         if (trim($this->cell($record, $columns, 'external_id')) === '') {

@@ -120,7 +120,7 @@ final class ShipmentMapper
      */
     public function toDomain(ShipmentRecord $record): Shipment
     {
-        $source = OrderSource::from($record->source);
+        $source = OrderSource::fromLoose($record->source);
 
         $geoPoint = $record->lat !== null && $record->lng !== null
             ? GeoPoint::of((float) $record->lat, (float) $record->lng)
@@ -184,7 +184,7 @@ final class ShipmentMapper
             $customer,
             $address,
             AddressConfidence::of($record->address_confidence),
-            ShipmentStatus::from($record->status),
+            ShipmentStatus::fromLoose($record->status),
             $lines,
             $units,
             $deliverySlot,

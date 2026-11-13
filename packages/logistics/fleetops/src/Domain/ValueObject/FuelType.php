@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de combustible de un vehículo / una carga. Valores de Bolivia: gasolina especial y premium,
  * diésel y GNV (gas natural vehicular). Compartido por combustible (precios/cargas) y el perfil del vehículo.
  */
 enum FuelType: string
 {
+    use CaseInsensitiveEnum;
+
     case GasolineSpecial = 'gasoline_special';
     case GasolinePremium = 'gasoline_premium';
     case Diesel = 'diesel';

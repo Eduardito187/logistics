@@ -73,7 +73,7 @@ final readonly class SubmitSettlementHandler implements CommandHandler
     private function vehicleClass(SubmitSettlement $command, CorridorRef $corridor): ?VehicleClass
     {
         if ($command->vehicleClass !== null && $command->vehicleClass !== '') {
-            $class = VehicleClass::tryFrom($command->vehicleClass);
+            $class = VehicleClass::tryFromLoose($command->vehicleClass);
             if ($class === null) {
                 throw CarriersException::because("Clase de vehículo inválida: {$command->vehicleClass}.");
             }

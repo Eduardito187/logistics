@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Carriers\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de un viaje de transportista.
  *
@@ -13,6 +15,8 @@ namespace Logistics\Carriers\Domain\ValueObject;
  */
 enum CarrierTripStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Programado por la oficina: carga en armado, aún no salió. */
     case Scheduled = 'scheduled';
 

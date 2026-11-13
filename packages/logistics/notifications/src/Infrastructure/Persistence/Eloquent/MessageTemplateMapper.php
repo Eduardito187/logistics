@@ -34,7 +34,7 @@ final class MessageTemplateMapper
     {
         return MessageTemplate::reconstitute(
             MessageTemplateId::fromString($record->id),
-            MessageType::from($record->message_type),
+            MessageType::fromLoose($record->message_type),
             Channel::fromStored($record->channel)
                 ?? throw NotificationsException::because(
                     "la plantilla {$record->id} usa un canal que ya no existe: {$record->channel}",

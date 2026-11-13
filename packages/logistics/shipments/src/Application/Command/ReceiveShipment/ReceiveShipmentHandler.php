@@ -60,7 +60,7 @@ final class ReceiveShipmentHandler implements CommandHandler
             throw ShipmentsException::because('ReceiveShipmentHandler solo maneja ReceiveShipment');
         }
 
-        $source = OrderSource::from($command->source);
+        $source = OrderSource::fromLoose($command->source);
         $sourceReference = SourceReference::of($source, $command->externalId);
 
         // Idempotencia: el mismo pedido de la misma fuente entra una sola vez; si ya existe, no se

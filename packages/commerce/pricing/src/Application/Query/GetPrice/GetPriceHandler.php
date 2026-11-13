@@ -30,7 +30,7 @@ final readonly class GetPriceHandler implements QueryHandler
     {
         assert($query instanceof GetPrice);
 
-        $channel = Channel::from($query->channel);
+        $channel = Channel::fromLoose($query->channel);
         $list = $this->priceLists->findActiveByChannel($channel);
         if ($list === null) {
             return null;

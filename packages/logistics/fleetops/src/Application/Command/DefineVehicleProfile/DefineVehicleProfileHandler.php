@@ -33,7 +33,7 @@ final readonly class DefineVehicleProfileHandler implements CommandHandler
     {
         assert($command instanceof DefineVehicleProfile);
 
-        $fuelType = $command->fuelType !== null ? FuelType::from($command->fuelType) : null;
+        $fuelType = $command->fuelType !== null ? FuelType::fromLoose($command->fuelType) : null;
 
         $profile = $this->profiles->findByVehicle($command->vehicleId);
         if ($profile === null) {
