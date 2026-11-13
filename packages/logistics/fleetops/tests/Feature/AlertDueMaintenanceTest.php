@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
 use Logistics\FleetOps\Application\Command\AlertDueMaintenance\AlertDueMaintenance;
+use Logistics\FleetOps\Application\Command\AlertDueMaintenance\AlertDueMaintenanceHandler;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Factory\MaintenancePlanFactory;
-use Logistics\Shared\Application\Command\CommandBus;
 
 /**
  * Barrido de mantenimiento preventivo contra PostgreSQL (logistics_test): si hay planes vencidos/por vencer
@@ -23,7 +23,9 @@ it('emite la alerta de resumen cuando hay un plan vencido por fecha', function (
         'next_due_at' => '2026-01-01 00:00:00',
     ]);
 
-    app(CommandBus::class)->dispatch(new AlertDueMaintenance('2026-10-05'));
+    // El barrido se invoca por su handler directo, igual que el comando de consola real (no está
+    // registrado en el CommandBus: es una tarea de scheduler, no un comando del flujo de escritura).
+    app(AlertDueMaintenanceHandler::class)->handle(new AlertDueMaintenance('2026-10-05'));
 
     expect(DB::table('outbox_messages')->where('aggregate_type', 'fleetops.maintenance_due')->count())->toBe(1);
 });
@@ -32,7 +34,7 @@ it('no emite nada cuando no hay planes por vencer', function (): void {
     // Único plan desactivado: el barrido no lo considera.
     MaintenancePlanFactory::new()->inactive()->create(['next_due_at' => '2026-01-01 00:00:00']);
 
-    app(CommandBus::class)->dispatch(new AlertDueMaintenance('2026-10-05'));
+    app(AlertDueMaintenanceHandler::class)->handle(new AlertDueMaintenance('2026-10-05'));
 
     expect(DB::table('outbox_messages')->where('aggregate_type', 'fleetops.maintenance_due')->count())->toBe(0);
 });

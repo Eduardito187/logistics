@@ -13,6 +13,7 @@ use Logistics\Inbound\Application\Query\ListPendingArrivals\ListPendingArrivals;
 use Logistics\Inbound\Application\ReadModel\AsnView;
 use Logistics\Inbound\Application\ReadModel\ReceivingDockDayView;
 use Logistics\Inbound\Domain\Contract\DockQuotaReserver;
+use Logistics\Inbound\Domain\Exception\InboundException;
 use Logistics\Inbound\Domain\ValueObject\AppointmentWindow;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
@@ -83,7 +84,7 @@ it('CancelAsn pasa a Cancelled y publica el evento al outbox', function (): void
 
 it('CancelAsn sobre un id inexistente lanza la excepción de dominio', function (): void {
     expect(fn () => $this->commands->dispatch(new CancelAsn('01931000-0000-7000-8000-0000000000fe')))
-        ->toThrow(Throwable::class);
+        ->toThrow(InboundException::class);
 });
 
 it('ListPendingArrivals devuelve solo los ASNs agendados', function (): void {
@@ -105,15 +106,16 @@ it('ListPendingArrivals devuelve solo los ASNs agendados', function (): void {
 
 it('GetReceivingDockCalendar agrega las citas por día y franja', function (): void {
     $warehouse = '01931001-0000-7000-8000-0000000000c1';
-    $seller = '01931000-0000-7000-8000-0000000000a4';
 
-    $first = inboundSeedAsn($this->commands, $seller, $warehouse);
+    // Un seller DISTINTO por ASN: inboundSeedAsn devuelve el ASN del seller (ListAsns por seller), así que
+    // con el mismo seller las tres llamadas devolverían el MISMO id (el primero) y no habría 3 citas.
+    $first = inboundSeedAsn($this->commands, '01931000-0000-7000-8000-0000000000a4', $warehouse);
     $this->commands->dispatch(new ScheduleAsn($first, '2026-10-20', '08:00', '12:00'));
 
-    $second = inboundSeedAsn($this->commands, $seller, $warehouse);
+    $second = inboundSeedAsn($this->commands, '01931000-0000-7000-8000-0000000000a5', $warehouse);
     $this->commands->dispatch(new ScheduleAsn($second, '2026-10-20', '08:00', '12:00'));
 
-    $third = inboundSeedAsn($this->commands, $seller, $warehouse);
+    $third = inboundSeedAsn($this->commands, '01931000-0000-7000-8000-0000000000a6', $warehouse);
     $this->commands->dispatch(new ScheduleAsn($third, '2026-10-21', '14:00', '18:00'));
 
     /** @var list<ReceivingDockDayView> $calendar */
