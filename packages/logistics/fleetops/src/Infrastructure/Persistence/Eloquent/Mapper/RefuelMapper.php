@@ -22,7 +22,7 @@ final class RefuelMapper
             RefuelId::fromString($record->id),
             $record->vehicle_id,
             $record->driver_id,
-            FuelType::from($record->fuel_type),
+            FuelType::fromLoose($record->fuel_type),
             $record->liters,
             Money::of($record->price_per_liter_cents, $record->currency),
             Money::of($record->total_cost_cents, $record->currency),

@@ -134,7 +134,7 @@ final class MaintenancePlanResource extends Resource
                 TextColumn::make('service_kind')
                     ->label(__('Service kind'))
                     ->badge()
-                    ->formatStateUsing(static fn (string $state): string => __(ServiceKind::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(ServiceKind::fromLoose($state)->label())),
                 TextColumn::make('interval_km')
                     ->label(__('Interval (km)'))
                     ->numeric()

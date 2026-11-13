@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Compensation\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de un caso de compensación.
  *
@@ -11,6 +13,8 @@ namespace Logistics\Compensation\Domain\ValueObject;
  */
 enum CaseStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Proposed = 'proposed';
     case Approved = 'approved';
     case Rejected = 'rejected';

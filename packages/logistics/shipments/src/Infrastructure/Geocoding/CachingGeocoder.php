@@ -155,7 +155,7 @@ final readonly class CachingGeocoder implements Geocoder
             return null;
         }
 
-        $matchType = GeocodeMatchType::tryFrom($match);
+        $matchType = GeocodeMatchType::tryFromLoose($match);
         if ($matchType === null) {
             return null;
         }

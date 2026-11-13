@@ -23,7 +23,7 @@ final class VehicleProfileMapper
             $record->brand,
             $record->model,
             $record->year,
-            $record->fuel_type !== null ? FuelType::from($record->fuel_type) : null,
+            $record->fuel_type !== null ? FuelType::fromLoose($record->fuel_type) : null,
             $record->tank_liters !== null ? (float) $record->tank_liters : null,
             $record->vin,
             $record->color,

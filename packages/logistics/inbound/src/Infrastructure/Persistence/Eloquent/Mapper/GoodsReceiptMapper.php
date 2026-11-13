@@ -25,7 +25,7 @@ final class GoodsReceiptMapper
             ->map(static fn (ReceiptLineRecord $line): ReceiptLine => ReceiptLine::of(
                 $line->sku,
                 ReceivedQuantity::of($line->accepted_quantity, $line->rejected_quantity, $line->damaged_quantity),
-                QcOutcome::from($line->qc_outcome),
+                QcOutcome::fromLoose($line->qc_outcome),
             ))
             ->all());
 

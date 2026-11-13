@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Canal de entrega de una notificación. La cascada los recorre en orden de costo: primero el push
  * (Firebase Cloud Messaging, por el topic del envío), después la mensajería gratuita del cliente
@@ -17,6 +19,8 @@ namespace Logistics\Notifications\Domain\ValueObject;
  */
 enum Channel: string
 {
+    use CaseInsensitiveEnum;
+
     /**
      * Push de la app de clientes, publicado al topic del envío (`shipment_<id>`) por Firebase Cloud
      * Messaging (API HTTP v1). La plataforma publica al topic sin conocer tokens de dispositivo.

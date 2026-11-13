@@ -128,10 +128,26 @@ it('ignores applying the same status: no event', function (): void {
 });
 
 it('rejects a jump that skips the flow (no illegal transitions)', function (): void {
+    // La ENTREGA/FALLO sí se admiten desde cualquier estado activo (la verdad la graba execution). Lo que
+    // sigue prohibido es saltar hacia ADELANTE en la secuencia operativa sin pasar por los pasos: Pendiente
+    // no puede ir directo a Cargado (debe procesar/preparar antes).
     $tracking = openTracking();
 
-    expect(fn () => $tracking->applyStatus(VisibleStatus::Delivered))
+    expect(fn () => $tracking->applyStatus(VisibleStatus::Loaded))
         ->toThrow(TrackingException::class, 'no admitida');
+});
+
+// La entrega es la verdad del negocio (execution + POD): si el estado visible quedó atrás porque un evento
+// intermedio se perdió (outbox congelado / sin OnTheWay), el ShipmentDelivered igual debe aplicar. Verificado
+// en terreno: entregas DELIVERED con el tracking atascado en PROCESSING/ON_THE_WAY.
+it('allows delivery from an early state (Processing) when execution delivered it', function (): void {
+    $tracking = openTracking();
+    $tracking->markProcessing();
+    $tracking->releaseEvents();
+
+    $tracking->markDelivered(new DateTimeImmutable('2026-11-13T12:00:00+00:00'));
+
+    expect($tracking->status())->toBe(VisibleStatus::Delivered);
 });
 
 // Regresión del POD que dejaba el envío atascado en «Cargada»: el app entrega con el POD aunque nunca se

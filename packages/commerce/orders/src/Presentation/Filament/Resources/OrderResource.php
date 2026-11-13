@@ -85,7 +85,7 @@ final class OrderResource extends Resource
      */
     private static function creditState(OrderRecord $record): string
     {
-        $financing = FinancingPlan::from($record->financing);
+        $financing = FinancingPlan::fromLoose($record->financing);
         if (!$financing->isCredit()) {
             return '';
         }
@@ -130,8 +130,8 @@ final class OrderResource extends Resource
                 TextColumn::make('financing')
                     ->label(__('Financing'))
                     ->badge()
-                    ->color(static fn (OrderRecord $record): string => FinancingPlan::from($record->financing)->isCredit() ? 'warning' : 'gray')
-                    ->formatStateUsing(static fn (OrderRecord $record): string => __(FinancingPlan::from($record->financing)->label())),
+                    ->color(static fn (OrderRecord $record): string => FinancingPlan::fromLoose($record->financing)->isCredit() ? 'warning' : 'gray')
+                    ->formatStateUsing(static fn (OrderRecord $record): string => __(FinancingPlan::fromLoose($record->financing)->label())),
                 TextColumn::make('credit_state')
                     ->label(__('Credit'))
                     ->state(static fn (OrderRecord $record): string => self::creditState($record))

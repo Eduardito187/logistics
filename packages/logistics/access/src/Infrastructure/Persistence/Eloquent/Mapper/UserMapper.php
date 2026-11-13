@@ -26,7 +26,7 @@ final class UserMapper
             $record->name,
             EmailAddress::fromString($record->email),
             $record->password_hash,
-            UserStatus::from($record->status),
+            UserStatus::fromLoose($record->status),
             array_values($record->role_keys),
             $lastLoginAt instanceof DateTimeInterface
                 ? DateTimeImmutable::createFromInterface($lastLoginAt)

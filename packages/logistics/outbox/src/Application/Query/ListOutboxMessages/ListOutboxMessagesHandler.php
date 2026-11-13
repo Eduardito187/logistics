@@ -50,7 +50,7 @@ final readonly class ListOutboxMessagesHandler implements QueryHandler
             return null;
         }
 
-        return OutboxStatus::tryFrom($status)
+        return OutboxStatus::tryFromLoose($status)
             ?? throw OutboxException::because("estado de outbox desconocido: {$status}");
     }
 }

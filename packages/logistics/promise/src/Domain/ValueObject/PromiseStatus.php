@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Promise\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de la promesa a lo largo de su ciclo de vida.
  *
@@ -14,6 +16,8 @@ namespace Logistics\Promise\Domain\ValueObject;
  */
 enum PromiseStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Franja ofrecida, sin cupo reservado aún. */
     case Quoted = 'QUOTED';
 

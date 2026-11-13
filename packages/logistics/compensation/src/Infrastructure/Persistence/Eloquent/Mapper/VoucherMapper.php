@@ -52,7 +52,7 @@ final readonly class VoucherMapper
             holderEmail: $record->holder_email,
             holderEmailHash: $record->holder_email_hash,
             expiresAt: $record->expires_at->toDateTimeImmutable(),
-            status: VoucherStatus::from($record->status),
+            status: VoucherStatus::fromLoose($record->status),
             magentoRuleId: $record->magento_rule_id,
             magentoSyncStatus: $record->magento_sync_status,
             heldUntil: $record->held_until?->toDateTimeImmutable(),

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Sellers\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de un seller dentro de la plataforma.
  *
@@ -12,6 +14,8 @@ namespace Logistics\Sellers\Domain\ValueObject;
  */
 enum SellerStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** En alta: datos cargados pero todavía no habilitado a operar. */
     case Onboarding = 'onboarding';
 

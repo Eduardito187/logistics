@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Application\Ingestion;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Desenlace de una fila de la importación, para el reporte que vuelve al operador.
  */
 enum ImportRowOutcome: string
 {
+    use CaseInsensitiveEnum;
+
     /** Fila ingresada como pedido nuevo. */
     case Imported = 'IMPORTED';
 

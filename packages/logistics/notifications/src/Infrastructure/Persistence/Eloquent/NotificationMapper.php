@@ -64,9 +64,9 @@ final class NotificationMapper
         return Notification::reconstitute(
             NotificationId::fromString($record->id),
             $record->shipment_id,
-            MessageType::from($record->message_type),
+            MessageType::fromLoose($record->message_type),
             CascadePolicy::fromStored($policyData),
-            NotificationStatus::from($record->status),
+            NotificationStatus::fromLoose($record->status),
             $currentChannel,
             $attempts,
             $record->email,

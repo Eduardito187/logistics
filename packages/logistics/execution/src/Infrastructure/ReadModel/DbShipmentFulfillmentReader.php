@@ -37,7 +37,7 @@ final readonly class DbShipmentFulfillmentReader implements ShipmentFulfillmentR
         // Tolerante a datos sucios: el valor canónico es minúscula (`owned`/`fbd`/`dropship`), pero una
         // fila heredada podría tenerlo en otra caja. Se normaliza y, si aún no mapea a un modo conocido,
         // se degrada a OWNED en vez de lanzar (asignar vehículo / POD jamás deben romper por este dato).
-        $mode = FulfillmentMode::tryFrom(strtolower(trim((string) $row->fulfillment_mode)));
+        $mode = FulfillmentMode::tryFromLoose((string) $row->fulfillment_mode);
         if ($mode === null) {
             return Ownership::dismacOwned();
         }

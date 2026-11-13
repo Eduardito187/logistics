@@ -77,7 +77,7 @@ final class EloquentLegRepository implements LegRepository
             LegId::fromString($record->id),
             NodeId::fromString($record->from_node_id),
             NodeId::fromString($record->to_node_id),
-            CorridorType::from($record->corridor_type),
+            CorridorType::fromLoose($record->corridor_type),
         );
     }
 }

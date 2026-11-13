@@ -42,11 +42,14 @@ final readonly class VoucherCode
     public static function fromString(string $value): self
     {
         $normalized = strtoupper(trim($value));
-        if (preg_match('/^DT-['.self::ALPHABET.']{4}-['.self::ALPHABET.']{4}$/', $normalized) !== 1) {
+        if (preg_match('/^DT-(['.self::ALPHABET.']{4})-(['.self::ALPHABET.']{4})$/', $normalized, $matches) !== 1) {
             throw CompensationException::because("Código de vale inválido: {$value}.");
         }
 
-        $body = str_replace(['DT-', '-'], '', $normalized);
+        // El cuerpo sale de los GRUPOS DE CAPTURA, no de str_replace('DT-'): si el primer bloque termina en
+        // 'DT' (p. ej. 'AEDT'), el separador forma un 'DT-' interno que str_replace también borraba, corrompiendo
+        // el cuerpo y haciendo fallar el dígito de control (~0.1% de los códigos generados: bug intermitente).
+        $body = $matches[1].$matches[2];
         if (self::checkChar(substr($body, 0, self::BODY_LENGTH - 1)) !== substr($body, -1)) {
             throw CompensationException::because("Dígito de control del código inválido: {$value}.");
         }

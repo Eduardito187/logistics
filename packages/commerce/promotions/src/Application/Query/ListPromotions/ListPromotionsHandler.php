@@ -31,7 +31,7 @@ final readonly class ListPromotionsHandler implements QueryHandler
 
         $promotions = $this->promotions->all();
         if ($query->status !== null) {
-            $status = PromotionStatus::from($query->status);
+            $status = PromotionStatus::fromLoose($query->status);
             $promotions = array_values(array_filter(
                 $promotions,
                 static fn (Promotion $promotion): bool => $promotion->status() === $status,

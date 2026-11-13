@@ -645,7 +645,7 @@ final class ShipmentTrackingResource extends Resource
      */
     private static function isTerminalStatus(string $state): bool
     {
-        $status = VisibleStatus::tryFrom($state);
+        $status = VisibleStatus::tryFromLoose($state);
 
         return $status !== null && $status->isTerminal();
     }

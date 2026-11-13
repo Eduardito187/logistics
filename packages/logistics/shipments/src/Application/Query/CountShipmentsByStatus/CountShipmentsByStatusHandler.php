@@ -32,7 +32,7 @@ final class CountShipmentsByStatusHandler implements QueryHandler
         }
 
         return $this->reader->countByStatus(
-            source: $query->source !== null ? OrderSource::from($query->source)->value : null,
+            source: $query->source !== null ? OrderSource::fromLoose($query->source)->value : null,
             destinationNodeId: $query->destinationNodeId,
             deliveryDateFrom: $query->deliveryDateFrom,
             deliveryDateTo: $query->deliveryDateTo,

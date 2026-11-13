@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del envío a lo largo de su ciclo de vida. Este contexto solo produce los primeros estados
  * (recepción y planificación); la ejecución real (carga, ruta, entrega) la gobiernan otros contextos.
  */
 enum ShipmentStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Recién ingresado y normalizado; todavía sin plan de reparto. */
     case Received = 'RECEIVED';
 

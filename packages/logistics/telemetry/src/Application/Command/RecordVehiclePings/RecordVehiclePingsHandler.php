@@ -332,7 +332,7 @@ final readonly class RecordVehiclePingsHandler implements CommandHandler
         );
 
         foreach ($detected as $signal) {
-            $type = AlertType::from($signal['type']);
+            $type = AlertType::fromLoose($signal['type']);
             if ($type === AlertType::Speeding) {
                 continue;
             }

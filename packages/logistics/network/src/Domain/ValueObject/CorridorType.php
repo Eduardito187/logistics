@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Network\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Los seis corredores posibles entre nodos (y hacia el cliente).
  *
@@ -12,6 +14,8 @@ namespace Logistics\Network\Domain\ValueObject;
  */
 enum CorridorType: string
 {
+    use CaseInsensitiveEnum;
+
     /** CD → cliente: entrega de última milla desde un centro de distribución. */
     case CdToCustomer = 'cd_to_customer';
 

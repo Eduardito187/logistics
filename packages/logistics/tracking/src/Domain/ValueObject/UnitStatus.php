@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado visible de un BULTO (unidad física) dentro del seguimiento.
  *
@@ -15,6 +17,8 @@ namespace Logistics\Tracking\Domain\ValueObject;
  */
 enum UnitStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** El bulto existe en el seguimiento pero todavía no tiene ningún escaneo. */
     case Registered = 'REGISTERED';
 

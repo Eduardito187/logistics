@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Outbox\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de un mensaje en el outbox a lo largo de su ciclo de vida.
  *
@@ -17,6 +19,8 @@ namespace Logistics\Outbox\Domain\ValueObject;
  */
 enum OutboxStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Pending = 'pending';
     case Failed = 'failed';
     case Dispatched = 'dispatched';

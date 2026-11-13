@@ -80,7 +80,7 @@ final class TrackingMapper
             TrackingId::fromString($record->id),
             $record->shipment_id,
             TrackingToken::fromString($record->token),
-            VisibleStatus::from($record->status),
+            VisibleStatus::fromLoose($record->status),
             $record->remaining_stops,
             $eta,
             $lastPosition,

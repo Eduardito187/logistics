@@ -134,12 +134,12 @@ final class NodeResource extends Resource
             TextEntry::make('type')
                 ->label(__('Type'))
                 ->badge()
-                ->formatStateUsing(static fn (string $state): string => __(NodeType::from($state)->label())),
+                ->formatStateUsing(static fn (string $state): string => __(NodeType::fromLoose($state)->label())),
             TextEntry::make('status')
                 ->label(__('Status'))
                 ->badge()
                 ->color(static fn (string $state): string => $state === NodeStatus::Active->value ? 'success' : 'gray')
-                ->formatStateUsing(static fn (string $state): string => __(NodeStatus::from($state)->label())),
+                ->formatStateUsing(static fn (string $state): string => __(NodeStatus::fromLoose($state)->label())),
             TextEntry::make('department')
                 ->label(__('Department'))
                 ->placeholder(__('Unassigned'))
@@ -166,12 +166,12 @@ final class NodeResource extends Resource
                 TextColumn::make('type')
                     ->label(__('Type'))
                     ->badge()
-                    ->formatStateUsing(static fn (string $state): string => __(NodeType::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(NodeType::fromLoose($state)->label())),
                 TextColumn::make('status')
                     ->label(__('Status'))
                     ->badge()
                     ->color(static fn (string $state): string => $state === NodeStatus::Active->value ? 'success' : 'gray')
-                    ->formatStateUsing(static fn (string $state): string => __(NodeStatus::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(NodeStatus::fromLoose($state)->label())),
                 TextColumn::make('department')
                     ->label(__('Department'))
                     ->placeholder(__('Unassigned'))

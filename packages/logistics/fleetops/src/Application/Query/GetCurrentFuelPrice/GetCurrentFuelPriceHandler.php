@@ -29,7 +29,7 @@ final readonly class GetCurrentFuelPriceHandler implements QueryHandler
     {
         assert($query instanceof GetCurrentFuelPrice);
 
-        $price = $this->prices->currentFor(FuelType::from($query->fuelType), $this->clock->now());
+        $price = $this->prices->currentFor(FuelType::fromLoose($query->fuelType), $this->clock->now());
 
         return $price !== null ? FuelPriceView::fromDomain($price) : null;
     }

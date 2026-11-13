@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de la entrega a lo largo de su ejecución en terreno. Las transiciones las gobierna el
  * agregado Delivery: cada escaneo válido mueve (o confirma) el estado.
  */
 enum DeliveryStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Creada, todavía sin preparar. */
     case Pending = 'PENDING';
 

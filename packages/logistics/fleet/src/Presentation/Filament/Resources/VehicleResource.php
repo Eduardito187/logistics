@@ -296,7 +296,7 @@ final class VehicleResource extends Resource
                         VehicleStatus::Maintenance->value => 'warning',
                         default => 'gray',
                     })
-                    ->formatStateUsing(static fn (string $state): string => __(VehicleStatus::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(VehicleStatus::fromLoose($state)->label())),
                 // Aptitud para despachar (#27): no apto por checklist pre-salida con falla crítica.
                 TextColumn::make('unfit_since')
                     ->label(__('Dispatch fitness'))
@@ -348,7 +348,7 @@ final class VehicleResource extends Resource
                     TextEntry::make('status')
                         ->label(__('Status'))
                         ->badge()
-                        ->formatStateUsing(static fn (string $state): string => __(VehicleStatus::from($state)->label())),
+                        ->formatStateUsing(static fn (string $state): string => __(VehicleStatus::fromLoose($state)->label())),
                 ])
                 ->columns(2),
 

@@ -62,7 +62,7 @@ final class ReportVehicleIncidentHandler implements CommandHandler
         }
 
         $severity = IncidentSeverity::from($command->severity);
-        $type = IncidentType::from($command->type);
+        $type = IncidentType::fromLoose($command->type);
 
         $route = $this->resolveRoute($command);
 

@@ -20,7 +20,7 @@ final class FleetDocumentMapper
     {
         return FleetDocument::reconstitute(
             FleetDocumentId::fromString($model->id),
-            DocumentOwnerType::from($model->owner_type),
+            DocumentOwnerType::fromLoose($model->owner_type),
             $model->owner_id,
             DocumentExpiry::of($model->document_type, new DateTimeImmutable($model->expires_on)),
             $model->issued_on !== null ? new DateTimeImmutable($model->issued_on) : null,

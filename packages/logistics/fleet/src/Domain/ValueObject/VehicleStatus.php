@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Fleet\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado operativo de un vehículo dentro de la flota.
  *
@@ -11,6 +13,8 @@ namespace Logistics\Fleet\Domain\ValueObject;
  */
 enum VehicleStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Disponible para armar tripulación y salir a ruta. */
     case Available = 'available';
 

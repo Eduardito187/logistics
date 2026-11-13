@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Access\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de un token de integración dentro de la plataforma.
  *
@@ -12,6 +14,8 @@ namespace Logistics\Access\Domain\ValueObject;
  */
 enum TokenStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Activo: puede autenticar peticiones mientras no expire. */
     case Active = 'active';
 

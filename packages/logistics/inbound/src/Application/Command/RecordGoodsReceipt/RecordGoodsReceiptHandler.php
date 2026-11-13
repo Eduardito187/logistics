@@ -50,7 +50,7 @@ final readonly class RecordGoodsReceiptHandler implements CommandHandler
             static fn (array $line): ReceiptLine => ReceiptLine::of(
                 $line['sku'],
                 ReceivedQuantity::of($line['accepted'], $line['rejected'], $line['damaged']),
-                QcOutcome::from($line['qc_outcome']),
+                QcOutcome::fromLoose($line['qc_outcome']),
             ),
             array_values($command->lines),
         );

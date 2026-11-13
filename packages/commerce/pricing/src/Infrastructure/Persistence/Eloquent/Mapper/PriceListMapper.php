@@ -21,8 +21,8 @@ final class PriceListMapper
             PriceListId::fromString($record->id),
             $record->name,
             $record->currency,
-            Channel::from($record->channel),
-            PriceListStatus::from($record->status),
+            Channel::fromLoose($record->channel),
+            PriceListStatus::fromLoose($record->status),
         );
     }
 

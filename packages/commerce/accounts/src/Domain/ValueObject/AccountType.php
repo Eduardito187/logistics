@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Accounts\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de cuenta comercial (concepto de comercio, NO de identidad/authN — eso lo resuelve `access`).
  *
@@ -13,6 +15,8 @@ namespace Commerce\Accounts\Domain\ValueObject;
  */
 enum AccountType: string
 {
+    use CaseInsensitiveEnum;
+
     case Person = 'person';
     case Company = 'company';
     case SellerPerson = 'seller_person';

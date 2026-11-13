@@ -33,7 +33,7 @@ final readonly class CreatePriceListHandler implements CommandHandler
         $list = PriceList::create(
             $this->priceLists->nextIdentity(),
             $command->name,
-            Channel::from($command->channel),
+            Channel::fromLoose($command->channel),
             $command->currency,
         );
 

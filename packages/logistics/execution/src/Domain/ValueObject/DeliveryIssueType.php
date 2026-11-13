@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo del inconveniente que el chofer reporta durante una entrega que SIGUE EN CURSO.
  *
@@ -13,6 +15,8 @@ namespace Logistics\Execution\Domain\ValueObject;
  */
 enum DeliveryIssueType: string
 {
+    use CaseInsensitiveEnum;
+
     /** Retraso: el chofer llegará tarde a esta parada. */
     case Delay = 'DELAY';
 

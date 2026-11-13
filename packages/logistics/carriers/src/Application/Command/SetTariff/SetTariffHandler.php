@@ -47,7 +47,7 @@ final readonly class SetTariffHandler implements CommandHandler
             $this->tariffs->nextIdentity(),
             $command->carrierId,
             CorridorRef::of($command->corridorFrom, $command->corridorTo, $command->corridorType),
-            VehicleClass::from($command->vehicleClass),
+            VehicleClass::fromLoose($command->vehicleClass),
             Money::of($command->priceCents, $command->currency),
             new DateTimeImmutable($command->effectiveFrom),
         );

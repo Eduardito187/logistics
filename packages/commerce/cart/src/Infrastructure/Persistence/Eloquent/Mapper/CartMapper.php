@@ -22,7 +22,7 @@ final class CartMapper
             CartId::fromString($record->id),
             $record->customer_id !== null ? Uuid::fromString($record->customer_id) : null,
             $record->session_id,
-            CartStatus::from($record->status),
+            CartStatus::fromLoose($record->status),
             $record->currency,
             array_values(array_map(
                 static fn (array $line): CartLine => CartLine::fromArray($line),

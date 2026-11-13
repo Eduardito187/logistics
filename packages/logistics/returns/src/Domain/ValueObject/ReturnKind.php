@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Returns\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de devolución (logística inversa, ADR 017 §7.4).
  *
@@ -13,6 +15,8 @@ namespace Logistics\Returns\Domain\ValueObject;
  */
 enum ReturnKind: string
 {
+    use CaseInsensitiveEnum;
+
     /** Devolución de cliente: el cliente retorna el producto al almacén central. */
     case CustomerReturn = 'customer_return';
 

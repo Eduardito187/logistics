@@ -40,7 +40,7 @@ final readonly class UpdateFuelPriceHandler implements CommandHandler
         }
 
         if ($command->fuelType !== null) {
-            $price->changeFuelType(FuelType::from($command->fuelType));
+            $price->changeFuelType(FuelType::fromLoose($command->fuelType));
         }
 
         $price->update(

@@ -18,11 +18,7 @@ use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ShipmentId;
 use Logistics\Shipments\Domain\ValueObject\SourceReference;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
-
-/**
- * Falla al sembrar: el envío esperado no apareció en el repositorio tras el ingreso.
- */
-final class ShipmentSeedFailure extends RuntimeException {}
+use Logistics\Shipments\Tests\Feature\ShipmentSeedFailure;
 
 /**
  * Lado de LECTURA del listado de envíos (WS1): los filtros se empujan a SQL y el ShipmentView se arma

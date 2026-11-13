@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del plan de reparto a lo largo de su ciclo de vida dentro de este contexto.
  *
@@ -13,6 +15,8 @@ namespace Logistics\Planning\Domain\ValueObject;
  */
 enum PlanStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Borrador: se están asignando envíos al camión; todavía sin secuencia ni ETA. */
     case Draft = 'DRAFT';
 
