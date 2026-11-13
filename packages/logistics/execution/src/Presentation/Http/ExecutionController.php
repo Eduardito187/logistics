@@ -12,8 +12,11 @@ use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryState;
 use Logistics\Execution\Application\Query\GetNodeReception\GetNodeReception;
 use Logistics\Execution\Application\ReadModel\DeliveryView;
 use Logistics\Execution\Application\ReadModel\NodeReceptionView;
+use Logistics\Labels\Application\Query\ResolveLabelUnit\ResolveLabelUnit;
+use Logistics\Labels\Application\ReadModel\LabelUnitView;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Throwable;
 
 /**
  * Base de los controllers HTTP del contexto Ejecución.
@@ -119,6 +122,69 @@ abstract class ExecutionController
         $body = $request->input('user_id');
 
         return is_string($body) ? trim($body) : '';
+    }
+
+    /**
+     * Normaliza los identificadores de bulto que la app manda tras ESCANEAR la etiqueta.
+     *
+     * El chofer entrega (y prepara, carga, recibe) escaneando la ETIQUETA, pero el QR no lleva el
+     * `shipment_unit.id`: la app manda el `label_id` (ULID de la etiqueta) como `unit_id`/`unit_ids[]`. Si se
+     * guardara crudo nunca matchearía con `shipment_units.id` (UUID v7) y el ciclo de vida de la etiqueta y
+     * los readers por unidad no encontrarían el escaneo. Acá, en el borde, se resuelve cada id contra la
+     * etiqueta ({@see ResolveLabelUnit}): si resuelve a un bulto se reemplaza por el `shipment_unit.id`
+     * canónico; si no resuelve (ya es un id de bulto, o es desconocido) se deja tal cual.
+     *
+     * Offline-first: si la resolución lanza NO se bloquea el escaneo; se usa el id crudo y se sigue.
+     *
+     * @param  array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    protected function resolveScannedUnitIds(array $data): array
+    {
+        if (isset($data['unit_id']) && is_scalar($data['unit_id'])) {
+            $data['unit_id'] = $this->resolveScannedUnitId((string) $data['unit_id']);
+        }
+
+        if (isset($data['unit_ids']) && is_array($data['unit_ids'])) {
+            $resolved = [];
+            foreach ($data['unit_ids'] as $raw) {
+                if (!is_scalar($raw)) {
+                    continue;
+                }
+
+                $id = $this->resolveScannedUnitId((string) $raw);
+                if ($id !== '' && !in_array($id, $resolved, true)) {
+                    $resolved[] = $id;
+                }
+            }
+
+            $data['unit_ids'] = $resolved;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Resuelve UN id escaneado: `label_id` → `shipment_unit.id` canónico si la etiqueta resuelve; si no,
+     * devuelve el id tal cual (ya era un bulto, o es desconocido). Nunca lanza (offline-first).
+     */
+    private function resolveScannedUnitId(string $scannedId): string
+    {
+        $scannedId = trim($scannedId);
+        if ($scannedId === '') {
+            return '';
+        }
+
+        try {
+            $view = $this->queryBus->ask(new ResolveLabelUnit($scannedId));
+            if ($view instanceof LabelUnitView && $view->resolved && $view->unitId !== null) {
+                return $view->unitId;
+            }
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        return $scannedId;
     }
 
     /**

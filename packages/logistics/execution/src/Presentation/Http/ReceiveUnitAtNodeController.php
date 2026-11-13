@@ -22,6 +22,9 @@ final class ReceiveUnitAtNodeController extends ExecutionController
         /** @var array<string, mixed> $data */
         $data = $request->validated();
 
+        // El producto se recibe escaneando su ETIQUETA: normaliza `unit_id` (label_id → bulto real).
+        $data = $this->resolveScannedUnitIds($data);
+
         /** @var array<string, mixed> $location */
         $location = isset($data['location']) && is_array($data['location']) ? $data['location'] : [];
 
