@@ -100,6 +100,7 @@ final class CustomerHub
         $active = 0;
         $delivered = 0;
         $failed = 0;
+        $shipmentOrders = 0;
         $lastActivity = null;
 
         try {
@@ -113,6 +114,7 @@ final class CustomerHub
                     ."count(*) filter (where status not in ({$terminal})) as active, "
                     ."count(*) filter (where status = 'DELIVERED') as delivered, "
                     ."count(*) filter (where status = 'FAILED') as failed, "
+                    ."count(distinct order_reference) filter (where order_reference is not null and order_reference <> '') as order_refs, "
                     .'max(created_at) as last_at',
                 )
                 ->first();
@@ -122,6 +124,7 @@ final class CustomerHub
                 $active = (int) $row->active;
                 $delivered = (int) $row->delivered;
                 $failed = (int) $row->failed;
+                $shipmentOrders = (int) $row->order_refs;
                 $lastActivity = is_string($row->last_at) ? $this->shortDate($row->last_at) : null;
             }
         } catch (Throwable) {
@@ -134,8 +137,14 @@ final class CustomerHub
         [$spend, $currency, $ordersCount] = $this->spend($name);
         [$satAvg, $satCount] = $this->satisfactionStats($name);
 
+        // "Pedidos" = cantidad de órdenes del cliente. Un envío SIEMPRE pertenece a una orden
+        // (`order_reference`), pero puede no existir una orden comercial (OMS) si entró por SAP/sembrado.
+        // Por eso se toma el mayor entre las órdenes comerciales y las órdenes distintas de sus envíos:
+        // así nunca aparece "0 pedidos · 1 envío".
+        $orders = max($ordersCount, $shipmentOrders);
+
         return [
-            'orders' => $ordersCount,
+            'orders' => $orders,
             'shipments' => $shipments,
             'active_shipments' => $active,
             'delivered' => $delivered,

@@ -266,6 +266,14 @@ final class Delivery extends AggregateRoot
             return;
         }
 
+        // Idempotente a nivel de ESTADO: si la entrega YA está entregada, un POD reintentado —incluso con
+        // OTRA clave de idempotencia, como cuando la cola offline del app reencola con una clave nueva— es
+        // un no-op EXITOSO, no un error de transición ("transición inválida a Delivered desde DELIVERED").
+        // Así un reintento no figura como fallo en la cola del teléfono.
+        if ($this->status === DeliveryStatus::Delivered) {
+            return;
+        }
+
         $units = [];
         foreach ($unitIds as $unitId) {
             $trimmed = trim($unitId);
@@ -556,7 +564,10 @@ final class Delivery extends AggregateRoot
     private function guardTransition(array $allowed, string $target): void
     {
         if (!in_array($this->status, $allowed, true)) {
-            throw ExecutionException::because("transición inválida a {$target} desde {$this->status->value}");
+            // La comparación es por IDENTIDAD de enum (no por string), así que ya es inmune a mayúsculas:
+            // "Delivered" y "DELIVERED" son el MISMO case. En el mensaje usamos `->name` (CamelCase) para que
+            // coincida con el casing del `$target` y no parezca un falso problema de mayúsculas.
+            throw ExecutionException::because("transición inválida a {$target} desde {$this->status->name}");
         }
     }
 

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Logistics\Execution\Application\Command\RecordProofOfDelivery;
 
 use DateTimeImmutable;
+use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
+use Logistics\Execution\Domain\Model\Delivery;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery as ProofOfDeliveryVO;
@@ -32,6 +34,7 @@ final class RecordProofOfDeliveryHandler implements CommandHandler
         private readonly DeliveryRepository $deliveries,
         private readonly VehicleRouteRepository $routes,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly ShipmentFulfillmentReader $fulfillment,
     ) {}
 
     public function handle(Command $command): void
@@ -40,12 +43,28 @@ final class RecordProofOfDeliveryHandler implements CommandHandler
             throw ExecutionException::because('RecordProofOfDeliveryHandler solo maneja RecordProofOfDelivery');
         }
 
+        $occurredAt = new DateTimeImmutable($command->occurredAt);
+
+        // Auto-abrir si NO hay entrega: un POD puede llegar para un envío cuya entrega nunca se abrió (el
+        // camión se asignó por un camino que no disparó OpenDelivery, o antes de ese fix). En vez de
+        // bloquear al chofer, abrimos la entrega con el camión de su ruta (abre en Loaded) y seguimos — el
+        // guard del POD ya acepta Loaded→Delivered. Sin ruta/camión no hay contexto para abrirla: ahí sí se
+        // mantiene el error claro.
         $delivery = $this->deliveries->findByShipmentId($command->shipmentId);
         if ($delivery === null) {
-            throw ExecutionException::because("no hay entrega abierta para el envío {$command->shipmentId}");
+            $route = $this->routes->findByShipmentId($command->shipmentId);
+            $vehicleId = $route?->vehicleId() ?? '';
+            if (trim($vehicleId) === '') {
+                throw ExecutionException::because("no hay entrega abierta para el envío {$command->shipmentId}");
+            }
+            $delivery = Delivery::open(
+                $this->deliveries->nextIdentity(),
+                $command->shipmentId,
+                $vehicleId,
+                $this->fulfillment->forShipmentId($command->shipmentId)->mode,
+                $occurredAt,
+            );
         }
-
-        $occurredAt = new DateTimeImmutable($command->occurredAt);
 
         $unitIds = $command->unitIds !== [] ? $command->unitIds : [$command->unitId];
 

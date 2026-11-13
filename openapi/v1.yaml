@@ -970,6 +970,10 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ProofOfDeliveryRequest'
+          # Variante con la foto INLINE: multipart/form-data con los mismos campos + el archivo `photo`.
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProofOfDeliveryRequest'
       responses:
         '200':
           $ref: '#/components/responses/DeliveryState'
@@ -995,6 +999,10 @@ paths:
         required: true
         content:
           application/json:
+            schema:
+              $ref: '#/components/schemas/ProofOfDeliveryRequest'
+          # Variante con la foto INLINE: multipart/form-data con los mismos campos + el archivo `photo`.
+          multipart/form-data:
             schema:
               $ref: '#/components/schemas/ProofOfDeliveryRequest'
       responses:
@@ -17626,6 +17634,16 @@ components:
             Durable `path` returned by POST /app/deliveries/photos. OPTIONAL (option A, async POD): the delivery
             is not blocked if the photo has not uploaded yet; it links automatically when it does. If a reference
             IS sent it must exist on the evidence disk, else 422 errors.photo_path.
+        photo:
+          type: string
+          format: binary
+          nullable: true
+          description: >-
+            OPTIONAL inline photo sent in the SAME request as multipart/form-data (field `photo`). The backend
+            stores it on the evidence disk and links it as `photo_path` in the same operation — no separate
+            upload needed. Image only; max 10 MB. If the inline upload fails the POD still closes (offline-first)
+            and the photo can be uploaded afterwards via POST /app/deliveries/photos. Used only with
+            multipart/form-data, not JSON.
         photo_paths:
           type: array
           description: Each entry must exist on the evidence disk (same 422 as photo_path).

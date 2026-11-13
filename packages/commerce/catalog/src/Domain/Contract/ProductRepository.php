@@ -23,6 +23,13 @@ interface ProductRepository
 
     public function findById(ProductId $id): ?Product;
 
+    /**
+     * Impura a propósito: el producto puede crearse (DraftProduct) entre dos llamadas, así que el resultado
+     * puede pasar de null a no-null sin que cambie el argumento (p. ej. el backfill lo consulta tras darlo de
+     * alta para publicarlo).
+     *
+     * @phpstan-impure
+     */
     public function findByCanonicalSku(Sku $sku): ?Product;
 
     /**
