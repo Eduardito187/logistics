@@ -45,7 +45,7 @@ final readonly class WindowSelectionPolicy
      * Construye los pesos desde primitivos de configuración, cayendo a los defaults cuando falten o no
      * sean numéricos.
      *
-     * @param array{preference?: mixed, balance?: mixed, early?: mixed} $weights
+     * @param array<string, mixed> $weights
      */
     public static function fromArray(array $weights): self
     {
