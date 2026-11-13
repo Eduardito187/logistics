@@ -59,7 +59,7 @@ final class LabelLifecycle
         $truck = $this->truckAssignment($unit?->shipmentId);
         $scans = $this->scanEvents($unit?->unitId, $truck);
 
-        $items = [...$this->baseEvents($labelId), ...$this->auditEvents($labelId), ...$scans];
+        $items = [...$this->baseEvents($labelId), ...$this->auditEvents($labelId), ...$scans, ...$this->deliveryEvents($unit?->shipmentId)];
 
         // Asignar el envío a un camión ES cargarlo (regla de operación): si no hubo escaneo de carga, la
         // asignación aparece como «Cargada» con la placa; si lo hubo, la placa ya va en ese escaneo.
@@ -190,6 +190,62 @@ final class LabelLifecycle
         }
 
         return $out;
+    }
+
+    /**
+     * ENTREGA del ENVÍO (no por bulto): si `execution_deliveries` dice DELIVERED/FAILED, la etiqueta figura
+     * Entregada/Fallida —y TODAS las del envío—, derivado del estado del ENVÍO, no de que el scan del POD
+     * matchee el `unit_id`. Es la fuente de verdad robusta: el chofer escanea la ETIQUETA y la app manda el
+     * `label_id` (no el shipment_unit.id), y además una reasignación puede recrear los bultos y orfanar los
+     * scans; el estado de la entrega del envío no sufre ninguno de esos problemas. La entrega es a nivel
+     * pedido (una acción «Entregar» por parada), así que un POD cierra todas las unidades/etiquetas del envío.
+     *
+     * @return list<array{at: string, when: string, event: string, label: string, actor: string, detail: string, tone: string}>
+     */
+    private function deliveryEvents(?string $shipmentId): array
+    {
+        if ($shipmentId === null) {
+            return [];
+        }
+
+        try {
+            $row = DB::table('execution_deliveries')
+                ->where('shipment_id', $shipmentId)
+                ->first(['status', 'pod_captured_at', 'failure_reason']);
+        } catch (Throwable) {
+            return [];
+        }
+        if ($row === null) {
+            return [];
+        }
+
+        $status = strtoupper((string) ($row->status ?? ''));
+        $at = (string) ($row->pod_captured_at ?? '');
+
+        if ($status === 'DELIVERED') {
+            return [[
+                'at' => $at,
+                'when' => $this->human($at),
+                'event' => 'Entregada',
+                'label' => 'entrega',
+                'actor' => '—',
+                'detail' => 'Entrega del pedido confirmada',
+                'tone' => 'ok',
+            ]];
+        }
+        if ($status === 'FAILED') {
+            return [[
+                'at' => $at,
+                'when' => $this->human($at),
+                'event' => 'Fallida',
+                'label' => 'entrega',
+                'actor' => '—',
+                'detail' => is_string($row->failure_reason ?? null) ? $row->failure_reason : '',
+                'tone' => 'danger',
+            ]];
+        }
+
+        return [];
     }
 
     /** Resuelve el bulto físico (y su envío) de la etiqueta para unir escaneos y camión. Tolerante: null. */

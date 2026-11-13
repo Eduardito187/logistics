@@ -20,6 +20,10 @@ final class RecordFailedDeliveryController extends ExecutionController
         /** @var array<string, mixed> $data */
         $data = $request->validated();
 
+        // El bulto del intento fallido se identifica escaneando su ETIQUETA: normaliza `unit_id`
+        // (label_id → bulto real) igual que el POD exitoso.
+        $data = $this->resolveScannedUnitIds($data);
+
         $this->commandBus->dispatch(ScanCommandFactory::failed(
             $data,
             $this->deviceId($request),
