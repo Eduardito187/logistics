@@ -22,7 +22,11 @@ final class GetNodeReceptionController extends ExecutionController
         /** @var array{data: mixed} $payload */
         $payload = $response->getData(true);
         if ($payload['data'] === null) {
-            return new JsonResponse(['data' => null], 404);
+            return $this->problem(
+                'node_reception_not_found',
+                'No reception has been opened for this shipment at this node yet.',
+                404,
+            );
         }
 
         return $response;

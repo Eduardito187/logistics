@@ -41,3 +41,36 @@ it('suma los fees aplicados y deja los diferidos en cero', function (): void {
         ->and($fees->total()->cents)->toBe(153_000)
         ->and($fees->toArray()['total_cents'])->toBe(153_000);
 });
+
+it('suma también los fees diferidos cuando se proveen explícitos', function (): void {
+    $fees = AppliedFees::of(
+        1200,
+        Money::of(120_000),
+        Money::of(2_000),
+        Money::of(5_000),
+        Money::of(7_000),
+        Money::of(3_000),
+    );
+
+    expect($fees->storageFee->cents)->toBe(5_000)
+        ->and($fees->fulfillmentFee->cents)->toBe(7_000)
+        ->and($fees->lastMileFee->cents)->toBe(3_000)
+        ->and($fees->total()->cents)->toBe(137_000)
+        ->and($fees->toArray())->toMatchArray([
+            'commission_basis_points' => 1200,
+            'storage_fee_cents' => 5_000,
+            'fulfillment_fee_cents' => 7_000,
+            'last_mile_fee_cents' => 3_000,
+            'total_cents' => 137_000,
+            'currency' => 'BOB',
+        ]);
+});
+
+it('compara periodos por sus fechas con equals', function (): void {
+    $a = SettlementPeriod::of('2026-09-01', '2026-09-30');
+    $b = SettlementPeriod::of('2026-09-01', '2026-09-30');
+    $c = SettlementPeriod::of('2026-10-01', '2026-10-31');
+
+    expect($a->equals($b))->toBeTrue()
+        ->and($a->equals($c))->toBeFalse();
+});

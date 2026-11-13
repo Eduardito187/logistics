@@ -49,12 +49,17 @@ final class UploadDeliveryPhotoController
         try {
             $stored = $this->storage->store($kind, (string) $data['shipment_id'], $photo, $this->idempotencyKey($request));
         } catch (ExecutionException $exception) {
+            // Formato de error ÚNICO (decisión del dueño): motivo en `detail` y en `error.message`.
+            $code = 'evidence_upload_failed';
+
             return new JsonResponse([
-                'error' => [
-                    'code' => 'evidence_upload_failed',
-                    'message' => $exception->getMessage(),
-                ],
-            ], 500);
+                'type' => rtrim((string) config('api.problem_type_base_uri', '/problems'), '/').'/'.$code,
+                'title' => 'Evidence upload failed',
+                'status' => 500,
+                'code' => $code,
+                'detail' => $exception->getMessage(),
+                'error' => ['code' => $code, 'message' => $exception->getMessage()],
+            ], 500, ['Content-Type' => 'application/problem+json']);
         }
 
         // Opción A (POD asíncrono): si la foto de prueba de entrega llegó DESPUÉS del POD, se liga a la

@@ -34,6 +34,23 @@ fi
 mkdir -p /var/www/html/storage/framework/{cache,sessions,views}
 mkdir -p /var/www/html/storage/logs
 mkdir -p /var/www/html/bootstrap/cache
+# Disco `public` de Laravel: carpeta destino de la media subida (fotos de POD/daños/collages, etc.).
+mkdir -p /var/www/html/storage/app/public
+
+# ------------------------------------------------------------
+# 2a-bis. Symlink public/storage -> storage/app/public (equivalente a `php artisan storage:link`)
+# ------------------------------------------------------------
+# El symlink se hornea en la imagen (Dockerfile), PERO en DEV el bind mount del código monta el
+# `public/` del host ENCIMA y TAPA el symlink del build → sin esto, la media subida al disco `public`
+# no se sirve por `/storage/...` (y nginx, que resuelve /storage al symlink, devolvería 404). Se
+# (re)crea en cada arranque de forma idempotente con `ln -sfn` (más robusto que `storage:link` en un
+# entrypoint: no necesita bootear la app ni falla si el enlace ya existe). En PROD (sin bind mount) es
+# un no-op: el enlace ya apunta bien. Si el bind mount del host no admite symlinks, solo avisa.
+if ln -sfn /var/www/html/storage/app/public /var/www/html/public/storage 2>/dev/null; then
+    echo "[entrypoint] Symlink public/storage -> storage/app/public listo (media del disco public servible)."
+else
+    echo "[entrypoint] AVISO: no se pudo crear public/storage (¿el bind mount del host no admite symlinks?)." >&2
+fi
 
 # ------------------------------------------------------------
 # 2a. Autoloader de Composer — sincronizar en DEV (COMPOSER_INSTALL_ON_BOOT=true)
