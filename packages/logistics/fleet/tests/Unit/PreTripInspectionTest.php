@@ -43,3 +43,32 @@ it('no aprueba si queda algún ítem sin verificar', function (): void {
     $events = $inspection->releaseEvents();
     expect($events[0]->passed)->toBeFalse();
 });
+
+it('lleva el route_id opcional en el agregado y en el evento', function (): void {
+    $routeId = '0192f8a0-0000-7000-8000-000000000000';
+
+    $inspection = PreTripInspection::conduct(
+        PreTripInspectionId::generate(),
+        VehicleId::generate(),
+        DriverId::generate(),
+        PreTripChecklist::of(['tires' => true]),
+        new DateTimeImmutable('2026-11-13'),
+        routeId: $routeId,
+    );
+
+    expect($inspection->routeId())->toBe($routeId);
+
+    $events = $inspection->releaseEvents();
+    expect($events[0])->toBeInstanceOf(PreTripChecklistConducted::class)
+        ->and($events[0]->routeId)->toBe($routeId)
+        ->and($events[0]->payload()['route_id'])->toBe($routeId);
+});
+
+it('deja route_id en null cuando se conduce sin ruta', function (): void {
+    $inspection = realizarInspeccion(['tires' => true]);
+
+    expect($inspection->routeId())->toBeNull();
+
+    $events = $inspection->releaseEvents();
+    expect($events[0]->routeId)->toBeNull();
+});

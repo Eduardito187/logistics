@@ -1749,6 +1749,13 @@ paths:
         schema:
           type: string
           format: date
+      - name: route_id
+        in: query
+        required: false
+        description: Filter checklists by route/trip to tell whether a route already has its checklist.
+        schema:
+          type: string
+          format: uuid
       - $ref: '#/components/parameters/PageNumber'
       - $ref: '#/components/parameters/PerPage'
       - $ref: '#/components/parameters/Cursor'
@@ -14420,6 +14427,18 @@ components:
               type: string
               format: uuid
               nullable: true
+        pod_confirmation:
+          type: string
+          nullable: true
+          description: >-
+            Confirmación de la prueba de entrega ya capturada para este envío (firma/receptor), misma fuente
+            que GET /app/deliveries/{shipmentId}. Null mientras no haya POD.
+        pod_photo_url:
+          type: string
+          nullable: true
+          description: >-
+            URL de la foto del POD si el disco de evidencia la expone (puede ser null en disco privado aunque
+            exista la foto; la referencia durable vive en la entrega).
     DriverRoute:
       type: object
       description: The driver route sheet of a vehicle for a day, with its ordered stops
@@ -14456,6 +14475,15 @@ components:
           type: integer
         completed_stops:
           type: integer
+          description: >-
+            Paradas ENTREGADAS con éxito (solo entregas). NO incluye fallidas ni replanificadas: esas van en
+            failed_stops / rescheduled_stops.
+        failed_stops:
+          type: integer
+          description: Paradas con intento de entrega fallido.
+        rescheduled_stops:
+          type: integer
+          description: Paradas replanificadas por incidente del camión (sacadas de esta ruta).
         stops_remaining:
           type: integer
         current_stop:
@@ -15051,6 +15079,11 @@ components:
           type: string
           maxLength: 1000
           nullable: true
+        route_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional route/trip the inspection belongs to (pre-trip check is per route, not per day).
     CorridorType:
       type: string
       enum:
@@ -17399,6 +17432,19 @@ components:
         notes:
           type: string
           nullable: true
+        route_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Route/trip this inspection belongs to (pre-trip check is per route, not per day).
+        plate:
+          type: string
+          nullable: true
+          description: Plate of the inspected vehicle (null if the vehicle was removed from the fleet).
+        driver_name:
+          type: string
+          nullable: true
+          description: Name of the driver who performed the inspection (null if removed from the fleet).
     PreparationScanRequest:
       allOf:
       - $ref: '#/components/schemas/GeoScanBase'
@@ -17719,6 +17765,11 @@ components:
         total_stops:
           type: integer
         completed_stops:
+          type: integer
+          description: Paradas ENTREGADAS con éxito al cierre (no incluye fallidas ni replanificadas).
+        failed_stops:
+          type: integer
+        rescheduled_stops:
           type: integer
         stops_remaining:
           type: integer

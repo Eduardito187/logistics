@@ -118,6 +118,7 @@
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'summary' }" @click="t = 'summary'">Resumen</button>
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'products' }" @click="t = 'products'">Productos<span class="ck-tab__n">{{ count($s['lines']) }}</span></button>
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'delivery' }" @click="t = 'delivery'">Entrega</button>
+                <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'tracking' }" @click="t = 'tracking'">{{ __('Tracking') }}<span class="ck-tab__n">{{ count($this->labels) }}</span></button>
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'activity' }" @click="t = 'activity'">Actividad</button>
                 <button type="button" class="ck-tab" :class="{ 'ck-tab--on': t === 'notes' }" @click="t = 'notes'">Notas<span class="ck-tab__n">{{ count($this->notes) }}</span></button>
             </div>
@@ -238,6 +239,117 @@
                             <dt>Modo</dt><dd>{{ $del && $del['fulfillment_mode'] ? ucfirst(strtolower($del['fulfillment_mode'])) : '—' }}</dd>
                         </dl>
                     </div>
+                </div>
+            </div>
+
+            {{-- ===== PANEL · SEGUIMIENTO ===== --}}
+            {{--
+                Tres bloques: (1) estado actual + hitos del ciclo de vida (asignado→preparado→cargado→
+                entregado) + línea de tiempo de transiciones; (2) etiquetas emitidas con preview visual
+                (QR + Code128 + datos legibles), reutilizando LabelPreviewRenderer; (3) estado de entrega,
+                ETA y vehículo (placa legible, NUNCA UUID). Cada bloque es tolerante: degrada a vacío sin romper.
+            --}}
+            <div x-show="t === 'tracking'" x-cloak>
+                @php
+                    $pg = $this->progress;
+
+                    // Formato corto y tolerante de una marca ISO 8601 a "19 oct 09:00".
+                    $shortDt = static function (?string $iso): string {
+                        if ($iso === null || $iso === '') {
+                            return '—';
+                        }
+                        try {
+                            return \Illuminate\Support\Carbon::parse($iso)->isoFormat('DD MMM HH:mm');
+                        } catch (\Throwable) {
+                            return '—';
+                        }
+                    };
+
+                    // Hitos del ciclo de vida en orden cronológico; "cumplido" si tiene fecha registrada.
+                    $milestones = [
+                        ['label' => __('Assigned'), 'at' => $pg['assigned_at']],
+                        ['label' => __('Prepared'), 'at' => $pg['prepared_at']],
+                        ['label' => __('Loaded'), 'at' => $pg['loaded_at']],
+                        ['label' => __('Delivered'), 'at' => $pg['delivered_at']],
+                    ];
+
+                    // Simbología VIGENTE (setting global): igual que el preview de EmittedLabelResource. Si el
+                    // proveedor no está disponible, se degrada a solo QR para no romper la ficha.
+                    $showQr = true;
+                    $showBarcode = false;
+                    try {
+                        $symbology = app(\Logistics\Labels\Domain\Contract\LabelSymbologyProvider::class)->current(new \DateTimeImmutable);
+                        $showQr = $symbology->includesQr();
+                        $showBarcode = $symbology->includesBarcode();
+                    } catch (\Throwable) {
+                        // simbología no disponible: se muestra solo el QR por defecto.
+                    }
+
+                    $renderer = app(\Logistics\Labels\Presentation\Support\LabelPreviewRenderer::class);
+                @endphp
+
+                {{-- BLOQUE 1 · estado + hitos + línea de tiempo --}}
+                <div class="ck-grid ck-grid--2 ck-section">
+                    <div class="ck-card">
+                        <div class="ck-card__eyebrow">{{ __('Current status') }}</div>
+                        <div class="ck-card__title" style="font-size:1.3rem">{{ $statusLabel }}</div>
+                        <div class="ck-hub__pills" style="margin-top:.7rem">
+                            @if($tr)
+                                <span class="ck-pill {{ $tr['position_is_live'] ? 'ck-pill--agent' : '' }}">
+                                    <span class="ck-pill__dot"></span>{{ $tr['eta'] ? 'ETA '.$tr['eta'] : __('Tracking') }}
+                                </span>
+                            @elseif($status === 'DELIVERED')
+                                <span class="ck-pill ck-pill--positive"><span class="ck-pill__dot"></span>{{ __('Delivered') }}</span>
+                            @endif
+                        </div>
+                        <dl class="ck-dl" style="margin-top:1rem">
+                            @foreach($milestones as $ms)
+                                <dt>{{ $ms['label'] }}</dt><dd>{{ $shortDt($ms['at']) }}</dd>
+                            @endforeach
+                        </dl>
+                    </div>
+                    <div class="ck-card">
+                        <div class="ck-card__eyebrow">{{ __('Lifecycle') }}</div>
+                        <div style="margin-top:.6rem"><x-cockpit.timeline :events="$this->timeline" /></div>
+                    </div>
+                </div>
+
+                {{-- BLOQUE 2 · etiquetas emitidas con preview visual --}}
+                <div class="ck-card ck-section">
+                    <div class="ck-card__eyebrow">{{ __('Emitted labels') }}</div>
+                    @if(count($this->labels))
+                        <div class="ck-grid ck-grid--2" style="margin-top:.8rem">
+                            @foreach($this->labels as $label)
+                                @include('filament.shipments.partials.label-preview', [
+                                    'label' => $label,
+                                    'showQr' => $showQr,
+                                    'showBarcode' => $showBarcode,
+                                    'renderer' => $renderer,
+                                ])
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="ck-empty" style="margin-top:.6rem">
+                            <div class="ck-empty__title">{{ __('No labels yet') }}</div>
+                            <div class="ck-empty__hint">{{ __('No labels have been emitted for this order yet.') }}</div>
+                        </div>
+                    @endif
+                </div>
+
+                {{-- BLOQUE 3 · estado de entrega / ETA / vehículo --}}
+                <div class="ck-card ck-section">
+                    <div class="ck-card__eyebrow">{{ __('Delivery status') }}</div>
+                    <dl class="ck-dl" style="margin-top:.9rem">
+                        <dt>{{ __('Assigned vehicle') }}</dt>
+                        <dd>@if($del && !empty($del['vehicle_id']))<a href="{{ \Logistics\Fleet\Presentation\Filament\Resources\VehicleResource::getUrl('view', ['record' => $del['vehicle_id']]) }}" wire:navigate class="ck-link">{{ $del['vehicle_plate'] }}</a>@else{{ $del && $del['vehicle_plate'] ? $del['vehicle_plate'] : '—' }}@endif</dd>
+                        <dt>{{ __('Delivery status') }}</dt>
+                        <dd>
+                            @php [$dsl3, $dst3] = $del && $del['status'] ? ($deliveryStatusMap[strtoupper($del['status'])] ?? [ucfirst(strtolower($del['status'])), '']) : ['—', '']; @endphp
+                            {{ $dsl3 }}
+                        </dd>
+                        <dt>ETA</dt><dd>{{ $tr && $tr['eta'] ? $tr['eta'] : '—' }}</dd>
+                        <dt>{{ __('Remaining stops') }}</dt><dd>{{ $tr ? $tr['remaining_stops'] : '—' }}</dd>
+                    </dl>
                 </div>
             </div>
 

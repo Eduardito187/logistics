@@ -30,9 +30,15 @@ Artisan::command('inspire', function () {
 // a las colas always-on (outbox/notifications), que despachan el I/O externo EN PARALELO. Reemplaza al
 // despacho inline/secuencial (que capaba a ~100 msg/min y sufría head-of-line blocking). El comando
 // sincrónico `logistics:outbox:relay` queda disponible como herramienta manual/fallback.
+// IMPORTANTE: `withoutOverlapping(N)` lleva expiración EXPLÍCITA en minutos. Sin argumento, Laravel usa 1440
+// (24 h): si el pump se mata a mitad (reinicio de docker, suspensión de la PC, OOM, timeout), el mutex queda
+// en caché 24 h y el scheduler SALTA el pump cada minuto → el outbox se congela por un día (eventos Pendientes,
+// 0 intentos, "No despachado"). Con 10 min, un pump muerto se auto-recupera en ≤10 min. El pump LEE con lease
+// (FOR UPDATE SKIP LOCKED), así que aunque dos corridas se solapen no se duplica trabajo: la expiración corta
+// prioriza "nunca se detiene" sobre "jamás se solapa". Mismo criterio en todos los latidos de abajo.
 Schedule::command('logistics:outbox:pump')
     ->everyMinute()
-    ->withoutOverlapping()
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 // Reconciliación hacia SAP: reintenta SOLO los traspasos Failed cuyo backoff venció
@@ -40,7 +46,7 @@ Schedule::command('logistics:outbox:pump')
 // nuevos los empuja únicamente el reactor del outbox (sin doble envío).
 Schedule::command('logistics:sap:dispatch-transfers')
     ->everyMinute()
-    ->withoutOverlapping()
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 // Avisos fire-and-forget a SAP: re-encola en la cola `sap` los avisos Pending/Failed
@@ -48,7 +54,7 @@ Schedule::command('logistics:sap:dispatch-transfers')
 // habla con SAP: el envío lo hace el job; agotados los intentos se dejan Failed.
 Schedule::command('logistics:sap:retry-notifications')
     ->everyMinute()
-    ->withoutOverlapping()
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 // Ingesta de pedidos desde Magento: trae los pedidos pendientes y los recibe en
@@ -56,7 +62,7 @@ Schedule::command('logistics:sap:retry-notifications')
 // dejarlo programado en todos los entornos.
 Schedule::command('logistics:shipments:pull-magento')
     ->everyFiveMinutes()
-    ->withoutOverlapping()
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 // Alertas de documentos de flota próximos a vencer / vencidos (P1-FLT-04): barre la
@@ -73,7 +79,7 @@ Schedule::command('logistics:fleet:document-alerts')
 // env en config/commerce.php), liberando así el cupo reservado. source='cron', reason='unpaid_timeout'.
 Schedule::command('commerce:orders:expire-unpaid')
     ->everyFifteenMinutes()
-    ->withoutOverlapping()
+    ->withoutOverlapping(14)
     ->runInBackground();
 
 // Expiración de reservas de promesa vencidas: expira las promesas cuya ventana de reserva caducó y
@@ -81,7 +87,7 @@ Schedule::command('commerce:orders:expire-unpaid')
 // ningún cupo quede retenido por una reserva abandonada por el canal.
 Schedule::command('logistics:promise:expire-reservations')
     ->everyMinute()
-    ->withoutOverlapping()
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 // Foto histórica diaria de los KPIs de la Torre de Control (para la variación ▲/▼ de los mosaicos). A
@@ -130,7 +136,7 @@ Schedule::command('logistics:db:maintain')
 Schedule::command('logistics:db:maintain --analyze-only')
     ->hourly()
     ->onOneServer()
-    ->withoutOverlapping()
+    ->withoutOverlapping(55)
     ->runInBackground();
 
 // Digest diario de operaciones (Fase 5 — reportes): compone el resumen del día (entregas, efectividad,
@@ -145,7 +151,7 @@ Schedule::command('ops:digest')
 Schedule::command('logistics:tracking:send-survey-invitations')
     ->hourly()
     ->onOneServer()
-    ->withoutOverlapping()
+    ->withoutOverlapping(55)
     ->runInBackground();
 
 // Auto-slot (promise, Módulo 1): red de seguridad por si un reactor del outbox no asignó la ventana a un
@@ -153,7 +159,7 @@ Schedule::command('logistics:tracking:send-survey-invitations')
 Schedule::command('logistics:promise:autoslot-sweep')
     ->everyTenMinutes()
     ->onOneServer()
-    ->withoutOverlapping()
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 // Auto-PUBLICACIÓN diaria de planes (Fase 3.2): publica los planes PROPOSED que pasan la PublishGate, tras

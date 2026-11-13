@@ -55,9 +55,10 @@ final readonly class EloquentPreTripInspectionRepository implements PreTripInspe
         ?DateTimeImmutable $to = null,
         ?int $limit = null,
         ?int $offset = null,
+        ?string $routeId = null,
     ): array {
         // Orden determinista para paginar: fecha desc y, a igual fecha, id desc (UUID v7 = más reciente).
-        $query = $this->filtered($vehicleId, $onlyPassed, $from, $to)
+        $query = $this->filtered($vehicleId, $onlyPassed, $from, $to, $routeId)
             ->orderByDesc('performed_on')
             ->orderByDesc('id');
 
@@ -79,8 +80,9 @@ final readonly class EloquentPreTripInspectionRepository implements PreTripInspe
         ?bool $onlyPassed = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
+        ?string $routeId = null,
     ): int {
-        return $this->filtered($vehicleId, $onlyPassed, $from, $to)->count();
+        return $this->filtered($vehicleId, $onlyPassed, $from, $to, $routeId)->count();
     }
 
     public function latestForVehicle(string $vehicleId): ?PreTripInspection
@@ -104,6 +106,7 @@ final readonly class EloquentPreTripInspectionRepository implements PreTripInspe
         ?bool $onlyPassed,
         ?DateTimeImmutable $from,
         ?DateTimeImmutable $to,
+        ?string $routeId = null,
     ): Builder {
         $query = PreTripInspectionModel::query();
 
@@ -118,6 +121,9 @@ final readonly class EloquentPreTripInspectionRepository implements PreTripInspe
         }
         if ($to !== null) {
             $query->where('performed_on', '<=', $to->format('Y-m-d'));
+        }
+        if ($routeId !== null) {
+            $query->where('route_id', $routeId);
         }
 
         return $query;

@@ -18,6 +18,8 @@ use Illuminate\Support\Carbon;
  * @property string                                                                                                 $id
  * @property string|null                                                                                            $customer_id
  * @property string                                                                                                 $status
+ * @property string                                                                                                 $source
+ * @property string|null                                                                                            $order_reference
  * @property string                                                                                                 $currency
  * @property bool                                                                                                   $shipment_requested
  * @property string                                                                                                 $financing
