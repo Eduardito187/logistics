@@ -33,10 +33,10 @@ final class NetworkSeeder extends Seeder
 {
     public function run(): void
     {
-        /** @var NodeRepository $nodes */
-        $nodes = $this->container->make(NodeRepository::class);
-        /** @var LegRepository $legs */
-        $legs = $this->container->make(LegRepository::class);
+        // `app()` en vez de `$this->container->make()`: el container del seeder es nullable (PHPStan) y el
+        // helper resuelve del mismo contenedor devolviendo el tipo concreto (no-null).
+        $nodes = app(NodeRepository::class);
+        $legs = app(LegRepository::class);
 
         // Catálogo de nodos: [código, nombre, tipo, departamento, lat, lng].
         $catalog = [

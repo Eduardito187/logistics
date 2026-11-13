@@ -42,7 +42,7 @@ final class SlowQueryListener
 
         $this->logger->warning('slow query', [
             'sql' => $event->sql,
-            'time_ms' => round($event->time, 2),
+            'time_ms' => round($event->time ?? 0.0, 2),
             'threshold_ms' => $this->thresholdMs,
             'connection' => $event->connectionName,
             // Bindings redactados: solo el conteo, nunca los valores.

@@ -43,8 +43,8 @@ final class DemoOrderCommand extends Command
 
     public function handle(): int
     {
-        $orderNumber = trim((string) $this->option('order')) ?: 'DEMO-FLOW-01';
-        $plate = trim((string) $this->option('plate')) ?: '904U10';
+        $orderNumber = trim($this->stringOption('order')) ?: 'DEMO-FLOW-01';
+        $plate = trim($this->stringOption('plate')) ?: '904U10';
 
         $vehicle = $this->resolveVehicle($plate);
         if ($vehicle === null) {
@@ -56,7 +56,7 @@ final class DemoOrderCommand extends Command
             $this->warn("No se encontró el camión con placa {$plate}; se usa {$vehicle->plate} (operativo).");
         }
 
-        $stage = trim((string) $this->option('stage')) === 'delivery' ? 'delivery' : 'planned';
+        $stage = trim($this->stringOption('stage')) === 'delivery' ? 'delivery' : 'planned';
 
         try {
             $shipmentId = DB::transaction(function () use ($orderNumber, $vehicle): string {
@@ -149,6 +149,17 @@ final class DemoOrderCommand extends Command
     /**
      * Vehículo operativo por placa; si no existe, el primero operativo. null si no hay ninguno.
      */
+    /**
+     * Opción de consola como string (vacío si no vino o no es escalar de texto). `option()` devuelve una unión
+     * ancha (array|bool|...), así que un `(string)` directo no es seguro para PHPStan.
+     */
+    private function stringOption(string $key): string
+    {
+        $value = $this->option($key);
+
+        return is_string($value) ? $value : '';
+    }
+
     private function resolveVehicle(string $plate): ?\stdClass
     {
         $operative = ['available', 'in_service'];

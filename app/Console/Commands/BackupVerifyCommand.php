@@ -32,7 +32,8 @@ final class BackupVerifyCommand extends Command
 
     public function handle(): int
     {
-        $bundle = (string) $this->argument('bundle');
+        $bundleArg = $this->argument('bundle');
+        $bundle = is_string($bundleArg) ? $bundleArg : '';
         $outcome = is_file($bundle) ? $this->verifyBundle($bundle) : $this->missingBundle($bundle);
         if ($outcome === null) {
             return self::FAILURE;

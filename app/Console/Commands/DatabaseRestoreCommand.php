@@ -34,7 +34,8 @@ final class DatabaseRestoreCommand extends Command
 
     public function handle(): int
     {
-        $file = (string) $this->argument('file');
+        $fileArg = $this->argument('file');
+        $file = is_string($fileArg) ? $fileArg : '';
         if (!is_file($file)) {
             $this->error("No existe el archivo de backup: {$file}");
 
