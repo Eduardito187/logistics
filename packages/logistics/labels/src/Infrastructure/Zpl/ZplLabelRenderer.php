@@ -5,80 +5,56 @@ declare(strict_types=1);
 namespace Logistics\Labels\Infrastructure\Zpl;
 
 use Logistics\Labels\Domain\Contract\LabelRenderer;
+use Logistics\Labels\Domain\ValueObject\LabelSizeProfile;
 use Logistics\Labels\Domain\ValueObject\LabelSymbology;
 use Logistics\Labels\Domain\ValueObject\SignedLabel;
 
 /**
- * Genera ZPL para la Zebra ZQ630 Plus (impresora móvil térmica, 203 dpi, 4").
+ * Renderer ZPL para Zebra. Ya NO tiene un layout fijo: elige el {@see ZplLayout} del PERFIL de tamaño y le
+ * delega el dibujo. Con los valores por defecto (Both, Standard, 203 dpi) produce byte a byte el formato
+ * histórico de 4", para no romper a los llamadores que no pasan perfil (factory de datos de prueba, etc.).
  *
- * Produce un string ZPL (no una imagen): la app lo manda tal cual a la impresora. Según la simbología
- * configurada (ver {@see LabelSymbology}), la etiqueta lleva:
- *  - un código QR (modelo 2) con el JSON firmado exacto (lo que escanea y verifica la app offline);
- *  - un código de barras Code128 con el id corto del bulto (el `id` del payload), legible por lector 1D;
- *  - siempre: texto humano legible al costado: SKU, "Unit N/M", "Piece N/M", origen y destino.
+ * Produce un string ZPL (no una imagen): la app lo manda tal cual a la impresora. El contenido del código
+ * 2D depende del perfil:
+ *  - Standard: QR con el JSON firmado byte a byte (contrato con la app) + Code128 opcional;
+ *  - Lite/Lite40x30/Micro: el `label_id` desnudo en QR o Data Matrix —el mismo valor que ya viaja hoy en el
+ *    Code128—, así que los perfiles chicos NO cambian el contrato del QR firmado (roadmap §4.3).
  *
- * El QR y el Code128 son redundantes a propósito: el QR es la fuente de verdad verificable offline; el
- * barcode es un atajo secundario para los lectores láser de almacén. El contenido del QR no cambia nunca
- * (es byte a byte el `toQrContent()`); la simbología solo decide qué bloques se dibujan.
- *
- * Estructura del ZPL generado (ZQ630, ~100x75mm, 203 dpi):
- *   ^XA                          inicio de etiqueta
- *   ^CI28                        juego de caracteres UTF-8
- *   ^PW799 / ^LL0609             ancho (~4") y alto de impresión en dots a 203 dpi
- *   ^LH0,0                       origen de coordenadas
- *   ^FO30,30 ^BQN,2,6 ^FDMA,…^FS QR: modelo 2, magnificación 6, corrección media (M), modo automático (A)
- *   ^FO.. ^A0N,.. ^FD…^FS        líneas de texto escalable a la derecha del QR
- *   ^FO30,470 ^BY2 ^BCN,90,Y,N,N ^FD<id>^FS  Code128 con el id del bulto, al pie de la etiqueta
- *   ^XZ                          fin de etiqueta
- *
- * El JSON firmado y el id del bulto no contienen nunca `^` ni `~` (los prefijos de control de ZPL):
- * base64url usa `-`/`_`, el id es un ULID (A-Z0-9), y los patrones de SKU/pedido/nodo los prohíben, así
- * que es seguro embeberlos en el `^FD` sin escapar.
+ * El JSON firmado y el `label_id` nunca contienen `^` ni `~` (prefijos de control ZPL): base64url usa
+ * `-`/`_`, el id es un ULID (A-Z0-9), y los patrones de SKU/pedido/nodo los prohíben. El nombre del
+ * producto, que SÍ es texto libre, lo sanea cada layout antes de embeberlo.
  */
 final readonly class ZplLabelRenderer implements LabelRenderer
 {
-    public function render(SignedLabel $label, LabelSymbology $symbology = LabelSymbology::Both): string
+    /** @var array<string, ZplLayout> indexado por el valor del perfil */
+    private array $layouts;
+
+    public function __construct()
     {
-        $payload = $label->payload;
-
-        $unit = "{$payload->unit->index}/{$payload->unit->total}";
-        $piece = "{$payload->piece->index}/{$payload->piece->total}";
-        $destination = $payload->isForCustomer() ? 'CUSTOMER' : $payload->destination;
-
-        $lines = [
-            '^XA',
-            '^CI28',
-            '^PW799',
-            '^LL0609',
-            '^LH0,0',
+        $layouts = [
+            new StandardZplLayout,
+            new LiteZplLayout,
+            new CompactDataMatrixZplLayout(LabelSizeProfile::Lite40x30),
+            new CompactDataMatrixZplLayout(LabelSizeProfile::Micro),
         ];
 
-        if ($symbology->includesQr()) {
-            // Código QR con el JSON firmado: corrección de error media, modo de entrada automático.
-            $lines[] = '^FO30,30';
-            $lines[] = '^BQN,2,6';
-            $lines[] = '^FDMA,'.$label->toQrContent().'^FS';
+        $indexed = [];
+        foreach ($layouts as $layout) {
+            $indexed[$layout->profile()->value] = $layout;
         }
+        $this->layouts = $indexed;
+    }
 
-        // Texto humano a la derecha del QR (siempre presente).
-        $lines[] = '^FO360,40^A0N,40,40^FD'.$payload->sku.'^FS';
-        $lines[] = '^FO360,100^A0N,30,30^FDUnit '.$unit.'^FS';
-        $lines[] = '^FO360,145^A0N,30,30^FDPiece '.$piece.'^FS';
-        $lines[] = '^FO360,205^A0N,30,30^FDFrom '.$payload->origin.'^FS';
-        $lines[] = '^FO360,250^A0N,30,30^FDTo '.$destination.'^FS';
+    public function render(
+        SignedLabel $label,
+        LabelSymbology $symbology = LabelSymbology::Both,
+        LabelSizeProfile $profile = LabelSizeProfile::Standard,
+        int $dpi = 203,
+        ?string $productName = null,
+    ): string {
+        // Cada perfil tiene su layout registrado; el Standard es el fallback defensivo.
+        $layout = $this->layouts[$profile->value] ?? $this->layouts[LabelSizeProfile::Standard->value];
 
-        if ($symbology->includesBarcode()) {
-            // Code128 al pie con el id corto del bulto: ^BY2 fija el ancho de módulo; ^BC orientación
-            // normal, 90 dots de alto, con línea de interpretación (el id impreso debajo de las barras).
-            // A 203 dpi: 470 + 90 de barras + ~30 de texto ≈ 590 dots, dentro del alto ^LL0609.
-            $lines[] = '^FO30,470';
-            $lines[] = '^BY2';
-            $lines[] = '^BCN,90,Y,N,N';
-            $lines[] = '^FD'.$payload->id.'^FS';
-        }
-
-        $lines[] = '^XZ';
-
-        return implode("\n", $lines)."\n";
+        return $layout->render($label, $symbology, $dpi, $productName);
     }
 }

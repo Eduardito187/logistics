@@ -139,3 +139,11 @@ Schedule::command('ops:digest')
     ->dailyAt('07:30')
     ->withoutOverlapping()
     ->runInBackground();
+
+// Invitaciones a calificar la entrega: cada hora, sin solaparse, en un solo nodo. Lee los envíos entregados
+// que esperan calificación y les manda el enlace público; marca a los invitados para no reenviar (idempotente).
+Schedule::command('logistics:tracking:send-survey-invitations')
+    ->hourly()
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();

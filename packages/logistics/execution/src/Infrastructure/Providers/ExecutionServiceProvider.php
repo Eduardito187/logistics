@@ -91,6 +91,7 @@ use Logistics\Execution\Domain\Contract\LabelVerificationGateway;
 use Logistics\Execution\Domain\Contract\NodeReceptionRepository;
 use Logistics\Execution\Domain\Contract\VehicleIncidentRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
+use Logistics\Execution\Infrastructure\Console\AdvanceStuckDeliveriesCommand;
 use Logistics\Execution\Infrastructure\Console\PruneScanEventsCommand;
 use Logistics\Execution\Infrastructure\Labels\SodiumLabelVerificationGateway;
 use Logistics\Execution\Infrastructure\Labels\StubLabelVerificationGateway;
@@ -362,9 +363,10 @@ final class ExecutionServiceProvider extends ServiceProvider
             $registry->register($message, $handler);
         }
 
-        // Comando de poda de retención de escaneos (C7). No se agenda aquí: la retención es manual/ops.
+        // Comandos de ops (no se agendan: manual/ops). Poda de escaneos (C7) y backfill de consistencia que
+        // avanza las entregas atascadas en PENDING a LOADED.
         if ($this->app->runningInConsole()) {
-            $this->commands([PruneScanEventsCommand::class]);
+            $this->commands([PruneScanEventsCommand::class, AdvanceStuckDeliveriesCommand::class]);
         }
     }
 }

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
 use Logistics\Labels\Domain\Exception\DuplicateLabelException;
 use Logistics\Labels\Domain\Model\EmittedLabel;
+use Logistics\Labels\Domain\ValueObject\LabelSizeProfile;
 use Logistics\Labels\Domain\ValueObject\SignedLabel;
 use Logistics\Shared\Domain\ValueObject\Uuid;
 
@@ -33,6 +34,7 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
         $record->label_id = $label->labelId();
         $record->key_id = $label->keyId();
         $record->zpl = $label->zpl;
+        $record->size_profile = $label->sizeProfileValue();
         $record->signed_json = $label->signedJson();
         // Se guarda como texto ISO-8601 con offset; la columna es timestamptz. Las etiquetas son PERMANENTES:
         // nunca se revocan, así que las columnas revoked_* quedan en null (se conservan en la base por historia).
@@ -85,6 +87,7 @@ final class EloquentEmittedLabelRepository implements EmittedLabelRepository
             SignedLabel::fromQrContent($record->signed_json),
             $record->zpl,
             (new DateTimeImmutable($record->created_at))->getTimestamp(),
+            LabelSizeProfile::fromValue($record->size_profile),
         );
     }
 
