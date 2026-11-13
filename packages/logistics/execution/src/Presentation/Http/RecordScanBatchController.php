@@ -190,6 +190,13 @@ final class RecordScanBatchController extends ExecutionController
         $device = $this->deviceId($request);
         $user = $this->userId($request);
 
+        // Los ítems de escaneo cargan el `unit_id`/`unit_ids[]` tal como la app los leyó de la ETIQUETA
+        // (label_id). Se normalizan a `shipment_unit.id` canónico igual que en los endpoints individuales;
+        // los tipos sin bulto (departure/arrival) no se tocan.
+        if (in_array($kind, ['preparation', 'load', 'unload', 'failed', 'proof_of_delivery'], true)) {
+            $data = $this->resolveScannedUnitIds($data);
+        }
+
         return match ($kind) {
             'preparation' => ScanCommandFactory::preparation($data, $device, $user, $key),
             'load' => ScanCommandFactory::load($data, $device, $user, $key),

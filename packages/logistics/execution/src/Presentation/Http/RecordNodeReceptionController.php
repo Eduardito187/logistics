@@ -20,6 +20,9 @@ final class RecordNodeReceptionController extends ExecutionController
         /** @var array<string, mixed> $data */
         $data = $request->validated();
 
+        // El producto se recibe escaneando su ETIQUETA: normaliza `unit_id` (label_id → bulto real).
+        $data = $this->resolveScannedUnitIds($data);
+
         $this->commandBus->dispatch(new RecordNodeReception(
             shipmentId: (string) $data['shipment_id'],
             nodeId: (string) $data['node_id'],

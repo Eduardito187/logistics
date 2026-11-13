@@ -40,6 +40,9 @@ final class RecordProofOfDeliveryController extends ExecutionController
             return ProblemDetails::fromCode(ErrorCode::Forbidden, StoreNodeScope::DENIED_DETAIL)->toResponse($request);
         }
 
+        // El chofer entrega escaneando la ETIQUETA: normaliza `unit_id`/`unit_ids[]` (label_id → bulto real).
+        $data = $this->resolveScannedUnitIds($data);
+
         // Foto INLINE (opcional): si la app mandó el archivo en el MISMO request (multipart `photo`), se
         // guarda acá —mismo disco de evidencia que POST /app/deliveries/photos— y se liga como `photo_path`
         // en la misma operación. Si la subida inline falla, el POD NO se bloquea (offline-first): la entrega
