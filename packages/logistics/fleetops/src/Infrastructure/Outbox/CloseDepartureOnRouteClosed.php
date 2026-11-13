@@ -48,7 +48,8 @@ final readonly class CloseDepartureOnRouteClosed implements MessageDispatcher
             return;
         }
 
-        $odometerOut = $departure->odometerOut()?->km ?? 0;
+        // Una salida abierta siempre lleva su odómetro de salida (se registra al abrirla).
+        $odometerOut = $departure->odometerOut()->km;
         $odometer = $payload['odometer_km'] ?? null;
         $odometerIn = is_numeric($odometer) ? (int) round((float) $odometer) : $odometerOut;
 

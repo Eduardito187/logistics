@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Compensation\Infrastructure\Outbox;
 
+use DateTimeImmutable;
+use Exception;
 use Logistics\Compensation\Application\Command\OpenCompensationCase\OpenCompensationCase;
 use Logistics\Compensation\Application\Contract\PromisedWindowReader;
 use Logistics\Compensation\Domain\Contract\CompensationPolicyProvider;
@@ -50,7 +52,7 @@ final readonly class LateDeliveryCompensationReactor implements MessageDispatche
 
         $tolerance = $this->policyProvider->current()->lateToleranceMinutes;
         $deadline = $promisedEnd->modify("+{$tolerance} minutes");
-        $deliveredAt = $message->occurredAt();
+        $deliveredAt = $this->deliveredAtFrom($payload['occurred_at'] ?? null);
         if ($deliveredAt <= $deadline) {
             return;
         }
@@ -69,5 +71,22 @@ final readonly class LateDeliveryCompensationReactor implements MessageDispatche
     private function stringOrNull(mixed $value): ?string
     {
         return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * Hora de entrega: se toma del momento del evento (`occurred_at`, DATE_ATOM). Si no viaja o es
+     * inválida, cae al reloj (momento del despacho), nunca falla.
+     */
+    private function deliveredAtFrom(mixed $value): DateTimeImmutable
+    {
+        if (is_string($value) && $value !== '') {
+            try {
+                return new DateTimeImmutable($value);
+            } catch (Exception) {
+                // Formato inesperado: cae al reloj.
+            }
+        }
+
+        return $this->clock->now();
     }
 }

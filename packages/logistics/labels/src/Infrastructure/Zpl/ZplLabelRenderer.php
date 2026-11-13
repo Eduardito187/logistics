@@ -38,6 +38,7 @@ final readonly class ZplLabelRenderer implements LabelRenderer
             new CompactDataMatrixZplLayout(LabelSizeProfile::Micro),
         ];
 
+        /** @var array<string, ZplLayout> $indexed */
         $indexed = [];
         foreach ($layouts as $layout) {
             $indexed[$layout->profile()->value] = $layout;
