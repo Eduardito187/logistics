@@ -34,7 +34,7 @@ final readonly class SetFuelPriceHandler implements CommandHandler
 
         $price = FuelPrice::set(
             $this->prices->nextIdentity(),
-            FuelType::from($command->fuelType),
+            FuelType::fromLoose($command->fuelType),
             Money::of($command->priceCents, $command->currency),
             new DateTimeImmutable($command->effectiveFrom),
             $command->source,

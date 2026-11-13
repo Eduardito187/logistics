@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Logistics\Inventory\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de movimiento del ledger de inventario (`inventory_movements`). Describe qué operación de dominio
  * originó cada asiento, para trazabilidad y reportería por dueño.
  */
 enum MovementType: string
 {
+    use CaseInsensitiveEnum;
+
     /** Ingreso de stock nuevo (recepción FBD o alta propia). */
     case Received = 'received';
 

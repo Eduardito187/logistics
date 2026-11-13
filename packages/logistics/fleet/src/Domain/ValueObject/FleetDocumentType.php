@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Fleet\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Clasificación de los documentos de flota conocidos (CI, licencia, carné de salud, antecedentes, foto).
  *
@@ -12,6 +14,8 @@ namespace Logistics\Fleet\Domain\ValueObject;
  */
 enum FleetDocumentType: string
 {
+    use CaseInsensitiveEnum;
+
     case NationalId = 'national_id';
 
     case DriverLicense = 'driver_license';

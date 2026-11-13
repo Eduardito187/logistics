@@ -37,7 +37,7 @@ final readonly class RecordRefuelHandler implements CommandHandler
             $this->refuels->nextIdentity(),
             $command->vehicleId,
             $command->driverId,
-            FuelType::from($command->fuelType),
+            FuelType::fromLoose($command->fuelType),
             $command->liters,
             Money::of($command->pricePerLiterCents, $command->currency),
             $command->odometerKm !== null ? Odometer::km($command->odometerKm) : null,

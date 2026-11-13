@@ -30,7 +30,7 @@ final class AlertMapper
             AlertId::fromString($record->id),
             $record->vehicle_id,
             $record->driver_id,
-            AlertType::from($record->type),
+            AlertType::fromLoose($record->type),
             AlertSeverity::from($record->severity),
             $point,
             $record->detail,

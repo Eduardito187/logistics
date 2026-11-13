@@ -30,15 +30,16 @@ Artisan::command('inspire', function () {
 // a las colas always-on (outbox/notifications), que despachan el I/O externo EN PARALELO. Reemplaza al
 // despacho inline/secuencial (que capaba a ~100 msg/min y sufría head-of-line blocking). El comando
 // sincrónico `logistics:outbox:relay` queda disponible como herramienta manual/fallback.
-// IMPORTANTE: `withoutOverlapping(N)` lleva expiración EXPLÍCITA en minutos. Sin argumento, Laravel usa 1440
-// (24 h): si el pump se mata a mitad (reinicio de docker, suspensión de la PC, OOM, timeout), el mutex queda
-// en caché 24 h y el scheduler SALTA el pump cada minuto → el outbox se congela por un día (eventos Pendientes,
-// 0 intentos, "No despachado"). Con 10 min, un pump muerto se auto-recupera en ≤10 min. El pump LEE con lease
-// (FOR UPDATE SKIP LOCKED), así que aunque dos corridas se solapen no se duplica trabajo: la expiración corta
-// prioriza "nunca se detiene" sobre "jamás se solapa". Mismo criterio en todos los latidos de abajo.
+// El pump del outbox NO usa withoutOverlapping A PROPÓSITO: tiene su PROPIO control de concurrencia en la base
+// —el pull del store es FOR UPDATE SKIP LOCKED + lease (ver EnqueueOutboxBatch / EloquentOutboxStore)— diseñado
+// para que VARIOS pumps corran a la vez sin pisarse ni duplicar. El mutex del scheduler era redundante y el
+// ÚNICO punto de falla: si un pump se mataba a mitad (deploy, OOM, suspensión), el lock quedaba colgado en
+// Valkey (TTL por defecto 24 h) y el scheduler SALTABA el pump cada minuto → el outbox se congelaba por horas
+// (eventos Pendientes, 0 intentos). Sin ese mutex, el pump corre CADA minuto sin excepción y NO se puede
+// congelar: es el latido crítico y debe ser imparable. (Los demás latidos de abajo SÍ usan withoutOverlapping
+// con expiración corta porque no tienen lease propio; además el entrypoint limpia mutex colgados en cada boot.)
 Schedule::command('logistics:outbox:pump')
     ->everyMinute()
-    ->withoutOverlapping(10)
     ->runInBackground();
 
 // Reconciliación hacia SAP: reintenta SOLO los traspasos Failed cuyo backoff venció

@@ -40,7 +40,7 @@ final class UnitTrackingMapper
             UnitTrackingId::fromString($record->id),
             $record->shipment_id,
             $record->unit_id,
-            UnitStatus::from($record->status),
+            UnitStatus::fromLoose($record->status),
             $record->last_location_id,
             $record->last_seen_at?->toDateTimeImmutable(),
         );

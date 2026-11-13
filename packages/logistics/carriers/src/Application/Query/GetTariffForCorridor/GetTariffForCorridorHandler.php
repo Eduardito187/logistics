@@ -30,7 +30,7 @@ final readonly class GetTariffForCorridorHandler implements QueryHandler
         $tariff = $this->tariffs->findTariff(
             $query->carrierId,
             CorridorRef::of($query->corridorFrom, $query->corridorTo, $query->corridorType),
-            VehicleClass::from($query->vehicleClass),
+            VehicleClass::fromLoose($query->vehicleClass),
         );
 
         if ($tariff === null) {

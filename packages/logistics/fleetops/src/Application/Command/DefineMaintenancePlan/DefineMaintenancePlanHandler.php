@@ -30,7 +30,7 @@ final readonly class DefineMaintenancePlanHandler implements CommandHandler
         $plan = MaintenancePlan::define(
             $this->plans->nextIdentity(),
             $command->vehicleId,
-            ServiceKind::from($command->serviceKind),
+            ServiceKind::fromLoose($command->serviceKind),
             $command->intervalKm,
             $command->intervalDays,
         );

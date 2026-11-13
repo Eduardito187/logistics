@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Clase de servicio preventivo que cubre un plan de mantenimiento (cambio de aceite, llantas, frenos,
  * filtros, batería, general, inspección). Cada plan vigila un tipo de servicio por km y/o por días.
  */
 enum ServiceKind: string
 {
+    use CaseInsensitiveEnum;
+
     case OilChange = 'oil_change';
     case Tires = 'tires';
     case Brakes = 'brakes';

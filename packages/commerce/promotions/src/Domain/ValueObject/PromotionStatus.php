@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Promotions\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de una promoción en su ciclo de vida.
  *
@@ -13,6 +15,8 @@ namespace Commerce\Promotions\Domain\ValueObject;
  */
 enum PromotionStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Draft = 'draft';
     case Active = 'active';
     case Expired = 'expired';

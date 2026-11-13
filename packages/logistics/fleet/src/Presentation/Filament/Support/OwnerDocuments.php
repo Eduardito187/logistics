@@ -281,7 +281,7 @@ final class OwnerDocuments
      */
     private static function typeLabel(string $type): string
     {
-        $known = FleetDocumentType::tryFrom($type);
+        $known = FleetDocumentType::tryFromLoose($type);
 
         return $known !== null ? (string) __($known->label()) : $type;
     }

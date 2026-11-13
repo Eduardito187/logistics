@@ -61,7 +61,7 @@ final class EnqueueStockTransferHandler implements CommandHandler
             $mapping->center(),
             $mapping->warehouse(),
             $command->quantity,
-            TransferKind::from($command->transferKind),
+            TransferKind::fromLoose($command->transferKind),
             $command->ownerPartyId,
         );
 

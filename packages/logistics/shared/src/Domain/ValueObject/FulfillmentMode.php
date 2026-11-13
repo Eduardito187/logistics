@@ -4,13 +4,20 @@ declare(strict_types=1);
 
 namespace Logistics\Shared\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Modo de fulfillment de una unidad/envío: define quién es el dueño del producto y cómo entra a la
  * operación. Es la dimensión transversal que habilita marketplace/dropship sin romper el flujo retail
  * (ver ADR 017 y docs/marketplace-dropship-roadmap.md). Por defecto todo es `Owned` (retail, Dismac dueño).
+ *
+ * Usa `CaseInsensitiveEnum`: `fromLoose()`/`tryFromLoose()` aceptan 'OWNED'/'owned'/'Owned' (la ingesta y los
+ * seeders a veces mandan la caja distinta al backing value) y siguen validando.
  */
 enum FulfillmentMode: string
 {
+    use CaseInsensitiveEnum;
+
     /** Retail: el producto es de Dismac (comportamiento histórico). */
     case Owned = 'owned';
 

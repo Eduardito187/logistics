@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Compensation\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de un vale.
  *
@@ -11,6 +13,8 @@ namespace Logistics\Compensation\Domain\ValueObject;
  */
 enum VoucherStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Issued = 'issued';
     case Redeemed = 'redeemed';
     case Expired = 'expired';

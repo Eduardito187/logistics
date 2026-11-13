@@ -81,7 +81,7 @@ final class DeliveryMapper
             $scans[] = ScanEvent::record(
                 ScanEventId::fromString($scanRecord->id),
                 $scanRecord->delivery_id,
-                ScanType::from($scanRecord->type),
+                ScanType::fromLoose($scanRecord->type),
                 $scanRecord->unit_id,
                 self::geoOf($scanRecord),
                 DeviceContext::of($scanRecord->device_id, $scanRecord->user_id),
@@ -106,11 +106,11 @@ final class DeliveryMapper
             DeliveryId::fromString($record->id),
             $record->shipment_id,
             $record->vehicle_id,
-            DeliveryStatus::from($record->status),
+            DeliveryStatus::fromLoose($record->status),
             $scans,
             $proof,
             $record->failure_reason !== null ? FailureReason::from($record->failure_reason) : null,
-            FulfillmentMode::from($record->fulfillment_mode),
+            FulfillmentMode::fromLoose($record->fulfillment_mode),
         );
     }
 

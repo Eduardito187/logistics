@@ -31,7 +31,7 @@ final readonly class RegisterAccountHandler implements CommandHandler
 
         $account = Account::register(
             $this->accounts->nextIdentity(),
-            AccountType::from($command->type),
+            AccountType::fromLoose($command->type),
             Uuid::fromString($command->userId),
             $command->displayName,
             $command->taxId,

@@ -35,7 +35,7 @@ final class ShipmentsDemoSeeder extends Seeder
     public function run(ShipmentRepository $shipments, AddressConfidenceScorer $scorer): void
     {
         foreach ($this->demoOrders() as $order) {
-            $source = OrderSource::from($order['source']);
+            $source = OrderSource::fromLoose($order['source']);
             $reference = SourceReference::of($source, $order['external_id']);
 
             if ($shipments->findBySourceReference($reference) !== null) {

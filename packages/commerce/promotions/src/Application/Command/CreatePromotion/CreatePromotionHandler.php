@@ -33,7 +33,7 @@ final readonly class CreatePromotionHandler implements CommandHandler
             $this->promotions->nextIdentity(),
             $command->name,
             $command->code,
-            PromotionType::from($command->type),
+            PromotionType::fromLoose($command->type),
             $command->value,
             $command->currency,
             PromotionConditions::of(

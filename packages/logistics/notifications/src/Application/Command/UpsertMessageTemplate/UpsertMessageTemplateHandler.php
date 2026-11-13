@@ -32,8 +32,8 @@ final class UpsertMessageTemplateHandler implements CommandHandler
             throw NotificationsException::because('UpsertMessageTemplateHandler solo maneja UpsertMessageTemplate');
         }
 
-        $messageType = MessageType::from($command->messageType);
-        $channel = Channel::from($command->channel);
+        $messageType = MessageType::fromLoose($command->messageType);
+        $channel = Channel::fromLoose($command->channel);
         $locale = $command->locale;
 
         $existing = $this->templates->findFor($messageType, $channel, $locale);

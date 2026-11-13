@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Domain\ValueObject;
 
 use Logistics\Execution\Domain\Exception\ExecutionException;
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
 
 /**
  * Tipo de nodo logístico a efectos de la recepción: centro de distribución o tienda. Es el dato mínimo
@@ -12,6 +13,8 @@ use Logistics\Execution\Domain\Exception\ExecutionException;
  */
 enum NodeKind: string
 {
+    use CaseInsensitiveEnum;
+
     /** Centro de distribución. */
     case Cd = 'CD';
 
@@ -24,9 +27,7 @@ enum NodeKind: string
      */
     public static function fromCode(string $code): self
     {
-        $normalized = strtoupper(trim($code));
-
-        return self::tryFrom($normalized)
+        return self::tryFromLoose($code)
             ?? throw ExecutionException::because("tipo de nodo desconocido: {$code}");
     }
 }

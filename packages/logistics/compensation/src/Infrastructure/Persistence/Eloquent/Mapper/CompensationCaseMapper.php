@@ -74,8 +74,8 @@ final readonly class CompensationCaseMapper
 
         return CompensationCase::reconstitute(
             id: CompensationCaseId::fromString($record->id),
-            trigger: TriggerType::from($record->trigger),
-            scope: CompensationScope::from($record->scope),
+            trigger: TriggerType::fromLoose($record->trigger),
+            scope: CompensationScope::fromLoose($record->scope),
             shipmentId: $record->shipment_id,
             orderReference: $record->order_reference,
             sourceEventId: $record->source_event_id,
@@ -85,7 +85,7 @@ final readonly class CompensationCaseMapper
             effective: Money::of($record->effective_cents, $currency),
             policyVersion: $record->policy_version,
             approvalLevel: ApprovalLevel::from($record->approval_level),
-            status: CaseStatus::from($record->status),
+            status: CaseStatus::fromLoose($record->status),
             proposedBy: $record->proposed_by,
             approvedBy: $record->approved_by,
             decidedAt: $record->decided_at?->toDateTimeImmutable(),

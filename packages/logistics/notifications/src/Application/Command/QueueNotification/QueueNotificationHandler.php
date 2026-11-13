@@ -39,7 +39,7 @@ final class QueueNotificationHandler implements CommandHandler
             throw NotificationsException::because('QueueNotificationHandler solo maneja QueueNotification');
         }
 
-        $messageType = MessageType::from($command->messageType);
+        $messageType = MessageType::fromLoose($command->messageType);
 
         // Valida los contactos de respaldo al encolar (el canal primario va por topic FCM del envío).
         $recipient = Recipient::of($command->shipmentId, $command->email, $command->phone, $command->telegramChatId);

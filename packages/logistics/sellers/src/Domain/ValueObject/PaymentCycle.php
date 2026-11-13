@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Sellers\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Ciclo de pago de las liquidaciones al seller: cada cuánto se le paga lo que le corresponde.
  *
@@ -12,6 +14,8 @@ namespace Logistics\Sellers\Domain\ValueObject;
  */
 enum PaymentCycle: string
 {
+    use CaseInsensitiveEnum;
+
     /** Pago semanal. */
     case Weekly = 'weekly';
 

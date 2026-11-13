@@ -48,7 +48,7 @@ final readonly class RegisterVehicleHandler implements CommandHandler
             Capacity::of($command->capacityKg, $command->capacityM3),
             $command->homeBaseNodeId,
             array_values($documents),
-            VehicleStatus::from($command->status),
+            VehicleStatus::fromLoose($command->status),
         );
 
         $this->vehicles->save($vehicle);

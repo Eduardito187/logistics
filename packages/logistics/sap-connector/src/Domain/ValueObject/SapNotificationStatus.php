@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de un aviso a SAP (notificación fire-and-forget de un hecho de despacho).
  *
@@ -16,6 +18,8 @@ namespace Logistics\SapConnector\Domain\ValueObject;
  */
 enum SapNotificationStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Pending = 'pending';
 
     case Sent = 'sent';

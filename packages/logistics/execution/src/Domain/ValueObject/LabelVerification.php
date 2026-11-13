@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Resultado de verificar la firma de una etiqueta en el escaneo de terreno.
  *
@@ -13,6 +15,8 @@ namespace Logistics\Execution\Domain\ValueObject;
  */
 enum LabelVerification: string
 {
+    use CaseInsensitiveEnum;
+
     /** Firma válida: la etiqueta corresponde a su contenido y a una clave vigente. */
     case Valid = 'valid';
 

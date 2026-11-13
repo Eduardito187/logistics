@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Logistics\Returns\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Disposición de una devolución recibida: qué se hace físicamente con la mercadería (ADR 017 §7.4).
  */
 enum Disposition: string
 {
+    use CaseInsensitiveEnum;
+
     /** Vuelve al stock: se re-ingresa al lote del dueño correcto (enganche con inventory ReceiveStock). */
     case Restock = 'restock';
 

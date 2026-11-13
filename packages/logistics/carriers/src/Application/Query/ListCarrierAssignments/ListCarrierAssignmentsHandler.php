@@ -52,7 +52,7 @@ final readonly class ListCarrierAssignmentsHandler implements QueryHandler
 
         $out = [];
         foreach ($statuses as $status) {
-            if (CarrierTripStatus::tryFrom($status) === null) {
+            if (CarrierTripStatus::tryFromLoose($status) === null) {
                 throw CarriersException::because("Estado de viaje inválido: {$status}.");
             }
             $out[] = $status;

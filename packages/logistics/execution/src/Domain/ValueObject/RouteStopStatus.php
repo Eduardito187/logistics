@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de una parada dentro de la ruta del chofer. Pending hasta que el desenlace de la entrega del
  * envío la cierra: Completed si se entregó, Failed si el intento falló. Un estado terminal no vuelve a
@@ -11,6 +13,8 @@ namespace Logistics\Execution\Domain\ValueObject;
  */
 enum RouteStopStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Pendiente: el chofer todavía no la atendió. */
     case Pending = 'PENDING';
 

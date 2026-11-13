@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de coincidencia de una geocodificación: qué tan fina es la ubicación que el proveedor devolvió.
  *
@@ -14,6 +16,8 @@ namespace Logistics\Shipments\Domain\ValueObject;
  */
 enum GeocodeMatchType: string
 {
+    use CaseInsensitiveEnum;
+
     /** Coincidencia exacta sobre el predio/dirección (rooftop, house number). */
     case Exact = 'EXACT';
 

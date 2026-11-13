@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Dimensión de propiedad de un traspaso de stock hacia SAP (ADR 017, roadmap marketplace §6.4).
  *
@@ -22,6 +24,8 @@ namespace Logistics\SapConnector\Domain\ValueObject;
  */
 enum TransferKind: string
 {
+    use CaseInsensitiveEnum;
+
     /** Stock propio de Dismac: se postea a SAP como material propio (comportamiento retail histórico). */
     case Owned = 'owned';
 

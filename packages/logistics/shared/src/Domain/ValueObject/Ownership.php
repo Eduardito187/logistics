@@ -63,7 +63,9 @@ final readonly class Ownership
      */
     public static function fromPrimitives(string $mode, ?string $ownerPartyId, ?string $sellerSkuRef): self
     {
-        $fulfillmentMode = FulfillmentMode::from($mode);
+        // Case-insensitive: la ingesta/seeders/eventos a veces mandan 'OWNED' en vez de 'owned' (el backing
+        // value). `fromLoose` normaliza la caja pero sigue validando (ValueError si el modo no existe).
+        $fulfillmentMode = FulfillmentMode::fromLoose($mode);
 
         return new self(
             $fulfillmentMode,

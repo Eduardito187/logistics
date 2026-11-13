@@ -38,7 +38,7 @@ final readonly class DefineLegHandler implements CommandHandler
         $from = NodeId::fromString($command->fromNodeId);
         $to = NodeId::fromString($command->toNodeId);
 
-        $corridor = CorridorType::tryFrom($command->corridorType)
+        $corridor = CorridorType::tryFromLoose($command->corridorType)
             ?? throw NetworkException::because("tipo de corredor desconocido: {$command->corridorType}");
 
         $fromNode = $this->nodes->findById($from)

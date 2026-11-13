@@ -51,7 +51,7 @@ final readonly class ImportShipments
         /** @var ReceiveShipment $command */
         $command = $parsed->command;
 
-        $reference = SourceReference::of(OrderSource::from($command->source), $command->externalId);
+        $reference = SourceReference::of(OrderSource::fromLoose($command->source), $command->externalId);
         $existing = $this->shipments->findBySourceReference($reference);
 
         if ($existing !== null) {

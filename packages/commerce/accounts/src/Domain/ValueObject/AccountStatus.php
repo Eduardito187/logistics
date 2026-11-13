@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Accounts\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado comercial de una cuenta.
  *
@@ -12,6 +14,8 @@ namespace Commerce\Accounts\Domain\ValueObject;
  */
 enum AccountStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Active = 'active';
     case Suspended = 'suspended';
 }

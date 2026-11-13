@@ -39,7 +39,7 @@ final readonly class RegisterNodeHandler implements CommandHandler
             throw NetworkException::because("ya existe un nodo con el código {$code->toString()}");
         }
 
-        $type = NodeType::tryFrom($command->type)
+        $type = NodeType::tryFromLoose($command->type)
             ?? throw NetworkException::because("tipo de nodo desconocido: {$command->type}");
 
         $department = null;

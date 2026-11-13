@@ -33,7 +33,7 @@ final readonly class DispositionReturnHandler implements CommandHandler
         $returnOrder = $this->returns->findById(ReturnId::fromString($command->returnId))
             ?? throw ReturnsException::because("No existe la devolución {$command->returnId}.");
 
-        $returnOrder->dispose(Disposition::from($command->disposition));
+        $returnOrder->dispose(Disposition::fromLoose($command->disposition));
 
         $this->returns->save($returnOrder);
 

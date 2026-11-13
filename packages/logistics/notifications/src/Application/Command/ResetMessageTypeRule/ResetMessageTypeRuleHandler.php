@@ -27,6 +27,6 @@ final class ResetMessageTypeRuleHandler implements CommandHandler
             throw NotificationsException::because('ResetMessageTypeRuleHandler solo maneja ResetMessageTypeRule');
         }
 
-        $this->rules->remove(MessageType::from($command->messageType), $command->createdBy);
+        $this->rules->remove(MessageType::fromLoose($command->messageType), $command->createdBy);
     }
 }

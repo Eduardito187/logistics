@@ -48,6 +48,11 @@ RUN apk add --no-cache \
     && apk del $PHPIZE_DEPS \
     && rm -rf /var/cache/apk/* /tmp/*
 
+# Git: confiar en el repo montado en /var/www/html para TODO usuario (uid del bind-mount ≠ usuario del
+# contenedor → "fatal: detected dubious ownership"). A nivel --system (/etc/gitconfig) cubre cualquier
+# invocación, incluso `docker compose run --entrypoint composer` que saltea el entrypoint. Idempotente.
+RUN git config --system --add safe.directory /var/www/html
+
 # Timezone Bolivia
 ENV TZ=America/La_Paz
 RUN cp /usr/share/zoneinfo/${TZ} /etc/localtime && echo "${TZ}" > /etc/timezone

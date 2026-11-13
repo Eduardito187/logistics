@@ -228,7 +228,7 @@ final class DocumentResource extends Resource
                     ->label(__('Owner type'))
                     ->badge()
                     ->color('gray')
-                    ->formatStateUsing(static fn (string $state): string => __(DocumentOwnerType::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(DocumentOwnerType::fromLoose($state)->label())),
                 // Etiqueta legible del dueño (placa o nombre) vía el accesor `ownerName`, que lee las
                 // relaciones ya eager-cargadas; no se consulta por fila.
                 TextColumn::make('ownerName')
@@ -269,7 +269,7 @@ final class DocumentResource extends Resource
             TextEntry::make('owner_type')
                 ->label(__('Owner type'))
                 ->badge()
-                ->formatStateUsing(static fn (string $state): string => __(DocumentOwnerType::from($state)->label())),
+                ->formatStateUsing(static fn (string $state): string => __(DocumentOwnerType::fromLoose($state)->label())),
             TextEntry::make('ownerName')
                 ->label(__('Owner'))
                 ->placeholder('—'),

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Carriers\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de una liquidación de transportista (P2-CAR-04).
  *
@@ -13,6 +15,8 @@ namespace Logistics\Carriers\Domain\ValueObject;
  */
 enum SettlementStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Enviada por el transportista, pendiente de revisión. */
     case Submitted = 'submitted';
 

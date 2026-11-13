@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de una corrida del auto-planificador diario. La corrida es ASÍNCRONA: se encola (Queued), un
  * worker la toma (Processing) y termina (Completed) o falla (Failed). El estado da la idempotencia:
@@ -11,6 +13,8 @@ namespace Logistics\Planning\Domain\ValueObject;
  */
 enum AutoPlanRunStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Encolada: el comando dejó el trabajo en la cola, todavía sin procesar. */
     case Queued = 'queued';
 

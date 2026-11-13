@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Access\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de un usuario dentro de la plataforma.
  *
@@ -11,6 +13,8 @@ namespace Logistics\Access\Domain\ValueObject;
  */
 enum UserStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Activo: puede autenticarse y operar. */
     case Active = 'active';
 

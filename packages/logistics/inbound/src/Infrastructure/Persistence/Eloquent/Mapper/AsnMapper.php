@@ -33,7 +33,7 @@ final class AsnMapper
             $record->seller_id,
             $record->warehouse_id,
             $lines,
-            AsnStatus::from($record->status),
+            AsnStatus::fromLoose($record->status),
             $window,
         );
     }

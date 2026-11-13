@@ -105,9 +105,9 @@ final readonly class CachingNodeRepository implements NodeRepository
             NodeId::fromString((string) $data['id']),
             NodeCode::fromString((string) $data['code']),
             (string) $data['name'],
-            NodeType::from((string) $data['type']),
+            NodeType::fromLoose((string) $data['type']),
             GeoPoint::of((float) $data['lat'], (float) $data['lng']),
-            NodeStatus::from((string) $data['status']),
+            NodeStatus::fromLoose((string) $data['status']),
             is_string($department) ? Department::from($department) : null,
         );
     }

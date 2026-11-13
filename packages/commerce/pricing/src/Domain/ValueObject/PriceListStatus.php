@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Pricing\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de una lista de precios.
  *
@@ -12,6 +14,8 @@ namespace Commerce\Pricing\Domain\ValueObject;
  */
 enum PriceListStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Borrador: se está armando, todavía no resuelve precios al público. */
     case Draft = 'draft';
 

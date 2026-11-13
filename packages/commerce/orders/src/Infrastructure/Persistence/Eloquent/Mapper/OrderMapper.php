@@ -23,7 +23,7 @@ final class OrderMapper
         return Order::reconstitute(
             OrderId::fromString($record->id),
             $record->customer_id !== null ? Uuid::fromString($record->customer_id) : null,
-            OrderStatus::from($record->status),
+            OrderStatus::fromLoose($record->status),
             $record->currency,
             ShippingAddress::fromArray($record->ship_to),
             array_values(array_map(
@@ -31,7 +31,7 @@ final class OrderMapper
                 $record->lines,
             )),
             $record->shipment_requested,
-            FinancingPlan::from($record->financing ?? 'cash'),
+            FinancingPlan::fromLoose($record->financing ?? 'cash'),
             (bool) ($record->contract_signed ?? false),
             (bool) ($record->initial_paid ?? false),
         );

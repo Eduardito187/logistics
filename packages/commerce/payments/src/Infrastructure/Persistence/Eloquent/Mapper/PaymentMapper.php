@@ -23,8 +23,8 @@ final class PaymentMapper
             PaymentId::fromString($record->id),
             Uuid::fromString($record->order_id),
             Money::of($record->amount_cents, $record->currency),
-            PaymentMethod::from($record->method),
-            PaymentStatus::from($record->status),
+            PaymentMethod::fromLoose($record->method),
+            PaymentStatus::fromLoose($record->status),
             $record->gateway_ref,
         );
     }

@@ -23,7 +23,7 @@ final class MaintenancePlanMapper
         return MaintenancePlan::reconstitute(
             MaintenancePlanId::fromString($record->id),
             $record->vehicle_id,
-            ServiceKind::from($record->service_kind),
+            ServiceKind::fromLoose($record->service_kind),
             $record->interval_km,
             $record->interval_days,
             $record->last_done_km,

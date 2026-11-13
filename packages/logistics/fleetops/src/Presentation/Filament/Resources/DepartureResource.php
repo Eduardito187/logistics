@@ -190,7 +190,7 @@ final class DepartureResource extends Resource
                         ->label(__('Status'))
                         ->badge()
                         ->color(static fn (string $state): string => $state === DepartureStatus::Out->value ? 'warning' : 'success')
-                        ->formatStateUsing(static fn (string $state): string => __(DepartureStatus::from($state)->label())),
+                        ->formatStateUsing(static fn (string $state): string => __(DepartureStatus::fromLoose($state)->label())),
                     TextEntry::make('odometer_out_km')
                         ->label(__('Odometer out (km)'))
                         ->numeric()
@@ -264,7 +264,7 @@ final class DepartureResource extends Resource
                     ->label(__('Status'))
                     ->badge()
                     ->color(static fn (string $state): string => $state === DepartureStatus::Out->value ? 'warning' : 'success')
-                    ->formatStateUsing(static fn (string $state): string => __(DepartureStatus::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(DepartureStatus::fromLoose($state)->label())),
                 TextColumn::make('departed_at')
                     ->label(__('Departed at'))
                     ->dateTime()

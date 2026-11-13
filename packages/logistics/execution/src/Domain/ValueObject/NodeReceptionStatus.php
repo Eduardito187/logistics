@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de una recepción en nodo. Se abre al anunciar el envío en el nodo destino, acumula los bultos
  * escaneados mientras está abierta, y se cierra al conciliar (faltantes/sobrantes). Reconciliada es
@@ -11,6 +13,8 @@ namespace Logistics\Execution\Domain\ValueObject;
  */
 enum NodeReceptionStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Abierta: recibiendo escaneos de bultos en el nodo. */
     case Open = 'OPEN';
 

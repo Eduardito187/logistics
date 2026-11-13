@@ -124,7 +124,7 @@ final class SyncShipmentStatusCommand extends Command
             foreach ($rows as $row) {
                 /** @var \stdClass $row */
                 $id = is_scalar($row->id ?? null) ? (string) $row->id : '';
-                $status = is_string($row->status ?? null) ? ShipmentStatus::tryFrom($row->status) : null;
+                $status = is_string($row->status ?? null) ? ShipmentStatus::tryFromLoose($row->status) : null;
                 if ($id === '' || $status === null) {
                     continue;
                 }
@@ -373,7 +373,7 @@ final class SyncShipmentStatusCommand extends Command
     /** Nodo de retiro del id externo (misma regla del ingreso), o null si no aplica. */
     private static function pickupNodeOf(mixed $source, mixed $externalId): ?string
     {
-        $orderSource = is_string($source) ? OrderSource::tryFrom($source) : null;
+        $orderSource = is_string($source) ? OrderSource::tryFromLoose($source) : null;
         if ($orderSource === null || !is_string($externalId)) {
             return null;
         }

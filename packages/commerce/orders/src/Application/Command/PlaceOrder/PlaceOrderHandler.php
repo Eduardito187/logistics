@@ -48,7 +48,7 @@ final readonly class PlaceOrderHandler implements CommandHandler
             $lines,
             $command->currency,
             $command->cartId,
-            FinancingPlan::from($command->financing),
+            FinancingPlan::fromLoose($command->financing),
         );
 
         $this->orders->save($order);

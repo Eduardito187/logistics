@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo del incidente que reporta el chofer: avería mecánica o accidente.
  *
@@ -12,6 +14,8 @@ namespace Logistics\Execution\Domain\ValueObject;
  */
 enum IncidentType: string
 {
+    use CaseInsensitiveEnum;
+
     /** Avería: el camión se descompone (mecánica, eléctrica, neumático…). */
     case Breakdown = 'BREAKDOWN';
 

@@ -27,7 +27,7 @@ final class IntegrationTokenMapper
             $record->token_prefix,
             $record->token_hash,
             array_values($record->permission_keys),
-            TokenStatus::from($record->status),
+            TokenStatus::fromLoose($record->status),
             $expiresAt instanceof DateTimeInterface
                 ? DateTimeImmutable::createFromInterface($expiresAt)
                 : null,

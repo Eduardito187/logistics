@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Orders\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Forma de financiamiento con la que se crea la orden. Define QUÉ se necesita para pasar a «procesando»
  * (fulfillment): el contado se promueve con el pago capturado; el crédito/minicuotas con la firma del
@@ -12,6 +14,8 @@ namespace Commerce\Orders\Domain\ValueObject;
  */
 enum FinancingPlan: string
 {
+    use CaseInsensitiveEnum;
+
     /** Contado: se promueve a procesando con el pago capturado (comportamiento clásico). */
     case Cash = 'cash';
 

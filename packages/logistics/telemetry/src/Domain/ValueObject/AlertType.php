@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de alerta de mal uso detectada sobre la telemetría de un vehículo.
  *
@@ -12,6 +14,8 @@ namespace Logistics\Telemetry\Domain\ValueObject;
  */
 enum AlertType: string
 {
+    use CaseInsensitiveEnum;
+
     /** Movimiento fuera del horario laboral configurado. */
     case AfterHoursMovement = 'after_hours_movement';
 
