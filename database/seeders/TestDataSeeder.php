@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Illuminate\Container\Container;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Artisan;
 use Logistics\Access\Infrastructure\Seeder\AccessSeeder;
 use Logistics\Capacity\Database\Seeders\CapacitySeeder;
 use Logistics\Carriers\Infrastructure\Persistence\Seeder\CarriersDemoSeeder;
@@ -98,6 +99,13 @@ final class TestDataSeeder extends Seeder
         if (class_exists(TestDataVarietySeeder::class)) {
             $this->call(TestDataVarietySeeder::class);
         }
+
+        // 4) Backfill de «Pedidos»: los envíos de demo entran por seeders, no por el checkout de commerce,
+        //    así que el listado de pedidos quedaría casi vacío. Reconstruimos una orden de commerce por cada
+        //    pedido representado por envíos para que el admin refleje el volumen real en un docker nuevo.
+        //    Es idempotente (no duplica si ya existe la orden), así que correrlo al final del escenario es
+        //    seguro de reejecutar. Solo acá (orquestador del escenario completo), no en los sub-seeders.
+        Artisan::call('commerce:orders:backfill-from-shipments', ['--force' => true]);
 
         $this->command?->info('TestDataSeeder listo: HOY (en curso) y MAÑANA (planificado) sembrados.');
     }

@@ -47,6 +47,7 @@ final readonly class PreTripChecklistController
     {
         $validated = $request->validate([
             'vehicle_id' => ['sometimes', 'uuid'],
+            'route_id' => ['sometimes', 'nullable', 'uuid'],
             'only_passed' => ['sometimes', 'boolean'],
             'from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
@@ -65,6 +66,7 @@ final readonly class PreTripChecklistController
             to: $validated['to'] ?? null,
             limit: $paginate ? ApiPagination::limit($request) : null,
             offset: $paginate ? ApiPagination::offset($request) : null,
+            routeId: $validated['route_id'] ?? null,
         ));
 
         if ($result instanceof Page) {
@@ -118,6 +120,7 @@ final readonly class PreTripChecklistController
             'items.*' => ['boolean'],
             'performed_on' => ['required', 'date_format:Y-m-d'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'route_id' => ['sometimes', 'nullable', 'uuid'],
         ]);
 
         /** @var array<string, bool> $items */
@@ -129,6 +132,7 @@ final readonly class PreTripChecklistController
             items: $items,
             performedOn: $validated['performed_on'],
             notes: $validated['notes'] ?? null,
+            routeId: $validated['route_id'] ?? null,
         ));
 
         // La inspección recién creada es la de mayor id (UUID v7) del vehículo en esa fecha.

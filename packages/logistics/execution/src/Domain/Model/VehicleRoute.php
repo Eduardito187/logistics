@@ -22,6 +22,7 @@ use Logistics\Execution\Domain\ValueObject\RouteId;
 use Logistics\Execution\Domain\ValueObject\RouteLifecycleSnapshot;
 use Logistics\Execution\Domain\ValueObject\RouteStatus;
 use Logistics\Execution\Domain\ValueObject\RouteStopId;
+use Logistics\Execution\Domain\ValueObject\RouteStopStatus;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
 /**
@@ -177,7 +178,8 @@ final class VehicleRoute extends AggregateRoot
             $this->vehicleId,
             $this->date->toString(),
             $this->totalStops(),
-            $this->settledCount(),
+            // Completadas = ENTREGADAS (consistente con el read model); fallidas/replanificadas no cuentan.
+            $this->deliveredCount(),
             $this->stopsRemaining(),
             $odometerKm,
             $geo?->lat,
@@ -507,11 +509,35 @@ final class VehicleRoute extends AggregateRoot
     }
 
     /**
-     * Paradas ya atendidas (cerradas): entregadas o fallidas. Es el complemento de las restantes.
+     * Paradas ya atendidas (cerradas): entregadas, fallidas o replanificadas. Es el complemento de las
+     * restantes (pendientes). NO es lo mismo que "entregadas": para el conteo de completadas usar
+     * {@see deliveredCount()}, porque un fallo o una replanificación cerró la parada pero NO la entregó.
      */
     public function settledCount(): int
     {
         return $this->countBy(static fn (RouteStop $stop): bool => $stop->status()->isTerminal());
+    }
+
+    /**
+     * Paradas ENTREGADAS con éxito (solo Completed). Es el número que debe mostrarse como "completadas":
+     * un intento fallido o una replanificación NO cuentan como completados (antes se usaba settledCount,
+     * que los sumaba → "6 de 7 completada" aunque solo 5 se hubieran entregado).
+     */
+    public function deliveredCount(): int
+    {
+        return $this->countBy(static fn (RouteStop $stop): bool => $stop->status() === RouteStopStatus::Completed);
+    }
+
+    /** Paradas con intento fallido (se exponen aparte de las entregadas). */
+    public function failedCount(): int
+    {
+        return $this->countBy(static fn (RouteStop $stop): bool => $stop->status() === RouteStopStatus::Failed);
+    }
+
+    /** Paradas replanificadas por incidente del camión (se exponen aparte de las entregadas). */
+    public function rescheduledCount(): int
+    {
+        return $this->countBy(static fn (RouteStop $stop): bool => $stop->status() === RouteStopStatus::Rescheduled);
     }
 
     /**

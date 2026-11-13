@@ -134,6 +134,47 @@ it('rejects a jump that skips the flow (no illegal transitions)', function (): v
         ->toThrow(TrackingException::class, 'no admitida');
 });
 
+// Regresión del POD que dejaba el envío atascado en «Cargada»: el app entrega con el POD aunque nunca se
+// haya registrado la salida del camión (OnTheWay lo emite el inicio de ruta, que puede faltar). La entrega
+// debe admitirse directo desde Cargado — antes se descartaba y el envío no avanzaba a Entregado.
+it('allows delivery directly from Loaded (POD without a departed event)', function (): void {
+    $tracking = openTracking();
+    $tracking->markProcessing();
+    $tracking->markInProgress();
+    $tracking->markLoaded();
+    $tracking->releaseEvents();
+
+    $tracking->markDelivered(new DateTimeImmutable('2026-11-13T12:00:00+00:00'));
+
+    expect($tracking->status())->toBe(VisibleStatus::Delivered)
+        ->and($tracking->releaseEvents())->toHaveCount(1);
+});
+
+// POD directo desde Preparado (el app ya no manda escaneo de carga): igual que el agregado Delivery de
+// execution, el seguimiento debe poder entregar sin pasar por Cargado.
+it('allows delivery directly from InProgress (POD without a load scan)', function (): void {
+    $tracking = openTracking();
+    $tracking->markProcessing();
+    $tracking->markInProgress();
+    $tracking->releaseEvents();
+
+    $tracking->markDelivered();
+
+    expect($tracking->status())->toBe(VisibleStatus::Delivered);
+});
+
+it('allows a failed attempt directly from Loaded', function (): void {
+    $tracking = openTracking();
+    $tracking->markProcessing();
+    $tracking->markInProgress();
+    $tracking->markLoaded();
+    $tracking->releaseEvents();
+
+    $tracking->markFailed();
+
+    expect($tracking->status())->toBe(VisibleStatus::Failed);
+});
+
 it('does not allow leaving a terminal status', function (): void {
     $tracking = openTracking();
     $tracking->cancel(); // pendiente → cancelada (terminal)

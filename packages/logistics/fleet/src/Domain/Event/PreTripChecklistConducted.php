@@ -28,6 +28,7 @@ final readonly class PreTripChecklistConducted extends BaseDomainEvent
         public bool $fitToDispatch = true,
         public array $failedCritical = [],
         public ?string $templateId = null,
+        public ?string $routeId = null,
     ) {
         parent::__construct($aggregateId);
     }
@@ -48,6 +49,7 @@ final readonly class PreTripChecklistConducted extends BaseDomainEvent
             'fit_to_dispatch' => $this->fitToDispatch,
             'failed_critical' => $this->failedCritical,
             'checklist_template_id' => $this->templateId,
+            'route_id' => $this->routeId,
         ];
     }
 }

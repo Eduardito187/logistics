@@ -33,11 +33,12 @@ final class PreTripInspectionMapper
             $model->evaluation !== null
                 ? ChecklistEvaluation::fromArray($model->checklist_template_id, $model->evaluation)
                 : ChecklistEvaluation::withoutTemplate(),
+            $model->route_id,
         );
     }
 
     /**
-     * @return array{id: string, vehicle_id: string, driver_id: string, items: array<string, bool>, passed: bool, performed_on: string, notes: string|null, fit_to_dispatch: bool, checklist_template_id: string|null, evaluation: array{failed_critical: list<string>, failed_major: list<string>, failed_minor: list<string>, missing_critical: list<string>}}
+     * @return array{id: string, vehicle_id: string, driver_id: string, items: array<string, bool>, passed: bool, performed_on: string, notes: string|null, fit_to_dispatch: bool, checklist_template_id: string|null, evaluation: array{failed_critical: list<string>, failed_major: list<string>, failed_minor: list<string>, missing_critical: list<string>}, route_id: string|null}
      */
     public function toRow(PreTripInspection $inspection): array
     {
@@ -52,6 +53,7 @@ final class PreTripInspectionMapper
             'fit_to_dispatch' => $inspection->fitToDispatch(),
             'checklist_template_id' => $inspection->evaluation()->templateId,
             'evaluation' => $inspection->evaluation()->toArray(),
+            'route_id' => $inspection->routeId(),
         ];
     }
 }
