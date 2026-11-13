@@ -134,6 +134,19 @@ if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_MIGRATE:-false}" = "tr
 fi
 
 # ------------------------------------------------------------
+# 4b. Reconciliar "Pedidos" desde los envíos — OPT-IN (AUTO_BACKFILL_ORDERS=true)
+# ------------------------------------------------------------
+# "Pedidos" (commerce Orders) debe reflejar los envíos que entraron por ingesta/seeders sin pasar por el
+# checkout. Idempotente (salta las que ya existen), tolerante: no tumba el arranque si falla. En DEV se activa
+# para que `docker compose up` deje Pedidos poblado sin correr nada a mano; en cloud lo hace el job de deploy
+# (scripts/staging/deploy.sh), así que ahí queda apagado para no correrlo desde cada réplica web.
+if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_BACKFILL_ORDERS:-false}" = "true" ]; then
+    echo "[entrypoint] AUTO_BACKFILL_ORDERS=true → reconciliando Pedidos desde envíos..."
+    php artisan commerce:orders:backfill-from-shipments --force --no-interaction \
+        || echo "[entrypoint] AVISO: el backfill de Pedidos falló; el arranque sigue."
+fi
+
+# ------------------------------------------------------------
 # 5. Recarga de workers — SIEMPRE
 # ------------------------------------------------------------
 # `queue:work` mantiene el framework en memoria: sin esta señal un worker sigue ejecutando
@@ -151,6 +164,20 @@ if [ "$1" = "php-fpm" ]; then
             sleep 2
         fi
     done
+fi
+
+# ------------------------------------------------------------
+# 5b. Limpieza de locks colgados del scheduler — SIEMPRE
+# ------------------------------------------------------------
+# `withoutOverlapping()` deja un mutex en la caché (Valkey). Si una tarea se mató a mitad (deploy, OOM,
+# suspensión), el mutex NO se libera y el scheduler SALTA esa tarea hasta que el lock expira → incidente real:
+# el pump del outbox quedó congelado horas y los eventos no se despachaban. Un deploy NO limpia ese lock por sí
+# solo (vive en Valkey, no en el proceso). Esta limpieza al arrancar lo borra, así el outbox se recupera en el
+# deploy. Tolerante: Valkey puede no estar listo; no debe tumbar el arranque.
+if [ "$1" = "php-fpm" ]; then
+    echo "[entrypoint] Limpiando locks colgados del scheduler (schedule:clear-mutex)..."
+    php artisan schedule:clear-mutex > /dev/null 2>&1 \
+        || echo "[entrypoint] AVISO: no se pudo limpiar los mutex del scheduler (¿Valkey no disponible?)."
 fi
 
 # ------------------------------------------------------------

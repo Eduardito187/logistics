@@ -91,6 +91,15 @@ dc up -d --build --remove-orphans --wait --wait-timeout 420
 dc ps
 endstep
 
+step "Reconciliar Pedidos: backfill de órdenes desde envíos (idempotente, automático)"
+# "Pedidos" (commerce Orders) debe reflejar los envíos que entraron por ingesta/seeders sin pasar por el
+# checkout de commerce. Idempotente (salta las que ya existen), así que correrlo en cada deploy es seguro.
+# Va DESPUÉS de up --wait (stack sano: usa la conexión normal). NO bloquea el deploy si falla: es un reconcile
+# de datos, no una condición de arranque. Así el dueño nunca corre el comando a mano.
+dc exec -T app php artisan commerce:orders:backfill-from-shipments --force --no-interaction \
+    || echo "AVISO: el backfill de Pedidos falló; el deploy sigue. Revisar commerce:orders:backfill-from-shipments."
+endstep
+
 step "Smoke test HTTP"
 port="$(grep -E '^STAGING_HTTP_PORT=' "$env_file" | tail -1 | cut -d= -f2)"
 port="${port:-8110}"
