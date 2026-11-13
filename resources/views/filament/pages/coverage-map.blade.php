@@ -67,8 +67,11 @@
             </x-filament::section>
         </div>
     </div>
+</x-filament-panels::page>
 
-    @assets
+{{-- @assets y @script van FUERA del elemento raíz único (<x-filament-panels::page>): Livewire v3 los iza y
+     exige un solo root por componente; dentro del componente rompían con "Multiple root elements". --}}
+@assets
         {{-- Leaflet + Geoman vendorizados localmente: cero dependencias externas en runtime (servido desde self). --}}
         {{-- Orden crítico: leaflet.css/js ANTES de geoman y ANTES de dismac-maps.js. --}}
         <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
@@ -289,4 +292,3 @@
         }
     </script>
     @endscript
-</x-filament-panels::page>

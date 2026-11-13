@@ -97,9 +97,8 @@ it('el POD sobre una entrega ya cerrada responde 422 (transición inválida), no
     ));
     $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podBody($shipment, $unit))->assertOk();
 
-    // Un SEGUNDO POD (otra idempotency-key) sobre la entrega ya DELIVERED es una transición inválida: 422
-    // con el motivo de regla de negocio, nunca 500.
+    // Un SEGUNDO POD (otra idempotency-key) sobre la entrega ya DELIVERED es IDEMPOTENTE: 200 (no-op), no un
+    // error de transición (decisión del dueño: un reintento de la cola offline no debe figurar como fallo).
     $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podBody($shipment, $unit, ['idempotency_key' => 'pod2-'.$unit]))
-        ->assertStatus(422)
-        ->assertJsonPath('code', 'business_rule_violation');
+        ->assertOk();
 });

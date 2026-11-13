@@ -10,9 +10,12 @@ declare(strict_types=1);
 | archivo (solo existía `lang/es.json`, que traduce TEXTOS de UI, no las
 | reglas de validación) los mensajes salían en inglés — p. ej. el admin
 | mostraba "The selected :attribute is invalid." en una pantalla en español.
-| Con `APP_LOCALE=es`, todo mensaje de validación de la plataforma queda en
+| Con `APP_LOCALE=es`, cada mensaje de validación de la plataforma queda en
 | español. Traducción estándar de la comunidad Laravel.
 */
+
+// Mensaje compartido por enum/exists/in/not_in (misma semántica: la opción elegida no es válida).
+$selectedInvalid = 'El campo :attribute seleccionado es inválido.';
 
 return [
     'accepted' => 'El campo :attribute debe ser aceptado.',
@@ -52,8 +55,8 @@ return [
     'doesnt_start_with' => 'El campo :attribute no debe comenzar con uno de los siguientes: :values.',
     'email' => 'El campo :attribute no es un correo válido.',
     'ends_with' => 'El campo :attribute debe terminar con uno de los siguientes: :values.',
-    'enum' => 'El campo :attribute seleccionado es inválido.',
-    'exists' => 'El campo :attribute seleccionado es inválido.',
+    'enum' => $selectedInvalid,
+    'exists' => $selectedInvalid,
     'extensions' => 'El campo :attribute debe tener una de las siguientes extensiones: :values.',
     'file' => 'El campo :attribute debe ser un archivo.',
     'filled' => 'El campo :attribute debe tener un valor.',
@@ -71,7 +74,7 @@ return [
     ],
     'hex_color' => 'El campo :attribute debe ser un color hexadecimal válido.',
     'image' => 'El campo :attribute debe ser una imagen.',
-    'in' => 'El campo :attribute seleccionado es inválido.',
+    'in' => $selectedInvalid,
     'in_array' => 'El campo :attribute debe existir en :other.',
     'integer' => 'El campo :attribute debe ser un número entero.',
     'ip' => 'El campo :attribute debe ser una dirección IP válida.',
@@ -114,7 +117,7 @@ return [
     'missing_with' => 'El campo :attribute debe estar ausente cuando :values está presente.',
     'missing_with_all' => 'El campo :attribute debe estar ausente cuando :values están presentes.',
     'multiple_of' => 'El campo :attribute debe ser múltiplo de :value.',
-    'not_in' => 'El campo :attribute seleccionado es inválido.',
+    'not_in' => $selectedInvalid,
     'not_regex' => 'El formato del campo :attribute es inválido.',
     'numeric' => 'El campo :attribute debe ser un número.',
     'password' => [

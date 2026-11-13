@@ -79,7 +79,7 @@ final class OutboxMessageResource extends Resource
 
     // Anidada BAJO "Configuración" en la navegación (el dueño la ve como opción de configuración): cuelga del
     // ítem Configuration en vez de ser un ítem suelto del menú principal, dentro del mismo grupo Administration.
-    public static function getNavigationParentItem(): ?string
+    public static function getNavigationParentItem(): string
     {
         return __('Configuration');
     }

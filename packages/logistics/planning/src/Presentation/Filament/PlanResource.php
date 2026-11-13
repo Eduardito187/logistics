@@ -725,9 +725,9 @@ final class PlanResource extends Resource
                 'seq' => (int) $stop->sequence,
                 'lat' => $lat,
                 'lng' => $lng,
-                'order' => $stop->order_reference ?? $shipment?->external_id ?? '—',
-                'customer' => $stop->customer_name ?? $shipment?->customer_name ?? '—',
-                'address' => $stop->address ?? $shipment?->address_text ?? '',
+                'order' => $stop->order_reference ?? $shipment->external_id ?? '—',
+                'customer' => $stop->customer_name ?? $shipment->customer_name ?? '—',
+                'address' => $stop->address ?? $shipment->address_text ?? '',
                 'eta' => $eta !== null ? substr((string) $eta, 0, 16) : '',
             ];
             $planned[] = [$lat, $lng];

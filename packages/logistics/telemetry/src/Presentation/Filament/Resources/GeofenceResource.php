@@ -132,7 +132,7 @@ final class GeofenceResource extends Resource
 
                     // Los datos sembrados guardan `node_ref` por CÓDIGO (p. ej. "CD-LPZ"), no por id; como
                     // las opciones van indexadas por id, ese valor no figuraba y el Select lo marcaba
-                    // "inválido", bloqueando la edición de TODO el formulario. Si el valor actual no está
+                    // "inválido", bloqueando la edición del formulario entero. Si el valor actual no está
                     // entre las opciones, lo incluimos resuelto por código o id para que valide y se edite.
                     $current = $record?->node_ref;
                     if (is_string($current) && $current !== '' && !array_key_exists($current, $options)) {
