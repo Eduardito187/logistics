@@ -12,16 +12,24 @@ use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Tracking\Application\Contract\CustomerContactReader;
 use Logistics\Tracking\Application\Contract\RatingRequestStore;
+use Logistics\Tracking\Application\Contract\ShipmentOrderReferenceReader;
 use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
+use Logistics\Tracking\Domain\Model\ShipmentTracking;
+use Logistics\Tracking\Domain\ValueObject\TrackingToken;
 use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
+use Throwable;
 
 /**
  * Traduce un evento de ejecución al estado visible y lo aplica sobre el seguimiento del envío.
  *
- * Tolerante por diseño (es una proyección): si el tipo de evento no mapea a un estado visible, o no
- * existe seguimiento para ese envío, no hace nada en vez de fallar. Así el relay puede reenviar sin
- * que un evento irrelevante tumbe la proyección.
+ * Tolerante por diseño (es una proyección): si el tipo de evento no mapea a un estado visible no hace nada
+ * en vez de fallar. Así el relay puede reenviar sin que un evento irrelevante tumbe la proyección.
+ *
+ * UPSERT: si el envío todavía no tiene fila en tracking (se perdieron `orders.order_placed` /
+ * `shipments.shipment_received` con el outbox congelado, o entró fuera del flujo) NO se sale: se abre el
+ * seguimiento desde el `order_reference` del envío, se liga y se aplica el estado. Así tanto el flujo en
+ * vivo como el reconcile (`logistics:tracking:reconcile-from-execution`) recuperan los envíos sin fila.
  *
  * @implements CommandHandler<ProjectExecutionEvent>
  */
@@ -33,6 +41,7 @@ final class ProjectExecutionEventHandler implements CommandHandler
         private readonly Clock $clock,
         private readonly CustomerContactReader $contacts,
         private readonly RatingRequestStore $ratingRequests,
+        private readonly ShipmentOrderReferenceReader $references,
     ) {}
 
     public function handle(Command $command): void
@@ -49,8 +58,12 @@ final class ProjectExecutionEventHandler implements CommandHandler
 
         $tracking = $this->trackings->findByShipmentId($command->shipmentId);
         if ($tracking === null) {
-            // Todavía no se ligó el envío a un seguimiento: nada que proyectar.
-            return;
+            // El envío no tiene fila de seguimiento: se intenta ABRIRLO desde su order_reference. Si no se
+            // puede (sin referencia), la proyección es tolerante y no hace nada.
+            $tracking = $this->openForShipment($command->shipmentId);
+            if ($tracking === null) {
+                return;
+            }
         }
 
         // Proyección TOLERANTE: si la transición no aplica desde el estado actual (evento tardío,
@@ -82,6 +95,54 @@ final class ProjectExecutionEventHandler implements CommandHandler
         if (!$wasResolved && $this->isStopResolved($status)) {
             $this->advanceLaterStops($tracking->routeId(), $tracking->routePosition()?->value);
         }
+    }
+
+    /**
+     * UPSERT del seguimiento ausente: abre el seguimiento de un envío que todavía no tiene fila en tracking,
+     * lo liga y lo deja LISTO para recibir el estado del evento. Devuelve el agregado, o null si el envío no
+     * tiene referencia de orden (sin ella no se puede abrir: tolerante).
+     *
+     * Se lo lleva hasta EN CURSO (pagado + etiquetado) antes de devolverlo porque un envío que execution
+     * reporta cargado/entregado NECESARIAMENTE pasó por esos hitos —se perdieron sus eventos—: PENDIENTE no
+     * admite la entrega a propósito (ver {@see VisibleStatus::allowedNext()}), así que abrir en PENDIENTE y
+     * aplicar la entrega quedaría saltado por la guardia. EN CURSO es el ancestro común desde el que son
+     * admitidos los cinco estados que produce un evento de ejecución (en curso, cargada, en camino,
+     * entregado, fallido).
+     *
+     * Idempotente ante carrera: el índice único de `shipment_id` rechaza un segundo alta; si otro proceso
+     * (relay o reconcile) creó el seguimiento entre el chequeo y el save, se reusa al ganador en vez de
+     * romper. Un fallo que NO sea esa carrera se relanza para que el relay reintente.
+     */
+    private function openForShipment(string $shipmentId): ?ShipmentTracking
+    {
+        $orderReference = $this->references->orderReferenceForShipment($shipmentId);
+        if ($orderReference === null || trim($orderReference) === '') {
+            return null;
+        }
+
+        $tracking = ShipmentTracking::open(
+            $this->trackings->nextIdentity(),
+            $orderReference,
+            TrackingToken::generate(),
+        );
+        $tracking->bindShipment($shipmentId);
+        $tracking->markProcessing();
+        $tracking->markInProgress();
+
+        try {
+            $this->trackings->save($tracking);
+        } catch (Throwable $e) {
+            $winner = $this->trackings->findByShipmentId($shipmentId);
+            if ($winner === null) {
+                throw $e;
+            }
+
+            return $winner;
+        }
+
+        $this->recordEvents->record($tracking->releaseEvents(), 'tracking.shipment_tracking');
+
+        return $tracking;
     }
 
     /**

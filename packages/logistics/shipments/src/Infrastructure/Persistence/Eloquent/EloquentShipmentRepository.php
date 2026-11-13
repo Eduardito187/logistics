@@ -13,9 +13,12 @@ use Logistics\Shipments\Domain\ValueObject\SourceReference;
 /**
  * Implementación Eloquent del repositorio de envíos.
  *
- * save() es un upsert transaccional: reescribe la fila del envío y regenera sus líneas y bultos
- * (borrar e insertar) para que la persistencia refleje exactamente el estado del agregado. La
- * idempotencia de ingreso se respalda en el índice único (source, external_id).
+ * save() es un upsert transaccional: reescribe la fila del envío y SINCRONIZA sus líneas y bultos por
+ * id (upsert de las presentes en el agregado + borrado de las que ya no están), sin borrar y reinsertar
+ * todo. Así una línea o un bulto que ya existía conserva su fila —y por lo tanto su id— a través de
+ * cualquier guardado (cambio de estado, reprogramación, reasignación de vehículo); los escaneos y
+ * etiquetas que referencian el id del bulto siguen siendo válidos. La idempotencia de ingreso se
+ * respalda en el índice único (source, external_id).
  */
 final class EloquentShipmentRepository implements ShipmentRepository
 {
@@ -37,19 +40,53 @@ final class EloquentShipmentRepository implements ShipmentRepository
                 $this->mapper->toShipmentRow($shipment),
             );
 
-            $shipmentId = $shipment->id()->toString();
-
-            // Regenera líneas y bultos: el agregado es la fuente de verdad de ambos.
-            ShipmentLineRecord::query()->where('shipment_id', $shipmentId)->delete();
-            PhysicalUnitRecord::query()->where('shipment_id', $shipmentId)->delete();
-
-            foreach ($shipment->lines() as $line) {
-                ShipmentLineRecord::query()->create($this->mapper->toLineRow($shipment, $line));
-            }
-            foreach ($shipment->physicalUnits() as $unit) {
-                PhysicalUnitRecord::query()->create($this->mapper->toUnitRow($shipment, $unit));
-            }
+            // El agregado es la fuente de verdad: tras save() la base refleja EXACTAMENTE sus líneas y
+            // bultos. Pero se sincroniza por id en lugar de borrar+reinsertar, para no cambiar el id de
+            // una fila que ya existía (ver docblock de la clase).
+            $this->syncLines($shipment);
+            $this->syncUnits($shipment);
         });
+    }
+
+    /**
+     * Sincroniza las líneas del envío contra la base: upsert por id de las que trae el agregado y
+     * borrado de las que ya no están. Cada línea existente conserva su fila (y su id).
+     */
+    private function syncLines(Shipment $shipment): void
+    {
+        $keptIds = [];
+        foreach ($shipment->lines() as $line) {
+            $row = $this->mapper->toLineRow($shipment, $line);
+            ShipmentLineRecord::query()->updateOrCreate(['id' => $row['id']], $row);
+            $keptIds[] = $row['id'];
+        }
+
+        $query = ShipmentLineRecord::query()->where('shipment_id', $shipment->id()->toString());
+        if ($keptIds !== []) {
+            $query->whereNotIn('id', $keptIds);
+        }
+        $query->delete();
+    }
+
+    /**
+     * Sincroniza los bultos del envío contra la base: upsert por id de los que trae el agregado y
+     * borrado de los que ya no están. Cada bulto existente conserva su fila (y su id), de modo que los
+     * escaneos y etiquetas que lo referencian siguen apuntando al mismo bulto.
+     */
+    private function syncUnits(Shipment $shipment): void
+    {
+        $keptIds = [];
+        foreach ($shipment->physicalUnits() as $unit) {
+            $row = $this->mapper->toUnitRow($shipment, $unit);
+            PhysicalUnitRecord::query()->updateOrCreate(['id' => $row['id']], $row);
+            $keptIds[] = $row['id'];
+        }
+
+        $query = PhysicalUnitRecord::query()->where('shipment_id', $shipment->id()->toString());
+        if ($keptIds !== []) {
+            $query->whereNotIn('id', $keptIds);
+        }
+        $query->delete();
     }
 
     public function findById(ShipmentId $id): ?Shipment

@@ -146,22 +146,34 @@ abstract class ExecutionController
         }
 
         if (isset($data['unit_ids']) && is_array($data['unit_ids'])) {
-            $resolved = [];
-            foreach ($data['unit_ids'] as $raw) {
-                if (!is_scalar($raw)) {
-                    continue;
-                }
-
-                $id = $this->resolveScannedUnitId((string) $raw);
-                if ($id !== '' && !in_array($id, $resolved, true)) {
-                    $resolved[] = $id;
-                }
-            }
-
-            $data['unit_ids'] = $resolved;
+            $data['unit_ids'] = $this->resolveScannedUnitIdList($data['unit_ids']);
         }
 
         return $data;
+    }
+
+    /**
+     * Normaliza una LISTA de ids escaneados (p. ej. el bulto de la ruta + `unit_ids[]` de un lote): resuelve
+     * cada uno (label_id → bulto real) y descarta vacíos y repetidos. Misma regla tolerante que el borde.
+     *
+     * @param  array<array-key, mixed> $ids
+     * @return list<string>
+     */
+    protected function resolveScannedUnitIdList(array $ids): array
+    {
+        $resolved = [];
+        foreach ($ids as $raw) {
+            if (!is_scalar($raw)) {
+                continue;
+            }
+
+            $id = $this->resolveScannedUnitId((string) $raw);
+            if ($id !== '' && !in_array($id, $resolved, true)) {
+                $resolved[] = $id;
+            }
+        }
+
+        return $resolved;
     }
 
     /**
