@@ -25,6 +25,7 @@ use Logistics\Labels\Application\Contract\LabelUnitResolver;
 use Logistics\Labels\Application\Contract\OrderLabelEmissionPlanReader;
 use Logistics\Labels\Application\Contract\OriginResolver;
 use Logistics\Labels\Application\Contract\PrinterReader;
+use Logistics\Labels\Application\Contract\ProductMeasuresReader;
 use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLines;
 use Logistics\Labels\Application\Query\GetDispatchLines\GetDispatchLinesHandler;
 use Logistics\Labels\Application\Query\GetPublicKeysBundle\GetPublicKeysBundle;
@@ -38,10 +39,12 @@ use Logistics\Labels\Application\Query\ResolveLabelUnit\ResolveLabelUnitHandler;
 use Logistics\Labels\Domain\Contract\EmittedLabelRepository;
 use Logistics\Labels\Domain\Contract\LabelRenderer;
 use Logistics\Labels\Domain\Contract\LabelSigner;
+use Logistics\Labels\Domain\Contract\LabelSizePolicyProvider;
 use Logistics\Labels\Domain\Contract\LabelSymbologyProvider;
 use Logistics\Labels\Domain\Contract\LabelVerifier;
 use Logistics\Labels\Domain\Contract\PrinterRepository;
 use Logistics\Labels\Domain\Contract\PublicKeyDirectory;
+use Logistics\Labels\Infrastructure\Catalog\EloquentProductMeasuresReader;
 use Logistics\Labels\Infrastructure\Crypto\ConfigPublicKeyDirectory;
 use Logistics\Labels\Infrastructure\Crypto\OpenLabelSigner;
 use Logistics\Labels\Infrastructure\Crypto\SigningKeyRegistry;
@@ -54,11 +57,13 @@ use Logistics\Labels\Infrastructure\ReadModel\EloquentLabelEnricher;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentLabelUnitResolver;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentOriginResolver;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentPrinterReader;
+use Logistics\Labels\Infrastructure\Settings\SettingsLabelSizePolicyProvider;
 use Logistics\Labels\Infrastructure\Settings\SettingsLabelSymbologyProvider;
 use Logistics\Labels\Infrastructure\Zpl\ZplLabelRenderer;
 use Logistics\Labels\Presentation\Console\ExportPublicKeysCommand;
 use Logistics\Labels\Presentation\Console\GenerateSigningKeyCommand;
 use Logistics\Labels\Presentation\Filament\Configuration\LabelFormatSection;
+use Logistics\Labels\Presentation\Filament\Configuration\LabelSizeSection;
 use Logistics\Settings\Presentation\Filament\Configuration\ConfigurationRegistry;
 use Logistics\Shared\Application\HandlerRegistry;
 use RuntimeException;
@@ -166,6 +171,14 @@ final class LabelsServiceProvider extends ServiceProvider
         // config del package. El contenedor autoinyecta el QueryBus y el repositorio de config.
         $this->app->bind(LabelSymbologyProvider::class, SettingsLabelSymbologyProvider::class);
 
+        // Política de TAMAÑO de etiqueta (perfil por defecto, reglas por SKU, umbrales de medidas): regla
+        // versionada en settings con caída a la config del package (roadmap 03 — Etiquetas Lite/chicas).
+        $this->app->bind(LabelSizePolicyProvider::class, SettingsLabelSizePolicyProvider::class);
+
+        // Medidas del producto para elegir el tamaño: lectura SOLO-LECTURA y tolerante de las tablas del
+        // catálogo (commerce). Si catalog no está desplegado, devuelve null y se degrada a Standard.
+        $this->app->bind(ProductMeasuresReader::class, EloquentProductMeasuresReader::class);
+
         // Directorio de claves públicas para distribuir el bundle de verificación offline a la app.
         $this->app->bind(PublicKeyDirectory::class, ConfigPublicKeyDirectory::class);
 
@@ -193,8 +206,10 @@ final class LabelsServiceProvider extends ServiceProvider
         $registry->register(RemovePrinter::class, RemovePrinterHandler::class);
         $registry->register(ListAvailablePrinters::class, ListAvailablePrintersHandler::class);
 
-        // Sección de la pantalla «Configuración» (estilo Magento): formato de la etiqueta.
-        $this->app->make(ConfigurationRegistry::class)->register(LabelFormatSection::class);
+        // Secciones de la pantalla «Configuración» (estilo Magento): formato (simbología) y tamaño de la etiqueta.
+        $configuration = $this->app->make(ConfigurationRegistry::class);
+        $configuration->register(LabelFormatSection::class);
+        $configuration->register(LabelSizeSection::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([

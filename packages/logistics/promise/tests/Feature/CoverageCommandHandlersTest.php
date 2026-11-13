@@ -188,6 +188,11 @@ function cvpOrders(?array $current = null, bool $throwOnAssign = false): OrderDe
             return $this->current;
         }
 
+        public function pendingDeliveryDate(string $orderId): ?string
+        {
+            return null;
+        }
+
         public function assignSlot(string $orderId, string $date, string $windowStart, string $windowEnd): void
         {
             if ($this->throwOnAssign) {

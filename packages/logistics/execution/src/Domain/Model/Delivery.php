@@ -103,6 +103,12 @@ final class Delivery extends AggregateRoot
         DateTimeImmutable $occurredAt,
     ): self {
         $delivery = self::start($id, $shipmentId, $vehicleId, $fulfillmentMode);
+        // Abre en LOADED (no Pending): el app ya no manda escaneos de preparación ni de carga, así que la
+        // entrega queda lista para el POD directo (Loaded → Delivered) y para salida/recepción/fallo, sin
+        // clavarse en Pending. Solo graba DeliveryOpened (el envío avanza a IN_EXECUTION); NO emite
+        // ShipmentPrepared/ShipmentLoaded, para no disparar notificaciones de "preparando/en camino" antes
+        // de tiempo (la pantalla de carga, si manda escaneos, sigue válida: Loaded → Loaded).
+        $delivery->status = DeliveryStatus::Loaded;
         $delivery->recordEvent(new DeliveryOpened(
             $id->toString(),
             $delivery->shipmentId,
@@ -271,7 +277,13 @@ final class Delivery extends AggregateRoot
             throw ExecutionException::because('la prueba de entrega requiere al menos un producto (unitId)');
         }
 
-        $this->guardTransition([DeliveryStatus::Loaded, DeliveryStatus::InTransit], 'Delivered');
+        // Acepta también Pending/Prepared además de Loaded/InTransit: en el flujo vigente (sin escaneos de
+        // preparación/carga en el app) una entrega abierta puede estar todavía en Pending/Prepared y aun así
+        // debe poder entregarse. Esto desatasca además las entregas que ya quedaron en PENDING.
+        $this->guardTransition(
+            [DeliveryStatus::Pending, DeliveryStatus::Prepared, DeliveryStatus::Loaded, DeliveryStatus::InTransit],
+            'Delivered',
+        );
 
         foreach ($units as $index => $unitId) {
             $key = $index === 0 ? $idempotencyKey : self::derivedKey($idempotencyKey, $unitId);
@@ -307,7 +319,12 @@ final class Delivery extends AggregateRoot
             return;
         }
 
-        $this->guardTransition([DeliveryStatus::Loaded, DeliveryStatus::InTransit], 'Failed');
+        // Mismo criterio que la entrega: un intento fallido también vale desde Pending/Prepared (flujo sin
+        // escaneos de preparación/carga en el app) y desatasca las entregas ya abiertas en PENDING.
+        $this->guardTransition(
+            [DeliveryStatus::Pending, DeliveryStatus::Prepared, DeliveryStatus::Loaded, DeliveryStatus::InTransit],
+            'Failed',
+        );
 
         $this->appendScan(ScanType::ProofOfDelivery, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
 

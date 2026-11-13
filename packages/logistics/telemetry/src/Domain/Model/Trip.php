@@ -29,7 +29,7 @@ final class Trip extends AggregateRoot
         private readonly TripId $id,
         private readonly string $vehicleId,
         private readonly ?string $driverId,
-        private readonly ?string $routeId,
+        private ?string $routeId,
         private TripStatus $status,
         private readonly DateTimeImmutable $startedAt,
         private ?DateTimeImmutable $endedAt,
@@ -179,6 +179,27 @@ final class Trip extends AggregateRoot
             $this->startedAt->format(DATE_ATOM),
             $at->format(DATE_ATOM),
         ));
+    }
+
+    /**
+     * LIGA el trip a la ruta de ejecución del día (Fase 3.3): cuando se inicia la ruta del chofer, el trip
+     * activo del vehículo recibe su `route_id` para que la traza quede asociada a esa ruta. Silencioso (sin
+     * evento, como addPoint): es un dato de correlación, no un hecho de negocio.
+     *
+     * Idempotente y conservador: solo liga si el trip NO tiene ruta todavía. Si ya está ligado (reentrega
+     * del hecho, o el app ya mandó el route_id en los pings), no pisa el valor existente. Devuelve true si
+     * efectivamente lo ligó.
+     */
+    public function bindToRoute(string $routeId): bool
+    {
+        $trimmed = trim($routeId);
+        if ($trimmed === '' || $this->routeId !== null) {
+            return false;
+        }
+
+        $this->routeId = $trimmed;
+
+        return true;
     }
 
     public function isActive(): bool
