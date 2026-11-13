@@ -72,16 +72,23 @@
          (y por tanto se refresca) en cada render de Livewire y en cada navegación SPA, así el init siempre lee
          datos frescos. Va DENTRO de <x-filament-panels::page> (hijo del root único), no es un segundo root.
          No usamos @@js/@@script: en una Filament Page rompen el detector de root único de Livewire. --}}
-    <div id="coverage-map-data" hidden aria-hidden="true">@json([
-        'zones' => $zones,
-        'nodes' => $nodes,
-        'zonesLabel' => __('Coverage Zones'),
-        'nodesLabel' => __('Nodes'),
-        'tileUrl' => config('maps.tile_url'),
-        'tileFallbackUrl' => config('maps.tile_fallback_url'),
-        'tileAttribution' => config('maps.tile_attribution', '&copy; OpenStreetMap'),
-        'tileMaxZoom' => (int) config('maps.tile_max_zoom', 19),
-    ])</div>
+    @php
+        // Arma la isla de datos con json_encode EXPLÍCITO (no la directiva @json): así la compilación no depende
+        // del parser de argumentos de Blade sobre un array multilínea con llamadas anidadas (__()/config()), que
+        // es lo que antes generaba un "Unclosed '[' ... does not match ')'" al compilar. JSON_HEX_TAG evita que
+        // un '<' en los datos rompa el <div>; JSON_UNESCAPED_UNICODE deja '©' legible (no la entidad &copy;).
+        $coverageData = [
+            'zones' => $zones,
+            'nodes' => $nodes,
+            'zonesLabel' => __('Coverage Zones'),
+            'nodesLabel' => __('Nodes'),
+            'tileUrl' => config('maps.tile_url'),
+            'tileFallbackUrl' => config('maps.tile_fallback_url'),
+            'tileAttribution' => config('maps.tile_attribution', '© OpenStreetMap'),
+            'tileMaxZoom' => (int) config('maps.tile_max_zoom', 19),
+        ];
+    @endphp
+    <div id="coverage-map-data" hidden aria-hidden="true">{!! json_encode($coverageData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) !!}</div>
 
     {{-- Assets vía stacks del layout (NO @@assets/@@script, que inyectan nodos raíz y rompen el root único de
          la Page). @@push no renderiza inline: va a @@stack del layout, así la Page conserva UN SOLO root. --}}

@@ -120,6 +120,9 @@ scanner de CI, que sí las honra).
 ### Duplication (CPD)
 - Va en `sonar.cpd.exclusions` de `.sonarcloud.properties` (ESO sí se honra). Ya excluidos a propósito:
   `**/Presentation/**`, `app/Filament/**`, tests, seeders (duplicación intencional por ADR 001/008).
+- **`lang/**` también va excluido (2026-11-13).** Un archivo de traducciones (p. ej. `lang/es/validation.php`,
+  el de Laravel) es inherentemente repetitivo (mismas claves/estructura para cada regla) → disparó Duplication
+  10.8% y tumbó el gate. Agregar `lang/**` a `sonar.cpd.exclusions`. No es deuda: la repetición es del formato.
 
 ### Mantenibilidad: recetas seguras cuando el dueño pide "fix all" (no bloquean el gate)
 
@@ -225,6 +228,12 @@ falsas `type "geography" does not exist`. La suite válida es la serial (igual q
   los `use` y el primer `it(`, con una línea en blanco antes del `it(`, se marca. Pint quita esa blanca
   (el docblock queda pegado al `it(`). Escribir el docblock del archivo SIN línea en blanco antes del primer
   `it(`, o como comentario `//`.
+- **Un cambio de comportamiento INTENCIONAL rompe los tests que afirmaban el viejo — actualizarlos, no
+  revertir (2026-11-13).** Cuando el dueño pide un cambio de regla (p. ej. POD sobre una entrega ya Delivered
+  pasó de lanzar 422 a ser idempotente 200), los tests que esperaban el throw/422 van a FALLAR: eso es
+  correcto, NO una regresión. Actualizar el test a la nueva conducta (y renombrar/reescribir el comentario
+  que explica el porqué) en el MISMO cambio que el código. Confirmar que el único motivo del fallo es el
+  cambio pedido (leer el diff del test), nunca "arreglar" el fallo volviendo el código atrás.
 
 ### Pint a mano (el dueño suele prohibir docker)
 
@@ -257,5 +266,15 @@ ejecución → 755→644 falsos). Verificar: `git ls-files --eol <archivo>`.
 - `DB::table()->first()` → tipar el método como `?\stdClass` (acceso a props de stdClass exento). NO
   `@return object{...}` (error return.type) ni `@var` temporal (dispara "immediate return" de Sonar).
 - `bindec()`/binario → castear `(int)`.
+- **Método de repositorio cuyo resultado cambia entre llamadas con el MISMO argumento → `@phpstan-impure`
+  (2026-11-13).** PHPStan 8 asume que una función pura con los mismos args devuelve lo mismo, así que
+  "narrowea" tras un `if ($repo->findByX(...) === null)` y luego marca "always null"/"always true" en una
+  segunda llamada. Si el estado puede cambiar entre llamadas (p. ej. el backfill crea el producto y luego
+  `findByCanonicalSku` lo vuelve a buscar para publicarlo, o un repo con outbox), anotar el método del
+  CONTRATO con `@phpstan-impure` y documentar el porqué. No usar `@var`/casts para tapar el falso narrowing.
+- **El error de PHPStan "always null / Cannot access property on null" puede ser un fantasma de la caché de
+  resultados.** Antes de reescribir la lógica por un error que contradice lo que ves (p. ej. "never null" en
+  una propiedad que el código deja como null-safe), confiar en el ÚLTIMO error tras limpiar la caché; no
+  oscilar entre `?->x` y `->x` según errores de corridas distintas.
 
 Relacionado: memoria [[ci-quality-gates-playbook]], [[project-rules]].
