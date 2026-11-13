@@ -95,7 +95,7 @@ it('ListPendingArrivals devuelve solo los ASNs agendados', function (): void {
     inboundSeedAsn($this->commands, $seller);
 
     /** @var list<AsnView> $pending */
-    $pending = $this->queries->ask(new ListPendingArrivals());
+    $pending = $this->queries->ask(new ListPendingArrivals);
     $ids = array_map(static fn (AsnView $v): string => $v->id, $pending);
 
     expect($ids)->toContain($scheduledId)

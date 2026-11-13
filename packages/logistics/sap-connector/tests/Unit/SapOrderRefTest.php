@@ -8,7 +8,6 @@ use Logistics\SapConnector\Domain\ValueObject\SapOrderRef;
 /**
  * Referencia de pedido en SAP: value object que solo valida la forma. PHP puro.
  */
-
 it('crea una referencia recortando los espacios de los extremos', function (): void {
     $ref = SapOrderRef::of('  SO-12345  ');
 

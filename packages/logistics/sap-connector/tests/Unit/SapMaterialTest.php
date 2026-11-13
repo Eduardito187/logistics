@@ -8,7 +8,6 @@ use Logistics\SapConnector\Domain\ValueObject\SapMaterial;
 /**
  * Código de material SAP: value object que solo valida la forma (no vacío, longitud). PHP puro.
  */
-
 it('crea un material recortando los espacios de los extremos', function (): void {
     $material = SapMaterial::of('  MAT-100  ');
 

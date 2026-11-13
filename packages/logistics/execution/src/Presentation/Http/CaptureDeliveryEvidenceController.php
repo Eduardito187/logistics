@@ -52,7 +52,9 @@ final class CaptureDeliveryEvidenceController extends ExecutionController
         $realPath = $photo->getRealPath();
         $sha256 = $realPath !== false ? hash_file('sha256', $realPath) : '';
         if ($sha256 === false || $sha256 === '') {
-            return $this->problem('evidence_hash_failed', 'No se pudo calcular el hash del archivo.', 500);
+            // Archivo ilegible/corrupto: es un problema del envío del cliente, no del servidor → 422 para
+            // que el chofer vea el motivo accionable y vuelva a tomar la foto (no un 500 genérico).
+            return $this->problem('evidence_unreadable', 'No se pudo procesar la foto. Volvé a tomarla.', 422);
         }
 
         try {

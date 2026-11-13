@@ -17431,6 +17431,21 @@ components:
           description: Ruta de la petición que produjo el error.
         code:
           $ref: '#/components/schemas/ProblemCode'
+        error:
+          type: object
+          description: |
+            Bloque redundante con el motivo (contrato unificado): `error.message` repite `detail` —o
+            `title` si no hay detalle— y `error.code` repite `code`. Está SIEMPRE presente en errores, para
+            que el cliente lea el motivo sin importar qué campo consuma (`detail` o `error.message`).
+          required:
+          - code
+          - message
+          properties:
+            code:
+              $ref: '#/components/schemas/ProblemCode'
+            message:
+              type: string
+              description: Motivo legible; idéntico a `detail` cuando este existe.
         errors:
           type: object
           description: Errores por campo; presente solo en fallos de validación (code=validation_failed).
@@ -17441,8 +17456,10 @@ components:
     ProblemCode:
       type: string
       description: |
-        Código del catálogo de errores de la API (App\Http\Problem\ErrorCode). Valor
-        estable, legible por máquina, que los clientes usan para ramificar su lógica.
+        Código del catálogo de errores de la API. Valor estable, legible por máquina, que los clientes
+        usan para ramificar su lógica. Incluye el catálogo central (App\Http\Problem\ErrorCode) y códigos
+        estables específicos de contexto (entregas, etiquetas, pedidos, vales). La lista puede crecer: un
+        cliente debe tolerar un valor no enumerado (mostrar `detail`) en vez de romper.
       enum:
       - bad_request
       - invalid_idempotency_key
@@ -17467,6 +17484,20 @@ components:
       - rate_limited
       - server_error
       - service_unavailable
+      # Códigos estables específicos de contexto (mismo formato; los clientes pueden ramificar por ellos).
+      - invalid_route
+      - delivery_not_found
+      - node_reception_not_found
+      - evidence_unreadable
+      - evidence_upload_failed
+      - label_already_emitted
+      - order_not_found
+      - voucher_not_found
+      - voucher_expired
+      - voucher_redeemed
+      - voucher_held
+      - voucher_holder_mismatch
+      - voucher_revoked
     Promise:
       type: object
       required:

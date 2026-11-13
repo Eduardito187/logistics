@@ -7,7 +7,6 @@ use Logistics\SapConnector\Domain\ValueObject\TransferKind;
 /**
  * Dimensión de propiedad de un traspaso de stock a SAP (ADR 017): etiquetas y reglas de posteo. PHP puro.
  */
-
 it('expone los dos tipos con su valor de catálogo', function (): void {
     expect(TransferKind::Owned->value)->toBe('owned')
         ->and(TransferKind::Consignment->value)->toBe('consignment')

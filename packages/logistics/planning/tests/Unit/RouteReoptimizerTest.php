@@ -67,9 +67,9 @@ function reoptMatrixProvider(): RoadMatrixProvider
         public function matrixFor(array $points): DistanceMatrix
         {
             $grid = [];
-            foreach ($points as $from) {
+            foreach ($points as $from) { // NOSONAR: FP de data-flow de Sonar sobre el foreach en la clase anónima de test.
                 $row = [];
-                foreach ($points as $to) {
+                foreach ($points as $to) { // NOSONAR: FP de data-flow de Sonar sobre el foreach en la clase anónima de test.
                     $row[] = abs($from->longitude - $to->longitude) * 100_000.0;
                 }
                 $grid[] = $row;

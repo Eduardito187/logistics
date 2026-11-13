@@ -7,7 +7,6 @@ use Logistics\SapConnector\Application\Notification\SapNotifiableEvents;
 /**
  * Catálogo de hechos avisables a SAP: pertenencia, exclusión de los de alto volumen y etiquetas. PHP puro.
  */
-
 it('incluye en el catálogo los hechos de despacho clave', function (): void {
     expect(SapNotifiableEvents::CATALOG)
         ->toHaveKey('shipments.shipment_received')

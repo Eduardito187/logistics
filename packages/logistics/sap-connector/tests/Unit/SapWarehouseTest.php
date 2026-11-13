@@ -8,7 +8,6 @@ use Logistics\SapConnector\Domain\ValueObject\SapWarehouse;
 /**
  * Almacén SAP (Lagerort): value object que solo valida la forma del código. PHP puro.
  */
-
 it('crea un almacén recortando los espacios de los extremos', function (): void {
     $warehouse = SapWarehouse::of('  A01  ');
 

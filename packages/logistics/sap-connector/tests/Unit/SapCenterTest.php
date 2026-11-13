@@ -8,7 +8,6 @@ use Logistics\SapConnector\Domain\ValueObject\SapCenter;
 /**
  * Centro SAP (Werk): value object que solo valida la forma del código. PHP puro.
  */
-
 it('crea un centro recortando los espacios de los extremos', function (): void {
     $center = SapCenter::of('  C001  ');
 

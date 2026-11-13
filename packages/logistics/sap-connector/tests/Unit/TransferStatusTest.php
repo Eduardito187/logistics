@@ -7,7 +7,6 @@ use Logistics\SapConnector\Domain\ValueObject\TransferStatus;
 /**
  * Estado de un traspaso de stock a SAP (ADR 002): despachabilidad y terminalidad. PHP puro.
  */
-
 it('expone los cuatro estados con su valor de catálogo', function (): void {
     expect(TransferStatus::Pending->value)->toBe('PENDING')
         ->and(TransferStatus::Sent->value)->toBe('SENT')

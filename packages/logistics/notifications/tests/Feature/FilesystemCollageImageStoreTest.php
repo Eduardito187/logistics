@@ -69,6 +69,7 @@ it('usa el disco por defecto cuando el disco configurado es vacío', function ()
 
     Storage::disk('local')->assertExists('collages/shp-1.png');
 })->skip(
-    config('filesystems.default') !== 'local',
+    // En closure: se evalúa al CORRER (app booteada), no en la colección (donde `config` aún no existe).
+    fn (): bool => config('filesystems.default') !== 'local',
     'El disco por defecto del entorno no es local.',
 );

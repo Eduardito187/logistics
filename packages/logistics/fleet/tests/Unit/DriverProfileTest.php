@@ -6,8 +6,8 @@ use Logistics\Fleet\Domain\ValueObject\BirthDate;
 use Logistics\Fleet\Domain\ValueObject\DriverProfile;
 use Logistics\Fleet\Domain\ValueObject\LicenseCategory;
 use Logistics\Fleet\Domain\ValueObject\NationalId;
-use Logistics\Fleet\Domain\ValueObject\PersonalReference;
 use Logistics\Fleet\Domain\ValueObject\PersonalProfile;
+use Logistics\Fleet\Domain\ValueObject\PersonalReference;
 use Logistics\Fleet\Domain\ValueObject\PhoneNumber;
 
 /**
