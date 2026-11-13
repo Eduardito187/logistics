@@ -108,6 +108,15 @@ final class ProblemDetails
             $body['detail'] = $this->detail;
         }
 
+        // Bloque `error` redundante a propósito (decisión del dueño): el motivo viaja SIEMPRE tanto en
+        // `detail` (RFC 7807) como en `error.message`, para que cualquier cliente —en especial la app
+        // Flutter— pueda mostrarlo sin importar cuál campo lea. `message` cae al título cuando no hay
+        // detalle (p. ej. un 401 genérico), así nunca queda vacío.
+        $body['error'] = [
+            'code' => $this->code->value,
+            'message' => ($this->detail !== null && $this->detail !== '') ? $this->detail : $this->title,
+        ];
+
         if ($this->instance !== null && $this->instance !== '') {
             $body['instance'] = $this->instance;
         }

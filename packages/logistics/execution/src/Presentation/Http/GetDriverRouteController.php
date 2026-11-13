@@ -28,9 +28,7 @@ final class GetDriverRouteController extends ExecutionController
         $view = $this->queryBus->ask(new GetDriverRoute($vehicleId, $date));
 
         if ($view === null) {
-            return new JsonResponse([
-                'error' => ['code' => 'not_found', 'message' => "no route for vehicle {$vehicleId}"],
-            ], 404);
+            return $this->problem('not_found', "No open route for vehicle {$vehicleId}.", 404);
         }
 
         return new JsonResponse(['data' => $view->toArray()]);

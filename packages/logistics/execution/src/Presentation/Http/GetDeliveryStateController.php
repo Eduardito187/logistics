@@ -21,12 +21,11 @@ final class GetDeliveryStateController extends ExecutionController
         $payload = $response->getData(true);
 
         if ($payload['data'] === null) {
-            return new JsonResponse([
-                'error' => [
-                    'code' => 'delivery_not_found',
-                    'message' => 'No delivery has been opened for this shipment yet.',
-                ],
-            ], 404);
+            return $this->problem(
+                'delivery_not_found',
+                'No delivery has been opened for this shipment yet.',
+                404,
+            );
         }
 
         return $response;

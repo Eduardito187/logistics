@@ -23,10 +23,31 @@ trait JsonEnvelope
     }
 
     /**
-     * Respuesta de error con el mensaje bajo `error.message`.
+     * Respuesta de error con el motivo SIEMPRE presente en `detail` y en `error.message` (decisión del
+     * dueño), con un `code` estable derivado del estado cuando no se pasa uno, igual que el renderer global
+     * RFC 7807. Así el app muestra el porqué leyendo cualquiera de los dos campos.
      */
-    private function error(string $message, int $status): JsonResponse
+    private function error(string $message, int $status, ?string $code = null): JsonResponse
     {
-        return new JsonResponse(['error' => ['message' => $message]], $status);
+        $code ??= match (true) {
+            $status === 400 => 'bad_request',
+            $status === 401 => 'unauthenticated',
+            $status === 403 => 'forbidden',
+            $status === 404 => 'not_found',
+            $status === 409 => 'conflict',
+            $status === 422 => 'validation_failed',
+            $status === 429 => 'rate_limited',
+            $status >= 500 => 'server_error',
+            default => 'error',
+        };
+
+        return new JsonResponse([
+            'type' => rtrim((string) config('api.problem_type_base_uri', '/problems'), '/').'/'.$code,
+            'title' => ucfirst(str_replace('_', ' ', $code)),
+            'status' => $status,
+            'code' => $code,
+            'detail' => $message,
+            'error' => ['code' => $code, 'message' => $message],
+        ], $status, ['Content-Type' => 'application/problem+json']);
     }
 }

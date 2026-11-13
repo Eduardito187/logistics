@@ -30,6 +30,24 @@ abstract class ExecutionController
     ) {}
 
     /**
+     * Respuesta de error con FORMATO ÚNICO en toda la API (decisión del dueño): el motivo viaja SIEMPRE
+     * tanto en `detail` como en `error.message`, con un `code` estable, igual que el renderer global
+     * RFC 7807. Así el app muestra el porqué del fallo leyendo cualquiera de los dos campos y ninguna API
+     * responde distinto a otra.
+     */
+    protected function problem(string $code, string $message, int $status): JsonResponse
+    {
+        return new JsonResponse([
+            'type' => rtrim((string) config('api.problem_type_base_uri', '/problems'), '/').'/'.$code,
+            'title' => ucfirst(str_replace('_', ' ', $code)),
+            'status' => $status,
+            'code' => $code,
+            'detail' => $message,
+            'error' => ['code' => $code, 'message' => $message],
+        ], $status, ['Content-Type' => 'application/problem+json']);
+    }
+
+    /**
      * Resuelve la clave de idempotencia: primero el header `Idempotency-Key` (la app offline la fija
      * por escaneo), con respaldo en el cuerpo. Es un contrato con la app: el reenvío del mismo
      * escaneo no duplica el hecho.

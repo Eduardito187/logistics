@@ -52,17 +52,13 @@ final class CaptureDeliveryEvidenceController extends ExecutionController
         $realPath = $photo->getRealPath();
         $sha256 = $realPath !== false ? hash_file('sha256', $realPath) : '';
         if ($sha256 === false || $sha256 === '') {
-            return new JsonResponse([
-                'error' => ['code' => 'evidence_hash_failed', 'message' => 'No se pudo calcular el hash del archivo.'],
-            ], 500);
+            return $this->problem('evidence_hash_failed', 'No se pudo calcular el hash del archivo.', 500);
         }
 
         try {
             $stored = $this->storage->store($kind, $shipmentId, $photo);
         } catch (ExecutionException $exception) {
-            return new JsonResponse([
-                'error' => ['code' => 'evidence_upload_failed', 'message' => $exception->getMessage()],
-            ], 500);
+            return $this->problem('evidence_upload_failed', $exception->getMessage(), 500);
         }
 
         $idempotencyKey = $this->idempotencyKey($request);
