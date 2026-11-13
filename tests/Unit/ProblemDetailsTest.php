@@ -14,6 +14,7 @@ it('builds a problem body from a catalog code', function (): void {
         'status' => 422,
         'code' => 'validation_failed',
         'detail' => 'Invalid input.',
+        'error' => ['code' => 'validation_failed', 'message' => 'Invalid input.'],
     ]);
 });
 
@@ -25,6 +26,8 @@ it('omits detail and instance when they are empty', function (): void {
         'title' => 'Resource not found',
         'status' => 404,
         'code' => 'not_found',
+        // El motivo viaja también en `error.message`; sin detalle cae al título (contrato unificado).
+        'error' => ['code' => 'not_found', 'message' => 'Resource not found'],
     ]);
 });
 

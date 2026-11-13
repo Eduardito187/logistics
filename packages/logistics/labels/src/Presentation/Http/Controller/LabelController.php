@@ -94,12 +94,17 @@ final readonly class LabelController
             }
         } catch (DuplicateLabelException $e) {
             // El `id` de una etiqueta es único por unidad física: reemitir es un conflicto duro (ADR 004).
+            // Formato de error ÚNICO (decisión del dueño): el motivo viaja en `detail` y en `error.message`.
+            $code = 'label_already_emitted';
+
             return new JsonResponse([
-                'error' => [
-                    'code' => 'label_already_emitted',
-                    'message' => $e->getMessage(),
-                ],
-            ], Response::HTTP_CONFLICT);
+                'type' => rtrim((string) config('api.problem_type_base_uri', '/problems'), '/').'/'.$code,
+                'title' => 'Label already emitted',
+                'status' => Response::HTTP_CONFLICT,
+                'code' => $code,
+                'detail' => $e->getMessage(),
+                'error' => ['code' => $code, 'message' => $e->getMessage()],
+            ], Response::HTTP_CONFLICT, ['Content-Type' => 'application/problem+json']);
         }
 
         return new JsonResponse(['data' => $this->labelsFor($orderNumber)], Response::HTTP_CREATED);

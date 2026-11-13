@@ -55,7 +55,17 @@ abstract class ApiController
             $error['details'] = $details;
         }
 
-        return new JsonResponse(['error' => $error], $status);
+        // Body unificado (decisión del dueño): el motivo viaja SIEMPRE en `detail` y en `error.message`,
+        // con `code` estable, igual que el renderer global RFC 7807, para que el app lo muestre leyendo
+        // cualquiera de los dos campos sin caer en "intenta más tarde".
+        return new JsonResponse([
+            'type' => rtrim((string) config('api.problem_type_base_uri', '/problems'), '/').'/'.$code,
+            'title' => ucfirst(str_replace('_', ' ', $code)),
+            'status' => $status,
+            'code' => $code,
+            'detail' => $message,
+            'error' => $error,
+        ], $status, ['Content-Type' => 'application/problem+json']);
     }
 
     /**

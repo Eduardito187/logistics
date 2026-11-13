@@ -217,6 +217,14 @@ falsas `type "geography" does not exist`. La suite válida es la serial (igual q
 - **Floats por acumulación** (distancias): comparar con `toEqualWithDelta($esperado, 1.0)`, no `===`.
 - **`assertSent`/payload `(object)`**: un payload enviado como `(object)` es stdClass, no array; castear
   `(array) ($body['payload'] ?? [])` antes de leerlo.
+- **`->skip(config(...), 'motivo')` ROMPE con "Target class [config] does not exist"**: el argumento del
+  `->skip()` se evalúa en tiempo de COLECCIÓN (app sin bootear), y `config()` necesita el container. Fix:
+  pasar un CLOSURE que se evalúa al correr → `->skip(fn (): bool => config('x') !== 'y', 'motivo')`. OJO:
+  `env(...)` en skip NO rompe (lee `$_ENV` sin container); solo `config()`/helpers que resuelven del container.
+- **Pint `no_blank_lines_after_phpdoc`** en tests Pest: un docblock de archivo (`/** ... */`) colocado entre
+  los `use` y el primer `it(`, con una línea en blanco antes del `it(`, se marca. Pint quita esa blanca
+  (el docblock queda pegado al `it(`). Escribir el docblock del archivo SIN línea en blanco antes del primer
+  `it(`, o como comentario `//`.
 
 ### Pint a mano (el dueño suele prohibir docker)
 
