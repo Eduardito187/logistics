@@ -126,7 +126,7 @@ it('falls back to the SKU as the name on Lite when the product name is missing (
 it('sanitizes ZPL control characters out of the product name', function (): void {
     $signed = LabelFixtures::signer()->sign(LabelFixtures::payload());
 
-    $zpl = (new ZplLabelRenderer)->render($signed, LabelSymbology::Both, LabelSizeProfile::Lite, 203, "Combo ^XZ ~CC break");
+    $zpl = (new ZplLabelRenderer)->render($signed, LabelSymbology::Both, LabelSizeProfile::Lite, 203, 'Combo ^XZ ~CC break');
 
     // El `^`/`~` del nombre no deben aparecer crudos (romperían el ZPL); se reemplazan por espacios y los
     // espacios repetidos se colapsan.

@@ -14,6 +14,8 @@ use Logistics\Promise\Application\Command\QuotePromise\QuotePromise;
 use Logistics\Promise\Application\Command\QuotePromise\QuotePromiseHandler;
 use Logistics\Promise\Application\Command\ReleasePromiseReservation\ReleasePromiseReservation;
 use Logistics\Promise\Application\Command\ReleasePromiseReservation\ReleasePromiseReservationHandler;
+use Logistics\Promise\Application\Command\ReserveDeliveryDate\ReserveDeliveryDate;
+use Logistics\Promise\Application\Command\ReserveDeliveryDate\ReserveDeliveryDateHandler;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlot;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlotHandler;
 use Logistics\Promise\Application\Command\ReserveMunicipalitySlot\ReserveMunicipalitySlot;
@@ -26,6 +28,8 @@ use Logistics\Promise\Application\Query\GetPromise\GetPromise;
 use Logistics\Promise\Application\Query\GetPromise\GetPromiseHandler;
 use Logistics\Promise\Application\Query\ListAvailableSlots\ListAvailableSlots;
 use Logistics\Promise\Application\Query\ListAvailableSlots\ListAvailableSlotsHandler;
+use Logistics\Promise\Application\Query\ListDeliveryDates\ListDeliveryDates;
+use Logistics\Promise\Application\Query\ListDeliveryDates\ListDeliveryDatesHandler;
 use Logistics\Promise\Application\Query\ListMunicipalityPromise\ListMunicipalityPromise;
 use Logistics\Promise\Application\Query\ListMunicipalityPromise\ListMunicipalityPromiseHandler;
 use Logistics\Promise\Domain\Contract\AvailabilityProvider;
@@ -76,17 +80,23 @@ final class PromiseServiceProvider extends ServiceProvider
         ReservePromise::class => ReservePromiseHandler::class,
         ReserveDeliverySlot::class => ReserveDeliverySlotHandler::class,
         ReserveMunicipalitySlot::class => ReserveMunicipalitySlotHandler::class,
+        ReserveDeliveryDate::class => ReserveDeliveryDateHandler::class,
         ConfirmPromise::class => ConfirmPromiseHandler::class,
         ExpireReservation::class => ExpireReservationHandler::class,
         ReleasePromiseReservation::class => ReleasePromiseReservationHandler::class,
         ListAvailableSlots::class => ListAvailableSlotsHandler::class,
         ListMunicipalityPromise::class => ListMunicipalityPromiseHandler::class,
+        ListDeliveryDates::class => ListDeliveryDatesHandler::class,
         CalculateDeliveryPromise::class => CalculateDeliveryPromiseHandler::class,
         GetPromise::class => CachingGetPromiseHandler::class,
     ];
 
     public function register(): void
     {
+        // Config del contexto (pesos de la elección automática de ventana) con defaults funcionales; el
+        // merge deja que el .env o la sección de Configuración la ajusten sin tocar el package.
+        $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-promise.php', 'logistics-promise');
+
         // Repositorio de promesas envuelto por el decorador que invalida el cache del modelo de lectura
         // (frente E — escala): guarda igual que el Eloquent y, al guardar, olvida la vista cacheada de esa
         // promesa. No cachea lecturas, así los comandos que cargan-mutan-guardan siguen leyendo de la base.
