@@ -12,6 +12,7 @@ use Commerce\Orders\Domain\ValueObject\OrderLine;
 use Commerce\Orders\Domain\ValueObject\ShippingAddress;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Mapper\OrderMapper;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Model\OrderRecord;
+use DateTimeInterface;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
@@ -179,7 +180,10 @@ final class BackfillOrdersFromShipmentsCommand extends Command
             }
         }
 
-        /** @var array<string, mixed> $attributes */
+        // Se parte del shape tipado de OrderMapper::toRow() (mismas claves que el repo real) + las columnas
+        // propias del backfill. No se anota `@var array<string, mixed>`: eso ensancharía el shape y haría que
+        // updateOrCreate rechace las claves por no ser "model property" (todas lo son: source/order_reference
+        // tras la migración, created_at/updated_at son timestamps del modelo).
         $attributes = (new OrderMapper)->toRow($order);
         $attributes['source'] = 'backfill';
         $attributes['order_reference'] = $key;
@@ -227,7 +231,7 @@ final class BackfillOrdersFromShipmentsCommand extends Command
             }
         }
 
-        return array_values($lines);
+        return $lines;
     }
 
     /**
@@ -310,8 +314,10 @@ final class BackfillOrdersFromShipmentsCommand extends Command
     {
         $earliest = null;
         foreach ($shipments as $shipment) {
-            $createdAt = $shipment->created_at;
-            if ($createdAt === null) {
+            // `created_at` es un timestamp de Eloquent (no está en el @property de ShipmentRecord); se lee por
+            // getAttribute y se estrecha a string|DateTimeInterface antes de parsear (evita mixed en parse).
+            $createdAt = $shipment->getAttribute('created_at');
+            if (!is_string($createdAt) && !$createdAt instanceof DateTimeInterface) {
                 continue;
             }
             $candidate = CarbonImmutable::parse($createdAt);

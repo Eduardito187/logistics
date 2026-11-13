@@ -196,13 +196,14 @@ final class ViewShipment extends ViewRecord
     private function printedLabelIds(): array
     {
         try {
-            return DB::table('label_events')
-                ->where('event', 'printed')
-                ->distinct()
-                ->pluck('label_id')
-                ->map(static fn (mixed $id): string => (string) $id)
-                ->values()
-                ->all();
+            return array_values(
+                DB::table('label_events')
+                    ->where('event', 'printed')
+                    ->distinct()
+                    ->pluck('label_id')
+                    ->map(static fn (mixed $id): string => (string) $id)
+                    ->all(),
+            );
         } catch (\Throwable) {
             return [];
         }
