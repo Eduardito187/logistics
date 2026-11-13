@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Logistics\Execution\Application\ReadModel\DriverRouteView;
 use Logistics\Execution\Domain\Event\DriverRouteClosed;
 use Logistics\Execution\Domain\Event\DriverRouteStarted;
 use Logistics\Execution\Domain\Event\DriverRouteStopArrived;
@@ -112,4 +113,25 @@ it('GeoPoint::fromNullable descarta la isla nula y las coordenadas ausentes', fu
     expect(GeoPoint::fromNullable(0.0, 0.0))->toBeNull()
         ->and(GeoPoint::fromNullable(null, -68.1))->toBeNull()
         ->and(GeoPoint::fromNullable(-16.5, -68.1, 8.0)?->accuracyM)->toBe(8.0);
+});
+
+// Regresión de "6 de 7 y ya completada": una parada fallida NO cuenta como completada. deliveredCount solo
+// las entregadas; settledCount sigue siendo "atendidas" (entregadas + fallidas + replanificadas).
+it('cuenta completadas = solo entregadas; expone fallidas/replanificadas aparte', function (): void {
+    $route = vrlRoute();
+    $route->start(new DateTimeImmutable('2026-11-12T08:00:00-04:00'), 1000.0);
+    $route->completeStop('SHIP-1', new DateTimeImmutable('2026-11-12T10:00:00-04:00'));
+    $route->failStop('SHIP-2', 'CUSTOMER_ABSENT', new DateTimeImmutable('2026-11-12T11:00:00-04:00'));
+    $route->releaseEvents();
+
+    expect($route->deliveredCount())->toBe(1)
+        ->and($route->failedCount())->toBe(1)
+        ->and($route->rescheduledCount())->toBe(0)
+        ->and($route->settledCount())->toBe(2)
+        ->and($route->stopsRemaining())->toBe(0);
+
+    $view = DriverRouteView::fromRoute($route)->toArray();
+    expect($view['completed_stops'])->toBe(1)
+        ->and($view['failed_stops'])->toBe(1)
+        ->and($view['rescheduled_stops'])->toBe(0);
 });

@@ -49,6 +49,10 @@ final readonly class RouteStopView
         public array $unitIds = [],
         public ?string $arrivedAt = null,
         public ?string $arrivalSource = null,
+        // Prueba de entrega ya capturada (confirmación + foto), para que la app la muestre en la parada sin
+        // pedir aparte GET /app/deliveries/{id}. Null mientras no haya POD.
+        public ?string $podConfirmation = null,
+        public ?string $podPhotoUrl = null,
     ) {}
 
     /**
@@ -65,6 +69,8 @@ final readonly class RouteStopView
         array $items = [],
         ?array $destination = null,
         array $unitIds = [],
+        ?string $podConfirmation = null,
+        ?string $podPhotoUrl = null,
     ): self {
         return new self(
             $stop->id()->toString(),
@@ -85,6 +91,8 @@ final readonly class RouteStopView
             $unitIds,
             $stop->arrivedAt()?->format(DateTimeInterface::ATOM),
             $stop->arrivalSource()?->value,
+            $podConfirmation,
+            $podPhotoUrl,
         );
     }
 
@@ -121,6 +129,8 @@ final readonly class RouteStopView
             'unit_ids' => $this->unitIds,
             'units_total' => $this->unitsTotal(),
             'destination' => $this->destination,
+            'pod_confirmation' => $this->podConfirmation,
+            'pod_photo_url' => $this->podPhotoUrl,
         ];
     }
 }

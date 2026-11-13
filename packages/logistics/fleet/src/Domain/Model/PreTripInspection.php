@@ -33,6 +33,9 @@ final class PreTripInspection extends AggregateRoot
         private readonly DateTimeImmutable $performedOn,
         private readonly ?string $notes,
         private readonly ChecklistEvaluation $evaluation,
+        // Ruta/viaje al que pertenece la inspección (UUID en texto). OPCIONAL y guardado como string
+        // para NO acoplar fleet al contexto execution (ver decisión de diseño del pedido del app).
+        private readonly ?string $routeId = null,
     ) {}
 
     /**
@@ -46,9 +49,10 @@ final class PreTripInspection extends AggregateRoot
         DateTimeImmutable $performedOn,
         ?string $notes = null,
         ?ChecklistEvaluation $evaluation = null,
+        ?string $routeId = null,
     ): self {
         $evaluation ??= ChecklistEvaluation::withoutTemplate();
-        $inspection = new self($id, $vehicleId, $driverId, $checklist, $performedOn, $notes, $evaluation);
+        $inspection = new self($id, $vehicleId, $driverId, $checklist, $performedOn, $notes, $evaluation, $routeId);
         $inspection->recordEvent(new PreTripChecklistConducted(
             $id->toString(),
             $vehicleId->toString(),
@@ -59,6 +63,7 @@ final class PreTripInspection extends AggregateRoot
             $evaluation->fitToDispatch,
             $evaluation->failedCritical,
             $evaluation->templateId,
+            $routeId,
         ));
 
         return $inspection;
@@ -75,6 +80,7 @@ final class PreTripInspection extends AggregateRoot
         DateTimeImmutable $performedOn,
         ?string $notes,
         ?ChecklistEvaluation $evaluation = null,
+        ?string $routeId = null,
     ): self {
         return new self(
             $id,
@@ -84,6 +90,7 @@ final class PreTripInspection extends AggregateRoot
             $performedOn,
             $notes,
             $evaluation ?? ChecklistEvaluation::withoutTemplate(),
+            $routeId,
         );
     }
 
@@ -136,5 +143,13 @@ final class PreTripInspection extends AggregateRoot
     public function notes(): ?string
     {
         return $this->notes;
+    }
+
+    /**
+     * Ruta/viaje al que pertenece la inspección, o null si se condujo sin ruta (UUID en texto).
+     */
+    public function routeId(): ?string
+    {
+        return $this->routeId;
     }
 }

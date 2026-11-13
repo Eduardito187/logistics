@@ -10,12 +10,17 @@ use App\Support\Cockpit\ShipmentHub;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Logistics\Execution\Presentation\Filament\Resources\DeliveryResource;
 use Logistics\Execution\Presentation\Filament\Resources\NodeReceptionResource;
 use Logistics\Execution\Presentation\Filament\Resources\ScanEventResource;
+use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
+use Logistics\Labels\Application\ReadModel\EmittedLabelView;
 use Logistics\Labels\Presentation\Filament\Resources\EmittedLabelResource;
 use Logistics\Planning\Presentation\Filament\PlannedStopResource;
+use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
 
@@ -91,6 +96,116 @@ final class ViewShipment extends ViewRecord
             (string) $record->getKey(),
             is_string($external) ? $external : '',
         ]);
+    }
+
+    /**
+     * Etiquetas emitidas del envío (acotadas por su referencia de pedido), con el estado de impresión, para
+     * la pestaña "Seguimiento". Se resuelven por el QueryBus (CQRS), nunca leyendo el Record directo. Las
+     * etiquetas son permanentes: se listan tal como se emitieron. Tolerante: lista vacía si no hay etiquetas
+     * o la fuente no está disponible.
+     *
+     * @return list<array{label_id: string, sku: string, product_name: string | null, qr_content: string, destination_name: string | null, unit_index: int, unit_total: int, piece_index: int, piece_total: int, printed: bool}>
+     */
+    #[Computed]
+    public function labels(): array
+    {
+        $orderRef = $this->orderReference();
+        if ($orderRef === '') {
+            return [];
+        }
+
+        try {
+            /** @var list<EmittedLabelView> $views */
+            $views = app(QueryBus::class)->ask(new GetShipmentLabels($orderRef));
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if ($views === []) {
+            return [];
+        }
+
+        $printed = $this->printedLabelIds();
+
+        $out = [];
+        foreach ($views as $view) {
+            $out[] = [
+                'label_id' => $view->labelId,
+                'sku' => $view->sku,
+                'product_name' => $view->productName,
+                'qr_content' => $view->qrContent,
+                'destination_name' => $view->destinationName,
+                'unit_index' => $view->unitIndex,
+                'unit_total' => $view->unitTotal,
+                'piece_index' => $view->pieceIndex,
+                'piece_total' => $view->pieceTotal,
+                'printed' => in_array($view->labelId, $printed, true),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Hitos del ciclo de vida del envío (asignado, preparado, cargado, entregado) tomados del read model de
+     * avance operativo ({@see ShipmentProgressReader}). Tolerante: campo null si el hito aún no ocurrió o la
+     * fuente no está disponible; así la pestaña degrada a vacío sin romper la página.
+     *
+     * @return array{assigned_at: string | null, prepared_at: string | null, loaded_at: string | null, delivered_at: string | null, execution_status: string | null}
+     */
+    #[Computed]
+    public function progress(): array
+    {
+        $id = (string) $this->getRecord()->getKey();
+
+        try {
+            $view = app(ShipmentProgressReader::class)->forShipmentIds([$id])[$id] ?? null;
+        } catch (\Throwable) {
+            $view = null;
+        }
+
+        return [
+            'assigned_at' => $view?->assignedAt,
+            'prepared_at' => $view?->preparedAt,
+            'loaded_at' => $view?->loadedAt,
+            'delivered_at' => $view?->deliveredAt,
+            'execution_status' => $view?->executionStatus,
+        ];
+    }
+
+    /** Referencia de pedido del envío (order_reference, o external_id en filas viejas) para sus etiquetas. */
+    private function orderReference(): string
+    {
+        $record = $this->getRecord();
+        foreach (['order_reference', 'external_id'] as $field) {
+            $value = $record->getAttribute($field);
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * label_ids que YA tienen un evento de impresión en la bitácora de ciclo de vida (para el badge
+     * «impresa/pendiente» de cada etiqueta). Tolerante: lista vacía si la tabla no existe todavía.
+     *
+     * @return list<string>
+     */
+    private function printedLabelIds(): array
+    {
+        try {
+            return DB::table('label_events')
+                ->where('event', 'printed')
+                ->distinct()
+                ->pluck('label_id')
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->values()
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /** Tipo lógico de la entidad para las notas/seguimientos del hub. */

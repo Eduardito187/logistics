@@ -11,6 +11,9 @@ use Logistics\Shared\Application\Command\Command;
  *
  * Los ítems llegan como mapa nombre => verificado (bool): así la entrada no se acopla al VO del
  * dominio, que el handler construye y valida.
+ *
+ * `routeId` es OPCIONAL: cuando llega, ata la inspección a una ruta/viaje (un camión que sale a dos
+ * entregas se inspecciona dos veces). Se guarda como UUID en texto para NO acoplar fleet a execution.
  */
 final readonly class ConductPreTripChecklist implements Command
 {
@@ -23,5 +26,6 @@ final readonly class ConductPreTripChecklist implements Command
         public array $items,
         public string $performedOn,
         public ?string $notes = null,
+        public ?string $routeId = null,
     ) {}
 }

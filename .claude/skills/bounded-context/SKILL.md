@@ -388,9 +388,36 @@ dependencia composer (así cada contexto queda extraíble a microservicio). Patr
    `Application\Subscriber\XOnY` que ya mapea payload→Command. Molde: `inventory/.../Dispatch/GoodsReceivedStockDispatcher`.
 4. **Idempotencia**: el outbox reentrega at-least-once → el command destino debe deduplicar por una clave natural
    (p.ej. `goods_receipt_ref`/`return_id` + sku), o el relay crea stock duplicado en un reintento.
+4b. **Una proyección tolerante que "descarta en silencio" puede TRAGARSE un hecho crítico** (verificado
+   2026-11-13). Si el reactor hace `if (!$agg->canApply($x)) return;` sobre una máquina de estados, un hecho
+   terminal/importante (p.ej. `shipment_delivered`) se pierde cuando su transición no está admitida desde el
+   estado actual → el read model queda atascado. Regla: un hecho de ese peso debe ser alcanzable desde TODOS los
+   estados previos realistas (ampliar `allowedNext()`), no solo desde el "camino feliz". El silencio tolerante
+   es para duplicados y eventos irrelevantes, no para un hecho que el negocio exige reflejar. Ver
+   [[tracking-lifecycle-state-machine]].
 5. **Verificar el cableado de verdad** (no basta que el config cargue): insertar un `outbox_messages` pendiente con
    el `event_name` + payload, correr `php artisan logistics:outbox:relay`, y afirmar el efecto (p.ej. se creó el
    lote), luego limpiar. Los tests de paquete son aislados y NO cubren el relay cruzado.
+
+## Comando de reconciliación / backfill de un contexto (verificado 2026-11-13)
+
+Cuando entran datos por un camino que SALTEA el flujo canónico (seeders, ingesta directa, versiones viejas, un
+path forzado), queda estado huérfano. Dar al contexto un **comando de reconciliación/backfill** idempotente que
+lo rellene (moldes: `commerce:orders:backfill-from-shipments`, `commerce:catalog:backfill-from-orders`,
+`logistics:execution:open-missing-deliveries`). Forma:
+
+- **Dry-run por defecto, efecto solo con `--force`**; `--chunk=N` y `chunkById` para escalar a millones.
+- **Idempotente por clave estable**: `exists(clave)` antes de crear; reanudable; marcar lo rellenado con una
+  columna `source` ('backfill' vs el default) + migración ADITIVA (`hasColumn`).
+- **Tolerante por ítem**: build en try/catch, loguea y sigue, cuenta `skipped`.
+- Registrar en el provider dentro de `runningInConsole`; NO programarlo recurrente; SÍ invocarlo al final del
+  seeder demo orquestador (`TestDataSeeder`) para que docker nuevo quede poblado.
+- **REGLA DURA — al rellenar un agregado NO reemitir sus eventos de dominio al outbox.** Construir el agregado por
+  la vía de dominio (respeta invariantes) pero PERSISTIR directo por el mapper/Eloquent
+  (`...Mapper::toRow()` + `...Record::updateOrCreate`), descartando `releaseEvents()`. Si se reemitiera el evento,
+  su reactor del outbox (§ sección anterior) volvería a correr el efecto downstream → DUPLICACIÓN. Caso real:
+  republicar `orders.order_paid` dispara `OrderPaidShipmentDispatcher`, que recrea los envíos de los que salió el
+  backfill. El backfill reconcilia el read side; no re-ejecuta el flujo. Ver [[reconcile-backfill-commands]].
 
 ## Olas de agentes para un build multi-contexto (orquestador ↔ agente) (2026-10-16)
 

@@ -44,6 +44,10 @@ final readonly class DriverRouteView
         public ?string $closedAt = null,
         public ?float $startOdometerKm = null,
         public ?float $closeOdometerKm = null,
+        // `completedStops` cuenta SOLO entregadas; estas dos exponen los otros desenlaces por separado para
+        // que la app no confunda un fallo/replanificación con una entrega.
+        public int $failedStops = 0,
+        public int $rescheduledStops = 0,
     ) {}
 
     /**
@@ -70,7 +74,8 @@ final readonly class DriverRouteView
             $route->date()->toString(),
             $route->status()->value,
             $route->totalStops(),
-            $route->settledCount(),
+            // Completadas = ENTREGADAS con éxito (no las fallidas/replanificadas: esas van aparte).
+            $route->deliveredCount(),
             $route->stopsRemaining(),
             $current === null ? null : self::enrichStop($current, $enrichmentByShipment),
             $stops,
@@ -79,6 +84,8 @@ final readonly class DriverRouteView
             $route->closedAt()?->format(DateTimeInterface::ATOM),
             $route->startOdometerKm(),
             $route->closeOdometerKm(),
+            $route->failedCount(),
+            $route->rescheduledCount(),
         );
     }
 
@@ -87,8 +94,12 @@ final readonly class DriverRouteView
      *
      * @param array<string, StopEnrichment> $enrichmentByShipment
      */
-    public static function enrichStop(RouteStop $stop, array $enrichmentByShipment): RouteStopView
-    {
+    public static function enrichStop(
+        RouteStop $stop,
+        array $enrichmentByShipment,
+        ?string $podConfirmation = null,
+        ?string $podPhotoUrl = null,
+    ): RouteStopView {
         $data = $enrichmentByShipment[$stop->shipmentId()] ?? null;
 
         return RouteStopView::fromStop(
@@ -98,6 +109,8 @@ final readonly class DriverRouteView
             $data['items'] ?? [],
             $data['destination'] ?? null,
             $data['unit_ids'] ?? [],
+            $podConfirmation,
+            $podPhotoUrl,
         );
     }
 
@@ -119,6 +132,8 @@ final readonly class DriverRouteView
             'close_odometer_km' => $this->closeOdometerKm,
             'total_stops' => $this->totalStops,
             'completed_stops' => $this->completedStops,
+            'failed_stops' => $this->failedStops,
+            'rescheduled_stops' => $this->rescheduledStops,
             'stops_remaining' => $this->stopsRemaining,
             // Paradas que quedaron sin atender (el cierre no las exige): mismo número que stops_remaining.
             'pending_stops' => $this->stopsRemaining,
@@ -139,6 +154,8 @@ final readonly class DriverRouteView
             'closed_at' => $this->closedAt,
             'total_stops' => $this->totalStops,
             'completed_stops' => $this->completedStops,
+            'failed_stops' => $this->failedStops,
+            'rescheduled_stops' => $this->rescheduledStops,
             'stops_remaining' => $this->stopsRemaining,
             'current_stop' => $this->currentStop?->toArray(),
             'stops' => array_map(static fn (RouteStopView $stop): array => $stop->toArray(), $this->stops),

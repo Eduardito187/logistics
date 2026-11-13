@@ -52,6 +52,13 @@ enum VisibleStatus: string
      * Regla del negocio: tras el pago y antes de entregar se puede reprogramar o anular; tras entregar,
      * devolver; una entrega fallida puede reintentarse (vuelve a «en camino») o reprogramarse.
      *
+     * La ENTREGA y el FALLO se admiten desde CUALQUIER estado en vuelo (preparado / cargado / en camino), no
+     * solo desde «en camino»: el app entrega con el POD aunque nunca se haya registrado un evento de salida
+     * del camión (OnTheWay lo emite el inicio de ruta, que puede faltar) e incluso sin escaneo de carga
+     * (POD directo desde preparado, igual que el agregado Delivery de execution). Antes solo se permitía
+     * Loaded→OnTheWay, así que un `ShipmentDelivered` que llegaba en estado Cargado se descartaba en silencio
+     * y el envío quedaba atascado en «Cargada». Un hecho de entrega nunca debe perderse por la guardia.
+     *
      * @return list<self>
      */
     public function allowedNext(): array
@@ -59,8 +66,8 @@ enum VisibleStatus: string
         return match ($this) {
             self::Pending => [self::Processing, self::Cancelled],
             self::Processing => [self::InProgress, self::Cancelled, self::Rescheduled],
-            self::InProgress => [self::Loaded, self::Cancelled, self::Rescheduled],
-            self::Loaded => [self::OnTheWay, self::Cancelled, self::Rescheduled],
+            self::InProgress => [self::Loaded, self::OnTheWay, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
+            self::Loaded => [self::OnTheWay, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
             self::OnTheWay => [self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
             self::Failed => [self::OnTheWay, self::Rescheduled, self::Cancelled],
             self::Rescheduled => [self::Processing],
