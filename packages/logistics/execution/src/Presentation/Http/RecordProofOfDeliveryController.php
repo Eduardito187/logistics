@@ -7,6 +7,10 @@ namespace Logistics\Execution\Presentation\Http;
 use App\Http\Problem\ErrorCode;
 use App\Http\Problem\ProblemDetails;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\UploadedFile;
+use Logistics\Execution\Application\Contract\EvidenceStorage;
+use Logistics\Execution\Domain\Exception\ExecutionException;
+use Logistics\Execution\Domain\ValueObject\EvidenceKind;
 use Logistics\Execution\Presentation\Http\Request\ProofOfDeliveryRequest;
 use Logistics\Execution\Presentation\Http\Support\ScanCommandFactory;
 use Logistics\Execution\Presentation\Http\Support\StoreNodeScope;
@@ -25,7 +29,7 @@ use Logistics\Execution\Presentation\Http\Support\StoreNodeScope;
  */
 final class RecordProofOfDeliveryController extends ExecutionController
 {
-    public function __invoke(ProofOfDeliveryRequest $request): JsonResponse
+    public function __invoke(ProofOfDeliveryRequest $request, EvidenceStorage $storage): JsonResponse
     {
         /** @var array<string, mixed> $data */
         $data = $request->validated();
@@ -34,6 +38,20 @@ final class RecordProofOfDeliveryController extends ExecutionController
 
         if (!StoreNodeScope::allows($request->user(), $shipmentId)) {
             return ProblemDetails::fromCode(ErrorCode::Forbidden, StoreNodeScope::DENIED_DETAIL)->toResponse($request);
+        }
+
+        // Foto INLINE (opcional): si la app mandó el archivo en el MISMO request (multipart `photo`), se
+        // guarda acá —mismo disco de evidencia que POST /app/deliveries/photos— y se liga como `photo_path`
+        // en la misma operación. Si la subida inline falla, el POD NO se bloquea (offline-first): la entrega
+        // se cierra igual y la foto se liga aparte después. Así conviven AMBOS flujos (inline y asíncrono).
+        $photo = $request->file('photo');
+        if ($photo instanceof UploadedFile) {
+            try {
+                $stored = $storage->store(EvidenceKind::ProofOfDelivery, $shipmentId, $photo, $this->idempotencyKey($request));
+                $data['photo_path'] = $stored->path;
+            } catch (ExecutionException $exception) {
+                report($exception);
+            }
         }
 
         $this->commandBus->dispatch(ScanCommandFactory::proofOfDelivery(

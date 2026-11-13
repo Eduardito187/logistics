@@ -1,0 +1,174 @@
+{{-- Mapa del plan de reparto sobre OpenStreetMap (Leaflet, sin API key), siguiendo el patrón del mapa de --}}
+{{-- la ruta de ejecución. Muestra las paradas numeradas en orden de visita y la línea planificada (azul) --}}
+{{-- siguiendo calles reales, dibujada desde la geometría ya PERSISTIDA por Planning en --}}
+{{-- planning_plans.route_geometry; si falta, respaldo a OSRM del navegador y, en última instancia, línea --}}
+{{-- recta punteada entre las paradas. CERO CDN: Leaflet y las teselas salen del self-host vía el helper --}}
+{{-- compartido window.DismacMaps.tileLayer. --}}
+<div>
+    <div wire:ignore>
+        <div id="{{ $mapId }}" style="height: 60vh; width: 100%; border-radius: 0.5rem; z-index: 0;"></div>
+    </div>
+
+    <div class="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+        <span class="inline-flex items-center gap-2">
+            <span style="display:inline-block;width:18px;border-top:3px solid #2563eb;"></span>
+            {{ __('Planned route') }}
+        </span>
+        @if (empty($stops))
+            <span>{{ __('No geolocated stops to display on the map.') }}</span>
+        @endif
+    </div>
+
+    @assets
+        <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
+        <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
+        <script src="{{ asset('js/dismac-maps.js') }}"></script>
+    @endassets
+
+    @script
+    <script>
+        const el = document.getElementById(@js($mapId));
+        const stops = @js($stops);
+        // Geometría de la línea planificada resuelta en el servidor (persistida por Planning). Si viene con
+        // puntos, se dibuja directo (sin tocar OSRM del navegador).
+        const plannedGeometry = @js($plannedGeometry);
+        // Línea recta entre paradas en secuencia: respaldo cuando no hay geometría persistida ni OSRM.
+        const planned = @js($planned);
+        // Host de OSRM (ruteador de OpenStreetMap): respaldo de la línea planificada.
+        const osrmHost = @js(rtrim(config('logistics-planning.osrm_host', 'https://router.project-osrm.org'), '/'));
+
+        // Escapa texto para los popups (los datos vienen del admin, pero evitamos romper el HTML).
+        const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        })[c]);
+
+        // Si Livewire re-ejecuta el script sobre el mismo contenedor (wire:ignore lo conserva), Leaflet lanza
+        // "Map container is already initialized" y el script entero aborta: se descarta el mapa previo.
+        if (el._dismacMap) {
+            try { el._dismacMap.remove(); } catch (e) {}
+            el._dismacMap = null;
+        }
+        if (el._leaflet_id) {
+            el._leaflet_id = null;
+        }
+        const map = L.map(el).setView([-16.5, -68.15], 11); // Bolivia
+        el._dismacMap = map;
+        // Teselas vía el helper compartido (self-host con respaldo a OSM público si el self-host no responde).
+        window.DismacMaps.tileLayer(L, {
+            url: @js(config('maps.tile_url')),
+            fallbackUrl: @js(config('maps.tile_fallback_url')),
+            attribution: @js(config('maps.tile_attribution', '&copy; OpenStreetMap')),
+            maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
+        }).addTo(map);
+
+        const group = L.featureGroup().addTo(map);
+        // Línea planificada que sigue calles reales (geometría persistida u OSRM): azul sólida.
+        const plannedStyle = { color: '#2563eb', weight: 4, opacity: 0.85 };
+        // Respaldo de línea recta entre paradas: azul punteada, para que se note que es una aproximación.
+        const plannedStraightStyle = { color: '#2563eb', weight: 3, opacity: 0.7, dashArray: '6,8' };
+
+        // Reajusta el encuadre para que entren todas las capas (se llama de nuevo al llegar respuesta OSRM).
+        const fit = () => {
+            if (group.getLayers().length) {
+                try { map.fitBounds(group.getBounds().pad(0.2)); } catch (e) {}
+            }
+        };
+
+        // Trazado planificado. SIEMPRE hay línea azul, sin depender del navegador:
+        //  1) geometría resuelta en el SERVIDOR (persistida por Planning): directo.
+        //  2) si no vino, se dibuja YA la recta punteada entre paradas y, en segundo plano, se intenta OSRM
+        //     /route del navegador con tope de tiempo; si responde, reemplaza a la recta.
+        let plannedStraightLayer = null;
+        const drawPlannedStraight = () => {
+            if (planned.length > 1 && plannedStraightLayer === null) {
+                plannedStraightLayer = L.polyline(planned, plannedStraightStyle).addTo(group);
+                fit();
+            }
+        };
+
+        const drawPlannedFromOsrm = () => {
+            if (planned.length < 2) {
+                return;
+            }
+            // OSRM espera "lng,lat" separados por ";"; nuestras paradas vienen como [lat, lng].
+            const coords = planned.map((p) => p[1] + ',' + p[0]).join(';');
+            const url = osrmHost + '/route/v1/driving/' + coords + '?overview=full&geometries=geojson';
+            const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            if (controller) {
+                setTimeout(() => controller.abort(), 8000);
+            }
+
+            fetch(url, controller ? { signal: controller.signal } : {})
+                .then((r) => (r.ok ? r.json() : Promise.reject(new Error('osrm http ' + r.status))))
+                .then((data) => {
+                    const geometry = data && data.code === 'Ok' && data.routes && data.routes[0]
+                        && data.routes[0].geometry;
+                    const line = geometry && geometry.coordinates;
+                    if (!Array.isArray(line) || line.length < 2) {
+                        throw new Error('osrm sin geometría');
+                    }
+                    // GeoJSON entrega [lng, lat]; Leaflet dibuja con [lat, lng].
+                    const latlngs = line.map((c) => [c[1], c[0]]);
+                    if (plannedStraightLayer !== null) {
+                        group.removeLayer(plannedStraightLayer);
+                    }
+                    L.polyline(latlngs, plannedStyle).addTo(group);
+                    fit();
+                })
+                .catch(() => drawPlannedStraight());
+        };
+
+        const drawPlanned = () => {
+            if (Array.isArray(plannedGeometry) && plannedGeometry.length > 1) {
+                L.polyline(plannedGeometry, plannedStyle).addTo(group);
+                fit();
+                return;
+            }
+            drawPlannedStraight();
+            drawPlannedFromOsrm();
+        };
+
+        drawPlanned();
+
+        // Marcadores numerados de cada parada, en orden de visita. Se guardan por secuencia para poder
+        // centrarlos desde las tarjetas de parada (clic en toda la tarjeta).
+        const markersBySeq = {};
+        stops.forEach((s) => {
+            const icon = L.divIcon({
+                className: 'plan-stop-marker',
+                html: '<div style="background:#2563eb;color:#fff;border-radius:9999px;width:26px;height:26px;'
+                    + 'display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;'
+                    + 'border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">' + esc(s.seq) + '</div>',
+                iconSize: [26, 26],
+                iconAnchor: [13, 13],
+            });
+            let popup = '<strong>#' + esc(s.seq) + ' · ' + esc(s.order) + '</strong><br>' + esc(s.customer);
+            if (s.address) { popup += '<br>' + esc(s.address); }
+            if (s.eta) { popup += '<br>ETA: ' + esc(s.eta); }
+            const marker = L.marker([s.lat, s.lng], { icon }).bindPopup(popup).addTo(group);
+            markersBySeq[String(s.seq)] = marker;
+        });
+
+        fit();
+
+        // El contenedor puede estar oculto al crearse; recalcular tamaño cuando ya es visible y reencuadrar.
+        setTimeout(() => { map.invalidateSize(); fit(); }, 300);
+
+        // Centra y abre el marcador de una parada. Se expone como función global para que, al hacer clic en
+        // toda la tarjeta de una parada (abajo), el mapa haga zoom a su punto y abra su globo. Hay un solo
+        // mapa por página (vista de un plan), así que una única función global basta.
+        const focusStop = (seq) => {
+            const marker = markersBySeq[String(seq)];
+            if (!marker) {
+                return;
+            }
+            map.invalidateSize();
+            map.setView(marker.getLatLng(), Math.max(map.getZoom(), 15), { animate: true });
+            marker.openPopup();
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
+
+        window.focusPlanStop = focusStop;
+    </script>
+    @endscript
+</div>

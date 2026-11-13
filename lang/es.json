@@ -2039,5 +2039,11 @@
     "Requirement removed": "Requisito quitado",
     "Add shipment requirement": "Agregar requisito de envío",
     "Could not save the requirement": "No se pudo guardar el requisito",
-    "Routing restrictions": "Restricciones de ruteo"
+    "Routing restrictions": "Restricciones de ruteo",
+    "Camera": "Cámara",
+    "Turn the camera on to scan, or type the code below.": "Encendé la cámara para escanear, o tipeá el código abajo.",
+    "Open the scanner to turn on the camera and read a label QR or Zebra barcode, or type the code by hand.": "Abrí el escáner para encender la cámara y leer el QR o el código de barras Zebra de la etiqueta, o tipeá el código a mano.",
+    "Draw the geofence polygon on the map. Use the edit tools to adjust or remove it.": "Dibujá el polígono de la geocerca en el mapa. Usá las herramientas de edición para ajustarlo o quitarlo.",
+    "Zone name is required": "El nombre de la zona es obligatorio",
+    "Zone name is too long": "El nombre de la zona es demasiado largo"
 }

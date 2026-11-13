@@ -17,7 +17,9 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\FontWeight;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -300,28 +302,76 @@ final class PlanResource extends Resource
                         ->color(static fn (string $state): string => self::statusColor($state)),
                 ])
                 ->columns(2),
-            Section::make(__('Stops'))
+            // Mapa del plan sobre OpenStreetMap: paradas numeradas en orden de visita y el trazado de la
+            // ruta (geometría persistida en planning_plans.route_geometry, o línea recta de respaldo).
+            Section::make(__('Route map'))
+                ->schema([
+                    View::make('filament.planning.plan-map')
+                        ->viewData(static fn (PlanRecord $record): array => self::mapData($record))
+                        ->columnSpanFull(),
+                ])
+                ->columnSpanFull(),
+            // Paradas en tarjetas legibles (no una tabla plana): número grande, pedido y cliente con
+            // jerarquía, y ETA / carril como chips. Un clic en toda la tarjeta centra su punto en el mapa.
+            Section::make(__('Stops in delivery order'))
                 ->schema([
                     RepeatableEntry::make('stops')
-                        ->label('')
+                        ->hiddenLabel()
+                        ->grid(['default' => 1, 'md' => 2, 'xl' => 3])
                         ->schema([
-                            TextEntry::make('sequence')->label('#'),
-                            // Foto legible del destino guardada en la parada (no el UUID del envío).
+                            TextEntry::make('sequence')
+                                ->label(__('#'))
+                                ->badge()
+                                ->color('primary')
+                                ->weight(FontWeight::Bold),
+                            // Pedido por su referencia humana (nunca el UUID del envío).
                             TextEntry::make('order_reference')
                                 ->label(__('Order'))
-                                ->placeholder(static fn ($record): string => $record?->shipment->external_id ?? '—'),
+                                ->weight(FontWeight::Bold)
+                                ->placeholder(static fn (?PlannedStopRecord $record): string => $record?->shipment->external_id ?? '—')
+                                ->columnSpanFull(),
                             TextEntry::make('customer_name')
                                 ->label(__('Customer'))
-                                ->placeholder(static fn ($record): string => $record?->shipment->customer_name ?? '—'),
+                                ->placeholder(static fn (?PlannedStopRecord $record): string => $record?->shipment->customer_name ?? '—')
+                                ->columnSpanFull(),
                             TextEntry::make('address')
                                 ->label(__('Address'))
-                                ->placeholder(static fn ($record): string => $record?->shipment->address_text ?? '—'),
-                            TextEntry::make('eta')->label(__('ETA'))->dateTime()->placeholder('—'),
-                            TextEntry::make('eta_minutes')->label(__('ETA (min from departure)'))->placeholder('—'),
-                            TextEntry::make('lane')->label(__('Load lane'))->placeholder('—'),
+                                ->color('gray')
+                                ->placeholder(static fn (?PlannedStopRecord $record): string => $record?->shipment->address_text ?? '—')
+                                ->columnSpanFull(),
+                            TextEntry::make('eta')
+                                ->label(__('ETA'))
+                                ->badge()
+                                ->color('info')
+                                ->icon('heroicon-o-clock')
+                                ->dateTime()
+                                ->placeholder('—'),
+                            TextEntry::make('eta_minutes')
+                                ->label(__('ETA (min from departure)'))
+                                ->badge()
+                                ->color('gray')
+                                ->placeholder('—'),
+                            TextEntry::make('lane')
+                                ->label(__('Load lane'))
+                                ->badge()
+                                ->color('warning')
+                                ->icon('heroicon-o-queue-list')
+                                ->placeholder('—'),
+                            // Hace clickeable el recuadro ENTERO de la parada: un clic en cualquier parte de
+                            // la tarjeta centra y abre su punto en el mapa de arriba. Solo cableado, va oculto.
+                            View::make('filament.planning.plan-stop-clickable')
+                                ->viewData(static fn (PlannedStopRecord $record): array => [
+                                    'seq' => (int) $record->sequence,
+                                    // Solo las paradas con coordenadas tienen marcador en el mapa; sin ellas
+                                    // no se hacen clickeables (no hay punto que mostrar).
+                                    'hasPoint' => self::coordinate($record->shipment?->lat) !== null
+                                        && self::coordinate($record->shipment?->lng) !== null,
+                                ])
+                                ->columnSpanFull(),
                         ])
-                        ->columns(7),
-                ]),
+                        ->columns(2),
+                ])
+                ->columnSpanFull(),
         ]);
     }
 
@@ -637,6 +687,102 @@ final class PlanResource extends Resource
     private static function coordinate(mixed $value): ?float
     {
         return is_numeric($value) ? (float) $value : null;
+    }
+
+    /**
+     * Datos del mapa del plan (coordenadas ya resueltas) para la vista Blade con Leaflet + OSM.
+     *
+     * - stops: paradas con coordenadas, en orden de visita, para los marcadores numerados y sus popups
+     *   (pedido por referencia, cliente por nombre, dirección y ETA; nunca el UUID del envío).
+     * - plannedGeometry: polilínea del trazado SIGUIENDO CALLES ya persistida por Planning en
+     *   planning_plans.route_geometry (jsonb). Si está presente, el mapa la dibuja directo sin OSRM del
+     *   navegador. Puede venir vacía (plan sin geometría aún).
+     * - planned: línea recta que une las paradas en secuencia; respaldo cuando no hay geometría persistida.
+     *
+     * Las coordenadas las aporta el envío (planning_plan_stops no guarda lat/lng); las paradas sin
+     * geocodificar se omiten del mapa.
+     *
+     * @return array{mapId: string, stops: list<array{seq: int, lat: float, lng: float, order: string, customer: string, address: string, eta: string}>, plannedGeometry: list<array{0: float, 1: float}>, planned: list<array{0: float, 1: float}>}
+     */
+    private static function mapData(PlanRecord $record): array
+    {
+        $points = [];
+        $planned = [];
+
+        foreach ($record->stops()->with('shipment')->get() as $stop) {
+            $shipment = $stop->shipment;
+            $lat = self::coordinate($shipment?->lat);
+            $lng = self::coordinate($shipment?->lng);
+
+            if ($lat === null || $lng === null) {
+                // Parada sin geocodificar: se omite del mapa (no se puede dibujar).
+                continue;
+            }
+
+            $eta = $stop->eta;
+
+            $points[] = [
+                'seq' => (int) $stop->sequence,
+                'lat' => $lat,
+                'lng' => $lng,
+                'order' => $stop->order_reference ?? $shipment?->external_id ?? '—',
+                'customer' => $stop->customer_name ?? $shipment?->customer_name ?? '—',
+                'address' => $stop->address ?? $shipment?->address_text ?? '',
+                'eta' => $eta !== null ? substr((string) $eta, 0, 16) : '',
+            ];
+            $planned[] = [$lat, $lng];
+        }
+
+        return [
+            'mapId' => 'plan-map-'.$record->getKey(),
+            'stops' => $points,
+            'plannedGeometry' => self::normalizeGeometry($record->route_geometry),
+            'planned' => $planned,
+        ];
+    }
+
+    /**
+     * Normaliza la geometría persistida (planning_plans.route_geometry) a una lista de pares [lat, lng]
+     * lista para Leaflet. Acepta un objeto GeoJSON LineString ({"type":"LineString","coordinates":[...]})
+     * o directamente la lista de coordenadas [[lng,lat],...] (orden GeoJSON: longitud primero, como OSRM).
+     * Ante cualquier forma inesperada devuelve [] para que el mapa degrade a la línea recta sin romperse.
+     * Exige al menos dos puntos para ser una línea dibujable.
+     *
+     * @return list<array{0: float, 1: float}>
+     */
+    private static function normalizeGeometry(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            /** @var mixed $raw */
+            $raw = json_decode($raw, true);
+        }
+
+        if (is_array($raw) && isset($raw['coordinates']) && is_array($raw['coordinates'])) {
+            $raw = $raw['coordinates'];
+        }
+
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $line = [];
+        foreach ($raw as $pair) {
+            if (!is_array($pair) || !array_key_exists(0, $pair) || !array_key_exists(1, $pair)) {
+                return [];
+            }
+
+            $lng = self::coordinate($pair[0]);
+            $lat = self::coordinate($pair[1]);
+
+            if ($lat === null || $lng === null) {
+                return [];
+            }
+
+            // Persistido como [lng, lat] (GeoJSON); Leaflet dibuja con [lat, lng].
+            $line[] = [$lat, $lng];
+        }
+
+        return count($line) >= 2 ? $line : [];
     }
 
     /**
