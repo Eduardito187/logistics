@@ -19,7 +19,7 @@ final readonly class Percentage
     {
         if ($bps < 0 || $bps > self::MAX_BPS) {
             throw CompensationException::because(
-                "El porcentaje debe estar entre 0 y ".self::MAX_BPS." bps (recibido: {$bps}).",
+                'El porcentaje debe estar entre 0 y '.self::MAX_BPS." bps (recibido: {$bps}).",
             );
         }
 

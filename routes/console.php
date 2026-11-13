@@ -147,3 +147,29 @@ Schedule::command('logistics:tracking:send-survey-invitations')
     ->onOneServer()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Auto-slot (promise, Módulo 1): red de seguridad por si un reactor del outbox no asignó la ventana a un
+// envío que entró con fecha y sin franja. Cada 10 minutos, idempotente.
+Schedule::command('logistics:promise:autoslot-sweep')
+    ->everyTenMinutes()
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Auto-PUBLICACIÓN diaria de planes (Fase 3.2): publica los planes PROPOSED que pasan la PublishGate, tras
+// el auto-plan de las 21:00. APAGADA por defecto (PLANNING_AUTO_PUBLISH_ENABLED=false); idempotente.
+Schedule::command('logistics:planning:auto-publish')
+    ->dailyAt((string) config('logistics-planning.auto_publish.at', '21:45'))
+    ->timezone('America/La_Paz')
+    ->when(static fn (): bool => (bool) config('logistics-planning.auto_publish.enabled', false))
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Vencimiento de vales de compensación: marca VENCIDOS los vales emitidos cuyo plazo pasó. Diario 00:15,
+// idempotente.
+Schedule::command('logistics:compensation:expire-vouchers')
+    ->dailyAt('00:15')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();

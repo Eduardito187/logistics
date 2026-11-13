@@ -32,7 +32,7 @@ final readonly class ExpireVouchersHandler implements CommandHandler
         $now = $this->clock->now();
         foreach ($this->vouchers->idsExpiredAsOf($now, $command->limit) as $id) {
             $voucher = $this->vouchers->findById($id);
-            if ($voucher === null || ! $voucher->expire($now)) {
+            if ($voucher === null || !$voucher->expire($now)) {
                 continue;
             }
             $this->vouchers->save($voucher);

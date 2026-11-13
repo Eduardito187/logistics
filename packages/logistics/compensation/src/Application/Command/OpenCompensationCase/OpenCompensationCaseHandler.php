@@ -25,7 +25,7 @@ use Logistics\Shared\Application\Command\CommandHandler;
 use Logistics\Shared\Domain\Clock\Clock;
 
 /**
- * Abre el caso: resuelve la base, calcula el monto efectivo con el {@see VoucherCalculator}, decide el nivel
+ * Abre el caso: resuelve la base, calcula el monto efectivo con el VoucherCalculator, decide el nivel
  * de aprobación y persiste. Si el nivel es AUTO (monto bajo + disparador auto-aprobable con evidencia), ENCADENA
  * la aprobación por el sistema y emite el vale en la misma transacción. Idempotente por clave.
  *

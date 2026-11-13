@@ -41,7 +41,7 @@ final readonly class ValidateVoucherHandler implements QueryHandler
             return VoucherValidityView::notFound();
         }
 
-        if ($query->customerEmail !== null && ! $voucher->belongsTo($query->customerEmail)) {
+        if ($query->customerEmail !== null && !$voucher->belongsTo($query->customerEmail)) {
             return VoucherValidityView::invalid('voucher_holder_mismatch', $voucher->status()->value, $voucher->amount());
         }
 

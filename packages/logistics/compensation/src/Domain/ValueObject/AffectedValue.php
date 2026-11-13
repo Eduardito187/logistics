@@ -38,7 +38,7 @@ final readonly class AffectedValue
 
         $base = Money::zero();
         foreach ($lines as $line) {
-            if (! $line->unitPrice->isBob()) {
+            if (!$line->unitPrice->isBob()) {
                 throw CompensationException::because(
                     "No hay emisión automática si la línea no es BOB (SKU {$line->sku}).",
                 );

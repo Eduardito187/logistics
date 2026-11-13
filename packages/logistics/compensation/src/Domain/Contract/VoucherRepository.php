@@ -23,8 +23,8 @@ interface VoucherRepository
 
     /**
      * Busca por código. El canje usa un bloqueo pesimista (SELECT … FOR UPDATE) para que dos canjes
-     * concurrentes del mismo código no ganen los dos; eso lo decide la implementación con {@see
-     * self::findByCodeForUpdate()}.
+     * concurrentes del mismo código no ganen los dos; eso lo decide la implementación con
+     * findByCodeForUpdate().
      */
     public function findByCode(VoucherCode $code): ?Voucher;
 

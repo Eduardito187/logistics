@@ -105,6 +105,8 @@ use Logistics\FleetOps\Domain\Contract\VehicleProfileRepository;
 use Logistics\FleetOps\Infrastructure\Console\AlertDueMaintenanceCommand;
 use Logistics\FleetOps\Infrastructure\Fleet\FleetTableVehicleFitnessGate;
 use Logistics\FleetOps\Infrastructure\Fleet\FleetTableVehiclePlateDirectory;
+use Logistics\FleetOps\Infrastructure\Outbox\CloseDepartureOnRouteClosed;
+use Logistics\FleetOps\Infrastructure\Outbox\OpenDepartureOnRouteStarted;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Repository\EloquentDepartureRepository;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Repository\EloquentExpenseRepository;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Repository\EloquentFuelPriceRepository;
@@ -210,6 +212,12 @@ final class FleetOpsServiceProvider extends ServiceProvider
         foreach (self::REPOSITORIES as $contract => $implementation) {
             $this->app->bind($contract, $implementation);
         }
+
+        // Reactores del outbox (Fase 3.3): abren/cierran la salida de flota según la ruta del chofer. El
+        // relay los compone por eventName (ver routing del outbox); se bindean para que el contenedor los
+        // resuelva con sus dependencias (bus de comandos + repositorio de salidas).
+        $this->app->bind(OpenDepartureOnRouteStarted::class);
+        $this->app->bind(CloseDepartureOnRouteClosed::class);
     }
 
     public function boot(): void

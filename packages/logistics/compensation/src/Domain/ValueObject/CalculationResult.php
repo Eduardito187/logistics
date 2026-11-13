@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Compensation\Domain\ValueObject;
 
 /**
- * Resultado del {@see \Logistics\Compensation\Domain\Service\VoucherCalculator}: el monto nominal (antes de
+ * Resultado del \Logistics\Compensation\Domain\Service\VoucherCalculator: el monto nominal (antes de
  * topes), el efectivo (después de topes y redondeo), si es compensable y la traza para auditoría.
  *
  * Si `compensable` es false, `notCompensableReason` explica por qué (p. ej. "E < mínimo") y el efectivo es 0.

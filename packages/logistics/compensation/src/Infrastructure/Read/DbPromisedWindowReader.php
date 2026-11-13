@@ -23,7 +23,7 @@ final readonly class DbPromisedWindowReader implements PromisedWindowReader
         $row = $this->db->table('shipments')
             ->where('id', $shipmentId)
             ->first(['delivery_date', 'delivery_window_end']);
-        if ($row === null || ! is_string($row->delivery_date)) {
+        if ($row === null || !is_string($row->delivery_date)) {
             return null;
         }
 

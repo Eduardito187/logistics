@@ -7,7 +7,7 @@ namespace Logistics\Compensation\Domain\ValueObject;
 use Logistics\Compensation\Domain\Exception\CompensationException;
 
 /**
- * Política completa de compensación: topes/umbrales globales + una {@see TriggerPolicy} por disparador.
+ * Política completa de compensación: topes/umbrales globales + una TriggerPolicy por disparador.
  *
  * Es PHP puro y su forma primitiva es cacheable (regla 7 de CLAUDE.md: se cachea el array, no el objeto).
  * La fuente real es la configuración versionada de `logistics/settings`; el provider de infraestructura
@@ -16,8 +16,8 @@ use Logistics\Compensation\Domain\Exception\CompensationException;
 final readonly class CompensationPolicy
 {
     /**
-     * @param array<string, TriggerPolicy> $triggers              por valor de TriggerType
-     * @param list<string>                  $compensableFailures  motivos de fallida que compensan
+     * @param array<string, TriggerPolicy> $triggers             por valor de TriggerType
+     * @param list<string>                 $compensableFailures  motivos de fallida que compensan
      */
     private function __construct(
         public int $cumulativePctBps,

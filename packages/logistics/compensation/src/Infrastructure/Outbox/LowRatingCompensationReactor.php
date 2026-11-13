@@ -38,7 +38,7 @@ final readonly class LowRatingCompensationReactor implements MessageDispatcher
         $payload = $message->payload();
         $shipmentId = $this->stringOrNull($payload['shipment_id'] ?? null);
         $rating = $payload['rating'] ?? null;
-        if ($shipmentId === null || ! is_int($rating)) {
+        if ($shipmentId === null || !is_int($rating)) {
             return;
         }
 

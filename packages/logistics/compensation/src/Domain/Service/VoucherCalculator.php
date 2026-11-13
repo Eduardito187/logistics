@@ -39,7 +39,7 @@ final readonly class VoucherCalculator
         $base = $affected->base;
         $trace = CalculationTrace::empty()->with('base', $base);
 
-        if (! $triggerPolicy->enabled) {
+        if (!$triggerPolicy->enabled) {
             return CalculationResult::notCompensable($base, 'El disparador está deshabilitado por política.', $trace);
         }
 

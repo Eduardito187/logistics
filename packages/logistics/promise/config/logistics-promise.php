@@ -23,5 +23,9 @@ return [
             // Sesgo a franjas más tempranas del día (desempate suave).
             'early' => (float) env('PROMISE_AUTOSLOT_WEIGHT_EARLY', 0.1),
         ],
+
+        // Horizonte (días desde hoy) que mira el barrido/cola "Unslotted" al buscar envíos con fecha y sin
+        // ventana. Acota el rango de fecha prometida que se consulta a envíos; default funcional.
+        'sweep_horizon_days' => (int) env('PROMISE_AUTOSLOT_SWEEP_HORIZON_DAYS', 30),
     ],
 ];

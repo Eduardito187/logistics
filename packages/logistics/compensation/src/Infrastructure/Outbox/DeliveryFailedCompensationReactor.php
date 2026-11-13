@@ -37,7 +37,7 @@ final readonly class DeliveryFailedCompensationReactor implements MessageDispatc
             return;
         }
 
-        if (! $this->policyProvider->current()->isFailureCompensable($reason)) {
+        if (!$this->policyProvider->current()->isFailureCompensable($reason)) {
             return;
         }
 

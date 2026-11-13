@@ -37,14 +37,14 @@ final readonly class TriggerPolicy
         int $validityDays,
     ): self {
         $method = strtolower(trim($method));
-        if (! in_array($method, [self::METHOD_PERCENTAGE, self::METHOD_FIXED], true)) {
+        if (!in_array($method, [self::METHOD_PERCENTAGE, self::METHOD_FIXED], true)) {
             throw CompensationException::because("Método de cálculo inválido: {$method}.");
         }
         if ($value < 0) {
             throw CompensationException::because('El valor de la política no puede ser negativo.');
         }
         if ($maxPctBps < 0 || $maxPctBps > Percentage::MAX_BPS) {
-            throw CompensationException::because("max_pct debe estar entre 0 y ".Percentage::MAX_BPS." bps.");
+            throw CompensationException::because('max_pct debe estar entre 0 y '.Percentage::MAX_BPS.' bps.');
         }
         if ($absCapCents < 0) {
             throw CompensationException::because('El tope absoluto no puede ser negativo.');

@@ -15,7 +15,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (! Schema::hasTable('compensation_vouchers')) {
+        if (!Schema::hasTable('compensation_vouchers')) {
             Schema::create('compensation_vouchers', function (Blueprint $table): void {
                 $table->uuid('id')->primary();
                 $table->uuid('case_id')->unique();
@@ -54,7 +54,7 @@ return new class extends Migration
         // Idempotente por IF NOT EXISTS. Patrón del índice parcial del outbox (memoria perf-scale).
         if (DB::getDriverName() === 'pgsql') {
             DB::statement(
-                "CREATE INDEX IF NOT EXISTS compensation_vouchers_expiring_idx "
+                'CREATE INDEX IF NOT EXISTS compensation_vouchers_expiring_idx '
                 ."ON compensation_vouchers (expires_at) WHERE status = 'issued'",
             );
         }

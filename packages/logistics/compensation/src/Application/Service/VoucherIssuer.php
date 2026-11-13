@@ -17,8 +17,7 @@ use Logistics\Shared\Domain\Clock\Clock;
 /**
  * Servicio de aplicación que emite el vale de un caso APROBADO: genera un código único (reintenta ante
  * colisión), calcula el vencimiento desde la política del disparador y persiste el vale con sus eventos al
- * outbox en la MISMA transacción. Lo usan {@see
- * \Logistics\Compensation\Application\Command\IssueVoucher\IssueVoucherHandler} y el auto-emitido del alta.
+ * outbox en la MISMA transacción. Lo usan el IssueVoucherHandler y el auto-emitido del alta de un caso.
  *
  * Idempotente por caso: si el caso ya tiene vale, lo devuelve sin crear otro.
  */

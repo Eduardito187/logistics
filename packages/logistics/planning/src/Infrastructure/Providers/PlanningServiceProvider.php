@@ -45,6 +45,7 @@ use Logistics\Planning\Application\Query\GetRouteQuality\GetRouteQuality;
 use Logistics\Planning\Application\Query\GetRouteQuality\GetRouteQualityHandler;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDate;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDateHandler;
+use Logistics\Planning\Application\Service\AutoPlanPublisher;
 use Logistics\Planning\Application\Service\PlanGeometryRefresher;
 use Logistics\Planning\Domain\Contract\AutoPlanRunRepository;
 use Logistics\Planning\Domain\Contract\AutoPlanSettingsProvider;
@@ -66,6 +67,7 @@ use Logistics\Planning\Domain\Contract\ShipmentCoordinatesProvider;
 use Logistics\Planning\Domain\Service\ClarkeWrightSolver;
 use Logistics\Planning\Domain\Service\DailyPlanComposer;
 use Logistics\Planning\Domain\Service\DepartmentRouteGrouping;
+use Logistics\Planning\Domain\Service\PublishGate;
 use Logistics\Planning\Domain\Service\RouteSequencer;
 use Logistics\Planning\Domain\Service\VehicleCompatibility;
 use Logistics\Planning\Infrastructure\Adapter\BlackoutAwarePendingDeliveryProvider;
@@ -93,6 +95,7 @@ use Logistics\Planning\Infrastructure\Routing\OsrmTripRoutingBackend;
 use Logistics\Planning\Infrastructure\Routing\VroomRoutingBackend;
 use Logistics\Planning\Infrastructure\Settings\ConfiguredAutoPlanSettings;
 use Logistics\Planning\Presentation\Console\AutoPlanNightlyCommand;
+use Logistics\Planning\Presentation\Console\AutoPublishPlansCommand;
 use Logistics\Planning\Presentation\Console\BackfillPlanGeometryCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 use Logistics\Shared\Application\Query\QueryBus;
@@ -213,6 +216,11 @@ final class PlanningServiceProvider extends ServiceProvider
         // null`) y el contenedor no autoinyecta un opcional que no esté registrado.
         $this->app->bind(PlanGeometryRefresher::class);
 
+        // Auto-publicación (Fase 3.2): la PublishGate es dominio puro (sin dependencias) y el publicador
+        // compone repositorio de planes, flota, carga y el bus de comandos (todos ya ligados arriba).
+        $this->app->bind(PublishGate::class);
+        $this->app->bind(AutoPlanPublisher::class);
+
         // Optimizador de ORDEN por camión (contrato RouteOptimizer, usado por la propuesta manual). Se
         // elige por el mismo backend configurado: builtin (matriz + 2-opt), osrm_trip (OSRM /trip) o, para
         // vroom, el builtin (VROOM resuelve el VRP completo, no el orden de un solo camión suelto).
@@ -328,7 +336,11 @@ final class PlanningServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([BackfillPlanGeometryCommand::class, AutoPlanNightlyCommand::class]);
+            $this->commands([
+                BackfillPlanGeometryCommand::class,
+                AutoPlanNightlyCommand::class,
+                AutoPublishPlansCommand::class,
+            ]);
         }
 
         /** @var HandlerRegistry $registry */

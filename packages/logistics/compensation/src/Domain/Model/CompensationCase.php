@@ -23,8 +23,8 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * Agregado raíz CASO DE COMPENSACIÓN: el problema y la decisión.
  *
  * Custodia las invariantes de aprobación: cuatro ojos (quien propone no aprueba), override solo a la baja,
- * un caso solo se decide una vez. El cálculo del monto lo hace el servicio {@see
- * \Logistics\Compensation\Domain\Service\VoucherCalculator}; el caso solo guarda el resultado y la traza.
+ * un caso solo se decide una vez. El cálculo del monto lo hace el servicio
+ * \Logistics\Compensation\Domain\Service\VoucherCalculator; el caso solo guarda el resultado y la traza.
  */
 final class CompensationCase extends AggregateRoot
 {

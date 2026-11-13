@@ -15,6 +15,7 @@ use Logistics\Compensation\Domain\ValueObject\Money;
 use Logistics\Compensation\Domain\ValueObject\VoucherCode;
 use Logistics\Compensation\Domain\ValueObject\VoucherId;
 use Logistics\Compensation\Domain\ValueObject\VoucherStatus;
+use Logistics\Shared\Domain\Event\DomainEvent;
 
 /**
  * Agregado raíz VALE: el crédito de un solo uso, nominativo, con código único y vencimiento.
@@ -31,7 +32,7 @@ final class Voucher
 
     public const string SYNC_FAILED = 'failed';
 
-    /** @var list<\Logistics\Shared\Domain\Event\DomainEvent> */
+    /** @var list<DomainEvent> */
     private array $events = [];
 
     private function __construct(
@@ -257,7 +258,7 @@ final class Voucher
      */
     public function recordSync(string $result, ?string $magentoRuleId = null): void
     {
-        if (! in_array($result, [self::SYNC_PENDING, self::SYNC_SYNCED, self::SYNC_FAILED], true)) {
+        if (!in_array($result, [self::SYNC_PENDING, self::SYNC_SYNCED, self::SYNC_FAILED], true)) {
             throw CompensationException::because("Resultado de sincronización inválido: {$result}.");
         }
         $this->magentoSyncStatus = $result;
@@ -286,7 +287,7 @@ final class Voucher
     /**
      * Libera los eventos acumulados y vacía el buffer (idempotente).
      *
-     * @return list<\Logistics\Shared\Domain\Event\DomainEvent>
+     * @return list<DomainEvent>
      */
     public function releaseEvents(): array
     {

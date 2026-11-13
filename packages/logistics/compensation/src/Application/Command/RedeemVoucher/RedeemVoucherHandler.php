@@ -40,7 +40,7 @@ final readonly class RedeemVoucherHandler implements CommandHandler
             throw CompensationException::because('Vale no encontrado.');
         }
 
-        if ($command->customerEmail !== null && ! $voucher->belongsTo($command->customerEmail)) {
+        if ($command->customerEmail !== null && !$voucher->belongsTo($command->customerEmail)) {
             throw CompensationException::because('El vale pertenece a otro cliente.');
         }
 
