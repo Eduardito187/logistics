@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Presentation\Http\Request;
 
 use Closure;
+use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Validator;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
 use Logistics\Execution\Presentation\Http\Support\ScanCommandFactory;
@@ -72,6 +73,13 @@ final class ProofOfDeliveryRequest extends ScanRequest
             'photo_path' => ['nullable', 'string', 'max:1024'],
             'photo_paths' => ['sometimes', 'array', 'min:1', 'max:20'],
             'photo_paths.*' => ['required', 'string', 'max:1024'],
+            // Foto INLINE (opcional): la app puede subir la foto EN EL MISMO request del POD como archivo
+            // multipart `photo`, además del flujo asíncrono (subirla aparte y mandar `photo_path`). AMBOS
+            // valen. Imagen, hasta 10 MB — mismo límite que POST /app/deliveries/photos. La regla-objeto
+            // File::image() se usa a propósito (patrón limpio para el análisis de content-length). El
+            // controller la guarda tras validar y setea `photo_path`; si la subida inline falla, el POD NO
+            // se bloquea (offline-first) y la foto se liga aparte.
+            'photo' => ['sometimes', 'nullable', File::image()->max(10 * 1024)],
             'evidence_ids' => ['sometimes', 'array', 'max:20'],
             'evidence_ids.*' => ['required', 'uuid'],
         ]);

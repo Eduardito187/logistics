@@ -161,7 +161,7 @@ it('permite la prueba de entrega desde Prepared (flujo sin escaneo de carga): en
     expect($delivery->status())->toBe(DeliveryStatus::Delivered);
 });
 
-it('rejects proof of delivery on an already-closed delivery', function (): void {
+it('is idempotent on an already-delivered delivery (re-POD is a no-op)', function (): void {
     $delivery = Delivery::reconstitute(
         newDelivery()->id(),
         's-closed',
@@ -172,14 +172,18 @@ it('rejects proof of delivery on an already-closed delivery', function (): void 
         null,
     );
 
-    expect(fn () => $delivery->recordProofOfDelivery(
+    // Un POD sobre una entrega YA entregada (p. ej. la cola offline reintenta con otra clave) es un no-op
+    // EXITOSO, no un error de transición (decisión del dueño: un reintento no debe figurar como fallo).
+    $delivery->recordProofOfDelivery(
         'u-1',
         ProofOfDelivery::of('QR', null, at('2026-10-13T12:00:00+00:00')),
         geo(),
         device(),
         at('2026-10-13T12:00:00+00:00'),
         'k-pod',
-    ))->toThrow(ExecutionException::class, 'transición inválida');
+    );
+
+    expect($delivery->status())->toBe(DeliveryStatus::Delivered);
 });
 
 it('rejects loading a delivery that was never prepared', function (): void {

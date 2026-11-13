@@ -263,13 +263,15 @@ code, kbd, samp, pre,
 }
 
 /* ---- KPI tile / pulso ---- */
+/* Mosaicos del pulso: MÁXIMO 3 por fila, responsivo (1 móvil → 2 tablet → 3 escritorio). Antes saltaban
+   a 6 en una sola fila y quedaban apiñados; con el tope en 3 el 4.º/5.º/6.º bajan a una segunda fila. */
 .distrack-cockpit .ck-pulse {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(1, minmax(0, 1fr));
     gap: 0.75rem;
 }
-@media (min-width: 640px)  { .distrack-cockpit .ck-pulse { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (min-width: 1024px) { .distrack-cockpit .ck-pulse { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (min-width: 640px)  { .distrack-cockpit .ck-pulse { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .distrack-cockpit .ck-pulse { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 .distrack-cockpit .ck-stat {
     background: var(--ck-card);
