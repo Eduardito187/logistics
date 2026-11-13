@@ -12,6 +12,24 @@ description: >-
 Objetivo: cerrar el PR en verde **en una sola pasada**. El loop histórico viene de arreglar issues de
 ruido que **no** bloquean el gate, y de adivinar cuál bloquea. No adivinar: **consultar la API de Sonar**.
 
+## Paso 0 — ¿El fix llegó al CI? (el CI corre el commit PUSHEADO, no tu working tree)
+
+Antes de re-diagnosticar nada: **si el dueño pega el MISMO error de CI byte-por-byte igual tras un "fix", el
+fix casi seguro NO está commiteado/pusheado.** El CI buildea el commit del remoto, no tu working tree. Chequear:
+`git status --short` (¿el archivo sale como `M`/`??`?) y `git show HEAD:<archivo> | grep <lo-que-arreglaste>`
+(¿está en HEAD?). Si el fix está solo en el working tree, decirle que falta `git add/commit/push` (por la regla
+de no commitear sin pedido explícito no lo hago solo; ofrecer hacerlo si lo autoriza en el turno). Caso real
+2026-11-13: `composer.lock` arreglado pero sin commitear → el dueño pegó el error idéntico dos veces.
+
+## Paso 0b — `composer install` FATAL: package nuevo ausente del lock
+
+`Error: Required package "logistics/<ctx>" is not present in the lock file.` (exit 4) = un package nuevo quedó
+en `require` del `composer.json` pero **`composer.lock` no se regeneró**. NO es un bug de código. Fix normal
+(dueño): `composer update logistics/<ctx>`. Fix a mano sin docker: insertar la entrada en el array `packages`
+del lock espejando una entrada `path` existente (molde `logistics/carriers`), en orden alfabético; validar con
+`python -c "json.load(...)"`. El `content-hash` desfasado solo da el warning cosmético *"lock file is not up to
+date"* (NO frena el install). Detalle: [[new-package-composer-lock]], [[bounded-context]] paso 5.
+
 ## Regla de oro: el Quality Gate SOLO falla por 3 cosas
 
 En **New Code** (el diff del PR), el gate falla por:

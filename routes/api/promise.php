@@ -8,8 +8,10 @@ use Logistics\Promise\Presentation\Http\Controllers\ConfirmPromiseController;
 use Logistics\Promise\Presentation\Http\Controllers\ExpireReservationController;
 use Logistics\Promise\Presentation\Http\Controllers\GetPromiseController;
 use Logistics\Promise\Presentation\Http\Controllers\ListAvailableSlotsController;
+use Logistics\Promise\Presentation\Http\Controllers\ListDeliveryDatesController;
 use Logistics\Promise\Presentation\Http\Controllers\ListMunicipalityPromiseController;
 use Logistics\Promise\Presentation\Http\Controllers\QuotePromiseController;
+use Logistics\Promise\Presentation\Http\Controllers\ReserveDeliveryDateController;
 use Logistics\Promise\Presentation\Http\Controllers\ReserveDeliverySlotController;
 use Logistics\Promise\Presentation\Http\Controllers\ReserveMunicipalitySlotController;
 use Logistics\Promise\Presentation\Http\Controllers\ReservePromiseController;
@@ -41,6 +43,12 @@ return [
 
             // Franjas disponibles para ofrecer antes de cotizar (cupo real por zona/fecha en capacity).
             Route::get('promises/available-slots', ListAvailableSlotsController::class)->name('slots.index');
+
+            // Módulo 1 (slotting automático) — DÍAS ofrecibles para un destino: el canal muestra solo fechas
+            // con al menos una ventana factible; el sistema elige la franja al reservar.
+            Route::get('promises/delivery-dates', ListDeliveryDatesController::class)->name('delivery-dates.index');
+            // Módulo 1 — reserva POR FECHA: el cliente eligió solo el día y el sistema le asigna la ventana.
+            Route::post('shipments/date-reservation', ReserveDeliveryDateController::class)->name('shipments.date.reserve');
 
             // Reserva directa de una franja de despacho para un pedido: consume cupo y la fija en el envío.
             Route::post('delivery-slots', ReserveDeliverySlotController::class)->name('delivery-slots.reserve');

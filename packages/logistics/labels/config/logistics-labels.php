@@ -27,6 +27,29 @@ return [
     // Valores: 'qr' (solo QR firmado), 'barcode' (solo Code128 con el id del bulto) o 'both' (ambos).
     'symbology' => env('LABELS_SYMBOLOGY', 'both'),
 
+    // Tamaño/perfil de la etiqueta (roadmap 03 — Etiquetas Lite/chicas). Como la simbología, NO es un
+    // secreto: es una regla operativa versionada en `logistics/settings` bajo la clave `labels.size`. Este
+    // bloque es solo el DEFAULT cuando no hay versión publicada. El tamaño es un atributo de PRESENTACIÓN:
+    // la misma etiqueta se reimprime en cualquier perfil sin cambiar su id ni el QR firmado.
+    'size' => [
+        // Perfil por defecto: 'standard' (100x75), 'lite' (50x25), 'lite_40x30' o 'micro'. Decisión del
+        // dueño (§7): el DEFAULT global es 'standard' (nada cambia si no hay regla ni medida chica).
+        'default_profile' => env('LABELS_DEFAULT_SIZE_PROFILE', 'standard'),
+
+        // Perfil que se usa para los productos «chicos» (por regla o por medidas). DEFAULT recomendado: lite.
+        'small_profile' => env('LABELS_SMALL_SIZE_PROFILE', 'lite'),
+
+        // Umbrales de medidas con los que un producto se considera «chico» y entra en el perfil chico.
+        // Un producto es chico si su lado más largo (cm) <= max_longest_side_cm y, si se conoce, su peso
+        // (kg) <= max_weight_kg. null desactiva ese criterio. Sin medidas, nunca se adivina: va a 'standard'.
+        'small_max_longest_side_cm' => 25.0,
+        'small_max_weight_kg' => 2.0,
+
+        // Reglas por SKU (la primera que matchea gana): [{match: 'sku_exact'|'sku_prefix', value, profile}].
+        // Vacío por defecto; la operación las carga en Configuración › Labels › Label sizes.
+        'rules' => [],
+    ],
+
     // Origen (campo `org` del QR) de la EMISIÓN POR ORDEN (body vacío): el backend lo deriva por envío con
     // OriginCdSelector. El VALOR del `org` NO es contrato con la app (solo el formato canónico firmado lo
     // es), así que esta regla lo fija de forma estable. Ver Domain\Service\OriginCdSelector.

@@ -14,6 +14,8 @@ use Logistics\Promise\Application\Command\QuotePromise\QuotePromise;
 use Logistics\Promise\Application\Command\QuotePromise\QuotePromiseHandler;
 use Logistics\Promise\Application\Command\ReleasePromiseReservation\ReleasePromiseReservation;
 use Logistics\Promise\Application\Command\ReleasePromiseReservation\ReleasePromiseReservationHandler;
+use Logistics\Promise\Application\Command\ReserveDeliveryDate\ReserveDeliveryDate;
+use Logistics\Promise\Application\Command\ReserveDeliveryDate\ReserveDeliveryDateHandler;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlot;
 use Logistics\Promise\Application\Command\ReserveDeliverySlot\ReserveDeliverySlotHandler;
 use Logistics\Promise\Application\Command\ReserveMunicipalitySlot\ReserveMunicipalitySlot;
@@ -26,8 +28,12 @@ use Logistics\Promise\Application\Query\GetPromise\GetPromise;
 use Logistics\Promise\Application\Query\GetPromise\GetPromiseHandler;
 use Logistics\Promise\Application\Query\ListAvailableSlots\ListAvailableSlots;
 use Logistics\Promise\Application\Query\ListAvailableSlots\ListAvailableSlotsHandler;
+use Logistics\Promise\Application\Query\ListDeliveryDates\ListDeliveryDates;
+use Logistics\Promise\Application\Query\ListDeliveryDates\ListDeliveryDatesHandler;
 use Logistics\Promise\Application\Query\ListMunicipalityPromise\ListMunicipalityPromise;
 use Logistics\Promise\Application\Query\ListMunicipalityPromise\ListMunicipalityPromiseHandler;
+use Logistics\Promise\Application\Query\ListUnslottedShipments\ListUnslottedShipments;
+use Logistics\Promise\Application\Query\ListUnslottedShipments\ListUnslottedShipmentsHandler;
 use Logistics\Promise\Domain\Contract\AvailabilityProvider;
 use Logistics\Promise\Domain\Contract\CapacityCalendar;
 use Logistics\Promise\Domain\Contract\CorridorAvailabilityProvider;
@@ -37,6 +43,7 @@ use Logistics\Promise\Domain\Contract\MunicipalityDispatchGate;
 use Logistics\Promise\Domain\Contract\MunicipalityResolver;
 use Logistics\Promise\Domain\Contract\MunicipalitySlotReserver;
 use Logistics\Promise\Domain\Contract\OrderDeliverySlotGateway;
+use Logistics\Promise\Domain\Contract\PendingSlotShipmentSource;
 use Logistics\Promise\Domain\Contract\PromiseRepository;
 use Logistics\Promise\Domain\Contract\ShipmentLocator;
 use Logistics\Promise\Domain\Contract\SlotReserver;
@@ -54,7 +61,9 @@ use Logistics\Promise\Infrastructure\Coverage\CoverageBackedProfileProvider;
 use Logistics\Promise\Infrastructure\Network\NetworkBackedCorridorProvider;
 use Logistics\Promise\Infrastructure\Persistence\Eloquent\EloquentPromiseRepository;
 use Logistics\Promise\Infrastructure\Shipments\ShipmentsOrderDeliverySlotGateway;
+use Logistics\Promise\Infrastructure\Shipments\ShipmentsPendingSlotShipmentSource;
 use Logistics\Promise\Infrastructure\Shipments\ShipmentsShipmentLocator;
+use Logistics\Promise\Presentation\Console\AutoSlotSweepCommand;
 use Logistics\Promise\Presentation\Console\ExpireReservationsCommand;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -76,17 +85,24 @@ final class PromiseServiceProvider extends ServiceProvider
         ReservePromise::class => ReservePromiseHandler::class,
         ReserveDeliverySlot::class => ReserveDeliverySlotHandler::class,
         ReserveMunicipalitySlot::class => ReserveMunicipalitySlotHandler::class,
+        ReserveDeliveryDate::class => ReserveDeliveryDateHandler::class,
         ConfirmPromise::class => ConfirmPromiseHandler::class,
         ExpireReservation::class => ExpireReservationHandler::class,
         ReleasePromiseReservation::class => ReleasePromiseReservationHandler::class,
         ListAvailableSlots::class => ListAvailableSlotsHandler::class,
         ListMunicipalityPromise::class => ListMunicipalityPromiseHandler::class,
+        ListDeliveryDates::class => ListDeliveryDatesHandler::class,
+        ListUnslottedShipments::class => ListUnslottedShipmentsHandler::class,
         CalculateDeliveryPromise::class => CalculateDeliveryPromiseHandler::class,
         GetPromise::class => CachingGetPromiseHandler::class,
     ];
 
     public function register(): void
     {
+        // Config del contexto (pesos de la elección automática de ventana) con defaults funcionales; el
+        // merge deja que el .env o la sección de Configuración la ajusten sin tocar el package.
+        $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-promise.php', 'logistics-promise');
+
         // Repositorio de promesas envuelto por el decorador que invalida el cache del modelo de lectura
         // (frente E — escala): guarda igual que el Eloquent y, al guardar, olvida la vista cacheada de esa
         // promesa. No cachea lecturas, así los comandos que cargan-mutan-guardan siguen leyendo de la base.
@@ -130,6 +146,10 @@ final class PromiseServiceProvider extends ServiceProvider
         // Puerto hacia shipments: leer y fijar la franja de entrega del pedido vía su comando/consulta.
         $this->app->bind(OrderDeliverySlotGateway::class, ShipmentsOrderDeliverySlotGateway::class);
 
+        // Fuente de envíos sloteables (fecha sin ventana) para el barrido de auto-slot y la cola "Unslotted"
+        // (Módulo 1). Lee de shipments por su consulta pública (ListShipments) acotando por rango de fecha.
+        $this->app->bind(PendingSlotShipmentSource::class, ShipmentsPendingSlotShipmentSource::class);
+
         // Eje MUNICIPIO del canal del cliente (K-03/K-05): resolver el municipio de una coordenada/envío
         // y ofrecer/reservar sobre el calendario de despacho por municipio. Cada puerto cruza a su contexto
         // (coverage/shipments/capacity) por el bus o por su puerto público, sin dependencia composer nueva.
@@ -149,8 +169,12 @@ final class PromiseServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
 
         if ($this->app->runningInConsole()) {
-            // Worker del barrido de reservas vencidas; el scheduler lo corre cada minuto (ver routes/console.php).
-            $this->commands([ExpireReservationsCommand::class]);
+            // Workers de barrido; el scheduler los corre (ver routes/console.php): expiración de reservas
+            // vencidas (cada minuto) y auto-slot de envíos con fecha y sin ventana (cada 10 min).
+            $this->commands([
+                ExpireReservationsCommand::class,
+                AutoSlotSweepCommand::class,
+            ]);
         }
 
         /** @var HandlerRegistry $registry */

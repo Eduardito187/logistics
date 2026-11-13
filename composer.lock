@@ -4352,6 +4352,43 @@
             }
         },
         {
+            "name": "logistics/compensation",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "packages/logistics/compensation",
+                "reference": "7299e59c9d5b9490b9c6d22b7276481e68ff5a3d"
+            },
+            "require": {
+                "logistics/outbox": "^0.1",
+                "logistics/shared": "^0.1",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Logistics\\Compensation\\Infrastructure\\Providers\\CompensationServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Logistics\\Compensation\\": "src/",
+                    "Logistics\\Compensation\\Database\\Factories\\": "database/factories/",
+                    "Logistics\\Compensation\\Database\\Seeders\\": "database/seeders/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Compensación por problemas de entrega — vales/cupones de un solo uso (plataforma logística Dismac)",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "logistics/coverage",
             "version": "0.1.0",
             "dist": {

@@ -60,6 +60,7 @@ use Logistics\Tracking\Infrastructure\ReadSide\DbCustomerContactReader;
 use Logistics\Tracking\Infrastructure\Settings\SettingsPublicLinkTtl;
 use Logistics\Tracking\Presentation\Console\BackfillCustomerEmailCommand;
 use Logistics\Tracking\Presentation\Console\BackfillDeliveredAtCommand;
+use Logistics\Tracking\Presentation\Console\SendSurveyInvitationsCommand;
 use Logistics\Tracking\Presentation\Http\Controller\PublicTrackingPageController;
 use Logistics\Tracking\Presentation\Http\Controller\RecordSatisfactionSurveyController;
 
@@ -123,7 +124,11 @@ final class TrackingServiceProvider extends ServiceProvider
         $this->registerPublicPageRoute();
 
         if ($this->app->runningInConsole()) {
-            $this->commands([BackfillDeliveredAtCommand::class, BackfillCustomerEmailCommand::class]);
+            $this->commands([
+                BackfillDeliveredAtCommand::class,
+                BackfillCustomerEmailCommand::class,
+                SendSurveyInvitationsCommand::class,
+            ]);
         }
 
         // Los handlers se registran contra el HandlerRegistry singleton del núcleo compartido.

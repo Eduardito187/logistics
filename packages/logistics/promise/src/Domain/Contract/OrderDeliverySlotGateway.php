@@ -22,6 +22,13 @@ interface OrderDeliverySlotGateway
     public function currentSlot(string $orderId): ?array;
 
     /**
+     * Fecha de entrega SOLICITADA por el pedido que aún NO tiene ventana asignada (Y-m-d), o null si el
+     * pedido no tiene fecha, ya tiene ventana, o no existe. Es la señal de "envío sloteable" que leen los
+     * reactores de auto-slot: solo se auto-asigna ventana al que trae fecha sin franja (R1.1).
+     */
+    public function pendingDeliveryDate(string $orderId): ?string;
+
+    /**
      * Fija (o reemplaza) la franja de entrega del pedido. Idempotente aguas abajo: fijar la misma franja
      * no produce un cambio nuevo.
      */
