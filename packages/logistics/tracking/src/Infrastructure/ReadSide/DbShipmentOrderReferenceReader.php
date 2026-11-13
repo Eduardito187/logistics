@@ -6,6 +6,7 @@ namespace Logistics\Tracking\Infrastructure\ReadSide;
 
 use Illuminate\Database\ConnectionResolverInterface;
 use Logistics\Tracking\Application\Contract\ShipmentOrderReferenceReader;
+use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
 
 /**
  * Lee la referencia de la orden de un envío desde `shipments` por el query builder, en solo lectura y sin
@@ -14,7 +15,7 @@ use Logistics\Tracking\Application\Contract\ShipmentOrderReferenceReader;
  * Prefiere la columna `order_reference` (agrega a los hermanos de multishipping bajo la orden original).
  * Si está vacía (filas previas a esa columna), cae al `external_id`: ese valor lleva el id de la orden, o
  * `orderId#n:nodeId` en retiro; la referencia es la parte ANTERIOR a «#n:», idéntica derivación que usa el
- * reactor de ligado {@see \Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived}. Null si el
+ * reactor de ligado {@see BindShipmentOnReceived}. Null si el
  * envío no existe o no deja ninguna referencia utilizable.
  */
 final readonly class DbShipmentOrderReferenceReader implements ShipmentOrderReferenceReader
