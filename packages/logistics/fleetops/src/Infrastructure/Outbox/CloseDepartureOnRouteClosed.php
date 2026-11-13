@@ -48,21 +48,13 @@ final readonly class CloseDepartureOnRouteClosed implements MessageDispatcher
             return;
         }
 
-        // Una salida abierta normalmente lleva su odómetro de salida (se registra al abrirla); el tipo lo
-        // declara opcional, así que lo tratamos como tal.
-        $odometerOut = $departure->odometerOut()?->km;
+        // Una salida abierta siempre lleva su odómetro de salida (se registra al abrirla).
+        $odometerOut = $departure->odometerOut()->km;
         $odometer = $payload['odometer_km'] ?? null;
         $odometerIn = is_numeric($odometer) ? (int) round((float) $odometer) : $odometerOut;
 
-        if ($odometerIn === null) {
-            // Sin odómetro de regreso en el evento ni de salida registrado no hay base para cerrar: se omite.
-            return;
-        }
-
-        // El odómetro no retrocede: el de regreso nunca es menor al de salida (cuando este se conoce).
-        if ($odometerOut !== null) {
-            $odometerIn = max($odometerIn, $odometerOut);
-        }
+        // El odómetro no retrocede: el de regreso nunca es menor al de salida.
+        $odometerIn = max($odometerIn, $odometerOut);
 
         $this->commandBus->dispatch(new CloseDeparture(
             departureId: $departure->id()->toString(),

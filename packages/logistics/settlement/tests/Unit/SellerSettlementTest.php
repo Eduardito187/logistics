@@ -7,6 +7,7 @@ use Logistics\Settlement\Domain\Event\SettlementDrafted;
 use Logistics\Settlement\Domain\Event\SettlementPaid;
 use Logistics\Settlement\Domain\Exception\SettlementException;
 use Logistics\Settlement\Domain\Model\SellerSettlement;
+use Logistics\Settlement\Domain\ValueObject\AppliedFees;
 use Logistics\Settlement\Domain\ValueObject\Money;
 use Logistics\Settlement\Domain\ValueObject\SettlementId;
 use Logistics\Settlement\Domain\ValueObject\SettlementLine;
@@ -103,6 +104,35 @@ it('transiciona draft → confirmed → paid grabando sus eventos', function ():
     expect($events)->toHaveCount(2)
         ->and($events[0])->toBeInstanceOf(SettlementConfirmed::class)
         ->and($events[1])->toBeInstanceOf(SettlementPaid::class);
+});
+
+it('reconstituye una liquidación desde persistencia sin grabar eventos', function (): void {
+    $id = SettlementId::generate();
+    $period = SettlementPeriod::of('2026-08-01', '2026-08-31');
+    $fees = AppliedFees::of(1500, Money::of(150_000), Money::of(4_000));
+
+    $settlement = SellerSettlement::reconstitute(
+        $id,
+        '01931000-0000-7000-8000-0000000000bb',
+        $period,
+        settlementLines([600_000, 400_000]),
+        Money::of(1_000_000),
+        $fees,
+        Money::of(846_000),
+        SettlementStatus::Paid,
+        'TRX-RECON',
+    );
+
+    expect($settlement->id())->toBe($id)
+        ->and($settlement->sellerId())->toBe('01931000-0000-7000-8000-0000000000bb')
+        ->and($settlement->period()->label())->toBe('2026-08-01 — 2026-08-31')
+        ->and($settlement->lines())->toHaveCount(2)
+        ->and($settlement->gross()->cents)->toBe(1_000_000)
+        ->and($settlement->fees()->total()->cents)->toBe(154_000)
+        ->and($settlement->net()->cents)->toBe(846_000)
+        ->and($settlement->status())->toBe(SettlementStatus::Paid)
+        ->and($settlement->paymentReference())->toBe('TRX-RECON')
+        ->and($settlement->releaseEvents())->toBe([]);
 });
 
 it('no permite confirmar fuera de borrador ni pagar sin confirmar', function (): void {
