@@ -8,54 +8,17 @@ use Logistics\Planning\Application\Service\PlanGeometryRefresher;
 use Logistics\Planning\Database\Factories\PlannedStopRecordFactory;
 use Logistics\Planning\Database\Factories\PlanRecordFactory;
 use Logistics\Planning\Domain\Contract\RouteGeometryProvider;
-use Logistics\Planning\Domain\ValueObject\GeoPoint;
-use Logistics\Planning\Domain\ValueObject\RouteGeometry;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\PlanRecord;
+use Logistics\Planning\Tests\Feature\FakeRouteGeometryProvider;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRecordFactory;
 
 // Fecha fija de los planes sembrados en las pruebas de backfill de geometría.
 const PLAN_DATE = '2026-10-13';
 
-/**
- * Falla simulada del proveedor de geometría (ruteador caído) para probar la degradación elegante.
- */
-final class SimulatedRouterFailure extends RuntimeException {}
-
 // La geometría de la ruta planificada se calcula también en los planes armados a mano/por propuesta,
 // reordenados o publicados sin ella (antes solo la tenía el auto-plan). El proveedor de geometría se
 // falsea: devuelve la polilínea de los propios puntos y cuenta las llamadas.
-
-/**
- * Proveedor falso: polilínea = los puntos recibidos ([lng, lat]); cuenta las llamadas y puede fallar.
- */
-final class FakeRouteGeometryProvider implements RouteGeometryProvider
-{
-    public int $calls = 0;
-
-    /** @var list<GeoPoint> */
-    public array $lastPoints = [];
-
-    public bool $throws = false;
-
-    public function geometryFor(array $orderedPoints): ?RouteGeometry
-    {
-        $this->calls++;
-        if ($this->throws) {
-            throw new SimulatedRouterFailure('ruteador caído');
-        }
-        $this->lastPoints = array_values($orderedPoints);
-        if (count($orderedPoints) < 2) {
-            return null;
-        }
-
-        return RouteGeometry::of(
-            array_map(static fn (GeoPoint $p): array => [$p->longitude, $p->latitude], array_values($orderedPoints)),
-            1000.0,
-            120.0,
-        );
-    }
-}
 
 beforeEach(function (): void {
     config()->set('logistics-planning.auto_planner.origin_node_id', null);

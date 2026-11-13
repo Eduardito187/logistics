@@ -7,6 +7,15 @@
 set -e
 
 # ------------------------------------------------------------
+# 0. Git: confiar en el repo montado (evita "dubious ownership")
+# ------------------------------------------------------------
+# El working dir es un bind mount cuyo dueño (uid del host) no coincide con el usuario del contenedor, así que
+# git se niega a operar ("fatal: detected dubious ownership in repository at '/var/www/html'") y ensucia la
+# salida de composer (que usa git para detectar versiones). Marcar el directorio como seguro lo silencia. Es
+# idempotente y no falla el arranque si git no está. (Ver docs: git safe.directory para repos montados.)
+git config --global --add safe.directory /var/www/html > /dev/null 2>&1 || true
+
+# ------------------------------------------------------------
 # 1. Esperar a PostgreSQL
 # ------------------------------------------------------------
 # DB_WAIT_TIMEOUT (segundos): tope de espera. 0 = esperar indefinidamente (default, comportamiento de dev).

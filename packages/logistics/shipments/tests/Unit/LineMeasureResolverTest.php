@@ -8,11 +8,7 @@ use Logistics\Shipments\Application\ReadModel\CatalogMeasurements;
 use Logistics\Shipments\Domain\Exception\ShipmentsException;
 use Logistics\Shipments\Domain\ValueObject\LineMeasure;
 use Logistics\Shipments\Domain\ValueObject\MeasurementsSource;
-
-/**
- * Caída simulada del lector de catálogo (la cascada debe degradar a los defaults sin propagarla).
- */
-final class FakeCatalogReaderOutage extends RuntimeException {}
+use Logistics\Shipments\Tests\Unit\FakeCatalogReaderOutage;
 
 /**
  * Lector de catálogo en memoria para probar la cascada sin base de datos.
