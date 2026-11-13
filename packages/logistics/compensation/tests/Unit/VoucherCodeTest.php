@@ -19,6 +19,19 @@ it('un código generado se reconstruye desde su cadena', function (): void {
     expect(VoucherCode::fromString($code->value)->value)->toBe($code->value);
 });
 
+it('reconstruye un código cuyo primer bloque termina en DT (regresión del str_replace)', function (): void {
+    // 'AEDT' + 'N6CY': el primer bloque termina en 'DT', así que con el separador formaba un 'DT-' interno que
+    // str_replace borraba, corrompiendo el cuerpo y haciendo fallar el dígito de control. Su check-char ES 'Y'.
+    expect(VoucherCode::fromString('DT-AEDT-N6CY')->value)->toBe('DT-AEDT-N6CY');
+});
+
+it('cada código generado se reconstruye (roundtrip robusto, cubre el caso DT intermitente)', function (): void {
+    for ($i = 0; $i < 1000; $i++) {
+        $code = VoucherCode::generate();
+        expect(VoucherCode::fromString($code->value)->value)->toBe($code->value);
+    }
+});
+
 it('normaliza a mayúsculas al reconstruir', function (): void {
     $code = VoucherCode::generate();
     $lower = strtolower($code->value);
