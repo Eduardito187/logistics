@@ -13,9 +13,12 @@ use Logistics\Shared\Domain\ValueObject\FulfillmentMode;
 // para el POD directo. Antes se abría en Pending y `markDelivered` fallaba con "transición inválida a
 // Delivered desde PENDING".
 
+const DOD_OPEN_AT = '2026-11-12T14:00:00+00:00';
+const DOD_POD_AT = '2026-11-12T15:00:00+00:00';
+
 function podFor(): ProofOfDelivery
 {
-    return ProofOfDelivery::of('FIRMA_DIGITAL', null, new DateTimeImmutable('2026-11-12T15:00:00+00:00'));
+    return ProofOfDelivery::of('FIRMA_DIGITAL', null, new DateTimeImmutable(DOD_POD_AT));
 }
 
 function deviceFor(): DeviceContext
@@ -29,13 +32,13 @@ it('abre la entrega en LOADED al asignar el vehículo y permite el POD directo',
         'ship-1',
         'veh-1',
         FulfillmentMode::Owned,
-        new DateTimeImmutable('2026-11-12T14:00:00+00:00'),
+        new DateTimeImmutable(DOD_OPEN_AT),
     );
 
     expect($delivery->status())->toBe(DeliveryStatus::Loaded);
     $delivery->releaseEvents();
 
-    $delivery->recordProofOfDelivery('U-1', podFor(), null, deviceFor(), new DateTimeImmutable('2026-11-12T15:00:00+00:00'), 'idem-1');
+    $delivery->recordProofOfDelivery('U-1', podFor(), null, deviceFor(), new DateTimeImmutable(DOD_POD_AT), 'idem-1');
 
     expect($delivery->status())->toBe(DeliveryStatus::Delivered);
 });
@@ -51,7 +54,7 @@ it('permite entregar una entrega todavía en PENDING (red de seguridad para las 
         null,
     );
 
-    $delivery->recordProofOfDelivery('U-1', podFor(), null, deviceFor(), new DateTimeImmutable('2026-11-12T15:00:00+00:00'), 'idem-2');
+    $delivery->recordProofOfDelivery('U-1', podFor(), null, deviceFor(), new DateTimeImmutable(DOD_POD_AT), 'idem-2');
 
     expect($delivery->status())->toBe(DeliveryStatus::Delivered);
 });

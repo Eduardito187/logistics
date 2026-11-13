@@ -88,7 +88,7 @@ function rddCalendar(array $slots): MunicipalityDispatchCalendar
         public function availableSlots(string $municipalityId, DateTimeImmutable $date): array
         {
             $capacities = [];
-            foreach ($this->slots as $label => $available) {
+            foreach ($this->slots as $label => $available) { // NOSONAR: FP de data-flow; el foreach inicializa label/available.
                 $capacities[] = SlotCapacity::of((string) $label, $available);
             }
 

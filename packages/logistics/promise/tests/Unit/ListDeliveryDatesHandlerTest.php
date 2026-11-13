@@ -72,7 +72,7 @@ function lddCalendar(array $byDate): MunicipalityDispatchCalendar
         {
             $slots = $this->byDate[$date->format('Y-m-d')] ?? [];
             $capacities = [];
-            foreach ($slots as $label => $available) {
+            foreach ($slots as $label => $available) { // NOSONAR: FP de data-flow; el foreach inicializa label/available.
                 $capacities[] = SlotCapacity::of((string) $label, $available);
             }
 
