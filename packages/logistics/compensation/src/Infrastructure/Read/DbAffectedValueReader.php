@@ -86,8 +86,8 @@ final readonly class DbAffectedValueReader implements AffectedValueReader
     /**
      * Devuelve las líneas como AffectedLine, o null si alguna no tiene precio o no es BOB.
      *
-     * @param list<string> $shipmentIds
-     * @param list<string> $skus
+     * @param  list<string>            $shipmentIds
+     * @param  list<string>            $skus
      * @return list<AffectedLine>|null
      */
     private function linesFor(array $shipmentIds, array $skus): ?array

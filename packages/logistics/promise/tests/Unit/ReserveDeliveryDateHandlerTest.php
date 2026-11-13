@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use DateTimeImmutable;
 use Illuminate\Config\Repository as ConfigRepository;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Outbox\Domain\Contract\OutboxStore;
@@ -142,6 +141,11 @@ function rddOrders(?array $current): OrderDeliverySlotGateway
         public function currentSlot(string $orderId): ?array
         {
             return $this->current;
+        }
+
+        public function pendingDeliveryDate(string $orderId): ?string
+        {
+            return null;
         }
 
         public function assignSlot(string $orderId, string $date, string $windowStart, string $windowEnd): void

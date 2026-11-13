@@ -94,8 +94,16 @@ packages/logistics/<context>/
 4. `Infrastructure`: modelo Eloquent (`$incrementing=false`, `$keyType='string'`), mapper dominio↔fila,
    repo Eloquent, migración (uuid pk; PostGIS con `ST_*` por SQL si hay geometría), y el ServiceProvider
    que bindea repos, registra handlers en `HandlerRegistry` y hace `loadMigrationsFrom`.
-5. **Registrar el package en DOS lugares** (regla 3 de `CLAUDE.md`): `bootstrap/providers.php` y
-   `extra.laravel.dont-discover` del `composer.json` raíz. El núcleo `SharedServiceProvider` va primero.
+5. **Registrar el package** (regla 3 de `CLAUDE.md`): `bootstrap/providers.php` (el núcleo
+   `SharedServiceProvider` va primero) **Y** `extra.laravel.dont-discover` del `composer.json` raíz **Y**
+   regenerar **`composer.lock`**. El `composer.lock` es el lugar que SIEMPRE se olvida y tumba el CI entero:
+   `composer install --no-interaction` (job del CI) falla **FATAL** con *"Required package logistics/<ctx> is
+   not present in the lock file"* (exit 4) si el package está en `require` pero no en el lock. Fix normal (lo
+   corre el dueño): `composer update logistics/<ctx>`. Fix a mano cuando no se puede correr composer: insertar
+   la entrada en el array `packages` del lock espejando una entrada `path` existente (molde `logistics/carriers`),
+   en orden alfabético; el `content-hash` queda desfasado (warning cosmético, no frena el install, se silencia
+   con `composer update --lock`). Ver [[new-package-composer-lock]]. **Recordar: nada de esto llega al CI hasta
+   que el dueño commitea+pushea — el CI corre el commit pusheado, no el working tree.**
 6. Tests: `Unit` (dominio, sin Laravel) + `Feature` (stack contra PostgreSQL real; PostGIS si aplica).
 
 ## Definición de Terminado

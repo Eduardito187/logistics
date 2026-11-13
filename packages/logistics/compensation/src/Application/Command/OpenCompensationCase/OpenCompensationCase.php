@@ -19,8 +19,8 @@ use Logistics\Shared\Application\Command\Command;
 final readonly class OpenCompensationCase implements Command
 {
     /**
-     * @param list<string>              $affectedSkus SKUs afectados (alcance LINE)
-     * @param list<array<string, mixed>> $manualLines líneas declaradas para base manual (nombre, sku, qty, precio)
+     * @param list<string>               $affectedSkus SKUs afectados (alcance LINE)
+     * @param list<array<string, mixed>> $manualLines  líneas declaradas para base manual (nombre, sku, qty, precio)
      */
     public function __construct(
         public string $trigger,

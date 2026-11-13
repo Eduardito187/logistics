@@ -16,8 +16,8 @@ use Logistics\Compensation\Domain\Exception\CompensationException;
 final readonly class CompensationPolicy
 {
     /**
-     * @param array<string, TriggerPolicy> $triggers             por valor de TriggerType
-     * @param list<string>                 $compensableFailures  motivos de fallida que compensan
+     * @param array<string, TriggerPolicy> $triggers            por valor de TriggerType
+     * @param list<string>                 $compensableFailures motivos de fallida que compensan
      */
     private function __construct(
         public int $cumulativePctBps,

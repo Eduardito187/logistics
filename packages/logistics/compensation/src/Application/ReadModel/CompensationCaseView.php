@@ -13,7 +13,7 @@ use Logistics\Compensation\Domain\Model\CompensationCase;
 final readonly class CompensationCaseView
 {
     /**
-     * @param list<array<string, mixed>>        $affectedLines
+     * @param list<array<string, mixed>>             $affectedLines
      * @param list<array{label: string, cents: int}> $calculationTrace
      */
     private function __construct(

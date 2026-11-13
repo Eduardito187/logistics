@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Compensation\Infrastructure\Persistence\Eloquent\Model;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * Modelo Eloquent de `compensation_vouchers`. Detalle de infraestructura. PK UUID en texto.
@@ -16,13 +17,13 @@ use Illuminate\Database\Eloquent\Model;
  * @property string      $currency
  * @property string|null $holder_email_hash
  * @property string|null $holder_email
- * @property \Illuminate\Support\Carbon $expires_at
+ * @property Carbon      $expires_at
  * @property string      $status
  * @property string|null $magento_rule_id
  * @property string      $magento_sync_status
- * @property \Illuminate\Support\Carbon|null $held_until
+ * @property Carbon|null $held_until
  * @property string|null $held_by_channel
- * @property \Illuminate\Support\Carbon|null $redeemed_at
+ * @property Carbon|null $redeemed_at
  * @property string|null $redeemed_channel
  * @property string|null $redeemed_sale_ref
  */

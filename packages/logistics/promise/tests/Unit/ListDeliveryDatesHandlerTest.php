@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use DateTimeImmutable;
 use Logistics\Promise\Application\Query\ListDeliveryDates\ListDeliveryDates;
 use Logistics\Promise\Application\Query\ListDeliveryDates\ListDeliveryDatesHandler;
 use Logistics\Promise\Application\ReadModel\DeliveryDateView;

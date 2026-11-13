@@ -5,17 +5,18 @@ declare(strict_types=1);
 namespace Logistics\Compensation\Infrastructure\Persistence\Eloquent\Model;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * Modelo Eloquent de `compensation_case_log` (bitácora inmutable, solo INSERT). Sin updated_at.
  *
- * @property string      $id
- * @property string      $case_id
- * @property string|null $voucher_id
- * @property string      $action
- * @property string      $actor
+ * @property string                    $id
+ * @property string                    $case_id
+ * @property string|null               $voucher_id
+ * @property string                    $action
+ * @property string                    $actor
  * @property array<string, mixed>|null $payload
- * @property \Illuminate\Support\Carbon $created_at
+ * @property Carbon                    $created_at
  */
 final class CompensationCaseLogRecord extends Model
 {
