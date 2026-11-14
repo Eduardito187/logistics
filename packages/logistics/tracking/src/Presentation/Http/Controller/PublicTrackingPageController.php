@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Presentation\Http\Controller;
 
-use Illuminate\Contracts\View\View;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Logistics\Shared\Application\Query\QueryBus;
-use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
 use Logistics\Tracking\Application\Query\GetPublicSurveyState\GetPublicSurveyState;
-use Logistics\Tracking\Application\Query\GetPublicTracking\GetPublicTracking;
+use Logistics\Tracking\Application\Query\GetPublicTrackingSnapshot\GetPublicTrackingSnapshot;
 use Logistics\Tracking\Application\Query\GetPublicUnits\GetPublicUnits;
 use Logistics\Tracking\Application\ReadModel\PublicLinkState;
 use Logistics\Tracking\Application\ReadModel\PublicSurveyStateView;
-use Logistics\Tracking\Application\ReadModel\PublicTrackingView;
+use Logistics\Tracking\Application\ReadModel\PublicTrackingSnapshot;
 use Logistics\Tracking\Application\ReadModel\PublicUnitView;
+use Logistics\Tracking\Presentation\Http\PublicCacheHeaders;
 
 /**
  * Página web PÚBLICA de rastreo por token: lo que abre el cliente desde el enlace que se le comparte.
@@ -24,22 +24,28 @@ use Logistics\Tracking\Application\ReadModel\PublicUnitView;
  * de los read models públicos (PublicTrackingView, PublicUnitView). Un token inexistente responde 404
  * genérico, sin revelar si el token existe.
  *
+ * Es anónima y de solo lectura: no abre sesión ni fija cookies (la ruta va fuera de la pila "web"), así
+ * que la respuesta 200 sale con `Cache-Control: public` + `ETag` y la puede guardar el borde.
+ *
  * Presentation habla con Application vía el QueryBus; nunca toca Infrastructure ni el dominio.
  */
 final class PublicTrackingPageController
 {
+    use PublicCacheHeaders;
+
     public function __construct(
         private readonly QueryBus $queryBus,
     ) {}
 
-    public function __invoke(string $token): View | Response
+    public function __invoke(Request $request, string $token): Response
     {
-        $view = $this->queryBus->ask(new GetPublicTracking($token));
+        $snapshot = $this->queryBus->ask(new GetPublicTrackingSnapshot($token));
+        $view = $snapshot instanceof PublicTrackingSnapshot ? $snapshot->view : null;
 
-        if (!$view instanceof PublicTrackingView) {
+        if (!$snapshot instanceof PublicTrackingSnapshot || $view === null) {
             // Sin datos: ¿enlace vencido (TTL desde la entrega) o inexistente? El vencido recibe una página
             // amable en lenguaje de cliente (410 Gone); el resto, el 404 genérico de siempre.
-            if ($this->queryBus->ask(new GetPublicLinkState($token)) === PublicLinkState::Expired) {
+            if ($snapshot instanceof PublicTrackingSnapshot && $snapshot->state === PublicLinkState::Expired) {
                 return new Response(view('tracking::expired')->render(), 410);
             }
 
@@ -54,7 +60,9 @@ final class PublicTrackingPageController
         $canSurvey = $surveyState instanceof PublicSurveyStateView && $surveyState->canSubmit();
         $surveyRecorded = $surveyState instanceof PublicSurveyStateView && $surveyState->alreadySubmitted;
 
-        return view('tracking::public', [
+        // La vista se entrega como contenido del Response (queda en `original` para los tests) y se
+        // renderiza una sola vez; el ETag es la huella del HTML final, que incluye productos y encuesta.
+        $response = new Response(view('tracking::public', [
             'tracking' => $view->toArray(),
             'units' => array_map(
                 static fn (PublicUnitView $unit): array => $unit->toArray(),
@@ -65,6 +73,8 @@ final class PublicTrackingPageController
             'publicToken' => $token,
             'canSurvey' => $canSurvey,
             'surveyRecorded' => $surveyRecorded,
-        ]);
+        ]));
+
+        return $this->withPublicCache($request, $response, hash('sha256', (string) $response->getContent()));
     }
 }

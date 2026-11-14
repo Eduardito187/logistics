@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Observability\Heartbeat;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -177,6 +178,59 @@ Schedule::command('logistics:planning:auto-publish')
 // idempotente.
 Schedule::command('logistics:compensation:expire-vouchers')
     ->dailyAt('00:15')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Ola 3: crear particiones mensuales futuras para las tablas calientes. El 1° de cada mes crea los próximos
+// 3 meses. Idempotente: si ya existen, se omite. Así nunca se insertan filas en la partición DEFAULT por
+// falta de una partición futura.
+Schedule::command('logistics:partitions:manage create --months=3')
+    ->monthlyOn(1, '02:00')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Ola 4 — Alta disponibilidad: workers resilientes y backups probados
+|--------------------------------------------------------------------------
+*/
+
+// Profundidad de colas cada 5 minutos: registra la salud en el log para detectar acumulación. No escala
+// automáticamente (eso lo hace el orquestador); solo señaliza si alguna cola excede el umbral.
+Schedule::command('logistics:queue:health --threshold=500')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Lag de replicación cada 5 minutos: registra en el log cuánto atraso tiene el standby respecto al
+// primario. Si hay lag significativo, emite un warning que las alertas pueden capturar.
+Schedule::command('logistics:replication:lag --warn-bytes=33554432')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Ola 5 — Observabilidad: latido del scheduler
+|--------------------------------------------------------------------------
+*/
+
+// Latido del scheduler: cada minuto deja un timestamp en Valkey y /api/metrics expone su edad como
+// `logistics_scheduler_last_tick_age_seconds` (sano: < 120 s). Es un closure liviano que corre dentro del
+// propio proceso del scheduler (una escritura a Valkey, tolerante a fallos). SIN withoutOverlapping a
+// propósito: un mutex colgado lo silenciaría y daría una falsa alarma de "scheduler caído".
+Schedule::call(static function (): void {
+    Heartbeat::scheduler();
+})->everyMinute()->name('observability:scheduler-heartbeat');
+
+// Simulacro semanal de restauración: verifica que el último dump es válido y restaurable (no destructivo).
+// Corre los domingos a las 04:00. Si falla, el log de error dispara la alerta.
+Schedule::command('logistics:restore-drill')
+    ->weeklyOn(0, '04:00')
     ->onOneServer()
     ->withoutOverlapping()
     ->runInBackground();

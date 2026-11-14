@@ -1,0 +1,275 @@
+# ============================================================
+# docker-compose.ha.yml — Ola 4: Alta disponibilidad
+# ============================================================
+# Override de compose para habilitar la topología de HA:
+#   - App tier multi-instancia (2 instancias PHP-FPM) detrás de nginx con LB
+#   - PostgreSQL HA: primario + standby en streaming replication
+#   - Valkey HA: 1 primario + 1 réplica + 3 Sentinels para failover automático
+#   - PgBouncer apuntando al primario (el failover lo maneja el script externo)
+#
+# Uso (en dev para probar HA, o en staging):
+#   docker compose -f docker-compose.yml -f .docker/compose/docker-compose.ha.yml up -d
+#
+# En producción se usa la topología real del orquestador (K8s, Swarm, etc.) pero
+# esta config sirve de referencia y para tests locales de failover.
+# ============================================================
+
+services:
+    # ─── App tier escalado: 2 instancias PHP-FPM ───────────────────────
+    # Nginx rutea entre ambas con health checks. Escalar = subir `deploy.replicas`
+    # (o el override de Docker Swarm / K8s). La sesión del admin ya está en Valkey
+    # (config/session.php → redis), así que cualquier instancia puede atender.
+    app:
+        deploy:
+            replicas: ${APP_REPLICAS:-2}
+            restart_policy:
+                condition: on-failure
+                delay: 5s
+                max_attempts: 5
+
+    # ─── PostgreSQL standby (streaming replication) ─────────────────────
+    # Réplica de lectura en hot standby: recibe WAL del primario en streaming,
+    # acepta consultas de solo lectura (para el pool `read` de Ola 3) y sirve de
+    # candidato a failover si el primario cae.
+    #
+    # El bootstrap inicial (pg_basebackup) corre en el entrypoint custom. Después
+    # de la primera vez, el volumen `postgres_standby_data` tiene los datos y solo
+    # necesita reconectarse al primario para recibir WAL.
+    postgres-standby:
+        image: postgis/postgis:17-3.5-alpine
+        container_name: dismac_lg_postgres_standby
+        restart: unless-stopped
+        environment:
+            # Credenciales del primario para replicación.
+            PGPASSWORD: logistics
+            PRIMARY_HOST: postgres
+            PRIMARY_PORT: "5432"
+            PRIMARY_USER: logistics
+            TZ: America/La_Paz
+        entrypoint:
+            - sh
+            - -c
+            - |
+                set -e
+                PGDATA=/var/lib/postgresql/data
+                # Si el data directory está vacío, hacer el basebackup inicial.
+                if [ ! -f "$$PGDATA/PG_VERSION" ]; then
+                    echo "[standby] Inicializando con pg_basebackup desde $$PRIMARY_HOST..."
+                    pg_basebackup -h "$$PRIMARY_HOST" -p "$$PRIMARY_PORT" -U "$$PRIMARY_USER" \
+                        -D "$$PGDATA" -Fp -Xs -P -R
+                    echo "[standby] pg_basebackup completado."
+                fi
+                # Asegurar que el standby signal existe (pg_basebackup -R lo crea, pero por si acaso).
+                touch "$$PGDATA/standby.signal"
+                # Arrancar postgres en modo standby (hot_standby = on por defecto en PG17).
+                exec postgres \
+                    -c "primary_conninfo=host=$$PRIMARY_HOST port=$$PRIMARY_PORT user=$$PRIMARY_USER password=$$PGPASSWORD" \
+                    -c "hot_standby=on" \
+                    -c "max_connections=${PG_MAX_CONNECTIONS:-200}" \
+                    -c "shared_buffers=${PG_SHARED_BUFFERS:-1GB}" \
+                    -c "effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-3GB}" \
+                    -c "work_mem=${PG_WORK_MEM:-16MB}" \
+                    -c "jit=${PG_JIT:-off}" \
+                    -c "hot_standby_feedback=on"
+        volumes:
+            - postgres_standby_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U logistics -d logistics"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 60s
+        depends_on:
+            postgres:
+                condition: service_healthy
+        networks:
+            - dismac_lg
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"
+
+    # ─── PgBouncer para la réplica de lectura ──────────────────────────
+    # Pool de conexiones dedicado al standby. La app lo alcanza vía DB_READ_HOST=pgbouncer-read
+    # y DB_READ_PORT=6432. Mismo modo transaccional que el pool del primario.
+    pgbouncer-read:
+        image: edoburu/pgbouncer:v1.23.1-p3
+        container_name: dismac_lg_pgbouncer_read
+        restart: unless-stopped
+        environment:
+            DB_HOST: postgres-standby
+            DB_PORT: 5432
+            DB_USER: logistics
+            DB_PASSWORD: logistics
+            AUTH_TYPE: scram-sha-256
+            POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
+            MAX_CLIENT_CONN: ${PGBOUNCER_READ_MAX_CLIENT_CONN:-2000}
+            DEFAULT_POOL_SIZE: ${PGBOUNCER_READ_POOL_SIZE:-30}
+            MIN_POOL_SIZE: ${PGBOUNCER_READ_MIN_POOL_SIZE:-5}
+            RESERVE_POOL_SIZE: ${PGBOUNCER_READ_RESERVE_POOL_SIZE:-5}
+            LISTEN_PORT: 6432
+            SERVER_IDLE_TIMEOUT: 60
+            MAX_PREPARED_STATEMENTS: ${PGBOUNCER_MAX_PREPARED_STATEMENTS:-200}
+        depends_on:
+            postgres-standby:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD-SHELL", "nc -z 127.0.0.1 6432 || exit 1"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+            start_period: 10s
+        networks:
+            - dismac_lg
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"
+
+    # ─── Valkey réplica (para Sentinel) ────────────────────────────────
+    valkey-replica:
+        image: valkey/valkey:8-alpine
+        container_name: dismac_lg_valkey_replica
+        restart: unless-stopped
+        command: >
+            valkey-server
+            --appendonly yes
+            --maxmemory ${VALKEY_MAXMEMORY:-512mb}
+            --maxmemory-policy volatile-lru
+            --replicaof valkey 6379
+        volumes:
+            - valkey_replica_data:/data
+        healthcheck:
+            test: ["CMD", "valkey-cli", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        depends_on:
+            valkey:
+                condition: service_healthy
+        networks:
+            - dismac_lg
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"
+
+    # ─── Valkey Sentinels (3 instancias para quórum) ───────────────────
+    # Sentinel monitorea el primario y la réplica. Si el primario cae, promueve la
+    # réplica y notifica a los clientes. Quórum de 2 (de 3) para failover.
+    # La app usa REDIS_SENTINEL_SERVICE para que phpredis/predis descubra el primario.
+    valkey-sentinel-1:
+        image: valkey/valkey:8-alpine
+        container_name: dismac_lg_sentinel_1
+        restart: unless-stopped
+        entrypoint:
+            - sh
+            - -c
+            - |
+                cat > /tmp/sentinel.conf <<EOF
+                port 26379
+                sentinel monitor dismac-valkey valkey 6379 2
+                sentinel down-after-milliseconds dismac-valkey 5000
+                sentinel failover-timeout dismac-valkey 10000
+                sentinel parallel-syncs dismac-valkey 1
+                EOF
+                exec valkey-sentinel /tmp/sentinel.conf
+        healthcheck:
+            test: ["CMD", "valkey-cli", "-p", "26379", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        depends_on:
+            valkey:
+                condition: service_healthy
+            valkey-replica:
+                condition: service_healthy
+        networks:
+            - dismac_lg
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"
+
+    valkey-sentinel-2:
+        image: valkey/valkey:8-alpine
+        container_name: dismac_lg_sentinel_2
+        restart: unless-stopped
+        entrypoint:
+            - sh
+            - -c
+            - |
+                cat > /tmp/sentinel.conf <<EOF
+                port 26379
+                sentinel monitor dismac-valkey valkey 6379 2
+                sentinel down-after-milliseconds dismac-valkey 5000
+                sentinel failover-timeout dismac-valkey 10000
+                sentinel parallel-syncs dismac-valkey 1
+                EOF
+                exec valkey-sentinel /tmp/sentinel.conf
+        healthcheck:
+            test: ["CMD", "valkey-cli", "-p", "26379", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        depends_on:
+            valkey:
+                condition: service_healthy
+            valkey-replica:
+                condition: service_healthy
+        networks:
+            - dismac_lg
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"
+
+    valkey-sentinel-3:
+        image: valkey/valkey:8-alpine
+        container_name: dismac_lg_sentinel_3
+        restart: unless-stopped
+        entrypoint:
+            - sh
+            - -c
+            - |
+                cat > /tmp/sentinel.conf <<EOF
+                port 26379
+                sentinel monitor dismac-valkey valkey 6379 2
+                sentinel down-after-milliseconds dismac-valkey 5000
+                sentinel failover-timeout dismac-valkey 10000
+                sentinel parallel-syncs dismac-valkey 1
+                EOF
+                exec valkey-sentinel /tmp/sentinel.conf
+        healthcheck:
+            test: ["CMD", "valkey-cli", "-p", "26379", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        depends_on:
+            valkey:
+                condition: service_healthy
+            valkey-replica:
+                condition: service_healthy
+        networks:
+            - dismac_lg
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"
+
+    # ─── Override del app para rutear lecturas al standby ──────────────
+    # En la topología HA, la app apunta al PgBouncer de lectura para las queries.
+    app:
+        environment:
+            DB_READ_HOST: pgbouncer-read
+            DB_READ_PORT: "6432"
+
+volumes:
+    postgres_standby_data:
+    valkey_replica_data:

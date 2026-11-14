@@ -1,0 +1,542 @@
+# ============================================================
+# alerts.yml — reglas de alerta de la plataforma logística (Ola 5)
+# ============================================================
+# Severidades (las rutea alertmanager.yml):
+#   page    despierta a la guardia: hay impacto en clientes/operación AHORA o es inminente.
+#   ticket  se atiende en horario hábil: degradación o riesgo que todavía no corta el servicio.
+#
+# Etiquetas fijas: service="logistics"; layer="app" (derivada de métricas de la app, se inhibe si
+# la app está caída) o layer="infra" (PostgreSQL/Valkey: NO se inhibe, suele ser la causa raíz).
+#
+# Cada alerta enlaza su sección del runbook (docs/observability-runbook.md, ancla = nombre de la
+# alerta en minúsculas). Los SLIs/objetivos vienen de rules.yml; el detalle está en docs/slo.md.
+# ============================================================
+
+groups:
+    # --------------------------------------------------------
+    # Disponibilidad y errores
+    # --------------------------------------------------------
+    - name: logistics-disponibilidad
+      rules:
+          - alert: LogisticsAppCaida
+            # Cubre las tres formas de "caída": el scrape falla, la métrica no viene o vale 0.
+            expr: absent(logistics_up == 1)
+            for: 2m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "La app no responde el scrape de métricas"
+                description: >-
+                    Prometheus no obtiene logistics_up=1 desde /api/metrics hace más de 2 min. Mirar: estado de
+                    los contenedores app/nginx (docker compose ps), GET /api/v1/health, y si METRICS_TOKEN
+                    coincide entre la app y Prometheus (un 404 en el target también dispara esta alerta).
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsappcaida"
+
+          - alert: Logistics5xxAlto
+            expr: |
+                logistics:http_requests_5xx:ratio_rate5m > 0.05
+                and on (gate) logistics:http_requests:rate5m > 0.2
+            for: 5m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "Más del 5 % de respuestas 5xx en la puerta {{ $labels.gate }}"
+                description: >-
+                    Tasa de 5xx de {{ $value | humanizePercentage }} en la puerta {{ $labels.gate }} durante 5 min.
+                    Mirar: logs de la app (storage/logs o stderr JSON), GET /api/v1/health, conexiones de DB y
+                    si hubo deploy/migración reciente (error 0A000 «cached plan» tras migrar en vivo).
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logistics5xxalto"
+
+          - alert: Logistics5xxElevado
+            expr: |
+                logistics:http_requests_5xx:ratio_rate5m > 0.01
+                and on (gate) logistics:http_requests:rate5m > 0.2
+            for: 15m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+            annotations:
+                summary: "Tasa de 5xx sostenida sobre 1 % en la puerta {{ $labels.gate }}"
+                description: >-
+                    Tasa de 5xx de {{ $value | humanizePercentage }} en la puerta {{ $labels.gate }} durante 15 min:
+                    10 veces el presupuesto del SLO. Mirar qué rutas concentran los 5xx (panel «Tasa de 5xx por
+                    puerta» y logs) antes de que escale a page.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logistics5xxalto"
+
+    # --------------------------------------------------------
+    # Burn rate multi-ventana del SLO de disponibilidad (99,9 % / 30 d)
+    # Presupuesto de error = 0,001. Factores del SRE Workbook:
+    #   14,4× en 1 h  → 2 % del presupuesto mensual en 1 hora
+    #    6×   en 6 h  → 5 % en 6 horas
+    #    3×   en 1 d  → 10 % en 1 día
+    #    1×   en 3 d  → 10 % en 3 días
+    # Cada alerta exige la ventana larga Y una corta (1/12) para que se apague rápido al recuperarse.
+    # --------------------------------------------------------
+    - name: logistics-slo-burn-rate
+      rules:
+          - alert: LogisticsSLOBurnRateRapido1h
+            expr: |
+                logistics:slo_availability:error_ratio_1h > (14.4 * 0.001)
+                and
+                logistics:slo_availability:error_ratio_5m > (14.4 * 0.001)
+            for: 2m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+                slo: availability
+                burn_window: 1h
+            annotations:
+                summary: "SLO de disponibilidad: quema rápida (14,4× en 1 h)"
+                description: >-
+                    La tasa de error de la última hora es {{ $value | humanizePercentage }}: a este ritmo el
+                    presupuesto de error del mes (43,2 min) se agota en ~2 días. Mirar qué puerta/ruta concentra
+                    los 5xx y si coincide con un deploy, una migración o una dependencia caída (DB, Valkey).
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticssloburnrate"
+
+          - alert: LogisticsSLOBurnRateRapido6h
+            expr: |
+                logistics:slo_availability:error_ratio_6h > (6 * 0.001)
+                and
+                logistics:slo_availability:error_ratio_30m > (6 * 0.001)
+            for: 5m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+                slo: availability
+                burn_window: 6h
+            annotations:
+                summary: "SLO de disponibilidad: quema rápida (6× en 6 h)"
+                description: >-
+                    La tasa de error de las últimas 6 h es {{ $value | humanizePercentage }}: a este ritmo el
+                    presupuesto de error del mes se agota en ~5 días. Mirar la tendencia de 5xx por puerta y los
+                    cambios de las últimas horas.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticssloburnrate"
+
+          - alert: LogisticsSLOBurnRateLento1d
+            expr: |
+                logistics:slo_availability:error_ratio_1d > (3 * 0.001)
+                and
+                logistics:slo_availability:error_ratio_2h > (3 * 0.001)
+            for: 15m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+                slo: availability
+                burn_window: 1d
+            annotations:
+                summary: "SLO de disponibilidad: quema lenta (3× en 1 día)"
+                description: >-
+                    La tasa de error del último día es {{ $value | humanizePercentage }}: se consumió ~10 % del
+                    presupuesto mensual en 24 h. Abrir ticket, identificar la ruta que falla y priorizar el arreglo.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticssloburnrate"
+
+          - alert: LogisticsSLOBurnRateLento3d
+            expr: |
+                logistics:slo_availability:error_ratio_3d > (1 * 0.001)
+                and
+                logistics:slo_availability:error_ratio_6h > (1 * 0.001)
+            for: 1h
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+                slo: availability
+                burn_window: 3d
+            annotations:
+                summary: "SLO de disponibilidad: quema lenta (1× en 3 días)"
+                description: >-
+                    La tasa de error de los últimos 3 días es {{ $value | humanizePercentage }}: sostenida así, el
+                    mes cierra SIN presupuesto de error. Revisar errores crónicos de baja intensidad.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticssloburnrate"
+
+          - alert: LogisticsSLOPresupuestoCasiAgotado
+            expr: logistics:slo_availability:error_budget_remaining_ratio < 0.1
+            for: 30m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+                slo: availability
+            annotations:
+                summary: "Queda menos del 10 % del presupuesto de error del mes"
+                description: >-
+                    Presupuesto de error restante: {{ $value | humanizePercentage }}. Aplica la política de
+                    docs/slo.md §6: se congelan los cambios de riesgo hasta recuperar margen.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticssloburnrate"
+
+    # --------------------------------------------------------
+    # Latencia
+    # --------------------------------------------------------
+    - name: logistics-latencia
+      rules:
+          - alert: LogisticsLatenciaP95FueraDeSLO
+            expr: logistics:slo_latency:p95_5m > on (slo_class) logistics:slo_latency:objective_seconds
+            for: 15m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+                slo: latency
+            annotations:
+                summary: "p95 fuera de objetivo en {{ $labels.slo_class }}"
+                description: >-
+                    El p95 de {{ $labels.slo_class }} es {{ $value | humanizeDuration }} hace 15 min (objetivo en
+                    docs/slo.md §3). Mirar: consultas lentas (logistics:db:slow-queries), uso de conexiones de DB,
+                    hit rate de caché y saturación de PHP-FPM.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticslatenciap95fueradeslo"
+
+          - alert: LogisticsLatenciaP95Critica
+            expr: logistics:slo_latency:p95_5m > on (slo_class) (2 * logistics:slo_latency:objective_seconds)
+            for: 10m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+                slo: latency
+            annotations:
+                summary: "p95 al doble del objetivo en {{ $labels.slo_class }}"
+                description: >-
+                    El p95 de {{ $labels.slo_class }} es {{ $value | humanizeDuration }}, más del doble del
+                    objetivo, hace 10 min: los usuarios lo sienten. Mirar saturación (conexiones DB, FPM,
+                    Valkey) y bloqueos/consultas largas en PostgreSQL.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticslatenciap95fueradeslo"
+
+    # --------------------------------------------------------
+    # Colas y workers
+    # --------------------------------------------------------
+    - name: logistics-colas
+      rules:
+          - alert: LogisticsColaSinDrenar
+            # Hay backlog y la pendiente de los últimos 15 min no es negativa: crece o está estancada.
+            expr: logistics_queue_depth > 100 and deriv(logistics_queue_depth[15m]) >= 0
+            for: 15m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+            annotations:
+                summary: "La cola {{ $labels.queue }} tiene backlog y no drena"
+                description: >-
+                    La cola {{ $labels.queue }} acumula {{ $value | humanize }} jobs y no baja hace 15 min. Mirar:
+                    si el worker de esa cola está vivo (panel «Latidos»), jobs fallando en bucle
+                    (queue:failed) y si un destino externo (SAP, FCM, SMTP) está lento.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticscolasindrenar"
+
+          - alert: LogisticsColaSaturada
+            expr: logistics_queue_depth > 1000 and deriv(logistics_queue_depth[10m]) >= 0
+            for: 10m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "La cola {{ $labels.queue }} supera 1000 jobs y sigue sin drenar"
+                description: >-
+                    {{ $value | humanize }} jobs encolados en {{ $labels.queue }}: notificaciones, SAP o
+                    planificación llegan con retraso visible. Mirar workers caídos y escalar workers de esa cola.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticscolasindrenar"
+
+          - alert: LogisticsWorkerSinActividad
+            # Cola con trabajo esperando y su worker sin dar señales. `planning` corre jobs de hasta
+            # 20 min (timeout 1200 s), por eso tiene su propio umbral más abajo.
+            # El latido vale -1 si el worker nunca se observó (no arrancó): también cuenta.
+            expr: |
+                (
+                    logistics_queue_worker_last_activity_age_seconds{queue!="planning"} > 300
+                    or
+                    logistics_queue_worker_last_activity_age_seconds{queue!="planning"} == -1
+                )
+                and on (queue) (logistics_queue_depth > 0)
+            for: 5m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "El worker de la cola {{ $labels.queue }} no procesa y hay jobs esperando"
+                description: >-
+                    El worker de {{ $labels.queue }} lleva {{ $value | humanizeDuration }} sin actividad (-1 = nunca
+                    se lo vio desde el arranque) con la cola no vacía. Mirar: el contenedor de workers (docker compose ps y sus logs), un job colgado
+                    contra un destino externo, o el worker sin memoria.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsworkersinactividad"
+
+          - alert: LogisticsWorkerSinActividad
+            # El latido NO avanza mientras corre un job: un plan diario normal puede tardar hasta
+            # 20 min (timeout 1200 s), por eso el umbral de planning es 30 min.
+            expr: |
+                (
+                    logistics_queue_worker_last_activity_age_seconds{queue="planning"} > 1800
+                    or
+                    logistics_queue_worker_last_activity_age_seconds{queue="planning"} == -1
+                )
+                and on (queue) (logistics_queue_depth > 0)
+            for: 5m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+            annotations:
+                summary: "El worker de planning no procesa y hay jobs esperando"
+                description: >-
+                    El worker de planning lleva {{ $value | humanizeDuration }} sin actividad (-1 = nunca se lo vio)
+                    con jobs en cola.
+                    Mirar si el auto-planner quedó colgado (OSRM/VROOM lentos) y el log del worker.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsworkersinactividad"
+
+          - alert: LogisticsSchedulerSinLatido
+            # Incidente real del proyecto: si el scheduler muere (o un mutex lo bloquea), el pump del
+            # outbox deja de correr y TODA la integración asíncrona se congela sin dar error.
+            expr: logistics_scheduler_last_tick_age_seconds > 180
+            for: 1m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "El scheduler no late hace más de 3 minutos"
+                description: >-
+                    Último tick del scheduler hace {{ $value | humanizeDuration }}. Sin scheduler no corre
+                    logistics:outbox:pump: el outbox se congela (notificaciones, SAP, tracking). Mirar el proceso
+                    schedule:work (contenedor scheduler en dev, programa `scheduler` de supervisor en staging/prod).
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsschedulersinlatido"
+
+          - alert: LogisticsSchedulerSinLatido
+            # El latido vale -1 si el scheduler NUNCA hizo tick desde que existe la métrica. `for: 5m`
+            # da margen al arranque del stack (el primer tick llega en el primer minuto).
+            expr: logistics_scheduler_last_tick_age_seconds == -1
+            for: 5m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "El scheduler nunca registró un latido"
+                description: >-
+                    logistics_scheduler_last_tick_age_seconds vale -1 hace 5 min: el scheduler no arrancó o no
+                    llega a Valkey. Sin scheduler no corre logistics:outbox:pump y el outbox se congela. Mirar el
+                    proceso schedule:work (contenedor scheduler en dev, programa `scheduler` de supervisor en
+                    staging/prod).
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsschedulersinlatido"
+
+          - alert: LogisticsFailedJobsCreciendo
+            expr: delta(logistics_failed_jobs_total[15m]) > 10
+            for: 5m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+            annotations:
+                summary: "Los jobs fallidos crecen rápido"
+                description: >-
+                    {{ $value | humanize }} jobs nuevos en failed_jobs en 15 min. Mirar queue:failed para ver la
+                    excepción dominante y la cola afectada.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsfailedjobscreciendo"
+
+    # --------------------------------------------------------
+    # Outbox
+    # --------------------------------------------------------
+    - name: logistics-outbox
+      rules:
+          - alert: LogisticsOutboxAtrasado
+            expr: logistics_outbox_oldest_pending_age_seconds > 300
+            for: 5m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+            annotations:
+                summary: "El outbox tiene pendientes de más de 5 minutos"
+                description: >-
+                    El mensaje pendiente más viejo del outbox tiene {{ $value | humanizeDuration }}. Mirar: latido
+                    del scheduler, worker de la cola outbox y backlog por estado (pending/failed).
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsoutboxatrasado"
+
+          - alert: LogisticsOutboxCongelado
+            expr: logistics_outbox_oldest_pending_age_seconds > 900
+            for: 5m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "El outbox no despacha hace más de 15 minutos"
+                description: >-
+                    Pendiente más viejo: {{ $value | humanizeDuration }}. La integración asíncrona está detenida
+                    (tracking, notificaciones al cliente, SAP). Primer sospechoso: el scheduler o un mutex colgado
+                    en Valkey; segundo: el worker de la cola outbox.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsoutboxatrasado"
+
+          - alert: LogisticsOutboxDeadLetter
+            expr: logistics_outbox_messages{status="dead_lettered"} > 0
+            for: 5m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+            annotations:
+                summary: "Hay {{ $value | humanize }} mensajes del outbox en dead-letter"
+                description: >-
+                    Eventos que agotaron sus reintentos: NO se van a reintentar solos y algún sistema quedó sin
+                    enterarse. Mirar en el recurso de mensajes del outbox del admin (filtro por estado dead-lettered)
+                    el tipo de evento y el último error, y reintentar tras corregir la causa.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsoutboxdeadletter"
+
+          - alert: LogisticsOutboxDeadLetterCreciendo
+            expr: delta(logistics_outbox_messages{status="dead_lettered"}[30m]) > 20
+            for: 5m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "El dead-letter del outbox crece rápido"
+                description: >-
+                    {{ $value | humanize }} mensajes nuevos en dead-letter en 30 min: un destino externo o un
+                    reactor está fallando de forma sistemática. Mirar el error dominante y frenar la causa antes
+                    de reprocesar.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsoutboxdeadletter"
+
+    # --------------------------------------------------------
+    # Base de datos
+    # --------------------------------------------------------
+    - name: logistics-base-de-datos
+      rules:
+          - alert: LogisticsConexionesDBAltas
+            expr: logistics:db_connections:usage_ratio > 0.8
+            for: 5m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+            annotations:
+                summary: "PostgreSQL usa más del 80 % de max_connections"
+                description: >-
+                    Uso de conexiones: {{ $value | humanizePercentage }}. Mirar: conexiones por estado (idle in
+                    transaction = fuga), tamaño de los pools de PgBouncer y clientes que se conectan directo a
+                    Postgres salteando el pooler.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsconexionesdbaltas"
+
+          - alert: LogisticsConexionesDBAgotandose
+            expr: logistics:db_connections:usage_ratio > 0.95
+            for: 2m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "PostgreSQL está por quedarse sin conexiones"
+                description: >-
+                    Uso de conexiones: {{ $value | humanizePercentage }}. Al llegar al 100 % los requests nuevos
+                    fallan con 5xx. Cortar las sesiones idle in transaction y revisar PgBouncer ya.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsconexionesdbaltas"
+
+          - alert: LogisticsLagReplicaAlto
+            # 32 MB: mismo umbral de aviso que el comando programado logistics:replication:lag.
+            # Sin standby la métrica no tiene muestras y la alerta simplemente no evalúa. OJO: sale 0
+            # (falso sano) si el usuario de la app no tiene el rol pg_monitor.
+            expr: max by (client) (logistics_db_replication_lag_bytes) > 33554432
+            for: 5m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+            annotations:
+                summary: "La réplica {{ $labels.client }} tiene más de 32 MB de lag"
+                description: >-
+                    Lag de {{ $value | humanize1024 }}B en {{ $labels.client }}. Las lecturas por la réplica ven
+                    datos viejos. Mirar carga de escritura en el primario, red y disco del standby.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticslagreplicaalto"
+
+          - alert: LogisticsLagReplicaCritico
+            expr: max by (client) (logistics_db_replication_lag_bytes) > 536870912
+            for: 10m
+            labels:
+                severity: page
+                service: logistics
+                layer: app
+            annotations:
+                summary: "La réplica {{ $labels.client }} tiene más de 512 MB de lag"
+                description: >-
+                    Lag de {{ $value | humanize1024 }}B en {{ $labels.client }}: la réplica ya no sirve como
+                    candidata a failover ni para lecturas. Sacar las lecturas de la réplica y revisar el standby.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticslagreplicaalto"
+
+          - alert: LogisticsPostgresCaido
+            expr: pg_up == 0
+            for: 1m
+            labels:
+                severity: page
+                service: logistics
+                layer: infra
+            annotations:
+                summary: "postgres_exporter no puede conectarse a PostgreSQL"
+                description: >-
+                    pg_up=0 hace 1 min. Mirar el contenedor postgres (docker compose ps / logs), disco lleno y, con
+                    topología HA, evaluar el failover del runbook de HA.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticspostgrescaido"
+
+    # --------------------------------------------------------
+    # Caché / Valkey
+    # --------------------------------------------------------
+    - name: logistics-cache
+      rules:
+          - alert: LogisticsCacheMemoriaAlta
+            # logistics_cache_memory_bytes es la memoria de TODA la instancia Valkey (caché + colas +
+            # sesiones + locks), no solo de la caché.
+            # Requiere el exporter de Valkey (redis_memory_max_bytes = maxmemory). Una caché LRU llena es
+            # normal un rato; sostenida 30 min sobre 90 % pone en riesgo a las claves SIN TTL (colas,
+            # sesiones, locks), que volatile-lru no puede desalojar.
+            expr: sum(logistics_cache_memory_bytes) / (sum(redis_memory_max_bytes) > 0) > 0.9
+            for: 30m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: app
+            annotations:
+                summary: "Valkey usa más del 90 % de su maxmemory"
+                description: >-
+                    Memoria de Valkey en {{ $value | humanizePercentage }} de maxmemory hace 30 min. Mirar
+                    evicciones, tamaño de las colas (no tienen TTL, no se desalojan) y subir VALKEY_MAXMEMORY si
+                    el volumen es legítimo.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticscachememoriaalta"
+
+          - alert: LogisticsValkeyCaido
+            expr: redis_up == 0
+            for: 1m
+            labels:
+                severity: page
+                service: logistics
+                layer: infra
+            annotations:
+                summary: "El exporter no puede conectarse a Valkey"
+                description: >-
+                    redis_up=0 hace 1 min. Sin Valkey no hay caché, sesiones, colas ni locks. Mirar el contenedor
+                    valkey y, con Sentinel, si hubo failover.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsvalkeycaido"
+
+    # --------------------------------------------------------
+    # El propio monitoreo
+    # --------------------------------------------------------
+    - name: logistics-monitoreo
+      rules:
+          - alert: LogisticsExporterCaido
+            expr: up{job=~"postgres|valkey"} == 0
+            for: 5m
+            labels:
+                severity: ticket
+                service: logistics
+                layer: infra
+            annotations:
+                summary: "El exporter {{ $labels.job }} no responde"
+                description: >-
+                    Prometheus no puede scrapear {{ $labels.instance }} hace 5 min: se pierde visibilidad de
+                    {{ $labels.job }} (no implica que el servicio esté caído). Mirar el contenedor del exporter.
+                runbook_url: "https://github.com/Eduardito187/logistics/blob/production/docs/observability-runbook.md#logisticsexportercaido"

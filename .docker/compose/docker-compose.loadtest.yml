@@ -1,0 +1,61 @@
+# ============================================================
+# docker-compose.loadtest.yml — Ola 5: load testing con k6 (OPT-IN)
+# ============================================================
+# Override SEPARADO: no forma parte del stack normal. Agrega el generador de carga `k6` (imagen oficial
+# con versión fijada) en la misma red del stack, apuntando al nginx. El servicio tiene el profile
+# `loadtest`, así que un `docker compose up` común nunca lo arranca: solo corre con `run`.
+#
+# NUNCA contra producción. Preparar antes el pool de carga:
+#   docker compose exec -T app php artisan loadtest:prepare --drivers=300 --stops=8 --force
+#
+# Uso (desde la raíz del proyecto; las rutas relativas se resuelven contra el primer -f):
+#   docker compose -f docker-compose.yml -f .docker/compose/docker-compose.loadtest.yml \
+#     run --rm k6 run /loadtest/smoke.js
+#   docker compose -f docker-compose.yml -f .docker/compose/docker-compose.loadtest.yml \
+#     run --rm -e BASELINE_RPS=200 k6 run /loadtest/baseline.js
+#
+# Salida OPCIONAL a Prometheus (remote-write) para verlo en Grafana junto a las métricas del servidor.
+# Solo se activa si se pide con -o; apunta por defecto al servicio `prometheus` del stack opt-in
+# .docker/compose/docker-compose.observability.yml (red interna, puerto 9090; en el host es el 9190):
+#   docker compose -f docker-compose.yml -f .docker/compose/docker-compose.loadtest.yml \
+#     run --rm k6 run -o experimental-prometheus-rw /loadtest/peak-2k.js
+# Ese Prometheus ya arranca con --web.enable-remote-write-receiver (sin paso manual). Si el stack de
+# observabilidad no está levantado, k6 solo avisa y la corrida sigue.
+#
+# Para la corrida real de 2.000 VUs el generador debe ir en OTRA máquina que el stack (ver
+# loadtest/README.md, «Dimensionar el generador»): ahí se usa la misma imagen con `docker run` y
+# BASE_URL apuntando al balanceador.
+# ============================================================
+
+services:
+    k6:
+        image: grafana/k6:${LOADTEST_K6_VERSION:-1.3.0}
+        profiles:
+            - loadtest
+        working_dir: /loadtest
+        # El usuario de la imagen (k6, uid 12345) no puede escribir en el bind mount, y el resumen JSON
+        # se exporta a loadtest/data/results: por defecto corre como root; en Linux conviene pasar el
+        # uid/gid propio (LOADTEST_UID=$(id -u) LOADTEST_GID=$(id -g)) para no dejar archivos de root.
+        user: "${LOADTEST_UID:-0}:${LOADTEST_GID:-0}"
+        volumes:
+            - ./loadtest:/loadtest
+        environment:
+            # Stack bajo prueba: el nginx del compose por la red interna.
+            BASE_URL: ${LOADTEST_BASE_URL:-http://nginx}
+            POOL_FILE: /loadtest/data/pool.json
+            SUMMARY_DIR: /loadtest/data/results
+            RUN_ID: ${LOADTEST_RUN_ID:-}
+            # Salida a Prometheus remote-write (solo se usa si se corre con -o experimental-prometheus-rw).
+            K6_PROMETHEUS_RW_SERVER_URL: ${LOADTEST_PROMETHEUS_RW_URL:-http://prometheus:9090/api/v1/write}
+            K6_PROMETHEUS_RW_TREND_STATS: p(95),p(99),avg,max
+            K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+            K6_NO_USAGE_REPORT: "true"
+        networks:
+            - dismac_lg
+        # 2.000 VUs abren miles de sockets: sin esto el generador se queda sin descriptores.
+        ulimits:
+            nofile:
+                soft: 65536
+                hard: 65536
+        sysctls:
+            net.ipv4.ip_local_port_range: "1024 65535"

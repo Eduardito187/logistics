@@ -15,6 +15,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Logistics\Inventory\Infrastructure\Persistence\Eloquent\Model\InventoryLotRecord;
 use Logistics\Inventory\Presentation\Filament\Resources\StockOnHandResource\Pages\ListStockOnHand;
@@ -39,11 +40,14 @@ final class StockOnHandResource extends Resource
     use OfficeOnly;
     use PlainNavigationLabel;
 
-    /** @var array<string, string>|null Caché por request de id de almacén → nombre (network_nodes). */
-    private static ?array $warehouseNames = null;
-
-    /** @var array<string, string>|null Caché por request de id de seller → nombre legal (sellers). */
-    private static ?array $sellerNames = null;
+    /**
+     * Vida del caché de los mapas de nombres (segundos).
+     *
+     * Antes estos mapas se memoizaban en propiedades estáticas ("por request"), pero bajo Octane el
+     * worker vive entre requests y esa estática serviría nombres viejos indefinidamente además de
+     * crecer en memoria; el caché con TTL se refresca solo (staleness ≤60s, aceptable para nombres).
+     */
+    private const NAMES_TTL = 60;
 
     protected static ?string $model = InventoryLotRecord::class;
 
@@ -209,27 +213,49 @@ final class StockOnHandResource extends Resource
      */
     private static function warehouseLabel(string $id): string
     {
-        if (self::$warehouseNames === null) {
-            self::$warehouseNames = self::loadNames('network_nodes', 'name');
-        }
+        return self::warehouseNames()[$id] ?? __('Unknown warehouse');
+    }
 
-        return self::$warehouseNames[$id] ?? __('Unknown warehouse');
+    /**
+     * Mapa id→nombre de los almacenes (network_nodes), resuelto en lote y cacheado con TTL corto.
+     *
+     * @return array<string, string>
+     */
+    private static function warehouseNames(): array
+    {
+        return Cache::remember(
+            'admin:stock-warehouse-names',
+            self::NAMES_TTL,
+            static fn (): array => self::loadNames('network_nodes', 'name'),
+        );
     }
 
     /**
      * Nombre legible del dueño: "Dismac (owned)" si es propio, o el nombre legal del seller si es
-     * consignación. Resuelto en lote y cacheado por request.
+     * consignación. Resuelto en lote y cacheado con TTL corto.
      */
     private static function ownerLabel(?string $ownerPartyId): string
     {
         if ($ownerPartyId === null || $ownerPartyId === '') {
             return __('Dismac (owned)');
         }
-        if (self::$sellerNames === null) {
-            self::$sellerNames = self::loadNames('sellers', 'legal_name');
-        }
 
-        return self::$sellerNames[$ownerPartyId] ?? __('Unknown seller');
+        return self::sellerNames()[$ownerPartyId] ?? __('Unknown seller');
+    }
+
+    /**
+     * Mapa id→razón social de los sellers, resuelto en lote y cacheado con TTL corto. Comparte la clave
+     * 'admin:seller-names' con los demás resources que resuelven la misma tabla, para reutilizar caché.
+     *
+     * @return array<string, string>
+     */
+    private static function sellerNames(): array
+    {
+        return Cache::remember(
+            'admin:seller-names',
+            self::NAMES_TTL,
+            static fn (): array => self::loadNames('sellers', 'legal_name'),
+        );
     }
 
     /**

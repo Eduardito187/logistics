@@ -165,7 +165,11 @@ fi
 # ------------------------------------------------------------
 # `queue:work` mantiene el framework en memoria: sin esta señal un worker sigue ejecutando
 # el código anterior al deploy (incidente real en dis-commerce, 2026-07-19).
-if [ "$1" = "php-fpm" ]; then
+# Solo la unidad principal (APP_SERVICE_ROLE=monolith, el default): una réplica de un rol acotado (p. ej.
+# `telemetry`) que arranca o escala NO debe reiniciar los workers ni limpiar los mutex del scheduler de
+# toda la plataforma.
+SERVICE_ROLE="${APP_SERVICE_ROLE:-monolith}"
+if [ "$1" = "php-fpm" ] && [ "$SERVICE_ROLE" = "monolith" ]; then
     echo "[entrypoint] Señalizando recarga de workers..."
     for attempt in 1 2 3; do
         if php artisan queue:restart > /dev/null 2>&1; then
@@ -188,7 +192,7 @@ fi
 # el pump del outbox quedó congelado horas y los eventos no se despachaban. Un deploy NO limpia ese lock por sí
 # solo (vive en Valkey, no en el proceso). Esta limpieza al arrancar lo borra, así el outbox se recupera en el
 # deploy. Tolerante: Valkey puede no estar listo; no debe tumbar el arranque.
-if [ "$1" = "php-fpm" ]; then
+if [ "$1" = "php-fpm" ] && [ "$SERVICE_ROLE" = "monolith" ]; then
     # OJO: el comando es `schedule:clear-cache` (ScheduleClearCacheCommand), NO `schedule:clear-mutex` (ese NO
     # existe en Laravel). Borra los mutex de withoutOverlapping/onOneServer cacheados (Valkey) por el scheduler.
     echo "[entrypoint] Limpiando locks colgados del scheduler (schedule:clear-cache)..."
@@ -199,4 +203,14 @@ fi
 # ------------------------------------------------------------
 # 6. Comando original
 # ------------------------------------------------------------
+# OPcache preload: SOLO para php-fpm y opt-in (OPCACHE_PRELOAD=true). Va por `-d` y no en el ini porque
+# el ini lo leen también los procesos CLI (artisan/scheduler/workers), donde recompilar el classmap en
+# cada arranque es puro costo y un archivo que no compila mata el proceso (rompió el build de la imagen).
+# Apagado por defecto hasta validarlo con load test; si php-fpm no arranca con preload, basta quitar la env.
+if [ "$1" = "php-fpm" ] && [ "${OPCACHE_PRELOAD:-false}" = "true" ] && [ -f /var/www/html/bootstrap/preload.php ]; then
+    echo "[entrypoint] OPCACHE_PRELOAD=true → php-fpm con preload (bootstrap/preload.php)."
+    shift
+    exec php-fpm -d opcache.preload=/var/www/html/bootstrap/preload.php "$@"
+fi
+
 exec "$@"

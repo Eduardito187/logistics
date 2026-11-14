@@ -176,6 +176,43 @@ it('AuthenticateChannel deja pasar con key y secret válidos', function (): void
         ->and($request->attributes->get(AuthenticateChannel::ATTRIBUTE))->toBeInstanceOf(ApiChannel::class);
 });
 
+it('AuthenticateChannel recuerda la verificación del secreto sin atraso de revocación', function (): void {
+    $secret = ApiChannel::generateSecret();
+    $channel = ApiChannel::create([
+        'name' => 'Customer app',
+        'key' => ApiChannel::generateKey(),
+        'secret' => $secret,
+        'rate_limit_per_minute' => 60,
+        'active' => true,
+    ]);
+
+    $attempt = static function (string $presented) use ($channel): int {
+        $request = Request::create('/x', 'GET');
+        $request->headers->set('X-Channel-Key', $channel->key);
+        $request->headers->set('X-Channel-Secret', $presented);
+
+        return (new AuthenticateChannel)->handle($request, passThrough())->getStatusCode();
+    };
+
+    // Primer request verifica con bcrypt; el segundo sale de la verificación recordada.
+    expect($attempt($secret))->toBe(200)
+        ->and($attempt($secret))->toBe(200)
+        // Un secreto incorrecto no se beneficia de lo recordado.
+        ->and($attempt('sk_incorrecto'))->toBe(401);
+
+    // Rotar el secreto invalida en el acto la verificación recordada del anterior.
+    $rotated = ApiChannel::generateSecret();
+    $channel->update(['secret' => $rotated]);
+
+    expect($attempt($secret))->toBe(401)
+        ->and($attempt($rotated))->toBe(200);
+
+    // Desactivar el canal corta en el acto aunque la verificación siga recordada.
+    $channel->update(['active' => false]);
+
+    expect($attempt($rotated))->toBe(401);
+});
+
 // ── EnsureDeviceToken ─────────────────────────────────────────────────────────
 it('EnsureDeviceToken rechaza sin usuario (401)', function (): void {
     $response = (new EnsureDeviceToken)->handle(Request::create('/x', 'GET'), passThrough());
