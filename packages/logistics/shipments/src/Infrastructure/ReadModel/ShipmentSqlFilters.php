@@ -51,6 +51,45 @@ final class ShipmentSqlFilters
     }
 
     /**
+     * Búsqueda por texto: código de pedido (`external_id` / `order_reference`), nombre o documento del
+     * cliente. Sin distinguir mayúsculas; los comodines del usuario se escapan (busca el texto literal).
+     */
+    public static function search(Builder $query, string $text): void
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return;
+        }
+
+        $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($text)).'%';
+
+        // SQL literal por columna (nada dinámico en el texto de la consulta; el valor va por binding).
+        $query->where(static function (Builder $where) use ($like): void {
+            $where->whereRaw('lower(external_id) like ?', [$like])
+                ->orWhereRaw('lower(order_reference) like ?', [$like])
+                ->orWhereRaw('lower(customer_name) like ?', [$like])
+                ->orWhereRaw('lower(customer_document_id) like ?', [$like]);
+        });
+    }
+
+    /**
+     * Listos para retirar: pedidos cuya recepción en su tienda DESTINO ya se concilió (la mercadería está en
+     * la tienda) y que todavía no se entregaron ni se anularon. Lee ejecución en solo lectura con un EXISTS
+     * correlacionado por `shipment_id`.
+     */
+    public static function readyForPickup(Builder $query, string $prefix = 'shipments.'): void
+    {
+        $query->whereNotIn($prefix.'status', [ShipmentStatus::Delivered->value, ShipmentStatus::Cancelled->value])
+            ->whereExists(static function (Builder $received) use ($prefix): void {
+                $received->selectRaw('1')
+                    ->from('execution_node_receptions as rp_r')
+                    ->whereColumn('rp_r.shipment_id', $prefix.'id')
+                    ->whereColumn('rp_r.destination_node_id', $prefix.'destination_node_id')
+                    ->where('rp_r.status', 'RECONCILED');
+            });
+    }
+
+    /**
      * Pendientes de preparar: envíos ASIGNADOS (PLANNED o IN_EXECUTION) que todavía NO tienen entrega en
      * ejecución abierta. En el flujo vigente (decisión del dueño) ASIGNAR EL VEHÍCULO ES PREPARAR: eso abre
      * la entrega (`execution_deliveries`), así que la existencia de la entrega marca el envío como preparado

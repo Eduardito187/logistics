@@ -48,22 +48,22 @@ final class RecordProofOfDeliveryHandler implements CommandHandler
         // Auto-abrir si NO hay entrega: un POD puede llegar para un envío cuya entrega nunca se abrió (el
         // camión se asignó por un camino que no disparó OpenDelivery, o antes de ese fix). En vez de
         // bloquear al chofer, abrimos la entrega con el camión de su ruta (abre en Loaded) y seguimos — el
-        // guard del POD ya acepta Loaded→Delivered. Sin ruta/camión no hay contexto para abrirla: ahí sí se
-        // mantiene el error claro.
+        // guard del POD ya acepta Loaded→Delivered. Sin ruta/camión solo se abre si es una entrega de
+        // MOSTRADOR (rol tienda, retiro en tienda); en cualquier otro caso se mantiene el error claro.
         $delivery = $this->deliveries->findByShipmentId($command->shipmentId);
         if ($delivery === null) {
             $route = $this->routes->findByShipmentId($command->shipmentId);
             $vehicleId = $route?->vehicleId() ?? '';
-            if (trim($vehicleId) === '') {
+            if (trim($vehicleId) === '' && !$command->counterHandover) {
                 throw ExecutionException::because("no hay entrega abierta para el envío {$command->shipmentId}");
             }
-            $delivery = Delivery::open(
-                $this->deliveries->nextIdentity(),
-                $command->shipmentId,
-                $vehicleId,
-                $this->fulfillment->forShipmentId($command->shipmentId)->mode,
-                $occurredAt,
-            );
+
+            $mode = $this->fulfillment->forShipmentId($command->shipmentId)->mode;
+            // Retiro en tienda: el cliente retira en el mostrador, sin camión ni ruta. La tienda abre la
+            // entrega de mostrador y la misma prueba de entrega la cierra como entregada.
+            $delivery = trim($vehicleId) === ''
+                ? Delivery::openAtCounter($this->deliveries->nextIdentity(), $command->shipmentId, $mode, $occurredAt)
+                : Delivery::open($this->deliveries->nextIdentity(), $command->shipmentId, $vehicleId, $mode, $occurredAt);
         }
 
         $unitIds = $command->unitIds !== [] ? $command->unitIds : [$command->unitId];

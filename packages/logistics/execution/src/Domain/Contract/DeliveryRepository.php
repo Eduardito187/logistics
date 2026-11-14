@@ -29,14 +29,18 @@ interface DeliveryRepository
 
     /**
      * Entregas asignadas a un vehículo (su hoja de ruta), en orden estable. Con $limit, solo esa página
-     * (LIMIT/OFFSET en la base, sin materializar la colección completa).
+     * (LIMIT/OFFSET en la base, sin materializar la colección completa). Con $statuses, solo las entregas
+     * en alguno de esos estados (valores de DeliveryStatus); vacío = todas.
      *
+     * @param  list<string>   $statuses
      * @return list<Delivery>
      */
-    public function findByVehicleId(string $vehicleId, ?int $limit = null, int $offset = 0): array;
+    public function findByVehicleId(string $vehicleId, ?int $limit = null, int $offset = 0, array $statuses = []): array;
 
     /**
-     * Total de entregas asignadas a un vehículo (para la meta de la paginación).
+     * Total de entregas asignadas a un vehículo (para la meta de la paginación), con el mismo filtro.
+     *
+     * @param list<string> $statuses
      */
-    public function countByVehicleId(string $vehicleId): int;
+    public function countByVehicleId(string $vehicleId, array $statuses = []): int;
 }

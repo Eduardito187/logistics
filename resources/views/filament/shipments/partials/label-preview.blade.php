@@ -19,8 +19,8 @@
     $sku = $label['sku'] !== '' ? $label['sku'] : '—';
 @endphp
 
-<div class="ck-card" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start">
-    {{-- La etiqueta física (blanca, para escanear con contraste), igual que la que imprime la Zebra. --}}
+<div class="ck-card" style="display:flex;flex-direction:column;gap:1rem;align-items:center">
+    {{-- La etiqueta física (blanca, para escanear con contraste): SOLO código (QR o Zebra), SKU e ID. --}}
     <div style="background:#ffffff;color:#111111;border-radius:12px;padding:16px 18px;width:240px;max-width:100%;
                 box-shadow:0 1px 0 rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.35);font-family:'IBM Plex Mono',ui-monospace,monospace">
         @if($showQr)
@@ -34,8 +34,7 @@
         @endif
 
         <div style="font-size:12px;line-height:1.5;text-align:center;{{ $showQr ? 'border-top:1px dashed #d0d0d0;padding-top:8px' : '' }}">
-            <div style="font-weight:700;font-size:13px">{{ $productName }}</div>
-            <div>SKU {{ $sku }}</div>
+            <div style="font-weight:700;font-size:13px">SKU {{ $sku }}</div>
         </div>
 
         @if($showBarcode && $barcode !== '')
@@ -52,12 +51,12 @@
     </div>
 
     {{-- Datos legibles de la etiqueta (producto + SKU, destino, unidad/pieza, estado). --}}
-    <div style="flex:1;min-width:170px">
+    <div style="width:100%">
         <dl class="ck-dl">
             <dt>{{ __('Product') }}</dt><dd>{{ $productName }}</dd>
             <dt>{{ __('SKU') }}</dt><dd class="ck-mono">{{ $sku }}</dd>
             <dt>{{ __('Destination') }}</dt><dd>{{ $label['destination_name'] ?: '—' }}</dd>
-            <dt>{{ __('Unit') }}</dt><dd>{{ $label['unit_index'] }} / {{ $label['unit_total'] }}</dd>
+            <dt>Unidad</dt><dd>{{ $label['unit_index'] }} / {{ $label['unit_total'] }}</dd>
             <dt>{{ __('Piece') }}</dt><dd>{{ $label['piece_index'] }} / {{ $label['piece_total'] }}</dd>
             <dt>{{ __('Status') }}</dt>
             <dd><span class="ck-pill {{ $label['printed'] ? 'ck-pill--positive' : '' }}">{{ $label['printed'] ? __('Printed') : __('Pending') }}</span></dd>

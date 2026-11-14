@@ -25,11 +25,12 @@ final class OdometerReadingMapper
             OdometerSource::from($record->source),
             $record->read_at->toDateTimeImmutable(),
             $record->note,
+            is_string($record->route_id ?? null) ? $record->route_id : null,
         );
     }
 
     /**
-     * @return array{id: string, vehicle_id: string, km: int, source: string, read_at: DateTimeImmutable, note: string|null}
+     * @return array{id: string, vehicle_id: string, km: int, source: string, read_at: DateTimeImmutable, note: string|null, route_id: string|null}
      */
     public function toRow(OdometerReading $reading): array
     {
@@ -40,6 +41,7 @@ final class OdometerReadingMapper
             'source' => $reading->source()->value,
             'read_at' => $reading->readAt(),
             'note' => $reading->note(),
+            'route_id' => $reading->routeId(),
         ];
     }
 }
