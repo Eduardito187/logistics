@@ -128,6 +128,14 @@ final class DbShipmentListReader implements ShipmentListReader
         if ($filter->pendingPreparation) {
             ShipmentSqlFilters::pendingPreparation($query->getQuery());
         }
+        // Búsqueda por código de pedido, nombre o documento del cliente.
+        if ($filter->search !== null && trim($filter->search) !== '') {
+            ShipmentSqlFilters::search($query->getQuery(), $filter->search);
+        }
+        // Solo los que ya están en la tienda listos para retirar.
+        if ($filter->readyForPickup) {
+            ShipmentSqlFilters::readyForPickup($query->getQuery());
+        }
 
         return $query;
     }

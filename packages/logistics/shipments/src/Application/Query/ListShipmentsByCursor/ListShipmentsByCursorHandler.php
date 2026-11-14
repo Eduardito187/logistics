@@ -53,6 +53,8 @@ final class ListShipmentsByCursorHandler implements QueryHandler
                 statuses: $statuses,
                 deliveryMode: $deliveryMode,
                 pendingPreparation: $query->pendingPreparation,
+                search: $query->search,
+                readyForPickup: $query->readyForPickup,
             ),
         );
 

@@ -484,6 +484,16 @@ final class ShipmentResource extends Resource
     }
 
     /**
+     * Un pedido ENTREGADO queda bloqueado: no se edita (Filament oculta «Editar» y niega la página de
+     * edición). La misma regla vive en el dominio y en la fila; acá solo se quita la opción de la vista.
+     */
+    public static function canEdit(Model $record): bool
+    {
+        return parent::canEdit($record)
+            && strtoupper((string) $record->getAttribute('status')) !== ShipmentStatus::Delivered->value;
+    }
+
+    /**
      * Acción de re-geocodificación: recalcula la confianza de la dirección despachando el comando
      * por el CommandBus (nunca tocando Infrastructure ni el dominio directamente).
      */
@@ -495,6 +505,8 @@ final class ShipmentResource extends Resource
             ->requiresConfirmation()
             ->modalHeading(__('Re-geocode address'))
             ->modalDescription(__('Recalculate the address confidence for this order.'))
+            // Un pedido entregado ya no cambia su dirección.
+            ->visible(static fn (ShipmentRecord $record): bool => (string) $record->status !== ShipmentStatus::Delivered->value)
             ->action(function (ShipmentRecord $record): void {
                 /** @var CommandBus $commandBus */
                 $commandBus = app(CommandBus::class);

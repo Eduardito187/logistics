@@ -12,6 +12,7 @@ use Logistics\Execution\Application\Query\GetDeliveryState\GetDeliveryState;
 use Logistics\Execution\Application\Query\GetNodeReception\GetNodeReception;
 use Logistics\Execution\Application\ReadModel\DeliveryView;
 use Logistics\Execution\Application\ReadModel\NodeReceptionView;
+use Logistics\Execution\Presentation\Support\DeliveryEvidenceGallery;
 use Logistics\Labels\Application\Query\ResolveLabelUnit\ResolveLabelUnit;
 use Logistics\Labels\Application\ReadModel\LabelUnitView;
 use Logistics\Shared\Application\Command\CommandBus;
@@ -208,8 +209,25 @@ abstract class ExecutionController
     {
         /** @var DeliveryView|null $view */
         $view = $this->queryBus->ask(new GetDeliveryState($shipmentId));
+        if (!$view instanceof DeliveryView) {
+            return new JsonResponse(['data' => null], $status);
+        }
 
-        return new JsonResponse(['data' => $view?->toArray()], $status);
+        // Evidencia VISIBLE de la entrega (firma, fotos, documento) con URL temporal: la referencia cruda
+        // (disco + path) no se puede abrir desde la app. `pod_photo_url` se completa con la foto principal.
+        $data = $view->toArray();
+        $evidence = (new DeliveryEvidenceGallery($this->queryBus))->forShipment($shipmentId, $view);
+        $data['evidence'] = $evidence;
+        if (($data['pod_photo_url'] ?? null) === null) {
+            foreach ($evidence as $item) {
+                if ($item['kind'] === 'pod') {
+                    $data['pod_photo_url'] = $item['url'];
+                    break;
+                }
+            }
+        }
+
+        return new JsonResponse(['data' => $data], $status);
     }
 
     /**

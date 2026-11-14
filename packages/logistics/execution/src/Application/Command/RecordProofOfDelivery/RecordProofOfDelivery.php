@@ -39,5 +39,7 @@ final readonly class RecordProofOfDelivery implements Command
         public array $evidenceIds = [],
         public ?float $accuracyM = null,
         public ?string $locationCapturedAt = null,
+        // Entrega de MOSTRADOR (rol tienda, retiro en tienda): autoriza a abrir la entrega sin vehículo.
+        public bool $counterHandover = false,
     ) {}
 }

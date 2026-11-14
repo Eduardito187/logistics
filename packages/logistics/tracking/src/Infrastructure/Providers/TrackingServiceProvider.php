@@ -27,6 +27,8 @@ use Logistics\Tracking\Application\Command\ProjectUnitExecutionEvent\ProjectUnit
 use Logistics\Tracking\Application\Command\ProjectUnitExecutionEvent\ProjectUnitExecutionEventHandler;
 use Logistics\Tracking\Application\Command\RecordSatisfactionSurvey\RecordSatisfactionSurvey;
 use Logistics\Tracking\Application\Command\RecordSatisfactionSurvey\RecordSatisfactionSurveyHandler;
+use Logistics\Tracking\Application\Command\SyncRouteStops\SyncRouteStops;
+use Logistics\Tracking\Application\Command\SyncRouteStops\SyncRouteStopsHandler;
 use Logistics\Tracking\Application\Command\UpdateTruckPosition\UpdateTruckPosition;
 use Logistics\Tracking\Application\Command\UpdateTruckPosition\UpdateTruckPositionHandler;
 use Logistics\Tracking\Application\Contract\CustomerContactReader;
@@ -35,6 +37,8 @@ use Logistics\Tracking\Application\Contract\DeliveredAtBackfill;
 use Logistics\Tracking\Application\Contract\PublicLinkTtl;
 use Logistics\Tracking\Application\Contract\PublicTrackingReader;
 use Logistics\Tracking\Application\Contract\RatingRequestStore;
+use Logistics\Tracking\Application\Contract\ReturnCoverageReader;
+use Logistics\Tracking\Application\Contract\RouteStopsReader;
 use Logistics\Tracking\Application\Contract\ShipmentOrderReferenceReader;
 use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
 use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkStateHandler;
@@ -67,6 +71,8 @@ use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentTrackingRepos
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentUnitTrackingRepository;
 use Logistics\Tracking\Infrastructure\ReadSide\CachedPublicTrackingReader;
 use Logistics\Tracking\Infrastructure\ReadSide\DbCustomerContactReader;
+use Logistics\Tracking\Infrastructure\ReadSide\DbReturnCoverageReader;
+use Logistics\Tracking\Infrastructure\ReadSide\DbRouteStopsReader;
 use Logistics\Tracking\Infrastructure\ReadSide\DbShipmentOrderReferenceReader;
 use Logistics\Tracking\Infrastructure\ReadSide\PublicTrackingCache;
 use Logistics\Tracking\Infrastructure\Settings\SettingsPublicLinkTtl;
@@ -128,6 +134,23 @@ final class TrackingServiceProvider extends ServiceProvider
             assert($connections instanceof ConnectionResolverInterface);
 
             return new DbShipmentOrderReferenceReader($connections);
+        });
+
+        // Lado lectura cross-context: cuánto de un pedido ya se devolvió, por producto (devolución parcial).
+        $this->app->bind(ReturnCoverageReader::class, static function ($app): DbReturnCoverageReader {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+
+            return new DbReturnCoverageReader($connections);
+        });
+
+        // Lado lectura cross-context: paradas de la ruta real del camión (execution), para ubicar cada envío
+        // en su ruta y contar las paradas pendientes por delante. Solo lectura.
+        $this->app->bind(RouteStopsReader::class, static function ($app): DbRouteStopsReader {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+
+            return new DbRouteStopsReader($connections);
         });
 
         // Backfill idempotente de customer_email (comando logistics:tracking:backfill-customer-email).
@@ -213,6 +236,7 @@ final class TrackingServiceProvider extends ServiceProvider
         $registry->register(ProjectExecutionEvent::class, ProjectExecutionEventHandler::class);
         $registry->register(ProjectUnitExecutionEvent::class, ProjectUnitExecutionEventHandler::class);
         $registry->register(PlaceShipmentOnRoute::class, PlaceShipmentOnRouteHandler::class);
+        $registry->register(SyncRouteStops::class, SyncRouteStopsHandler::class);
         $registry->register(UpdateTruckPosition::class, UpdateTruckPositionHandler::class);
         $registry->register(RecordSatisfactionSurvey::class, RecordSatisfactionSurveyHandler::class);
         $registry->register(MarkRatingRequested::class, MarkRatingRequestedHandler::class);

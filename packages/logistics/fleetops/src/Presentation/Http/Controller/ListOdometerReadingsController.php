@@ -35,6 +35,7 @@ final class ListOdometerReadingsController extends ApiController
                 to: $request->filled('to') ? $request->string('to')->toString() : null,
                 limit: ApiPagination::limit($request),
                 offset: ApiPagination::offset($request),
+                routeId: $request->filled('route_id') ? $request->string('route_id')->toString() : null,
             ));
 
             $items = array_map(static fn (OdometerView $view): array => $view->toArray(), $page->items);

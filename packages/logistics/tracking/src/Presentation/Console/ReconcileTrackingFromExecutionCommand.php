@@ -8,6 +8,9 @@ use Illuminate\Console\Command;
 use Illuminate\Database\ConnectionResolverInterface;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Tracking\Application\Command\ProjectExecutionEvent\ProjectExecutionEvent;
+use Logistics\Tracking\Application\Command\SyncRouteStops\SyncRouteStops;
+use Logistics\Tracking\Application\Contract\RouteStopsReader;
+use Logistics\Tracking\Application\Service\EnsureShipmentTracking;
 use stdClass;
 use Throwable;
 
@@ -23,6 +26,11 @@ use Throwable;
  * relay) para que la proyección de seguimiento se ponga al día. Idempotente: si el seguimiento YA está en ese
  * estado, el handler es no-op (no reemite). Tolerante: una fila mala no corta el lote. Dry-run por defecto.
  *
+ * Además deja el seguimiento COMPLETO para los envíos vivos (antes solo se veía al entregar):
+ *  - abre el seguimiento de cada envío que no lo tiene (entró por ingesta o se perdieron sus eventos);
+ *  - ubica cada envío en la ruta real de su camión y cuenta sus paradas pendientes por delante.
+ * Esos dos pasos NO graban eventos (no reemiten avisos al cliente por algo que ya pasó).
+ *
  * Lee la tabla de OTRO contexto (execution_deliveries) por nombre: es una herramienta de recuperación
  * (Infrastructure de consola), no dominio; por eso no acopla clases de execution, solo el nombre de la tabla.
  */
@@ -35,12 +43,20 @@ final class ReconcileTrackingFromExecutionCommand extends Command
 
     protected $description = 'Reproyecta el seguimiento desde las entregas DELIVERED/FAILED de execution (recupera los atascados en «Cargada»)';
 
-    public function handle(CommandBus $bus, ConnectionResolverInterface $connections): int
-    {
+    public function handle(
+        CommandBus $bus,
+        ConnectionResolverInterface $connections,
+        RouteStopsReader $routes,
+        EnsureShipmentTracking $ensureTracking,
+    ): int {
         $force = $this->option('force') === true;
         $chunk = max(1, (int) $this->option('chunk'));
         /** @var list<string> $shipments */
         $shipments = array_values(array_filter((array) $this->option('shipment'), 'is_string'));
+
+        if ($shipments === []) {
+            $this->openMissingTrackings($routes, $ensureTracking, $force, $chunk);
+        }
 
         $total = 0;
         $dispatched = 0;
@@ -88,6 +104,10 @@ final class ReconcileTrackingFromExecutionCommand extends Command
             }
         });
 
+        if ($shipments === []) {
+            $this->syncRoutes($bus, $routes, $force);
+        }
+
         if (!$force) {
             $this->info("Simulación: {$total} entregas DELIVERED/FAILED se reproyectarían. Usá --force para aplicar.");
 
@@ -97,5 +117,74 @@ final class ReconcileTrackingFromExecutionCommand extends Command
         $this->info("Listo. Entregas revisadas: {$total}. Reproyectadas: {$dispatched}. Saltadas: {$skipped}.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Abre el seguimiento de los envíos que no lo tienen. Por lotes; corta si un lote no logra abrir
+     * ninguno (envíos sin referencia de orden) para no girar en falso.
+     */
+    private function openMissingTrackings(RouteStopsReader $routes, EnsureShipmentTracking $ensureTracking, bool $force, int $chunk): void
+    {
+        try {
+            if (!$force) {
+                $pending = count($routes->shipmentsWithoutTracking(100000));
+                $this->info("Simulación: {$pending} envíos sin seguimiento se abrirían.");
+
+                return;
+            }
+
+            $opened = 0;
+            $unopenable = [];
+            do {
+                $openedInBatch = 0;
+                foreach ($routes->shipmentsWithoutTracking($chunk + count($unopenable)) as $shipmentId) {
+                    if (isset($unopenable[$shipmentId])) {
+                        continue;
+                    }
+                    if ($ensureTracking->forShipment($shipmentId, true) !== null) {
+                        $openedInBatch++;
+                    } else {
+                        $unopenable[$shipmentId] = true;
+                    }
+                }
+                $opened += $openedInBatch;
+            } while ($openedInBatch > 0);
+
+            $this->info("Seguimientos abiertos: {$opened}. Sin referencia de orden (no se pueden abrir): ".count($unopenable).'.');
+        } catch (Throwable $e) {
+            $this->warn('No se pudieron abrir los seguimientos faltantes: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Ubica en su ruta a los envíos de cada ruta con paradas pendientes (posición + paradas por delante).
+     */
+    private function syncRoutes(CommandBus $bus, RouteStopsReader $routes, bool $force): void
+    {
+        try {
+            $routeIds = $routes->routesWithPendingStops();
+        } catch (Throwable $e) {
+            $this->warn('No se pudieron leer las rutas: '.$e->getMessage());
+
+            return;
+        }
+
+        if (!$force) {
+            $this->info('Simulación: '.count($routeIds).' rutas con paradas pendientes se alinearían.');
+
+            return;
+        }
+
+        $synced = 0;
+        foreach ($routeIds as $routeId) {
+            try {
+                $bus->dispatch(new SyncRouteStops($routeId, null, true));
+                $synced++;
+            } catch (Throwable $e) {
+                $this->warn("ruta {$routeId}: {$e->getMessage()}");
+            }
+        }
+
+        $this->info("Rutas alineadas: {$synced}.");
     }
 }

@@ -71,7 +71,7 @@ final class ListShipmentsController
         $isMultiStatus = $statusList !== null && count($statusList) > 1;
         $this->normalizeQuery($request, $statusList, $isMultiStatus);
 
-        /** @var array{source?: string|null, destination_node_id?: string|null, delivery_date_from?: string|null, delivery_date_to?: string|null, delivery_mode?: string|null, include?: string|null, pending_preparation?: bool|string|int|null} $filters */
+        /** @var array{source?: string|null, destination_node_id?: string|null, delivery_date_from?: string|null, delivery_date_to?: string|null, delivery_mode?: string|null, include?: string|null, pending_preparation?: bool|string|int|null, q?: string|null, ready_for_pickup?: bool|string|int|null} $filters */
         $filters = $request->validate([
             'status' => $isMultiStatus ? ['array', 'max:'.count($statuses)] : ['nullable', 'string', Rule::in($statuses)],
             'status.*' => ['string', Rule::in($statuses)],
@@ -83,6 +83,10 @@ final class ListShipmentsController
             'delivery_mode' => ['nullable', 'string', Rule::in($modes)],
             'include' => ['nullable', 'string', 'max:200'],
             'pending_preparation' => ['nullable', 'boolean'],
+            // Búsqueda en el servidor: código de pedido, nombre o documento del cliente.
+            'q' => ['nullable', 'string', 'max:120'],
+            // Solo pedidos que ya están en la tienda listos para retirar.
+            'ready_for_pickup' => ['nullable', 'boolean'],
         ]);
 
         // Resuelve el filtro de nodo destino: para el rol Tienda se FUERZA su nodo asignado (server-side,
@@ -138,14 +142,17 @@ final class ListShipmentsController
 
         // `pending_preparation=true|false` llega como texto en la query string: la regla `boolean` de Laravel
         // solo acepta 1/0, así que true/false (cualquier capitalización) se traducen antes de validar.
-        $rawPending = $request->query('pending_preparation');
-        if (is_string($rawPending)) {
-            $normalized = strtolower(trim($rawPending));
-            $request->merge(['pending_preparation' => match ($normalized) {
-                'true' => '1',
-                'false' => '0',
-                default => $normalized,
-            }]);
+        // Lo mismo vale para `ready_for_pickup`.
+        foreach (['pending_preparation', 'ready_for_pickup'] as $flag) {
+            $raw = $request->query($flag);
+            if (is_string($raw)) {
+                $normalized = strtolower(trim($raw));
+                $request->merge([$flag => match ($normalized) {
+                    'true' => '1',
+                    'false' => '0',
+                    default => $normalized,
+                }]);
+            }
         }
     }
 
@@ -185,6 +192,8 @@ final class ListShipmentsController
             statuses: $isMultiStatus ? $validStatuses : null,
             deliveryMode: self::stringOrNull($filters['delivery_mode'] ?? null),
             pendingPreparation: filter_var($filters['pending_preparation'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            search: self::stringOrNull($filters['q'] ?? null),
+            readyForPickup: filter_var($filters['ready_for_pickup'] ?? false, FILTER_VALIDATE_BOOLEAN),
         );
     }
 
@@ -225,6 +234,8 @@ final class ListShipmentsController
             statuses: $criteria->statuses,
             deliveryMode: $criteria->deliveryMode,
             pendingPreparation: $criteria->pendingPreparation,
+            search: $criteria->search,
+            readyForPickup: $criteria->readyForPickup,
         ));
 
         $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);

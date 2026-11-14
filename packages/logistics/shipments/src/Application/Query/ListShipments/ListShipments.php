@@ -39,5 +39,9 @@ final readonly class ListShipments implements Query
         public ?string $deliveryMode = null,
         // Aditivo (#1b): solo envíos asignados (PLANNED / IN_EXECUTION) aún SIN escaneo de preparación.
         public bool $pendingPreparation = false,
+        // Aditivo: búsqueda por texto (código de pedido, nombre o documento del cliente); null = sin filtro.
+        public ?string $search = null,
+        // Aditivo: solo pedidos que YA están en su tienda listos para que el cliente los retire.
+        public bool $readyForPickup = false,
     ) {}
 }

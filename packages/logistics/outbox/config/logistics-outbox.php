@@ -19,6 +19,7 @@ use Logistics\Inventory\Infrastructure\Dispatch\ReturnRestockDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\CommerceEventNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\DomainEventNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\FleetDocumentExpiryNotificationDispatcher;
+use Logistics\Notifications\Infrastructure\Dispatch\ReadyForPickupNotificationDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationDispatcher;
 use Logistics\Outbox\Infrastructure\Dispatch\FanOutMessageDispatcher;
 use Logistics\Outbox\Infrastructure\Dispatch\NullMessageDispatcher;
@@ -38,6 +39,7 @@ use Logistics\Tracking\Infrastructure\Outbox\ProcessingOnOrderPaid;
 use Logistics\Tracking\Infrastructure\Outbox\ProjectExecutionTracking;
 use Logistics\Tracking\Infrastructure\Outbox\RescheduledOnReschedule;
 use Logistics\Tracking\Infrastructure\Outbox\ReturnedOnReturnInitiated;
+use Logistics\Tracking\Infrastructure\Outbox\SyncRouteStopsOnRouteChange;
 use Logistics\Tracking\Infrastructure\Outbox\TruckPositionOnVehicleReport;
 
 // Configuración del Transactional Outbox (ADR 002). Valores afinables por entorno vía .env.
@@ -169,6 +171,11 @@ return [
         // dispatcher por defecto), así que va directo al reactor.
         'execution.shipment_prepared' => FanOutMessageDispatcher::class,
         'execution.route_stop_attached' => FanOutMessageDispatcher::class,
+        // Parada quitada de la ruta: aviso (preserva el ruteo por prefijo) + realinea el seguimiento.
+        'execution.route_stop_detached' => FanOutMessageDispatcher::class,
+        // Recepción conciliada en un nodo: aviso (preserva el ruteo por prefijo) + «listo para retirar» al
+        // cliente cuando es SU tienda de retiro.
+        'execution.node_reception_reconciled' => FanOutMessageDispatcher::class,
         'execution.driver_route_assembled' => FanOutMessageDispatcher::class,
         // Asignar vehículo abre la entrega = preparar: solo avanza el estado del envío a IN_EXECUTION (un
         // reactor; no necesita abanico ni notificación). El nombre exacto gana al prefijo 'execution.'.
@@ -311,10 +318,23 @@ return [
         ],
         'execution.route_stop_attached' => [
             DomainEventNotificationDispatcher::class,
+            // Seguimiento: ubica cada envío en la ruta real y cuenta sus paradas pendientes por delante.
+            SyncRouteStopsOnRouteChange::class,
             ShipmentStatusProgressionDispatcher::class,
+        ],
+        'execution.route_stop_detached' => [
+            DomainEventNotificationDispatcher::class,
+            SyncRouteStopsOnRouteChange::class,
+        ],
+        // La tienda concilió la recepción: si el pedido es de un cliente que retira ahí, se le avisa que ya
+        // puede pasar a recogerlo (un aviso por pedido).
+        'execution.node_reception_reconciled' => [
+            DomainEventNotificationDispatcher::class,
+            ReadyForPickupNotificationDispatcher::class,
         ],
         'execution.driver_route_assembled' => [
             DomainEventNotificationDispatcher::class,
+            SyncRouteStopsOnRouteChange::class,
             ShipmentStatusProgressionDispatcher::class,
         ],
 

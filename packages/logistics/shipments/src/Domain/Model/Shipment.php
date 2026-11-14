@@ -214,10 +214,30 @@ final class Shipment extends AggregateRoot
     }
 
     /**
-     * Reemplaza la confianza de la dirección (tras geocodificar) y graba el hecho.
+     * ¿El envío quedó BLOQUEADO para ediciones? Un envío entregado es un hecho cerrado: sus datos (cliente,
+     * dirección, líneas, franja) ya no se cambian. Lo único que sigue es facturar de nuevo o devolver, y la
+     * devolución tiene su propio flujo (contexto returns), que no edita el envío.
+     */
+    public function isLockedForEdits(): bool
+    {
+        return $this->status === ShipmentStatus::Delivered;
+    }
+
+    private function assertNotDelivered(string $message): void
+    {
+        if ($this->isLockedForEdits()) {
+            throw ShipmentsException::because($message);
+        }
+    }
+
+    /**
+     * Reemplaza la confianza de la dirección (tras geocodificar) y graba el hecho. No aplica a un envío
+     * entregado (bloqueado).
      */
     public function rescoreAddress(AddressConfidence $confidence, ?Address $address = null): void
     {
+        $this->assertNotDelivered('no se puede cambiar la dirección de un envío ya entregado');
+
         if ($address !== null) {
             $this->address = $address;
         }

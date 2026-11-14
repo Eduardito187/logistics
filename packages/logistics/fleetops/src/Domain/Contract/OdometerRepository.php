@@ -7,6 +7,7 @@ namespace Logistics\FleetOps\Domain\Contract;
 use DateTimeImmutable;
 use Logistics\FleetOps\Domain\Model\OdometerReading;
 use Logistics\FleetOps\Domain\ValueObject\OdometerReadingId;
+use Logistics\FleetOps\Domain\ValueObject\OdometerSource;
 
 /**
  * Puerto de persistencia de lecturas de odómetro. La implementación vive en Infrastructure.
@@ -23,7 +24,12 @@ interface OdometerRepository
     public function latestForVehicle(string $vehicleId): ?OdometerReading;
 
     /**
-     * Lista lecturas con filtros opcionales: por vehículo y por rango de la fecha de lectura.
+     * ¿La ruta ya tiene una lectura de la fuente dada (p. ej. su llegada)? Una ruta se cierra una sola vez.
+     */
+    public function existsForRouteAndSource(string $routeId, OdometerSource $source): bool;
+
+    /**
+     * Lista lecturas con filtros opcionales: por vehículo, por rango de la fecha de lectura y por ruta.
      *
      * `$limit`/`$offset` son opcionales (null = sin recorte): bajan LIMIT/OFFSET a SQL al paginar.
      *
@@ -35,6 +41,7 @@ interface OdometerRepository
         ?DateTimeImmutable $to = null,
         ?int $limit = null,
         ?int $offset = null,
+        ?string $routeId = null,
     ): array;
 
     /**
@@ -44,5 +51,6 @@ interface OdometerRepository
         ?string $vehicleId = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
+        ?string $routeId = null,
     ): int;
 }

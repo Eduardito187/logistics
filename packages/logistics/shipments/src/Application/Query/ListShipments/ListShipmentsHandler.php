@@ -65,6 +65,8 @@ final class ListShipmentsHandler implements QueryHandler
             statuses: $statuses,
             deliveryMode: $deliveryMode,
             pendingPreparation: $query->pendingPreparation,
+            search: $query->search,
+            readyForPickup: $query->readyForPickup,
         );
 
         $views = $this->reader->list(
