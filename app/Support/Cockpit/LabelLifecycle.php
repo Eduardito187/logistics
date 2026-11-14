@@ -211,7 +211,7 @@ final class LabelLifecycle
         try {
             $row = DB::table('execution_deliveries')
                 ->where('shipment_id', $shipmentId)
-                ->first(['status', 'pod_captured_at', 'failure_reason']);
+                ->first(['status', 'pod_captured_at', 'failure_reason', 'store_dropped_at']);
         } catch (Throwable) {
             return [];
         }
@@ -222,8 +222,24 @@ final class LabelLifecycle
         $status = strtoupper((string) ($row->status ?? ''));
         $at = (string) ($row->pod_captured_at ?? '');
 
+        // ENTREGA EN TIENDA del chofer: el pedido quedó en la tienda esperando que el cliente lo retire. Es un
+        // hito propio («En tienda»), anterior a la entrega al cliente; si después se entrega, figuran los dos.
+        $events = [];
+        $droppedAt = is_string($row->store_dropped_at ?? null) ? $row->store_dropped_at : '';
+        if ($droppedAt !== '') {
+            $events[] = [
+                'at' => $droppedAt,
+                'when' => $this->human($droppedAt),
+                'event' => 'En tienda',
+                'label' => 'entrega en tienda',
+                'actor' => '—',
+                'detail' => 'El chofer dejó el pedido en la tienda: listo para retirar',
+                'tone' => 'ok',
+            ];
+        }
+
         if ($status === 'DELIVERED') {
-            return [[
+            return [...$events, [
                 'at' => $at,
                 'when' => $this->human($at),
                 'event' => 'Entregada',
@@ -234,7 +250,7 @@ final class LabelLifecycle
             ]];
         }
         if ($status === 'FAILED') {
-            return [[
+            return [...$events, [
                 'at' => $at,
                 'when' => $this->human($at),
                 'event' => 'Fallida',
@@ -245,7 +261,7 @@ final class LabelLifecycle
             ]];
         }
 
-        return [];
+        return $events;
     }
 
     /** Resuelve el bulto físico (y su envío) de la etiqueta para unir escaneos y camión. Tolerante: null. */

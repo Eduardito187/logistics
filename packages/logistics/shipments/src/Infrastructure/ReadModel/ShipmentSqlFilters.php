@@ -73,19 +73,28 @@ final class ShipmentSqlFilters
     }
 
     /**
-     * Listos para retirar: pedidos cuya recepción en su tienda DESTINO ya se concilió (la mercadería está en
-     * la tienda) y que todavía no se entregaron ni se anularon. Lee ejecución en solo lectura con un EXISTS
-     * correlacionado por `shipment_id`.
+     * Listos para retirar: pedidos que el chofer ya DEJÓ en su tienda destino (entrega en tienda) y que
+     * todavía no se entregaron ni se anularon. De respaldo cuenta también la recepción conciliada en esa
+     * tienda (por si el chofer no registró su paso). Lee ejecución en solo lectura con EXISTS correlacionados
+     * por `shipment_id`.
      */
     public static function readyForPickup(Builder $query, string $prefix = 'shipments.'): void
     {
         $query->whereNotIn($prefix.'status', [ShipmentStatus::Delivered->value, ShipmentStatus::Cancelled->value])
-            ->whereExists(static function (Builder $received) use ($prefix): void {
-                $received->selectRaw('1')
-                    ->from('execution_node_receptions as rp_r')
-                    ->whereColumn('rp_r.shipment_id', $prefix.'id')
-                    ->whereColumn('rp_r.destination_node_id', $prefix.'destination_node_id')
-                    ->where('rp_r.status', 'RECONCILED');
+            ->where(static function (Builder $ready) use ($prefix): void {
+                $ready->whereExists(static function (Builder $dropped) use ($prefix): void {
+                    $dropped->selectRaw('1')
+                        ->from('execution_deliveries as rp_d')
+                        ->whereColumn('rp_d.shipment_id', $prefix.'id')
+                        ->whereColumn('rp_d.store_drop_node_id', $prefix.'destination_node_id')
+                        ->whereNotNull('rp_d.store_dropped_at');
+                })->orWhereExists(static function (Builder $received) use ($prefix): void {
+                    $received->selectRaw('1')
+                        ->from('execution_node_receptions as rp_r')
+                        ->whereColumn('rp_r.shipment_id', $prefix.'id')
+                        ->whereColumn('rp_r.destination_node_id', $prefix.'destination_node_id')
+                        ->where('rp_r.status', 'RECONCILED');
+                });
             });
     }
 

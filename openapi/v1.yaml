@@ -772,6 +772,70 @@ paths:
           $ref: '#/components/responses/ExecutionValidationError'
       security:
       - appBearer: []
+  /app/deliveries/{shipmentId}/store-drop:
+    post:
+      tags:
+      - execution
+      operationId: recordStoreDrop
+      summary: Driver drops a store-pickup (or transfer) shipment at its store
+      description: |
+        ENTREGA EN TIENDA del chofer. El camión deja en la tienda un pedido que el cliente retira ahí (o un traspaso): el chofer escanea los productos y saca una foto, sin firma ni documento. Este POST cierra la parada del chofer. El pedido NO queda entregado: queda «listo para retirar» (progress.ready_for_pickup_at = hora de esta entrega, y aparece en ready_for_pickup=true de esa tienda). Si es un pedido de cliente (store_pickup) se le avisa una sola vez que ya puede pasar a recogerlo; un traspaso no avisa. La entrega al cliente la registra después la tienda con la prueba de entrega de mostrador.
+
+        Idempotente: repetirlo no duplica el hecho ni el aviso (si la primera vez no llevaba foto, una repetición la liga).
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                node_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Tienda donde se deja el pedido. Si se omite se usa la tienda destino del envío; si se manda debe ser esa.
+                photo_path:
+                  type: string
+                  nullable: true
+                  description: Referencia devuelta por POST /app/deliveries/photos (kind pod). Opcional.
+                occurred_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Momento de la entrega en tienda. Si se omite, la hora del servidor.
+                lat:
+                  type: number
+                  nullable: true
+                lng:
+                  type: number
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '404':
+          description: El envío no existe (code shipment_not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: >-
+            No aplica: el envío es a domicilio (code not_a_store_drop), la tienda no es la del envío (code
+            wrong_store), la entrega ya está cerrada o no hay entrega ni ruta para el envío.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
   /app/deliveries/photos:
     post:
       tags:
@@ -14577,6 +14641,24 @@ components:
           - geofence
           - manual
           - null
+        delivery_mode:
+          type: string
+          description: >-
+            Modalidad de la parada. home_delivery = se entrega al cliente (POD con firma). store_pickup /
+            transfer = el chofer NO entrega al cliente: deja el pedido en la tienda con
+            POST /app/deliveries/{shipmentId}/store-drop.
+          enum:
+          - home_delivery
+          - store_pickup
+          - transfer
+        destination_node_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Tienda/nodo destino de la parada; null si es a domicilio.
+        destination_node_name:
+          type: string
+          nullable: true
         units_total:
           type: integer
           description: Number of physical products (shipment units) of the stop; the POD expects this many, not the sum of quantities.
@@ -15545,6 +15627,15 @@ components:
             documento del cliente. Vacío si no hay archivos.
           items:
             $ref: '#/components/schemas/DeliveryEvidenceFile'
+        store_dropped_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Cuándo dejó el chofer el pedido en la tienda (entrega en tienda). Null si no aplica o no pasó.
+        store_drop_node_id:
+          type: string
+          format: uuid
+          nullable: true
         pod_photo_pending:
           type: boolean
           description: >-

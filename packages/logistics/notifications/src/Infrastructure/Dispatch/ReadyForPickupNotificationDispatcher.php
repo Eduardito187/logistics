@@ -16,22 +16,22 @@ use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Throwable;
 
 /**
- * Reactor outbox: cuando la TIENDA concilia la recepción de un pedido que el cliente retira ahí
- * (`execution.node_reception_reconciled`), le avisa al cliente que su pedido llegó y puede pasar a
- * recogerlo (tipo de mensaje «listo para recojo»).
+ * Reactor outbox: cuando el CHOFER deja en la tienda un pedido que el cliente retira ahí
+ * (`execution.shipment_dropped_at_store`), le avisa al cliente que su pedido llegó y puede pasar a recogerlo
+ * (tipo de mensaje «listo para recojo»). Decisión del dueño: el aviso lo dispara la entrega del chofer.
  *
- * Por qué la conciliación y no la entrega del chofer: una prueba de entrega del chofer sobre ese envío lo
- * marcaría entregado AL CLIENTE, que es justo lo que todavía no pasó. La conciliación es el hecho que dice
- * "la mercadería ya está en la tienda", sin cambiar lo que escanean el chofer ni la tienda.
+ * De respaldo también escucha la conciliación de la recepción en la tienda
+ * (`execution.node_reception_reconciled`): si el chofer no registró su paso, el cliente igual se entera. No
+ * se duplica: el aviso es uno por pedido.
  *
- * Solo aplica a un pedido de cliente con retiro en tienda (`delivery_mode = store_pickup`) recibido en SU
- * tienda destino: un traspaso interno o una recepción en un nodo de paso no avisan. Un aviso por pedido:
+ * Solo aplica a un pedido de cliente con retiro en tienda (`delivery_mode = store_pickup`) en SU tienda
+ * destino: un traspaso interno o un nodo de paso no avisan. Un aviso por pedido:
  * idempotente por (envío, tipo), así un reintento del outbox o una segunda conciliación no lo repiten.
  * Tolerante: sin envío, sin contacto o con la consulta caída no hace nada.
  */
 final readonly class ReadyForPickupNotificationDispatcher implements MessageDispatcher
 {
-    private const EVENT = 'execution.node_reception_reconciled';
+    private const EVENTS = ['execution.shipment_dropped_at_store', 'execution.node_reception_reconciled'];
 
     private const STORE_PICKUP = 'store_pickup';
 
@@ -43,7 +43,7 @@ final readonly class ReadyForPickupNotificationDispatcher implements MessageDisp
 
     public function dispatch(OutboxMessage $message): void
     {
-        if ($message->eventName() !== self::EVENT) {
+        if (!in_array($message->eventName(), self::EVENTS, true)) {
             return;
         }
 
