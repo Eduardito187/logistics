@@ -33,7 +33,8 @@ final class DeliveryMapper
         return [
             'id' => $delivery->id()->toString(),
             'shipment_id' => $delivery->shipmentId(),
-            'vehicle_id' => $delivery->vehicleId(),
+            // Entrega de mostrador (retiro en tienda): sin vehículo se guarda NULL.
+            'vehicle_id' => $delivery->isCounterHandover() ? null : $delivery->vehicleId(),
             'status' => $delivery->status()->value,
             'pod_confirmation' => $proof?->confirmation,
             'pod_photo_url' => $proof?->photoUrl,
@@ -105,7 +106,7 @@ final class DeliveryMapper
         return Delivery::reconstitute(
             DeliveryId::fromString($record->id),
             $record->shipment_id,
-            $record->vehicle_id,
+            (string) ($record->vehicle_id ?? ''),
             DeliveryStatus::fromLoose($record->status),
             $scans,
             $proof,

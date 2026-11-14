@@ -9,6 +9,10 @@ use App\Support\Cockpit\EntityTimeline;
 use App\Support\Cockpit\ShipmentHub;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -19,10 +23,13 @@ use Logistics\Labels\Application\Query\GetShipmentLabels\GetShipmentLabels;
 use Logistics\Labels\Application\ReadModel\EmittedLabelView;
 use Logistics\Labels\Presentation\Filament\Resources\EmittedLabelResource;
 use Logistics\Planning\Presentation\Filament\PlannedStopResource;
+use Logistics\Returns\Application\Command\InitiateReturn\InitiateReturn;
+use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
+use Logistics\Tracking\Application\Contract\ReturnCoverageReader;
 
 /**
  * "Hub 360" de un envío/pedido: cockpit de detalle que agrega la ficha (cliente, dirección, ventana,
@@ -65,8 +72,177 @@ final class ViewShipment extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            // Oculta sola en un pedido entregado (ShipmentResource::canEdit): queda bloqueado.
             EditAction::make(),
+            $this->returnProductsAction(),
         ];
+    }
+
+    /**
+     * Devolución de productos de un pedido ENTREGADO: lo único que se puede hacer con él (no se edita). Es
+     * por producto y por cantidad: de 3 productos se pueden devolver 1 o 2 y el resto sigue «entregado» con
+     * su historia. Despacha InitiateReturn por el CommandBus; el pedido pasa a «devuelto» recién cuando se
+     * devolvió completo. No deja devolver más de lo entregado menos lo ya devuelto.
+     */
+    private function returnProductsAction(): Action
+    {
+        return Action::make('returnProducts')
+            ->label(__('Return products'))
+            ->icon('heroicon-o-arrow-uturn-left')
+            ->color('warning')
+            ->visible(fn (): bool => strtoupper((string) $this->getRecord()->getAttribute('status')) === 'DELIVERED'
+                && $this->returnableBySku() !== [])
+            ->modalHeading(__('Return products'))
+            ->modalDescription(__('Choose which products of this delivered order are returned. The rest stay delivered.'))
+            ->modalSubmitActionLabel(__('Register return'))
+            ->schema([
+                Select::make('warehouse_id')
+                    ->label(__('Return warehouse'))
+                    ->options(fn (): array => $this->returnWarehouses())
+                    ->searchable()
+                    ->native(false)
+                    ->required(),
+                Repeater::make('lines')
+                    ->label(__('Products to return'))
+                    ->minItems(1)
+                    ->addActionLabel(__('Add product'))
+                    ->columns(3)
+                    ->schema([
+                        Select::make('sku')
+                            ->label(__('Product'))
+                            ->options(fn (): array => $this->returnableOptions())
+                            ->searchable()
+                            ->native(false)
+                            ->distinct()
+                            ->required(),
+                        TextInput::make('quantity')
+                            ->label(__('Quantity'))
+                            ->numeric()
+                            ->minValue(1)
+                            ->default(1)
+                            ->required(),
+                        TextInput::make('reason')
+                            ->label(__('Reason'))
+                            ->maxLength(255)
+                            ->required(),
+                    ]),
+            ])
+            ->action(function (array $data): void {
+                $returnable = $this->returnableBySku();
+                $lines = [];
+
+                foreach ((array) ($data['lines'] ?? []) as $line) {
+                    $sku = is_array($line) ? (string) ($line['sku'] ?? '') : '';
+                    $quantity = is_array($line) ? (int) ($line['quantity'] ?? 0) : 0;
+                    $reason = is_array($line) ? trim((string) ($line['reason'] ?? '')) : '';
+                    $max = $returnable[$sku]['left'] ?? 0;
+
+                    if ($sku === '' || $quantity < 1 || $quantity > $max) {
+                        Notification::make()
+                            ->title(__('The quantity to return exceeds what was delivered.'))
+                            ->danger()
+                            ->send();
+
+                        return;
+                    }
+
+                    $lines[] = ['sku' => $sku, 'quantity' => $quantity, 'reason' => $reason];
+                }
+
+                if ($lines === []) {
+                    return;
+                }
+
+                try {
+                    app(CommandBus::class)->dispatch(new InitiateReturn(
+                        originalReference: $this->orderReference(),
+                        warehouseId: (string) ($data['warehouse_id'] ?? ''),
+                        kind: 'customer_return',
+                        lines: $lines,
+                        ownerPartyId: is_string($this->getRecord()->getAttribute('owner_party_id'))
+                            ? $this->getRecord()->getAttribute('owner_party_id')
+                            : null,
+                    ));
+                } catch (\Throwable $e) {
+                    Notification::make()->title(__('The return could not be registered.'))->body($e->getMessage())->danger()->send();
+
+                    return;
+                }
+
+                unset($this->hub);
+                Notification::make()->title(__('Return registered'))->success()->send();
+            });
+    }
+
+    /**
+     * Productos del pedido que todavía se pueden devolver: nombre + SKU y cuántas unidades quedan (entregadas
+     * menos ya devueltas). Tolerante: vacío si la fuente no está disponible.
+     *
+     * @return array<string, array{name: string, left: int}>
+     */
+    private function returnableBySku(): array
+    {
+        $reference = $this->orderReference();
+        if ($reference === '') {
+            return [];
+        }
+
+        try {
+            $coverage = app(ReturnCoverageReader::class)->coverage($reference);
+            $names = DB::table('shipment_lines')
+                ->where('shipment_id', (string) $this->getRecord()->getKey())
+                ->pluck('product_name', 'sku')
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($coverage as $sku => $line) {
+            $left = $line['delivered'] - $line['returned'];
+            if ($left > 0) {
+                $name = $names[$sku] ?? null;
+                $out[(string) $sku] = ['name' => is_string($name) && $name !== '' ? $name : (string) $sku, 'left' => $left];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Opciones del selector de producto: «nombre · SKU (quedan N)».
+     *
+     * @return array<string, string>
+     */
+    private function returnableOptions(): array
+    {
+        $options = [];
+        foreach ($this->returnableBySku() as $sku => $line) {
+            $options[$sku] = $line['name'].' · SKU '.$sku.' ('.$line['left'].')';
+        }
+
+        return $options;
+    }
+
+    /**
+     * Almacenes a los que puede volver la mercadería (centros de distribución), por nombre.
+     *
+     * @return array<string, string>
+     */
+    private function returnWarehouses(): array
+    {
+        try {
+            /** @var array<string, string> $nodes */
+            $nodes = DB::table('network_nodes')
+                ->where('type', 'distribution_center')
+                ->orderBy('name')
+                ->pluck('name', 'id')
+                ->all();
+
+            return $nodes;
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

@@ -23,6 +23,8 @@ final readonly class ShipmentProgressView
         public ?string $deliveredAt = null,
         public ?int $labelsEmittedCount = null,
         public ?string $executionStatus = null,
+        // Cuándo quedó en su tienda destino listo para que el cliente lo retire (recepción conciliada).
+        public ?string $readyForPickupAt = null,
     ) {}
 
     /**
@@ -34,7 +36,7 @@ final readonly class ShipmentProgressView
     }
 
     /**
-     * @return array{vehicle_id: string|null, plate: string|null, assigned_at: string|null, prepared_at: string|null, loaded_at: string|null, delivered_at: string|null, labels_emitted_count: int|null, execution_status: string|null}
+     * @return array{vehicle_id: string|null, plate: string|null, assigned_at: string|null, prepared_at: string|null, loaded_at: string|null, delivered_at: string|null, labels_emitted_count: int|null, execution_status: string|null, ready_for_pickup_at: string|null}
      */
     public function toArray(): array
     {
@@ -47,6 +49,7 @@ final readonly class ShipmentProgressView
             'delivered_at' => $this->deliveredAt,
             'labels_emitted_count' => $this->labelsEmittedCount,
             'execution_status' => $this->executionStatus,
+            'ready_for_pickup_at' => $this->readyForPickupAt,
         ];
     }
 }

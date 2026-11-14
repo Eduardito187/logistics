@@ -6,10 +6,12 @@ namespace App\Support\Cockpit;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Logistics\Execution\Presentation\Support\DeliveryEvidenceGallery;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipment;
 use Logistics\Shipments\Application\ReadModel\ShipmentLineView;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
+use Logistics\Tracking\Application\Contract\ReturnCoverageReader;
 use Logistics\Tracking\Application\Query\GetShipmentTracking\GetShipmentTracking;
 use Logistics\Tracking\Application\Query\GetShipmentUnits\GetShipmentUnits;
 use Logistics\Tracking\Application\ReadModel\ShipmentTrackingView;
@@ -36,7 +38,7 @@ final class ShipmentHub
      * @return array{
      *   shipment: array<string, mixed>|null,
      *   tracking: array{status: string, remaining_stops: int, route_position: int|null, eta: string|null, position_is_live: bool|null}|null,
-     *   delivery: array{vehicle_plate: string|null, vehicle_id: string|null, status: string|null, pod_photo_url: string|null, pod_confirmation: string|null, pod_captured_at: string|null, failure_reason: string|null, fulfillment_mode: string|null}|null,
+     *   delivery: array{vehicle_plate: string|null, vehicle_id: string|null, status: string|null, pod_photo_url: string|null, pod_confirmation: string|null, pod_captured_at: string|null, failure_reason: string|null, fulfillment_mode: string|null, evidence: list<array{kind: string, url: string, captured_at: string|null, validation_status: string|null}>}|null,
      *   units: list<array{product_name: string, sku: string, status: string, piece: string|null, image_url: string|null}>,
      * }
      */
@@ -63,10 +65,13 @@ final class ShipmentHub
                 return null;
             }
 
+            $returned = $this->returnedBySku($view->externalId);
+
             $lines = [];
             foreach ($view->lines as $line) {
                 if ($line instanceof ShipmentLineView) {
                     $lines[] = [
+                        'returned' => min($line->quantity, $returned[$line->sku] ?? 0),
                         'sku' => $line->sku,
                         'product_name' => $line->productName,
                         'quantity' => $line->quantity,
@@ -127,7 +132,7 @@ final class ShipmentHub
      * Entrega del envío (vehículo asignado + prueba de entrega), por lectura directa de execution_deliveries
      * (no hay query por envío). Null si todavía no hay una entrega creada.
      *
-     * @return array{vehicle_plate: string|null, vehicle_id: string|null, status: string|null, pod_photo_url: string|null, pod_confirmation: string|null, pod_captured_at: string|null, failure_reason: string|null, fulfillment_mode: string|null}|null
+     * @return array{vehicle_plate: string|null, vehicle_id: string|null, status: string|null, pod_photo_url: string|null, pod_confirmation: string|null, pod_captured_at: string|null, failure_reason: string|null, fulfillment_mode: string|null, evidence: list<array{kind: string, url: string, captured_at: string|null, validation_status: string|null}>}|null
      */
     private function delivery(string $shipmentId): ?array
     {
@@ -150,9 +155,24 @@ final class ShipmentHub
                 'pod_captured_at' => $this->isoToShort(is_string($row->pod_captured_at) ? $row->pod_captured_at : null),
                 'failure_reason' => is_string($row->failure_reason) && $row->failure_reason !== '' ? $row->failure_reason : null,
                 'fulfillment_mode' => is_string($row->fulfillment_mode) ? $row->fulfillment_mode : null,
+                'evidence' => $this->evidence($shipmentId),
             ];
         } catch (Throwable) {
             return null;
+        }
+    }
+
+    /**
+     * Evidencia visible de la entrega (firma del cliente, fotos, documento) con URL temporal. Tolerante.
+     *
+     * @return list<array{kind: string, url: string, captured_at: string|null, validation_status: string|null}>
+     */
+    private function evidence(string $shipmentId): array
+    {
+        try {
+            return (new DeliveryEvidenceGallery($this->queryBus))->forShipment($shipmentId);
+        } catch (Throwable) {
+            return [];
         }
     }
 
@@ -179,6 +199,29 @@ final class ShipmentHub
                     'piece' => $piece,
                     'image_url' => $view->productImageUrl,
                 ];
+            }
+
+            return $out;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Cantidad ya devuelta de cada producto del pedido (devoluciones parciales). Tolerante: vacío si falla.
+     *
+     * @return array<string, int>
+     */
+    private function returnedBySku(?string $externalId): array
+    {
+        if ($externalId === null || $externalId === '') {
+            return [];
+        }
+
+        try {
+            $out = [];
+            foreach (app(ReturnCoverageReader::class)->coverage(explode('#n:', $externalId)[0]) as $sku => $line) {
+                $out[(string) $sku] = $line['returned'];
             }
 
             return $out;

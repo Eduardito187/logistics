@@ -61,6 +61,7 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
         $plans = $this->planAssignments($ids);
         $orderRefs = $this->orderReferences($ids);
         $labels = $this->labelCounts(array_values(array_unique(array_values($orderRefs))));
+        $readyForPickup = $this->readyForPickup($ids);
 
         $vehicleIds = [];
         foreach ($ids as $id) {
@@ -86,6 +87,7 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
                 deliveredAt: $delivery['delivered_at'] ?? null,
                 labelsEmittedCount: $labels === null || $orderRef === null ? null : ($labels[$orderRef] ?? 0),
                 executionStatus: $delivery['status'] ?? null,
+                readyForPickupAt: $readyForPickup[$id] ?? null,
             );
         }
 
@@ -273,6 +275,40 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
             $ref = self::str($row->order_id ?? null);
             if ($ref !== null) {
                 $result[$ref] = is_numeric($row->total ?? null) ? (int) $row->total : 0;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Cuándo quedó cada envío en su tienda DESTINO listo para retirar: la conciliación de su recepción en
+     * ese nodo (execution_node_receptions). Solo los que ya la tienen. Tolerante: vacío si la fuente falla.
+     *
+     * @param  list<string>          $ids
+     * @return array<string, string>
+     */
+    private function readyForPickup(array $ids): array
+    {
+        try {
+            $rows = $this->connection->table('execution_node_receptions as r')
+                ->join('shipments as s', 's.id', '=', 'r.shipment_id')
+                ->whereIn('r.shipment_id', $ids)
+                ->whereColumn('r.destination_node_id', 's.destination_node_id')
+                ->where('r.status', 'RECONCILED')
+                ->groupBy('r.shipment_id')
+                ->selectRaw('r.shipment_id, MIN(r.reconciled_at) AS ready_at')
+                ->get();
+        } catch (Throwable) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($rows as $row) {
+            $shipmentId = self::str($row->shipment_id ?? null);
+            $readyAt = self::iso($row->ready_at ?? null);
+            if ($shipmentId !== null && $readyAt !== null) {
+                $result[$shipmentId] = $readyAt;
             }
         }
 

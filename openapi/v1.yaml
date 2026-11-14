@@ -2808,6 +2808,13 @@ paths:
         schema:
           type: string
           format: date
+      - name: route_id
+        in: query
+        required: false
+        description: Solo las lecturas de esa ruta del chofer (su salida y su llegada).
+        schema:
+          type: string
+          format: uuid
       - $ref: '#/components/parameters/PageNumber'
       - $ref: '#/components/parameters/PerPage'
       - $ref: '#/components/parameters/Cursor'
@@ -2847,6 +2854,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AcceptedEnvelope'
+        '409':
+          description: >-
+            La ruta ya registró su odómetro de llegada (code route_already_closed): una ruta se cierra una sola
+            vez. Solo aplica a source=arrival con route_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '422':
           $ref: '#/components/responses/DomainError'
       security:
@@ -4667,6 +4682,24 @@ paths:
         schema:
           type: string
           example: count_by_status
+      - name: q
+        in: query
+        required: false
+        description: >-
+          Búsqueda en el servidor por código de pedido (external_id / order_reference), nombre o documento del
+          cliente. Sin distinguir mayúsculas; coincide por contenido. Se combina con los demás filtros.
+        schema:
+          type: string
+          maxLength: 120
+      - name: ready_for_pickup
+        in: query
+        required: false
+        description: >-
+          true = solo pedidos cuya recepción en su tienda destino ya se concilió y que todavía no se entregaron
+          (el cliente puede pasar a retirarlos). Para la bandeja de recojo usarlo junto con
+          delivery_mode=store_pickup. Accepts true/false/1/0.
+        schema:
+          type: boolean
       - name: pending_preparation
         in: query
         required: false
@@ -4926,6 +4959,23 @@ paths:
       summary: Driver route sheet — deliveries assigned to a vehicle
       parameters:
       - $ref: '#/components/parameters/VehicleId'
+      - name: status
+        in: query
+        required: false
+        description: >-
+          Lista separada por comas de estados de entrega a incluir (pending, prepared, loaded, in_transit,
+          delivered, failed), sin distinguir mayúsculas. Un valor desconocido se ignora.
+        schema:
+          type: string
+          example: pending,prepared,loaded
+      - name: open
+        in: query
+        required: false
+        description: >-
+          true = atajo de la pantalla de carga: excluye las entregas ya entregadas y las fallidas. Se ignora
+          si viene `status`.
+        schema:
+          type: boolean
       - $ref: '#/components/parameters/PageNumber'
       - $ref: '#/components/parameters/PerPage'
       - $ref: '#/components/parameters/Cursor'
@@ -11432,6 +11482,35 @@ components:
       description: Token de integración de la plataforma (prefix.secret) enviado como Bearer y validado por
         el middleware access.token. Convive con serviceCredential en la puerta /integrations/*.
   schemas:
+    DeliveryEvidenceFile:
+      type: object
+      required:
+      - kind
+      - url
+      properties:
+        kind:
+          type: string
+          description: signature = firma del cliente; pod = foto de la entrega; id_document = documento del cliente; damage = daño.
+          enum:
+          - pod
+          - damage
+          - signature
+          - id_document
+        url:
+          type: string
+          description: Enlace para ver el archivo. No requiere cabeceras de autenticación; vence solo.
+        captured_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_status:
+          type: string
+          nullable: true
+          enum:
+          - pending
+          - ok
+          - review
+          - mismatch
     CarrierCorridor:
       type: object
       required:
@@ -13970,6 +14049,11 @@ components:
         read_at:
           type: string
           format: date-time
+        route_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Ruta del chofer a la que pertenece la lectura (salida/llegada). Null si no es de una ruta.
         note:
           type: string
           nullable: true
@@ -14316,6 +14400,11 @@ components:
         read_at:
           type: string
           format: date-time
+        route_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Ruta del chofer a la que pertenece la lectura (salida/llegada). Null si no es de una ruta.
         note:
           type: string
           nullable: true
@@ -15437,10 +15526,25 @@ components:
         pod_photo_url:
           type: string
           nullable: true
+          description: >-
+            URL para VER la foto principal de la entrega. Si la foto está en el disco privado es un enlace
+            temporal firmado (vence solo; volver a pedir el estado para renovarlo).
         pod_photo_path:
           type: string
           nullable: true
           description: Referencia durable de la foto en el disco de evidencia (privado)
+        pod_photo_paths:
+          type: array
+          description: Referencias de las fotos ligadas a la entrega (la principal incluida).
+          items:
+            type: string
+        evidence:
+          type: array
+          description: >-
+            Evidencia VISIBLE de la entrega, lista para mostrar: firma del cliente, foto(s) de la entrega y
+            documento del cliente. Vacío si no hay archivos.
+          items:
+            $ref: '#/components/schemas/DeliveryEvidenceFile'
         pod_photo_pending:
           type: boolean
           description: >-
@@ -15796,6 +15900,14 @@ components:
           type: object
           nullable: true
           properties: { index: { type: integer }, total: { type: integer } }
+        order_number: { type: string, nullable: true }
+        customer_name: { type: string, nullable: true, description: Cliente del pedido de la etiqueta }
+        customer_document_id: { type: string, nullable: true }
+        customer_phone: { type: string, nullable: true }
+        destination_node_id:
+          type: string
+          nullable: true
+          description: Tienda/nodo destino del envío (para saber si el pedido es de otra tienda)
     NetworkPrinter:
       type: object
       description: |
@@ -15896,6 +16008,12 @@ components:
           - damage
           - signature
           - id_document
+        url:
+          type: string
+          nullable: true
+          description: >-
+            Enlace temporal firmado para VER el archivo (firma, foto o documento). Null si el archivo ya no
+            existe. Vence solo: volver a pedir la lista para renovarlo.
         validation_status:
           type: string
           enum:
@@ -18911,6 +19029,13 @@ components:
           type: integer
           nullable: true
           description: Labels emitted for the order (per order_reference; multishipping siblings share it).
+        ready_for_pickup_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Cuándo quedó el pedido en su tienda destino listo para que el cliente lo retire (recepción
+            conciliada en esa tienda). Null si todavía no llegó.
         execution_status:
           type: string
           nullable: true

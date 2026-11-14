@@ -120,6 +120,33 @@ final class Delivery extends AggregateRoot
     }
 
     /**
+     * Abre una entrega de MOSTRADOR: el cliente retira el pedido en la tienda y el personal se lo entrega
+     * (retiro en tienda). No hay camión ni ruta, así que la entrega no lleva vehículo. Abre en LOADED, igual
+     * que {@see open()}, para que la prueba de entrega la cierre directo (Loaded → Delivered).
+     */
+    public static function openAtCounter(
+        DeliveryId $id,
+        string $shipmentId,
+        FulfillmentMode $fulfillmentMode,
+        DateTimeImmutable $occurredAt,
+    ): self {
+        if (trim($shipmentId) === '') {
+            throw ExecutionException::because('la entrega requiere el id del envío');
+        }
+
+        $delivery = new self($id, $shipmentId, '', DeliveryStatus::Loaded, [], null, null, $fulfillmentMode);
+        $delivery->recordEvent(new DeliveryOpened($id->toString(), $shipmentId, '', $occurredAt));
+
+        return $delivery;
+    }
+
+    /** ¿Es una entrega de mostrador (sin vehículo)? */
+    public function isCounterHandover(): bool
+    {
+        return trim($this->vehicleId) === '';
+    }
+
+    /**
      * Reconstituye el agregado desde la persistencia, sin grabar eventos (no es un hecho nuevo).
      *
      * @param list<ScanEvent> $scans

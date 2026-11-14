@@ -7,6 +7,7 @@ namespace Logistics\Execution\Presentation\Http;
 use Illuminate\Http\JsonResponse;
 use Logistics\Execution\Application\Query\GetDeliveryEvidence\GetDeliveryEvidence;
 use Logistics\Execution\Application\ReadModel\DeliveryEvidenceView;
+use Logistics\Execution\Presentation\Support\EvidenceFileUrl;
 
 /**
  * GET /app/deliveries/{shipmentId}/evidence — lista las evidencias del envío con su ESTADO DE VALIDACIÓN
@@ -20,7 +21,11 @@ final class GetDeliveryEvidenceController extends ExecutionController
         $views = $this->queryBus->ask(new GetDeliveryEvidence($shipmentId));
 
         return new JsonResponse([
-            'data' => array_map(static fn (DeliveryEvidenceView $v): array => $v->toArray(), $views),
+            // `url`: enlace temporal para VER el archivo (firma, foto, documento); null si ya no existe.
+            'data' => array_map(static fn (DeliveryEvidenceView $v): array => [
+                ...$v->toArray(),
+                'url' => EvidenceFileUrl::forDisk($v->storageDisk, $v->storagePath),
+            ], $views),
         ]);
     }
 }
