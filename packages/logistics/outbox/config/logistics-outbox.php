@@ -176,6 +176,8 @@ return [
         // Recepción conciliada en un nodo: aviso (preserva el ruteo por prefijo) + «listo para retirar» al
         // cliente cuando es SU tienda de retiro.
         'execution.node_reception_reconciled' => FanOutMessageDispatcher::class,
+        // Entrega en tienda del chofer: avisa al cliente que su pedido llegó (un reactor; nombre exacto).
+        'execution.shipment_dropped_at_store' => ReadyForPickupNotificationDispatcher::class,
         'execution.driver_route_assembled' => FanOutMessageDispatcher::class,
         // Asignar vehículo abre la entrega = preparar: solo avanza el estado del envío a IN_EXECUTION (un
         // reactor; no necesita abanico ni notificación). El nombre exacto gana al prefijo 'execution.'.

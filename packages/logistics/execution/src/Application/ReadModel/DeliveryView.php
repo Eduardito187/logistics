@@ -42,6 +42,9 @@ final readonly class DeliveryView
         public int $unitsDelivered = 0,
         public bool $podPhotoPending = false,
         public array $podPhotoPaths = [],
+        // Entrega en tienda del chofer: cuándo y en qué tienda quedó el pedido (null si no aplica).
+        public ?string $storeDroppedAt = null,
+        public ?string $storeDropNodeId = null,
     ) {}
 
     /**
@@ -75,6 +78,8 @@ final readonly class DeliveryView
             self::distinctUnits($delivery, ScanType::ProofOfDelivery),
             $delivery->isPendingPhoto(),
             $proof !== null ? $proof->photoPaths : [],
+            $delivery->storeDroppedAt()?->format(DATE_ATOM),
+            $delivery->storeDropNodeId(),
         );
     }
 
@@ -153,6 +158,9 @@ final readonly class DeliveryView
             'pod_photo_paths' => $this->podPhotoPaths,
             // Opción A: entregado pero la foto todavía no subió (se liga cuando llega por /app/deliveries/photos).
             'pod_photo_pending' => $this->podPhotoPending,
+            // Entrega en tienda del chofer: el pedido quedó en la tienda, listo para que el cliente lo retire.
+            'store_dropped_at' => $this->storeDroppedAt,
+            'store_drop_node_id' => $this->storeDropNodeId,
             'failure_reason' => $this->failureReason,
             'scans' => array_map(static fn (ScanEventView $scan): array => $scan->toArray(), $this->scans),
         ];

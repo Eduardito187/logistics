@@ -282,8 +282,9 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
     }
 
     /**
-     * Cuándo quedó cada envío en su tienda DESTINO listo para retirar: la conciliación de su recepción en
-     * ese nodo (execution_node_receptions). Solo los que ya la tienen. Tolerante: vacío si la fuente falla.
+     * Cuándo quedó cada envío en su tienda DESTINO listo para retirar: la hora en que el chofer lo dejó ahí
+     * (entrega en tienda) o, si ese paso no se registró, la conciliación de su recepción en ese nodo. Solo los
+     * que ya la tienen. Tolerante: vacío si la fuente falla.
      *
      * @param  list<string>          $ids
      * @return array<string, string>
@@ -309,6 +310,26 @@ final readonly class DbShipmentProgressReader implements ShipmentProgressReader
             $readyAt = self::iso($row->ready_at ?? null);
             if ($shipmentId !== null && $readyAt !== null) {
                 $result[$shipmentId] = $readyAt;
+            }
+        }
+
+        // La entrega en tienda del chofer manda sobre la conciliación: es el hecho que avisa al cliente.
+        try {
+            $drops = $this->connection->table('execution_deliveries as d')
+                ->join('shipments as s', 's.id', '=', 'd.shipment_id')
+                ->whereIn('d.shipment_id', $ids)
+                ->whereNotNull('d.store_dropped_at')
+                ->whereColumn('d.store_drop_node_id', 's.destination_node_id')
+                ->get(['d.shipment_id', 'd.store_dropped_at']);
+        } catch (Throwable) {
+            return $result;
+        }
+
+        foreach ($drops as $row) {
+            $shipmentId = self::str($row->shipment_id ?? null);
+            $droppedAt = self::iso($row->store_dropped_at ?? null);
+            if ($shipmentId !== null && $droppedAt !== null) {
+                $result[$shipmentId] = $droppedAt;
             }
         }
 
