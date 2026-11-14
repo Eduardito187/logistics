@@ -22,6 +22,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Logistics\Settlement\Application\Command\ConfirmSettlement\ConfirmSettlement;
 use Logistics\Settlement\Application\Command\DraftSellerSettlement\DraftSellerSettlement;
@@ -63,11 +64,13 @@ final class SellerSettlementResource extends Resource
     ];
 
     /**
-     * Cache por request de nombres de seller (id → nombre) para no repetir la consulta cross-context.
+     * Vida del caché del mapa de sellers (segundos).
      *
-     * @var array<string, string|null>
+     * Antes se memoizaba por-id en una propiedad estática ("por request"), pero bajo Octane el worker
+     * vive entre requests y esa estática serviría nombres viejos indefinidamente además de crecer sin
+     * techo; el caché con TTL se refresca solo (staleness ≤60s, aceptable para razones sociales).
      */
-    private static array $sellerNameCache = [];
+    private const SELLER_NAMES_TTL = 60;
 
     public static function getNavigationGroup(): string
     {
@@ -124,21 +127,36 @@ final class SellerSettlementResource extends Resource
     }
 
     /**
-     * Nombre legible de un seller (tabla `sellers`, cross-context read-only, memoizado por request).
+     * Nombre legible de un seller (tabla `sellers`, cross-context read-only); null si no existe.
      */
     private static function sellerName(string $sellerId): ?string
     {
-        if (array_key_exists($sellerId, self::$sellerNameCache)) {
-            return self::$sellerNameCache[$sellerId];
-        }
+        return self::sellerNames()[$sellerId] ?? null;
+    }
 
-        try {
-            $name = DB::table('sellers')->where('id', $sellerId)->value('legal_name');
-        } catch (Throwable) {
-            $name = null;
-        }
+    /**
+     * Mapa id→razón social de los sellers, resuelto en lote y cacheado con TTL corto. Comparte la clave
+     * 'admin:seller-names' con los demás resources que resuelven la misma tabla (reutiliza caché).
+     * Degrada a mapa vacío si la tabla no existe (el nombre cae al placeholder, nunca rompe el render).
+     *
+     * @return array<string, string>
+     */
+    private static function sellerNames(): array
+    {
+        return Cache::remember(
+            'admin:seller-names',
+            self::SELLER_NAMES_TTL,
+            static function (): array {
+                try {
+                    /** @var array<string, string> $names */
+                    $names = DB::table('sellers')->pluck('legal_name', 'id')->all();
 
-        return self::$sellerNameCache[$sellerId] = is_string($name) ? $name : null;
+                    return $names;
+                } catch (Throwable) {
+                    return [];
+                }
+            },
+        );
     }
 
     /**

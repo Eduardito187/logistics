@@ -27,6 +27,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Cache;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 
@@ -78,24 +79,30 @@ final class ProductResource extends Resource
     }
 
     /**
-     * Opciones reales de categorías (id => nombre) para el select, memoizadas por request.
+     * Opciones reales de categorías (id => nombre) para el select, cacheadas en Valkey con TTL corto.
+     *
+     * Antes se memoizaban en un `static $cache` de la función ("por request"), pero bajo Octane el worker
+     * vive entre requests y esa estática serviría nombres viejos indefinidamente; el caché con TTL se
+     * refresca solo (60s de staleness es aceptable para datos de catálogo). Clave compartida con
+     * CategoryResource (misma consulta, misma forma).
      *
      * @return array<string, string>
      */
     public static function categoryOptions(): array
     {
-        /** @var array<string, string>|null $cache */
-        static $cache = null;
+        return Cache::remember(
+            'admin:catalog:category-options',
+            60,
+            static function (): array {
+                /** @var array<string, string> $options */
+                $options = CategoryRecord::query()
+                    ->orderBy('name')
+                    ->pluck('name', 'id')
+                    ->all();
 
-        if ($cache === null) {
-            /** @var array<string, string> $cache */
-            $cache = CategoryRecord::query()
-                ->orderBy('name')
-                ->pluck('name', 'id')
-                ->all();
-        }
-
-        return $cache;
+                return $options;
+            },
+        );
     }
 
     /**

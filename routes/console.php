@@ -180,3 +180,42 @@ Schedule::command('logistics:compensation:expire-vouchers')
     ->onOneServer()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Ola 3: crear particiones mensuales futuras para las tablas calientes. El 1° de cada mes crea los próximos
+// 3 meses. Idempotente: si ya existen, se omite. Así nunca se insertan filas en la partición DEFAULT por
+// falta de una partición futura.
+Schedule::command('logistics:partitions:manage create --months=3')
+    ->monthlyOn(1, '02:00')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Ola 4 — Alta disponibilidad: workers resilientes y backups probados
+|--------------------------------------------------------------------------
+*/
+
+// Profundidad de colas cada 5 minutos: registra la salud en el log para detectar acumulación. No escala
+// automáticamente (eso lo hace el orquestador); solo señaliza si alguna cola excede el umbral.
+Schedule::command('logistics:queue:health --threshold=500')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Lag de replicación cada 5 minutos: registra en el log cuánto atraso tiene el standby respecto al
+// primario. Si hay lag significativo, emite un warning que las alertas pueden capturar.
+Schedule::command('logistics:replication:lag --warn-bytes=33554432')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Simulacro semanal de restauración: verifica que el último dump es válido y restaurable (no destructivo).
+// Corre los domingos a las 04:00. Si falla, el log de error dispara la alerta.
+Schedule::command('logistics:restore-drill')
+    ->weeklyOn(0, '04:00')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();

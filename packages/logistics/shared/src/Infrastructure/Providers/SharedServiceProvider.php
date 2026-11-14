@@ -36,6 +36,11 @@ final class SharedServiceProvider extends ServiceProvider
             return new TransactionalCommandBus($inner, $app->make('db')->connection());
         });
 
+        // Ola 3: el read/write splitting de Laravel ya rutea los SELECT al pool `read` (réplica) y las
+        // escrituras al pool `write` (primario) cuando se configura DB_READ_HOST en config/database.php.
+        // CQRS separa los caminos por diseño: los QueryHandlers solo hacen SELECT (van al read) y los
+        // CommandHandlers escriben (van al write). No se necesita un decorador explícito; el routing lo
+        // hace la conexión automáticamente. `sticky => true` evita replication lag visible en el mismo request.
         $this->app->singleton(QueryBus::class, function ($app): LaravelQueryBus {
             return new LaravelQueryBus($app, $app->make(HandlerRegistry::class));
         });

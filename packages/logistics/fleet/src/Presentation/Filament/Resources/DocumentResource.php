@@ -20,6 +20,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Logistics\Fleet\Application\Query\ListExpiringDocuments\ListExpiringDocuments;
 use Logistics\Fleet\Application\ReadModel\ExpiringDocumentView;
@@ -89,7 +90,7 @@ final class DocumentResource extends Resource
      */
     public static function getNavigationBadge(): ?string
     {
-        $count = count(self::expiringDocuments());
+        $count = self::expiringSummary()['count'];
 
         return $count > 0 ? (string) $count : null;
     }
@@ -99,46 +100,58 @@ final class DocumentResource extends Resource
      */
     public static function getNavigationBadgeColor(): string
     {
-        foreach (self::expiringDocuments() as $view) {
-            if ($view->expired) {
-                return 'danger';
-            }
-        }
-
-        return 'warning';
+        return self::expiringSummary()['expired'] ? 'danger' : 'warning';
     }
 
-    /**
-     * Cache por request del barrido de vencimientos (el badge y su color lo piden en la misma pintada).
-     *
-     * @var list<ExpiringDocumentView>|null
-     */
-    private static ?array $expiringCache = null;
+    /** Vida del caché del resumen de vencimientos (segundos). */
+    private const EXPIRING_CACHE_TTL = 60;
 
     /**
-     * Documentos dentro de la ventana de alerta hoy, vía el bus de consultas. Lista vacía ante cualquier
-     * error (no debe tumbar el panel por un problema de lectura o de configuración).
+     * Resumen del barrido de vencimientos de hoy (el badge y su color lo piden en la misma pintada):
+     * cuántos documentos caen dentro de la ventana de alerta y si alguno ya venció. Se consulta por el
+     * bus de consultas y degrada a cero ante cualquier error (no debe tumbar el panel por un problema de
+     * lectura o de configuración).
      *
-     * @return list<ExpiringDocumentView>
+     * Se cachea en Valkey en su FORMA PRIMITIVA (array, nunca los ReadModels serializados; regla 7 de
+     * CLAUDE.md) con TTL corto. Antes se memoizaba en una propiedad estática ("por request"), pero bajo
+     * Octane el worker vive entre requests y esa estática serviría un conteo viejo indefinidamente
+     * además de retener memoria; el caché con TTL se refresca solo (staleness ≤60s, aceptable para el
+     * badge).
+     *
+     * @return array{count: int, expired: bool}
      */
-    private static function expiringDocuments(): array
+    private static function expiringSummary(): array
     {
-        if (self::$expiringCache !== null) {
-            return self::$expiringCache;
-        }
+        /** @var array{count: int, expired: bool} $summary */
+        $summary = Cache::remember(
+            'admin:fleet-expiring-documents',
+            self::EXPIRING_CACHE_TTL,
+            static function (): array {
+                try {
+                    /** @var QueryBus $bus */
+                    $bus = app(QueryBus::class);
+                    $days = app(DocumentExpiryPolicy::class)->alertWindowDays();
 
-        try {
-            /** @var QueryBus $bus */
-            $bus = app(QueryBus::class);
-            $days = app(DocumentExpiryPolicy::class)->alertWindowDays();
+                    /** @var list<ExpiringDocumentView> $views */
+                    $views = $bus->ask(new ListExpiringDocuments($days));
 
-            /** @var list<ExpiringDocumentView> $views */
-            $views = $bus->ask(new ListExpiringDocuments($days));
+                    $expired = false;
+                    foreach ($views as $view) {
+                        if ($view->expired) {
+                            $expired = true;
 
-            return self::$expiringCache = $views;
-        } catch (Throwable) {
-            return self::$expiringCache = [];
-        }
+                            break;
+                        }
+                    }
+
+                    return ['count' => count($views), 'expired' => $expired];
+                } catch (Throwable) {
+                    return ['count' => 0, 'expired' => false];
+                }
+            },
+        );
+
+        return $summary;
     }
 
     // Título legible del registro: el tipo de documento, nunca el UUID.

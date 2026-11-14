@@ -54,6 +54,18 @@ la escala real; la 5-6 sostienen la operación a escala.
 
 ### Ola 1 — Quick wins de CPU y latencia (bajo riesgo, alto retorno)
 
+> **Estado (2026-11-13): ~95% ya estaba hecho** (señal de madurez del proyecto). Ya en su lugar: OPcache
+> afinado (prod `validate_timestamps=0`, 512 MB, JIT tracing `1255` + buffer 128 MB), FPM `pm=dynamic` con
+> fórmula documentada + `pm.max_requests=1000`, nginx gzip (comp_level 5, vary), `Cache-Control: immutable` 30d
+> para assets versionados, ETag/304 en los endpoints calientes (live-fleet, tracking público), rate limiting
+> extenso (`throttle:api` por IP/token + login), y los cockpits ya cacheaban. **Agregado en esta pasada:**
+> (a) **OPcache preload ACTIVADO** (`bootstrap/preload.php`, estaba opt-in/comentado) → menos parseo en el
+> primer request de cada worker; (b) **anti-stampede en el caché de los cockpits** (`ReadsCockpitAggregates`
+> pasó de `Cache::remember` a `Cache::flexible` stale-while-revalidate: a 2k clientes polleando, al vencer el
+> TTL NO recalculan todos a la vez; uno refresca en segundo plano y el resto recibe el valor reciente).
+> **Pendiente de tu lado** (necesita docker/EXPLAIN o coordinación con la app): el audit de índices/N+1 y la
+> paginación por cursor (ver abajo).
+
 - **OPcache + preload afinados**: `opcache.validate_timestamps=0` en prod (ya hay preload opt-in; activarlo con
   el classmap del monolito). Elimina recompilar PHP en cada request.
 - **PHP-FPM tuning**: `pm=static` dimensionado a la RAM real (cada worker ~40-80 MB), `pm.max_requests` para
@@ -91,6 +103,41 @@ la escala real; la 5-6 sostienen la operación a escala.
   volumen), dejar el admin Filament en FPM al principio (sesión + estado más delicado), migrarlo después con los
   singletons auditados. Load test comparativo FPM vs Octane antes de cortar.
 
+> **Estado (2026-11-13): auditoría de Octane-safety HECHA.** Resultado:
+> - **App API: Octane-ready.** DI limpia, controllers con `__invoke(Request $request)` (el request NO se captura
+>   en constructor), los ~20 singletons son servicios de infraestructura STATELESS (bus CQRS, firmantes, readers,
+>   renderers), sin mutación de `config()`/container por request. Los únicos `config()->set` están en providers
+>   (boot, una vez por worker = correcto) y los `headers->set`/`query->set` son del response/request (per-request).
+>   Las 2 estáticas de proceso que hay (`FleetTableVehicleFitnessGate::$ready` = "¿existe la columna?";
+>   `IntegrationRuntimeOverrides::$lastWorkerRefresh` = throttle de refresco del worker) son intencionales y
+>   CORRECTAS bajo Octane (estado de proceso que debe persistir).
+> - **Admin Filament: RESUELTO.** Había ~17 helpers/resources (`VehiclePlates`, `NodeNames`, `UserNames`,
+>   `UnitNames`, `MunicipalityOptions`, `TripLookups`, `ProductResource`, `CategoryResource`, `PromiseResource`,
+>   `ResolvesVehiclePlate`, `DocumentResource`, `StockOnHandResource`, 2 de sap-connector, `SellerSettlementResource`)
+>   que memoizaban en `private static ?array` ("por request" bajo FPM, pero PERSISTE bajo Octane → datos viejos +
+>   memoria). **Todos pasados a `Cache::remember` Valkey con TTL 60s** (Octane-safe y más rápido en FPM también),
+>   con claves namespaced y COMPARTIDAS donde resuelven la misma tabla (`admin:vehicle-plates`, `admin:seller-names`).
+>   API pública y regla NO-UUID intactas; `DocumentResource` cachea un resumen primitivo `{count, expired}` (regla 7,
+>   nunca ReadModels serializados). Barrido final: 0 estáticas memoizadoras restantes en `Presentation/Filament`.
+>   **Conclusión: todo el código (app API + admin) es Octane-ready.** Lo único que falta es encender + load test.
+>
+> **Runbook de adopción (ejecutar con validación, NO prender de golpe):**
+> 1. **Instalar**: `docker compose exec -T app composer require laravel/octane` →
+>    `docker compose exec -T app php artisan octane:install --server=frankenphp` (baja el binario FrankenPHP y
+>    crea `config/octane.php`).
+> 2. **Config**: en `config/octane.php` dejar `max_requests` (p. ej. 500) para reciclar workers y acotar fugas;
+>    revisar los `warm`/`flush`. PgBouncer en transaction mode + conexiones persistentes de Octane → mantener la
+>    emulación de prepares por default ([[pg-pgbouncer-gotchas]]).
+> 3. **Servicio canario**: agregar un servicio de compose SOLO para el **app API** que corra
+>    `php artisan octane:frankenphp --workers=auto --max-requests=500` (o la FrankenPHP image), y rutear SOLO el
+>    tráfico de `/api/v1/app/*` a ese servicio. Admin Filament, tracking público y el resto siguen en FPM.
+> 4. **Load test comparativo** (Ola 5): k6/Gatling contra el app API en FPM vs Octane con un escenario realista
+>    (login, ver ruta, POD, tracking). Comparar **p95, CPU por request y throughput**. El salto esperado de CPU es
+>    grande; confirmarlo con número, no por fe.
+> 5. **Rollback trivial**: volver a rutear el app API a FPM. Sin cambios de datos, es solo enrutamiento.
+> 6. **Después** (cuando el canario del app API esté validado): migrar el admin a Octane, ya con los helpers
+>    Support en caché (hecho) + una pasada de verificación de los singletons/estado de Filament/Livewire.
+
 ### Ola 3 — Base de datos a escala (el cuello real a 2k)
 
 - **Réplicas de lectura + routing CQRS**: configurar `read`/`write` connections de Laravel; que los
@@ -106,6 +153,41 @@ la escala real; la 5-6 sostienen la operación a escala.
 - **Afinar VACUUM/ANALYZE** (ya automatizado) y `work_mem`/`shared_buffers`/`effective_cache_size` al host real.
 
 ### Ola 4 — Alta disponibilidad (sin punto único de falla)
+
+> **Estado (2026-11-14): IMPLEMENTADA.** Todos los puntos cubiertos:
+>
+> **1. App tier multi-instancia (stateless):**
+>   - `docker-compose.ha.yml` con `deploy.replicas: 2` para el tier de app.
+>   - Nginx upstream con load balancing y health checks (`ha-upstream.conf`).
+>   - Sesión del admin YA en Valkey (DB 2, `config/session.php` → `redis`), no en archivo local.
+>
+> **2. PostgreSQL HA (streaming replication):**
+>   - `postgres-standby` en `docker-compose.ha.yml` con `pg_basebackup` + WAL streaming.
+>   - `pgbouncer-read` dedicado al standby para el read/write split de Ola 3.
+>   - Comando `logistics:replication:lag` para monitorear lag (scheduler cada 5 min).
+>   - Runbook de failover manual documentado; Patroni recomendado para auto-failover en prod.
+>
+> **3. Valkey HA (Sentinel):**
+>   - `valkey-replica` + 3 Sentinels en `docker-compose.ha.yml` (quórum de 2).
+>   - Failover automático en 5s + documentación de cómo conectar la app vía Sentinel.
+>
+> **4. Deploy sin downtime:**
+>   - `logistics:pre-deploy` valida PG + Valkey, señaliza `queue:restart` y limpia caches del scheduler.
+>   - Rolling deploy con `deploy.restart_policy` + nginx health-gated.
+>   - Graceful shutdown de FPM (`SIGQUIT` + `stop_grace_period`).
+>   - `schedule:clear-cache` en boot evita congelamiento del outbox pump.
+>
+> **5. Workers resilientes:**
+>   - `logistics:queue:health` monitorea profundidad de colas cada 5 min (scheduler).
+>   - Exit code 1 con `--exit-on-overload` para integración con autoscaling externo.
+>   - Escalar horizontal: `docker compose up --scale queue-worker=N`.
+>
+> **6. Backups + restore probados:**
+>   - `logistics:restore-drill` verifica dumps sin tocar datos (non-destructive).
+>   - Scheduler lo corre semanalmente (domingos 04:00).
+>   - Ya existía `backup:create/verify/restore`; el drill cierra el ciclo.
+>
+> **Runbook completo**: `docs/ha-runbook.md` con topología, checklist y procedimientos.
 
 - **App tier multi-instancia** (stateless) detrás de un **load balancer** con health checks → una instancia caída
   no corta el servicio; escalar = sumar instancias. Sesión del admin en Valkey (no en archivo local).

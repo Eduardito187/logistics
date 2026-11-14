@@ -117,12 +117,50 @@ return [
         |
         | `search_path` se mantiene en 'public' (sin estado dependiente de sesión). PgBouncer con
         | `server_reset_query = DISCARD ALL` lo re-aplica limpio en cada checkout del pool.
+        |
+        | OLA 3 — RÉPLICAS DE LECTURA (roadmap alta disponibilidad): si se definen DB_READ_HOST (una o
+        | más réplicas separadas por coma), Laravel enruta los SELECT al pool `read` y las escrituras
+        | al pool `write`. CQRS ya separa los caminos (QueryHandler lee, CommandHandler escribe), así
+        | que el split es natural. `sticky => true` garantiza que un mismo request que escriba (INSERT/
+        | UPDATE) lea de inmediato del primario en lo que queda del request, evitando replication lag
+        | visible. En dev (sin DB_READ_HOST) la conexión funciona igual que antes: host/port únicas.
+        |
+        | Las réplicas pueden ir detrás de su propio PgBouncer (DB_READ_PORT=6432) o apuntar a PG
+        | directo. Las opciones de PDO se heredan del bloque compartido.
         */
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '5432'),
+
+            // OLA 3: read/write splitting. Si DB_READ_HOST está definido, el pool `read` va a las
+            // réplicas y el `write` al primario. Si no, se omiten y la conexión usa host/port de arriba.
+            ...((static function () use ($behindPgBouncer): array {
+                $readHosts = env('DB_READ_HOST');
+                if ($readHosts === null || trim((string) $readHosts) === '') {
+                    // Sin réplica: conexión simple al primario (comportamiento legacy).
+                    return [
+                        'host' => env('DB_HOST', '127.0.0.1'),
+                        'port' => env('DB_PORT', '5432'),
+                    ];
+                }
+
+                // Con réplica(s): ruteo read/write + sticky.
+                $readHostList = array_map('trim', explode(',', (string) $readHosts));
+                $readPort = env('DB_READ_PORT', env('DB_PORT', '5432'));
+
+                return [
+                    'read' => [
+                        'host' => $readHostList,
+                        'port' => $readPort,
+                    ],
+                    'write' => [
+                        'host' => env('DB_HOST', '127.0.0.1'),
+                        'port' => env('DB_PORT', '5432'),
+                    ],
+                    'sticky' => true,
+                ];
+            })()),
+
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
             'password' => env('DB_PASSWORD', ''),

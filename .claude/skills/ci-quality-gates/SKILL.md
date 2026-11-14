@@ -201,6 +201,20 @@ docker compose exec -T app ./vendor/bin/pest                                 # e
 ```
 No pipear `pest` a `tail -N` en background: trunca el resumen "Tests: N passed". Confiar en exit 0 + cero FAIL.
 
+**Cobertura local: forzar pcov, NUNCA dejar que tome Xdebug (2026-11-13).** El contenedor `app` trae pcov
+Y xdebug; por defecto `pest --coverage` usa **Xdebug**, que es ~10-20× más lento (la suite completa tardó
+>20 min y no terminó; con `COLUMNS`/`tail` no da progreso intermedio, el archivo queda en 0 bytes hasta el
+final). CI ya usa pcov (`shivammathur/setup-php` con `coverage: pcov` + `pcov.directory` en `ci.yml`). Para
+replicarlo rápido local:
+```bash
+docker compose exec -T -e XDEBUG_MODE=off app php -d xdebug.mode=off -d pcov.enabled=1 \
+  ./vendor/bin/pest --coverage --min=75
+```
+Para solo confirmar que la suite pasa (sin el gate de %), correrla **sin `--coverage`**: mucho más rápida y
+suficiente para validar un fix puntual; el % lo valida CI. Si hay que matar un run colgado:
+`docker compose exec -T app sh -c 'pkill -f "vendor/bin/pest"'` (el `TaskStop` del wrapper local NO mata el
+proceso dentro del contenedor).
+
 **NO usar `pest --parallel`.** Las bases paralelas `logistics_test_test_1..4` NO tienen PostGIS (las
 migraciones no crean la extensión; solo el init de la imagen la puso en `logistics_test`) → ~1.000 fallas
 falsas `type "geography" does not exist`. La suite válida es la serial (igual que CI): `./vendor/bin/pest`.
@@ -234,6 +248,16 @@ falsas `type "geography" does not exist`. La suite válida es la serial (igual q
   correcto, NO una regresión. Actualizar el test a la nueva conducta (y renombrar/reescribir el comentario
   que explica el porqué) en el MISMO cambio que el código. Confirmar que el único motivo del fallo es el
   cambio pedido (leer el diff del test), nunca "arreglar" el fallo volviendo el código atrás.
+- **`WARN`/`risky` (`!` amarillo) de Pest = fallo del gate aunque el test "pase" (2026-11-13).** El job corre
+  con `--fail-on-risky`, así que un test risky da exit ≠ 0 igual que un FAIL. El caso más común: Pest
+  `->throwsNoExceptions()` **chocando con un `expect()` real** en el mismo test →
+  *"This test is not expected to perform assertions but performed 1 assertion"*. `throwsNoExceptions()` declara
+  que el test NO debe afirmar nada; si el cuerpo igual hace un `expect()`, es contradictorio. Fix: **quitar
+  `->throwsNoExceptions()`** cuando hay una aserción real (esa aserción ya prueba el camino feliz, y si el SUT
+  lanzara el test fallaría antes de llegar a ella). Dejar `throwsNoExceptions()` SOLO en tests sin ningún `expect`.
+- **Leer el motivo COMPLETO de un risky/warn que Pest trunca** (sale `→ This t…`): correr con terminal ancho,
+  `docker compose exec -T -e COLUMNS=400 app ./vendor/bin/pest <archivo> --filter="<nombre>"`. El `--log-junit`
+  a `/tmp` a veces no escribe; `COLUMNS` es lo fiable.
 
 ### Pint a mano (el dueño suele prohibir docker)
 
@@ -276,5 +300,40 @@ ejecución → 755→644 falsos). Verificar: `git ls-files --eol <archivo>`.
   resultados.** Antes de reescribir la lógica por un error que contradice lo que ves (p. ej. "never null" en
   una propiedad que el código deja como null-safe), confiar en el ÚLTIMO error tras limpiar la caché; no
   oscilar entre `?->x` y `->x` según errores de corridas distintas.
+- **`Cannot access property $x on T|null`: respetar el TIPO del getter, no el comentario de invariante
+  (2026-11-13).** Un getter tipado `?Odometer` accedido con `->km` falla aunque un comentario diga "una salida
+  abierta SIEMPRE lleva su odómetro". El fix no es castear ni confiar en el invariante: usar `?->` y un guard
+  explícito (`$v = $x->getter()?->prop; if ($v === null) { return; }` y aplicar la regla de negocio —p. ej.
+  `max()`— solo cuando el valor se conoce). Caso real: reactor `CloseDepartureOnRouteClosed` (fleetops).
+- **Un bump de `laravel/framework` (minor) destapa errores PHPStan NUEVOS por tipos más estrictos
+  (2026-11-13, 13.35→13.40).** No son regresión tuya: el bump endurece firmas. Los recurrentes:
+  - `(string) $this->argument('x')` / `$this->option('x')`: `argument()`/`option()` devuelven
+    `array|bool|float|int|string|null`; castear a string falla por el `array`. Fix: `$v = $this->argument('x');
+    is_string($v) ? $v : ''` (o un helper privado `stringOption()` si hay varios).
+  - `round($event->time, 2)` con `time` nullable → `round($event->time ?? 0.0, 2)`.
+  - `$this->container->make(X)` en un Seeder: `$container` es `?Container` → usar `app(X::class)` (no-null, tipado
+    por larastan).
+  Tras `composer update laravel/framework --with-all-dependencies`, correr PHPStan y barrer estos patrones.
+- **Advisory de seguridad de un paquete = `composer update <pkg> --with-all-dependencies`, NO editar el lock a
+  mano** (el lock trae ref/dist + content-hash; cambiar la versión a mano rompe el checksum de `composer install`).
+  Si el constraint del composer.json ya permite la versión parcheada (p. ej. `^13.17` admite 13.40), NO se toca
+  composer.json, solo se regenera el lock con composer. Verificar con `composer audit --locked`.
+
+## Gotchas de warnings de `composer dump-autoload` / git (no fallan el gate pero el dueño los quiere en cero)
+- **PSR-4 "does not comply" por clases helper co-ubicadas en archivos de test** (fakes/stubs/excepciones
+  simuladas definidas INLINE en un `*Test.php` Pest, namespace global): composer las saltea del classmap
+  optimizado (los tests igual corren porque Pest carga el archivo). Fix: mover cada clase doble a su PROPIO archivo
+  con el namespace PSR-4 correcto (`Logistics\<Ctx>\Tests\Feature|Unit`), nombre = clase, y `use` en el test. El
+  archivo nuevo NO debe terminar en `Test.php` (si no PHPUnit lo toma como test).
+- **git "dubious ownership" en el contenedor** (`fatal: detected dubious ownership in repository at
+  '/var/www/html'`): el bind-mount tiene dueño del host ≠ usuario del contenedor. Fix a nivel imagen (cubre todo,
+  incluso `docker compose run --entrypoint composer`): `RUN git config --system --add safe.directory /var/www/html`
+  en el Dockerfile, y además en el entrypoint por si la imagen no se reconstruyó.
+- **Test aleatorio intermitente (flaky)**: un test que genera un valor con CSPRNG y lo valida (p. ej.
+  `VoucherCode::generate()` → `fromString()`) falla ~X% de las corridas por un bug que solo dispara con ciertos
+  valores. El fix es doble: (1) arreglar el bug, (2) agregar un **roundtrip exhaustivo** (p. ej. 1000 iteraciones)
+  que lo haga DETERMINISTA (pasa siempre o falla siempre), no dejarlo al azar del generador. Bug real visto:
+  `str_replace(['DT-','-'], '', $code)` removía TODAS las ocurrencias de `'DT-'`, no solo el prefijo (si el primer
+  bloque terminaba en `DT`) → usar los grupos de captura del regex, no `str_replace`.
 
 Relacionado: memoria [[ci-quality-gates-playbook]], [[project-rules]].

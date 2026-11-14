@@ -12,18 +12,17 @@ use Illuminate\Support\Facades\Cache;
  * Execution.
  *
  * Los escaneos guardan `user_id` como identificador del operador; aquí se enriquece con el nombre
- * legible leyendo `users` en SOLO lectura (nunca para mutar). El mapa id→nombre se memoiza por request
- * (evita el N+1 al pintar tablas e infolists) y además se cachea en Redis con TTL corto (auditoría
- * M-1): así no se relee la tabla `users` completa en cada request de panel. Se cachea la forma
- * primitiva (array id→nombre), nunca objetos de dominio (regla 7).
+ * legible leyendo `users` en SOLO lectura (nunca para mutar). El mapa id→nombre se cachea en Valkey con
+ * TTL corto (auditoría M-1): así no se relee la tabla `users` completa en cada request de panel. Antes
+ * había además una capa de propiedad estática ("por request"), pero bajo Octane el worker vive entre
+ * requests y esa estática serviría nombres viejos indefinidamente y crecería; con el caché basta (el
+ * driver ya resuelve el cross-request). Se cachea la forma primitiva (array id→nombre), nunca objetos de
+ * dominio (regla 7).
  */
 final class UserNames
 {
     /** Vida del caché del mapa de nombres (segundos); los nombres casi no cambian, 60s sobra. */
     private const MAP_TTL_SECONDS = 60;
-
-    /** @var array<string, string>|null Mapa memoizado id→nombre de todos los usuarios. */
-    private static ?array $map = null;
 
     /**
      * Nombre de un usuario por su id; si no se resuelve (p. ej. un código de operador que no es un
@@ -46,29 +45,25 @@ final class UserNames
     }
 
     /**
-     * Mapa id→nombre de todos los usuarios (memoizado por request). Las claves se normalizan a string
+     * Mapa id→nombre de todos los usuarios (cacheado con TTL corto). Las claves se normalizan a string
      * porque `users.id` puede ser entero y `user_id` llega como texto.
      *
      * @return array<string, string>
      */
     private static function map(): array
     {
-        if (self::$map === null) {
-            self::$map = Cache::remember(
-                'execution:user-names',
-                self::MAP_TTL_SECONDS,
-                static function (): array {
-                    $map = [];
-                    foreach (User::query()->get(['id', 'name']) as $user) {
-                        $map[(string) $user->getKey()] = (string) $user->name;
-                    }
+        return Cache::remember(
+            'admin:user-names',
+            self::MAP_TTL_SECONDS,
+            static function (): array {
+                $map = [];
+                foreach (User::query()->get(['id', 'name']) as $user) {
+                    $map[(string) $user->getKey()] = (string) $user->name;
+                }
 
-                    return $map;
-                },
-            );
-        }
-
-        return self::$map;
+                return $map;
+            },
+        );
     }
 
     /**

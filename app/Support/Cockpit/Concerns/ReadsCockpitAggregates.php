@@ -26,12 +26,22 @@ use Illuminate\Support\Facades\DB;
  */
 trait ReadsCockpitAggregates
 {
-    /** Vida del caché de agregados del cockpit, en segundos; por debajo del polling del panel. */
+    /** Ventana "fresca" del caché de agregados del cockpit, en segundos; por debajo del polling del panel. */
     private const COCKPIT_TTL_SECONDS = 20;
 
     /**
-     * Cachea el resultado primitivo de un agregado bajo una clave estable. El fallo de lectura NO se
-     * cachea: la excepción la atrapa el llamador, que devuelve el valor neutro y reintenta al próximo poll.
+     * Ventana "stale" (segundos): entre TTL y STALE se sirve el valor viejo y UN solo request lo refresca en
+     * segundo plano. Protege contra el dogpile/stampede: a 2k clientes polleando, cuando vencen los 20 s NO
+     * recalculan todos a la vez contra la base; solo uno refresca mientras el resto recibe el valor reciente.
+     */
+    private const COCKPIT_STALE_SECONDS = 60;
+
+    /**
+     * Cachea el resultado primitivo de un agregado bajo una clave estable, con ANTI-STAMPEDE
+     * (stale-while-revalidate vía `Cache::flexible`): fresco por {@see COCKPIT_TTL_SECONDS}; luego, hasta
+     * {@see COCKPIT_STALE_SECONDS}, sirve el valor viejo y refresca en segundo plano una sola vez. El fallo de
+     * lectura NO se cachea: la excepción la atrapa el llamador, que devuelve el valor neutro y reintenta al
+     * próximo poll.
      *
      * @template TValue
      *
@@ -40,7 +50,7 @@ trait ReadsCockpitAggregates
      */
     private function remember(string $key, \Closure $resolver): mixed
     {
-        return Cache::remember('cockpit:'.$key, self::COCKPIT_TTL_SECONDS, $resolver);
+        return Cache::flexible('cockpit:'.$key, [self::COCKPIT_TTL_SECONDS, self::COCKPIT_STALE_SECONDS], $resolver);
     }
 
     /**
