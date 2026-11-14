@@ -11,6 +11,7 @@ use Logistics\Execution\Domain\Event\DeliveryVehicleReassigned;
 use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
 use Logistics\Execution\Domain\Event\ShipmentDeparted;
+use Logistics\Execution\Domain\Event\ShipmentDroppedAtStore;
 use Logistics\Execution\Domain\Event\ShipmentLoaded;
 use Logistics\Execution\Domain\Event\ShipmentPrepared;
 use Logistics\Execution\Domain\Event\ShipmentUnloaded;
@@ -57,6 +58,75 @@ final class Delivery extends AggregateRoot
         private ?FailureReason $failureReason,
         private readonly FulfillmentMode $fulfillmentMode,
     ) {}
+
+    /** Cuándo dejó el chofer el pedido en la tienda (entrega en tienda); null si no aplica o aún no pasó. */
+    private ?DateTimeImmutable $storeDroppedAt = null;
+
+    /** Tienda (nodo) donde el chofer dejó el pedido. */
+    private ?string $storeDropNodeId = null;
+
+    /** Foto de la entrega en tienda, si se subió. */
+    private ?string $storeDropPhotoPath = null;
+
+    /**
+     * ENTREGA EN TIENDA: el chofer deja el pedido en la tienda donde el cliente lo va a retirar (o adonde va
+     * el traspaso). NO cierra la entrega: sigue abierta hasta la prueba de entrega del mostrador. Graba
+     * ShipmentDroppedAtStore una sola vez; repetirla solo completa la foto si faltaba. No aplica a una entrega
+     * ya cerrada (entregada o fallida).
+     */
+    public function dropAtStore(string $nodeId, DateTimeImmutable $occurredAt, ?string $photoPath = null): void
+    {
+        $nodeId = trim($nodeId);
+        if ($nodeId === '') {
+            throw ExecutionException::because('la entrega en tienda requiere la tienda');
+        }
+        if ($this->status === DeliveryStatus::Delivered || $this->status === DeliveryStatus::Failed) {
+            throw ExecutionException::because('la entrega ya está cerrada: no se puede registrar la entrega en tienda');
+        }
+
+        $photoPath = $photoPath !== null && trim($photoPath) !== '' ? trim($photoPath) : null;
+
+        if ($this->storeDroppedAt !== null) {
+            $this->storeDropPhotoPath ??= $photoPath;
+
+            return;
+        }
+
+        $this->storeDroppedAt = $occurredAt;
+        $this->storeDropNodeId = $nodeId;
+        $this->storeDropPhotoPath = $photoPath;
+
+        $this->recordEvent(new ShipmentDroppedAtStore(
+            $this->id->toString(),
+            $this->shipmentId,
+            $nodeId,
+            $this->vehicleId,
+            $occurredAt,
+        ));
+    }
+
+    /** Repone la entrega en tienda al reconstituir desde la persistencia (sin grabar eventos). */
+    public function restoreStoreDrop(?DateTimeImmutable $droppedAt, ?string $nodeId, ?string $photoPath): void
+    {
+        $this->storeDroppedAt = $droppedAt;
+        $this->storeDropNodeId = $nodeId;
+        $this->storeDropPhotoPath = $photoPath;
+    }
+
+    public function storeDroppedAt(): ?DateTimeImmutable
+    {
+        return $this->storeDroppedAt;
+    }
+
+    public function storeDropNodeId(): ?string
+    {
+        return $this->storeDropNodeId;
+    }
+
+    public function storeDropPhotoPath(): ?string
+    {
+        return $this->storeDropPhotoPath;
+    }
 
     /**
      * Named constructor: abre una entrega nueva en estado Pending, sin escaneos todavía.
@@ -117,6 +187,33 @@ final class Delivery extends AggregateRoot
         ));
 
         return $delivery;
+    }
+
+    /**
+     * Abre una entrega de MOSTRADOR: el cliente retira el pedido en la tienda y el personal se lo entrega
+     * (retiro en tienda). No hay camión ni ruta, así que la entrega no lleva vehículo. Abre en LOADED, igual
+     * que {@see open()}, para que la prueba de entrega la cierre directo (Loaded → Delivered).
+     */
+    public static function openAtCounter(
+        DeliveryId $id,
+        string $shipmentId,
+        FulfillmentMode $fulfillmentMode,
+        DateTimeImmutable $occurredAt,
+    ): self {
+        if (trim($shipmentId) === '') {
+            throw ExecutionException::because('la entrega requiere el id del envío');
+        }
+
+        $delivery = new self($id, $shipmentId, '', DeliveryStatus::Loaded, [], null, null, $fulfillmentMode);
+        $delivery->recordEvent(new DeliveryOpened($id->toString(), $shipmentId, '', $occurredAt));
+
+        return $delivery;
+    }
+
+    /** ¿Es una entrega de mostrador (sin vehículo)? */
+    public function isCounterHandover(): bool
+    {
+        return trim($this->vehicleId) === '';
     }
 
     /**

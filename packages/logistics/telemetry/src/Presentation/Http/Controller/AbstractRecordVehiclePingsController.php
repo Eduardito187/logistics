@@ -6,15 +6,17 @@ namespace Logistics\Telemetry\Presentation\Http\Controller;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
-use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Telemetry\Application\Command\RecordVehiclePings\RecordVehiclePings;
+use Logistics\Telemetry\Application\Ingest\IngestVehiclePings;
 use Logistics\Telemetry\Application\Query\ClassifyPingFixes\ClassifyPingFixes;
 use Logistics\Telemetry\Presentation\Http\ApiController;
 use Logistics\Telemetry\Presentation\Http\Request\RecordVehiclePingsRequest;
 
 /**
- * Ingiere un lote de lecturas GPS de un vehículo despachando el comando RecordVehiclePings.
+ * Ingiere un lote de lecturas GPS de un vehículo a través de la puerta de ingesta (IngestVehiclePings), que
+ * según `ingest.mode` despacha RecordVehiclePings en el request (`sync`) o deja el lote en el buffer para que
+ * lo persista el worker de la cola `telemetry` (`buffered`).
  *
  * Es el camino RECOMENDADO para la app (auditoría #12): un POST por lote (hasta `ingest.max_batch` lecturas),
  * en vez de un POST por lectura. Alimenta posición en vivo, trips, geocercas/alertas, desvío/exceso sostenido,
@@ -27,6 +29,10 @@ use Logistics\Telemetry\Presentation\Http\Request\RecordVehiclePingsRequest;
  * Estado: 202 si no hubo rechazos; 207 (Multi-Status) si hubo rechazos y algo se aceptó o era duplicado; 422 si
  * se rechazó el lote entero. El orden de las lecturas no importa (se ordenan por `recorded_at`).
  *
+ * En modo `buffered` el request no consulta la base: toda lectura bien formada se informa `accepted` (los
+ * duplicados se descartan igual, en silencio, al persistir), el cuerpo trae `buffered: true` y, si el buffer
+ * está lleno, se responde 429 + Retry-After sin tomar el lote (el cliente lo reintenta tal cual).
+ *
  * El `source` (app vs integración) lo fija cada subclase según la puerta, no el cuerpo.
  *
  * @phpstan-type PingItem array{lat: float, lng: float, recorded_at: string, speed_kph?: float, heading?: int, accuracy_m?: float, ignition?: bool, odometer_m?: int, device_id?: string, fix_id?: string}
@@ -34,7 +40,7 @@ use Logistics\Telemetry\Presentation\Http\Request\RecordVehiclePingsRequest;
 abstract class AbstractRecordVehiclePingsController extends ApiController
 {
     public function __construct(
-        private readonly CommandBus $commands,
+        private readonly IngestVehiclePings $ingest,
         private readonly QueryBus $queries,
     ) {}
 
@@ -53,16 +59,24 @@ abstract class AbstractRecordVehiclePingsController extends ApiController
 
             [$valid, $rejected] = $this->validateItems($items);
 
-            $statuses = $this->classify($vehicleId, $valid);
+            // En modo buffered no se clasifica contra la base (el request no toca PostgreSQL).
+            $statuses = $this->ingest->buffers() ? [] : $this->classify($vehicleId, $valid);
+            $buffered = false;
 
             if ($valid !== []) {
-                $this->commands->dispatch(new RecordVehiclePings(
+                $receipt = $this->ingest->ingest(new RecordVehiclePings(
                     vehicleId: $vehicleId,
                     driverId: $this->optionalId($driverId),
                     routeId: $this->optionalId($routeId),
                     source: $this->source(),
                     pings: array_values($valid),
                 ));
+
+                if (!$receipt->accepted) {
+                    return $this->backpressure($receipt->retryAfterSeconds);
+                }
+
+                $buffered = $receipt->isBuffered();
             }
 
             [$results, $counts] = $this->buildResults($items, $rejected, $statuses);
@@ -77,8 +91,26 @@ abstract class AbstractRecordVehiclePingsController extends ApiController
                 'results' => $results,
             ];
 
+            if ($buffered) {
+                // Solo en modo buffered: el cuerpo del modo sync queda idéntico al de siempre.
+                $body['buffered'] = true;
+            }
+
             return $this->respond($body, $counts['rejected'], count($items));
         });
+    }
+
+    /**
+     * Backpressure del buffer de ingesta: 429 con Retry-After. El lote NO se tomó; el cliente lo reintenta.
+     */
+    private function backpressure(int $retryAfterSeconds): JsonResponse
+    {
+        return $this->error(
+            'ingest_backpressure',
+            'The telemetry ingest buffer is full; retry this batch later.',
+            429,
+            ['retry_after_seconds' => $retryAfterSeconds],
+        )->header('Retry-After', (string) $retryAfterSeconds);
     }
 
     /**

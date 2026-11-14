@@ -38,13 +38,13 @@ final readonly class ListOdometerReadingsHandler implements QueryHandler
 
         $views = array_map(
             static fn (OdometerReading $reading): OdometerView => OdometerView::fromDomain($reading),
-            $this->readings->listBy($query->vehicleId, $from, $to, $query->limit, $query->offset),
+            $this->readings->listBy($query->vehicleId, $from, $to, $query->limit, $query->offset, $query->routeId),
         );
 
         if ($query->limit === null) {
             return $views;
         }
 
-        return new Page($views, $this->readings->countBy($query->vehicleId, $from, $to));
+        return new Page($views, $this->readings->countBy($query->vehicleId, $from, $to, $query->routeId));
     }
 }

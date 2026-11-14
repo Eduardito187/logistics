@@ -20,6 +20,7 @@ final readonly class OdometerView
         public string $source,
         public string $readAt,
         public ?string $note,
+        public ?string $routeId = null,
     ) {}
 
     public static function fromDomain(OdometerReading $reading): self
@@ -31,11 +32,12 @@ final readonly class OdometerView
             $reading->source()->value,
             $reading->readAt()->format(DateTimeImmutable::ATOM),
             $reading->note(),
+            $reading->routeId(),
         );
     }
 
     /**
-     * @return array{id: string, vehicle_id: string, km: int, source: string, read_at: string, note: string|null}
+     * @return array{id: string, vehicle_id: string, km: int, source: string, read_at: string, note: string|null, route_id: string|null}
      */
     public function toArray(): array
     {
@@ -46,6 +48,7 @@ final readonly class OdometerView
             'source' => $this->source,
             'read_at' => $this->readAt,
             'note' => $this->note,
+            'route_id' => $this->routeId,
         ];
     }
 }

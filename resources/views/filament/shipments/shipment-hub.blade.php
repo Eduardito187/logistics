@@ -46,6 +46,24 @@
             $window = trim($date.' '.$s['window_start'].'–'.$s['window_end']);
         }
 
+        // Texto de avance en la ruta: nunca «0 paradas» para un pedido entregado o sin ruta.
+        $isDelivered = $status === 'DELIVERED' || ($tr && strtoupper((string) $tr['status']) === 'DELIVERED');
+        $stopsText = static function (?array $tr): string {
+            if (!$tr || $tr['route_position'] === null) {
+                return 'Sin ruta asignada';
+            }
+            $n = (int) $tr['remaining_stops'];
+            $head = $n === 0 ? 'Es la próxima parada' : ($n === 1 ? 'Falta 1 parada' : 'Faltan '.$n.' paradas');
+
+            return $head.' · parada #'.$tr['route_position'];
+        };
+        $evidenceLabel = static fn (string $kind): string => match ($kind) {
+            'signature' => 'Firma del cliente',
+            'id_document' => 'Documento del cliente',
+            'damage' => 'Daño reportado',
+            default => 'Foto de la entrega',
+        };
+
         $unitStatus = static fn (string $st): string => match (strtoupper($st)) {
             'DELIVERED' => 'Entregado',
             'IN_TRANSIT' => 'En tránsito',
@@ -78,13 +96,14 @@
                 </div>
 
                 <div class="ck-hub__aside">
-                    @if($tr)
+                    @if($isDelivered)
+                        <span class="ck-pill ck-pill--positive"><span class="ck-pill__dot"></span>Entregado</span>
+                        <span class="ck-hub__sub">Pedido cerrado: ya no se puede editar</span>
+                    @elseif($tr)
                         <span class="ck-pill {{ $tr['position_is_live'] ? 'ck-pill--agent' : '' }}">
                             <span class="ck-pill__dot"></span>{{ $tr['eta'] ? 'ETA '.$tr['eta'] : 'En seguimiento' }}
                         </span>
-                        <span class="ck-hub__sub">{{ $tr['remaining_stops'].' paradas restantes'.($tr['route_position'] !== null ? ' · parada #'.$tr['route_position'] : '') }}</span>
-                    @elseif($status === 'DELIVERED')
-                        <span class="ck-pill ck-pill--positive"><span class="ck-pill__dot"></span>Entregado</span>
+                        <span class="ck-hub__sub">{{ $stopsText($tr) }}</span>
                     @else
                         <span class="ck-pill">Sin seguimiento activo</span>
                     @endif
@@ -100,7 +119,7 @@
                 <div class="ck-stat ck-stat--agent">
                     <div class="ck-stat__label">ETA</div>
                     <div class="ck-stat__value" style="font-size:1.3rem">{{ $tr && $tr['eta'] ? $tr['eta'] : '—' }}</div>
-                    <div class="ck-stat__hint">{{ $tr ? $tr['remaining_stops'].' paradas restantes' : 'Sin ruta' }}</div>
+                    <div class="ck-stat__hint">{{ $isDelivered ? 'Entregado' : $stopsText($tr) }}</div>
                 </div>
                 <div class="ck-stat">
                     <div class="ck-stat__label">Ventana comprometida</div>
@@ -159,7 +178,7 @@
                                 {{ $dsl }}
                             </dd>
                             <dt>ETA</dt><dd>{{ $tr && $tr['eta'] ? $tr['eta'] : '—' }}</dd>
-                            <dt>Paradas restantes</dt><dd>{{ $tr ? $tr['remaining_stops'] : '—' }}</dd>
+                            <dt>Paradas restantes</dt><dd>{{ $isDelivered ? 'Entregado' : $stopsText($tr) }}</dd>
                             <dt>Productos</dt><dd>{{ count($units) ?: '—' }}</dd>
                         </dl>
                     </div>
@@ -178,7 +197,12 @@
                                     {{ $line['product_name'] }}
                                     <small>SKU {{ $line['sku'] }}</small>
                                 </span>
-                                <span class="ck-event__when">× {{ $line['quantity'] }}</span>
+                                <span class="ck-event__when">
+                                    × {{ $line['quantity'] }}
+                                    @if(($line['returned'] ?? 0) > 0)
+                                        <span class="ck-pill ck-pill--warning" style="margin-left:.4rem">{{ $line['returned'] >= $line['quantity'] ? 'Devuelto' : 'Devueltos '.$line['returned'].' de '.$line['quantity'] }}</span>
+                                    @endif
+                                </span>
                             </div>
                         @empty
                             <div class="ck-empty"><div class="ck-empty__title">Sin líneas</div><div class="ck-empty__hint">Este pedido no tiene productos cargados.</div></div>
@@ -211,10 +235,24 @@
                     <div class="ck-card">
                         <div class="ck-card__eyebrow">Prueba de entrega</div>
                         @if($del)
-                            @if($del['pod_photo_url'])
+                            @if(count($del['evidence']))
+                                {{-- Firma del cliente, foto(s) de la entrega y documento: como máximo 3 por fila. --}}
+                                <div style="display:grid;gap:.8rem;margin-top:.8rem;grid-template-columns:repeat(auto-fill,minmax(max(150px,calc((100% - 1.6rem) / 3)),1fr))">
+                                    @foreach($del['evidence'] as $ev)
+                                        <a href="{{ $ev['url'] }}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
+                                            <img src="{{ $ev['url'] }}" alt="{{ $evidenceLabel($ev['kind']) }}" loading="lazy"
+                                                 style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;border:1px solid var(--ck-line);background:#fff"
+                                                 onerror="this.style.display='none'">
+                                            <span class="ck-hub__sub" style="display:block;margin-top:.35rem">{{ $evidenceLabel($ev['kind']) }}</span>
+                                        </a>
+                                    @endforeach
+                                </div>
+                            @elseif($del['pod_photo_url'])
                                 <img src="{{ $del['pod_photo_url'] }}" alt="Prueba de entrega"
                                      style="width:100%;max-width:360px;border-radius:12px;border:1px solid var(--ck-line);margin-top:.6rem"
                                      onerror="this.style.display='none'">
+                            @elseif(strtoupper((string) $del['status']) === 'DELIVERED')
+                                <div class="ck-hub__sub" style="margin-top:.6rem">Esta entrega no tiene firma ni fotos guardadas.</div>
                             @endif
                             <dl class="ck-dl" style="margin-top:1rem">
                                 <dt>Confirmación</dt><dd class="ck-mono">{{ $del['pod_confirmation'] ?: '—' }}</dd>
@@ -294,12 +332,13 @@
                         <div class="ck-card__eyebrow">{{ __('Current status') }}</div>
                         <div class="ck-card__title" style="font-size:1.3rem">{{ $statusLabel }}</div>
                         <div class="ck-hub__pills" style="margin-top:.7rem">
-                            @if($tr)
-                                <span class="ck-pill {{ $tr['position_is_live'] ? 'ck-pill--agent' : '' }}">
-                                    <span class="ck-pill__dot"></span>{{ $tr['eta'] ? 'ETA '.$tr['eta'] : __('Tracking') }}
-                                </span>
-                            @elseif($status === 'DELIVERED')
+                            @if($isDelivered)
                                 <span class="ck-pill ck-pill--positive"><span class="ck-pill__dot"></span>{{ __('Delivered') }}</span>
+                            @elseif($tr)
+                                <span class="ck-pill {{ $tr['position_is_live'] ? 'ck-pill--agent' : '' }}">
+                                    <span class="ck-pill__dot"></span>{{ $tr['eta'] ? 'ETA '.$tr['eta'] : 'En seguimiento' }}
+                                </span>
+                                <span class="ck-pill">{{ $stopsText($tr) }}</span>
                             @endif
                         </div>
                         <dl class="ck-dl" style="margin-top:1rem">
@@ -318,7 +357,8 @@
                 <div class="ck-card ck-section">
                     <div class="ck-card__eyebrow">{{ __('Emitted labels') }}</div>
                     @if(count($this->labels))
-                        <div class="ck-grid ck-grid--2" style="margin-top:.8rem">
+                        {{-- Como máximo 3 por fila; una sola tarjeta ocupa un tercio, no el ancho completo. --}}
+                        <div style="display:grid;gap:1rem;margin-top:.8rem;grid-template-columns:repeat(auto-fill,minmax(max(280px,calc((100% - 2rem) / 3)),1fr))">
                             @foreach($this->labels as $label)
                                 @include('filament.shipments.partials.label-preview', [
                                     'label' => $label,
@@ -348,7 +388,7 @@
                             {{ $dsl3 }}
                         </dd>
                         <dt>ETA</dt><dd>{{ $tr && $tr['eta'] ? $tr['eta'] : '—' }}</dd>
-                        <dt>{{ __('Remaining stops') }}</dt><dd>{{ $tr ? $tr['remaining_stops'] : '—' }}</dd>
+                        <dt>{{ __('Remaining stops') }}</dt><dd>{{ $isDelivered ? 'Entregado' : $stopsText($tr) }}</dd>
                     </dl>
                 </div>
             </div>

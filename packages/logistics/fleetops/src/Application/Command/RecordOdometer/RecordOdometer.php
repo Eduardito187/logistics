@@ -18,5 +18,7 @@ final readonly class RecordOdometer implements Command
         public string $source,
         public string $readAt,
         public ?string $note = null,
+        // Ruta del chofer a la que pertenece la lectura (salida/llegada). Opcional.
+        public ?string $routeId = null,
     ) {}
 }

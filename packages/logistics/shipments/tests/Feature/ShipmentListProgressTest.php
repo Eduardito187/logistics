@@ -136,7 +136,7 @@ it('agrega a cada ítem su avance operativo (camión, horas, etiquetas, estado d
     // Un envío sin rastros trae el objeto con la MISMA forma y campos null (etiquetas: 0, se conoce).
     expect(array_keys($data[$bare]['progress']))->toBe([
         'vehicle_id', 'plate', 'assigned_at', 'prepared_at', 'loaded_at', 'delivered_at',
-        'labels_emitted_count', 'execution_status',
+        'labels_emitted_count', 'execution_status', 'ready_for_pickup_at',
     ])
         ->and($data[$bare]['progress']['vehicle_id'])->toBeNull()
         ->and($data[$bare]['progress']['execution_status'])->toBeNull()

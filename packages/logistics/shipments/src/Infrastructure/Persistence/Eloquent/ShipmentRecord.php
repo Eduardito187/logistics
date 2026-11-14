@@ -7,6 +7,9 @@ namespace Logistics\Shipments\Infrastructure\Persistence\Eloquent;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Logistics\Shipments\Domain\Exception\ShipmentsException;
+use Logistics\Shipments\Domain\Model\Shipment;
+use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\Factories\ShipmentRecordFactory;
 
 /**
@@ -42,6 +45,32 @@ final class ShipmentRecord extends Model
 {
     /** @use HasFactory<ShipmentRecordFactory> */
     use HasFactory;
+
+    /**
+     * Columnas que SÍ pueden escribirse sobre un envío entregado: metadatos de proyección, no datos del
+     * pedido (los completan reconciliaciones y reactores después de la entrega).
+     */
+    private const array EDITABLE_AFTER_DELIVERY = ['updated_at', 'order_reference'];
+
+    /**
+     * Candado del envío entregado a nivel de fila: ninguna escritura (formulario del admin, script o
+     * reactor) cambia los datos de un pedido que ya se entregó. Es la red de la regla del agregado
+     * ({@see Shipment::isLockedForEdits()}) para los caminos que
+     * escriben la fila sin pasar por él. Solo se dejan pasar los metadatos de proyección.
+     */
+    protected static function booted(): void
+    {
+        self::updating(static function (self $record): void {
+            if (strtoupper((string) $record->getOriginal('status')) !== ShipmentStatus::Delivered->value) {
+                return;
+            }
+
+            $changed = array_diff(array_keys($record->getDirty()), self::EDITABLE_AFTER_DELIVERY);
+            if ($changed !== []) {
+                throw ShipmentsException::because('el pedido ya fue entregado: no se puede editar ('.implode(', ', $changed).')');
+            }
+        });
+    }
 
     public $incrementing = false;
 

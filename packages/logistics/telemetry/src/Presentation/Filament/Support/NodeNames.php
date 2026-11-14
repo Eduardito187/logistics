@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Presentation\Filament\Support;
 
+use Illuminate\Support\Facades\Cache;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 
 /**
@@ -12,12 +13,14 @@ use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
  *
  * Es una lectura cross-context de SOLO presentación: las geocercas guardan `node_ref` como UUID opaco del
  * contexto network, y aquí se muestra el nombre legible del nodo (CD, tienda...). El mapa id→nombre se
- * carga una vez por request y se memoiza para evitar el N+1 (regla: ningún UUID visible en el admin).
+ * cachea en Valkey con TTL corto para evitar el N+1 (regla: ningún UUID visible en el admin). Antes se
+ * memoizaba en una propiedad estática ("por request"), pero bajo Octane el worker persiste entre requests
+ * y serviría nombres viejos indefinidamente; el caché con TTL se refresca solo.
  */
 final class NodeNames
 {
-    /** @var array<string, string>|null Mapa memoizado id→nombre de todos los nodos. */
-    private static ?array $map = null;
+    /** Vida del caché del mapa (segundos); los nodos casi no cambian, 60s de staleness es aceptable. */
+    private const CACHE_TTL_SECONDS = 60;
 
     /**
      * Mapa id→nombre de todos los nodos de la red (memoizado por request).
@@ -26,16 +29,19 @@ final class NodeNames
      */
     public static function options(): array
     {
-        if (self::$map === null) {
-            /** @var array<string, string> $map */
-            $map = NodeRecord::query()
-                ->orderBy('name')
-                ->pluck('name', 'id')
-                ->all();
-            self::$map = $map;
-        }
+        return Cache::remember(
+            'admin:node-names:telemetry',
+            self::CACHE_TTL_SECONDS,
+            static function (): array {
+                /** @var array<string, string> $map */
+                $map = NodeRecord::query()
+                    ->orderBy('name')
+                    ->pluck('name', 'id')
+                    ->all();
 
-        return self::$map;
+                return $map;
+            },
+        );
     }
 
     /**

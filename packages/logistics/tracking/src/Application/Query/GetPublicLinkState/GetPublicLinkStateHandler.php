@@ -6,23 +6,23 @@ namespace Logistics\Tracking\Application\Query\GetPublicLinkState;
 
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
+use Logistics\Tracking\Application\Contract\PublicTrackingReader;
 use Logistics\Tracking\Application\ReadModel\PublicLinkState;
-use Logistics\Tracking\Application\Service\PublicLinkGuard;
-use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Exception\TrackingException;
-use Logistics\Tracking\Domain\ValueObject\TrackingToken;
 
 /**
  * Resuelve el estado del enlace público: token con forma inválida o inexistente ⇒ NotFound; seguimiento
  * entregado hace más del TTL ⇒ Expired; en otro caso Active.
+ *
+ * Sale de la misma foto que la vista pública ({@see PublicTrackingReader}), así que el camino del
+ * 404/410 tampoco golpea la base: un barrido de tokens inexistentes lo absorbe el caché negativo.
  *
  * @implements QueryHandler<GetPublicLinkState, PublicLinkState>
  */
 final class GetPublicLinkStateHandler implements QueryHandler
 {
     public function __construct(
-        private readonly TrackingRepository $trackings,
-        private readonly PublicLinkGuard $guard,
+        private readonly PublicTrackingReader $reader,
     ) {}
 
     public function handle(Query $query): PublicLinkState
@@ -31,17 +31,6 @@ final class GetPublicLinkStateHandler implements QueryHandler
             throw TrackingException::because('GetPublicLinkStateHandler solo maneja GetPublicLinkState');
         }
 
-        try {
-            $token = TrackingToken::fromString($query->token);
-        } catch (TrackingException) {
-            return PublicLinkState::NotFound;
-        }
-
-        $tracking = $this->trackings->findByToken($token);
-        if ($tracking === null) {
-            return PublicLinkState::NotFound;
-        }
-
-        return $this->guard->isExpired($tracking) ? PublicLinkState::Expired : PublicLinkState::Active;
+        return $this->reader->read($query->token)->state;
     }
 }

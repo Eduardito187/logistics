@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Presentation\Filament\Support;
 
+use Illuminate\Support\Facades\Cache;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 
 /**
@@ -11,31 +12,36 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
  *
  * Es una lectura cross-context de SOLO presentación (nunca para mutar): los records de fleetops guardan
  * `vehicle_id` como UUID sin FK dura, y aquí se enriquece con la placa legible leyendo del contexto fleet
- * (patrón api-readmodel-enrichment). El mapa id→placa se carga una vez por request y se memoiza para
- * evitar el N+1 al pintar tablas.
+ * (patrón api-readmodel-enrichment). El mapa id→placa se cachea en Valkey con TTL corto para evitar el
+ * N+1 al pintar tablas. Antes se memoizaba en una propiedad estática ("por request"), pero bajo Octane el
+ * worker vive entre requests y esa estática serviría placas viejas indefinidamente; el caché con TTL se
+ * refresca solo. La clave se comparte con telemetry (misma tabla, misma forma).
  */
 final class VehiclePlates
 {
-    /** @var array<string, string>|null Mapa memoizado id→placa de todos los vehículos. */
-    private static ?array $map = null;
+    /** Vida del caché del mapa (segundos); las placas casi no cambian, 60s de staleness es aceptable. */
+    private const CACHE_TTL_SECONDS = 60;
 
     /**
-     * Mapa id→placa de todos los vehículos de la flota (memoizado por request).
+     * Mapa id→placa de todos los vehículos de la flota (cacheado con TTL corto).
      *
      * @return array<string, string>
      */
     public static function options(): array
     {
-        if (self::$map === null) {
-            /** @var array<string, string> $map */
-            $map = VehicleModel::query()
-                ->orderBy('plate')
-                ->pluck('plate', 'id')
-                ->all();
-            self::$map = $map;
-        }
+        return Cache::remember(
+            'admin:vehicle-plates',
+            self::CACHE_TTL_SECONDS,
+            static function (): array {
+                /** @var array<string, string> $map */
+                $map = VehicleModel::query()
+                    ->orderBy('plate')
+                    ->pluck('plate', 'id')
+                    ->all();
 
-        return self::$map;
+                return $map;
+            },
+        );
     }
 
     /**

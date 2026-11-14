@@ -18,6 +18,8 @@ use Logistics\Labels\Domain\Exception\DuplicateLabelException;
 use Logistics\Labels\Presentation\Http\Request\EmitShipmentLabelsRequest;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shipments\Application\Query\FindShipment\FindShipment;
+use Logistics\Shipments\Application\ReadModel\ShipmentView;
 
 /**
  * Etiquetas de un pedido para la app interna (puerta /api/v1/app/*).
@@ -64,7 +66,39 @@ final readonly class LabelController
         $view = $this->queryBus->ask(new ResolveLabelUnit($labelId));
         assert($view instanceof LabelUnitView);
 
-        return new JsonResponse($view->toArray());
+        return new JsonResponse([...$view->toArray(), ...$this->customerOf($view->shipmentId)]);
+    }
+
+    /**
+     * Cliente y tienda destino del envío de la etiqueta, para que quien la escanea vea a quién se entrega y
+     * si el pedido es de otra tienda aunque no lo tenga cargado. Se piden al contexto shipments por el
+     * QueryBus. Las claves van SIEMPRE (null si la etiqueta no resolvió o el envío no está disponible).
+     *
+     * @return array{customer_name: string|null, customer_document_id: string|null, customer_phone: string|null, destination_node_id: string|null}
+     */
+    private function customerOf(?string $shipmentId): array
+    {
+        $empty = ['customer_name' => null, 'customer_document_id' => null, 'customer_phone' => null, 'destination_node_id' => null];
+        if ($shipmentId === null || $shipmentId === '') {
+            return $empty;
+        }
+
+        try {
+            $shipment = $this->queryBus->ask(new FindShipment($shipmentId));
+        } catch (\Throwable) {
+            return $empty;
+        }
+
+        if (!$shipment instanceof ShipmentView) {
+            return $empty;
+        }
+
+        return [
+            'customer_name' => $shipment->customerName !== '' ? $shipment->customerName : null,
+            'customer_document_id' => $shipment->customerDocumentId,
+            'customer_phone' => $shipment->customerPhone,
+            'destination_node_id' => $shipment->destinationNodeId,
+        ];
     }
 
     /**

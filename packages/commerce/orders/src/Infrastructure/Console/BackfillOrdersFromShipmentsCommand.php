@@ -197,13 +197,22 @@ final class BackfillOrdersFromShipmentsCommand extends Command
     /**
      * ¿Ya hay una orden para esta clave? Como id de la orden (envíos del flujo real: su `order_reference`
      * es el id de la orden) o como `order_reference` de una orden ya backfilleada.
+     *
+     * IMPORTANTE: `commerce_orders.id` es UUID. Si la clave NO tiene forma de UUID (p.ej. una referencia
+     * numérica de Magento como `100000452`), comparar contra `id` lanza `invalid input syntax for type
+     * uuid` en PostgreSQL (cast estricto). Por eso solo se compara contra `id` cuando la clave parece UUID;
+     * en cualquier otro caso basta con buscar por `order_reference` (varchar).
      */
     private function alreadyBackfilled(string $key): bool
     {
-        return OrderRecord::query()
-            ->where('id', $key)
-            ->orWhere('order_reference', $key)
-            ->exists();
+        $query = OrderRecord::query()->where('order_reference', $key);
+
+        // Solo comparar contra la PK uuid si la clave tiene forma de UUID (evita el cast erróneo).
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $key)) {
+            $query->orWhere('id', $key);
+        }
+
+        return $query->exists();
     }
 
     /**

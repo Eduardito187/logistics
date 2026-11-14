@@ -35,7 +35,6 @@ use Logistics\FleetOps\Presentation\Filament\Pages\FleetCostDashboard;
 use Logistics\Inbound\Presentation\Filament\Pages\InboundBoard;
 use Logistics\Inbound\Presentation\Filament\Pages\ReceivingCalendar;
 use Logistics\Labels\Presentation\Filament\Pages\LabelFormatSettings;
-use Logistics\Labels\Presentation\Filament\Pages\ScanLabelPage;
 use Logistics\Settings\Presentation\Filament\Pages\Configuration;
 use Logistics\Telemetry\Presentation\Filament\Pages\LiveFleetMap;
 
@@ -163,7 +162,8 @@ final class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::GLOBAL_SEARCH_BEFORE,
                 fn (): string => self::hasOfficeScope() ? view('filament.cockpit.search-trigger')->render() : '',
             )
-            // 2) Escanear etiquetas (cámara): acceso directo al escáner desde el header, fácil de hallar.
+            // 2) Escanear etiquetas (cámara): el ícono del header abre el escáner como MODAL. No tiene página
+            // ni ítem de menú propios.
             ->renderHook(
                 PanelsRenderHook::GLOBAL_SEARCH_BEFORE,
                 fn (): string => self::hasOfficeScope() ? view('filament.cockpit.scan-trigger')->render() : '',
@@ -340,8 +340,6 @@ final class AdminPanelProvider extends PanelProvider
                 LabelFormatSettings::class,
                 // Configuración centralizada estilo Magento (pestañas → secciones → fieldsets, un «Save Config»).
                 Configuration::class,
-                // Escáner web de etiquetas (cámara + BarcodeDetector): lee QR o Zebra, resuelve el bulto.
-                ScanLabelPage::class,
             ])
             // Los widgets del tablero (p. ej. PlatformStatsWidget, validado por rol) se descubren
             // desde app/Filament/Widgets.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Carriers\Presentation\Filament\Support;
 
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use stdClass;
 
@@ -12,8 +13,11 @@ use stdClass;
  * Valores legibles para el admin de viajes de transportista (regla dura: nunca mostrar UUIDs).
  *
  * Lee en SOLO lectura tablas de otros contextos (network_nodes, shipments, shipment_lines/units) por
- * query builder, sin importar sus clases (contexto desacoplable). Los mapas de nodos se memoizan por
- * request para no disparar N+1 al pintar tablas e infolists; las búsquedas de envíos van acotadas a 50.
+ * query builder, sin importar sus clases (contexto desacoplable). El mapa de nodos se cachea en Valkey
+ * con TTL corto para no disparar N+1 al pintar tablas e infolists; las búsquedas de envíos van acotadas a
+ * 50. Antes el mapa se memoizaba en una propiedad estática ("por request"), pero bajo Octane el worker
+ * vive entre requests y esa estática serviría nombres viejos indefinidamente; el caché con TTL se refresca
+ * solo.
  */
 final class TripLookups
 {
@@ -23,8 +27,8 @@ final class TripLookups
      */
     private const ACTIVE_STATUSES = ['scheduled', 'in_progress'];
 
-    /** @var array<string, string>|null Mapa memoizado id→nombre de nodos. */
-    private static ?array $nodes = null;
+    /** Vida del caché del mapa de nodos (segundos); los nodos casi no cambian, 60s sobra. */
+    private const NODES_TTL_SECONDS = 60;
 
     /**
      * Opciones de nodo (id → "Nombre (CÓDIGO)") para los Selects de corredor.
@@ -50,16 +54,29 @@ final class TripLookups
             return '—';
         }
 
-        if (self::$nodes === null) {
-            $map = [];
-            foreach (DB::table('network_nodes')->get(['id', 'code', 'name']) as $row) {
-                $map[self::str($row->id)] = self::str($row->name);
-                $map[self::str($row->code)] = self::str($row->name);
-            }
-            self::$nodes = $map;
-        }
+        return self::nodes()[$ref] ?? $ref;
+    }
 
-        return self::$nodes[$ref] ?? $ref;
+    /**
+     * Mapa de nodos para resolver nombres (id→nombre y code→nombre), cacheado con TTL corto.
+     *
+     * @return array<string, string>
+     */
+    private static function nodes(): array
+    {
+        return Cache::remember(
+            'admin:trip-node-names',
+            self::NODES_TTL_SECONDS,
+            static function (): array {
+                $map = [];
+                foreach (DB::table('network_nodes')->get(['id', 'code', 'name']) as $row) {
+                    $map[self::str($row->id)] = self::str($row->name);
+                    $map[self::str($row->code)] = self::str($row->name);
+                }
+
+                return $map;
+            },
+        );
     }
 
     /**

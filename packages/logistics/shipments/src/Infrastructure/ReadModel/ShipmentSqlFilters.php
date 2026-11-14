@@ -51,6 +51,54 @@ final class ShipmentSqlFilters
     }
 
     /**
+     * Búsqueda por texto: código de pedido (`external_id` / `order_reference`), nombre o documento del
+     * cliente. Sin distinguir mayúsculas; los comodines del usuario se escapan (busca el texto literal).
+     */
+    public static function search(Builder $query, string $text): void
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return;
+        }
+
+        $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($text)).'%';
+
+        // SQL literal por columna (nada dinámico en el texto de la consulta; el valor va por binding).
+        $query->where(static function (Builder $where) use ($like): void {
+            $where->whereRaw('lower(external_id) like ?', [$like])
+                ->orWhereRaw('lower(order_reference) like ?', [$like])
+                ->orWhereRaw('lower(customer_name) like ?', [$like])
+                ->orWhereRaw('lower(customer_document_id) like ?', [$like]);
+        });
+    }
+
+    /**
+     * Listos para retirar: pedidos que el chofer ya DEJÓ en su tienda destino (entrega en tienda) y que
+     * todavía no se entregaron ni se anularon. De respaldo cuenta también la recepción conciliada en esa
+     * tienda (por si el chofer no registró su paso). Lee ejecución en solo lectura con EXISTS correlacionados
+     * por `shipment_id`.
+     */
+    public static function readyForPickup(Builder $query, string $prefix = 'shipments.'): void
+    {
+        $query->whereNotIn($prefix.'status', [ShipmentStatus::Delivered->value, ShipmentStatus::Cancelled->value])
+            ->where(static function (Builder $ready) use ($prefix): void {
+                $ready->whereExists(static function (Builder $dropped) use ($prefix): void {
+                    $dropped->selectRaw('1')
+                        ->from('execution_deliveries as rp_d')
+                        ->whereColumn('rp_d.shipment_id', $prefix.'id')
+                        ->whereColumn('rp_d.store_drop_node_id', $prefix.'destination_node_id')
+                        ->whereNotNull('rp_d.store_dropped_at');
+                })->orWhereExists(static function (Builder $received) use ($prefix): void {
+                    $received->selectRaw('1')
+                        ->from('execution_node_receptions as rp_r')
+                        ->whereColumn('rp_r.shipment_id', $prefix.'id')
+                        ->whereColumn('rp_r.destination_node_id', $prefix.'destination_node_id')
+                        ->where('rp_r.status', 'RECONCILED');
+                });
+            });
+    }
+
+    /**
      * Pendientes de preparar: envíos ASIGNADOS (PLANNED o IN_EXECUTION) que todavía NO tienen entrega en
      * ejecución abierta. En el flujo vigente (decisión del dueño) ASIGNAR EL VEHÍCULO ES PREPARAR: eso abre
      * la entrega (`execution_deliveries`), así que la existencia de la entrega marca el envío como preparado

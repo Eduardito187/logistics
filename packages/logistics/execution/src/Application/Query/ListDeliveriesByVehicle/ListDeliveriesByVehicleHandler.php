@@ -35,7 +35,7 @@ final class ListDeliveriesByVehicleHandler implements QueryHandler
 
         $deliveries = [];
         $shipmentIds = [];
-        foreach ($this->deliveries->findByVehicleId($query->vehicleId, $query->limit, $query->offset) as $delivery) {
+        foreach ($this->deliveries->findByVehicleId($query->vehicleId, $query->limit, $query->offset, $query->statuses) as $delivery) {
             $deliveries[] = $delivery;
             $shipmentIds[] = $delivery->shipmentId();
         }
@@ -53,7 +53,7 @@ final class ListDeliveriesByVehicleHandler implements QueryHandler
             );
         }
 
-        $total = $query->limit === null ? count($views) : $this->deliveries->countByVehicleId($query->vehicleId);
+        $total = $query->limit === null ? count($views) : $this->deliveries->countByVehicleId($query->vehicleId, $query->statuses);
 
         return new VehicleDeliveriesPage($views, $total);
     }

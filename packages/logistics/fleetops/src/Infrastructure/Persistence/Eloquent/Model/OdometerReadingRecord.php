@@ -22,6 +22,7 @@ use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Factory\OdometerReadi
  * @property string      $source
  * @property Carbon      $read_at
  * @property string|null $note
+ * @property string|null $route_id
  */
 final class OdometerReadingRecord extends Model
 {

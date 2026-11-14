@@ -33,7 +33,8 @@ final class DeliveryMapper
         return [
             'id' => $delivery->id()->toString(),
             'shipment_id' => $delivery->shipmentId(),
-            'vehicle_id' => $delivery->vehicleId(),
+            // Entrega de mostrador (retiro en tienda): sin vehículo se guarda NULL.
+            'vehicle_id' => $delivery->isCounterHandover() ? null : $delivery->vehicleId(),
             'status' => $delivery->status()->value,
             'pod_confirmation' => $proof?->confirmation,
             'pod_photo_url' => $proof?->photoUrl,
@@ -46,6 +47,10 @@ final class DeliveryMapper
             // Dimensión de fulfillment: solo el modo (dato para reportes/liquidaciones). Las columnas
             // dropship_handling / *_confirmation_key quedan en la tabla sin uso (no se borran: regla aditiva).
             'fulfillment_mode' => $delivery->fulfillmentMode()->value,
+            // Entrega en tienda del chofer (pedido que el cliente retira en la tienda).
+            'store_dropped_at' => $delivery->storeDroppedAt()?->format(DATE_ATOM),
+            'store_drop_node_id' => $delivery->storeDropNodeId(),
+            'store_drop_photo_path' => $delivery->storeDropPhotoPath(),
         ];
     }
 
@@ -102,16 +107,27 @@ final class DeliveryMapper
             );
         }
 
-        return Delivery::reconstitute(
+        $delivery = Delivery::reconstitute(
             DeliveryId::fromString($record->id),
             $record->shipment_id,
-            $record->vehicle_id,
+            (string) ($record->vehicle_id ?? ''),
             DeliveryStatus::fromLoose($record->status),
             $scans,
             $proof,
             $record->failure_reason !== null ? FailureReason::from($record->failure_reason) : null,
             FulfillmentMode::fromLoose($record->fulfillment_mode),
         );
+
+        $droppedAt = $record->getAttribute('store_dropped_at');
+        $dropNode = $record->getAttribute('store_drop_node_id');
+        $dropPhoto = $record->getAttribute('store_drop_photo_path');
+        $delivery->restoreStoreDrop(
+            is_string($droppedAt) && $droppedAt !== '' ? new DateTimeImmutable($droppedAt) : null,
+            is_string($dropNode) && $dropNode !== '' ? $dropNode : null,
+            is_string($dropPhoto) && $dropPhoto !== '' ? $dropPhoto : null,
+        );
+
+        return $delivery;
     }
 
     /**

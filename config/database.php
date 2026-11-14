@@ -5,6 +5,9 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+// Host local por defecto: un solo literal para todas las conexiones de este archivo.
+$localHost = '127.0.0.1';
+
 // Detección de PgBouncer por la convención de infra (servicio `pgbouncer`, puerto 6432): si la app habla
 // con el pooler en transaction pooling HAY que emular prepares (ver el bloque de la conexión `pgsql`), o
 // los prepared statements con nombre del lado del servidor dejan un plan cacheado que, tras una migración
@@ -13,7 +16,7 @@ use Pdo\Mysql;
 // así para que funcione en cualquier entorno sin depender de recordar `DB_EMULATE_PREPARES=true`; el env
 // explícito, si se define, siempre manda. Contra PG directo queda en false (prepares reales, más eficientes).
 $behindPgBouncer = (string) env('DB_PORT', '5432') === '6432'
-    || str_contains((string) env('DB_HOST', '127.0.0.1'), 'pgbouncer');
+    || str_contains((string) env('DB_HOST', $localHost), 'pgbouncer');
 
 return [
 
@@ -59,7 +62,7 @@ return [
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => env('DB_HOST', $localHost),
             'port' => env('DB_PORT', '3306'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -79,7 +82,7 @@ return [
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => env('DB_HOST', $localHost),
             'port' => env('DB_PORT', '3306'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -117,12 +120,50 @@ return [
         |
         | `search_path` se mantiene en 'public' (sin estado dependiente de sesión). PgBouncer con
         | `server_reset_query = DISCARD ALL` lo re-aplica limpio en cada checkout del pool.
+        |
+        | OLA 3 — RÉPLICAS DE LECTURA (roadmap alta disponibilidad): si se definen DB_READ_HOST (una o
+        | más réplicas separadas por coma), Laravel enruta los SELECT al pool `read` y las escrituras
+        | al pool `write`. CQRS ya separa los caminos (QueryHandler lee, CommandHandler escribe), así
+        | que el split es natural. `sticky => true` garantiza que un mismo request que escriba (INSERT/
+        | UPDATE) lea de inmediato del primario en lo que queda del request, evitando replication lag
+        | visible. En dev (sin DB_READ_HOST) la conexión funciona igual que antes: host/port únicas.
+        |
+        | Las réplicas pueden ir detrás de su propio PgBouncer (DB_READ_PORT=6432) o apuntar a PG
+        | directo. Las opciones de PDO se heredan del bloque compartido.
         */
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '5432'),
+
+            // OLA 3: read/write splitting. Si DB_READ_HOST está definido, el pool `read` va a las
+            // réplicas y el `write` al primario. Si no, se omiten y la conexión usa host/port de arriba.
+            ...((static function () use ($localHost): array {
+                $readHosts = env('DB_READ_HOST');
+                if ($readHosts === null || trim((string) $readHosts) === '') {
+                    // Sin réplica: conexión simple al primario (comportamiento legacy).
+                    return [
+                        'host' => env('DB_HOST', $localHost),
+                        'port' => env('DB_PORT', '5432'),
+                    ];
+                }
+
+                // Con réplica(s): ruteo read/write + sticky.
+                $readHostList = array_map('trim', explode(',', (string) $readHosts));
+                $readPort = env('DB_READ_PORT', env('DB_PORT', '5432'));
+
+                return [
+                    'read' => [
+                        'host' => $readHostList,
+                        'port' => $readPort,
+                    ],
+                    'write' => [
+                        'host' => env('DB_HOST', $localHost),
+                        'port' => env('DB_PORT', '5432'),
+                    ],
+                    'sticky' => true,
+                ];
+            })()),
+
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
             'password' => env('DB_PASSWORD', ''),
@@ -150,7 +191,7 @@ return [
         'pgsql_direct' => [
             'driver' => 'pgsql',
             'url' => env('DB_DIRECT_URL', env('DB_URL')),
-            'host' => env('DB_DIRECT_HOST', env('DB_HOST', '127.0.0.1')),
+            'host' => env('DB_DIRECT_HOST', env('DB_HOST', $localHost)),
             'port' => env('DB_DIRECT_PORT', env('DB_PORT', '5432')),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -230,7 +271,7 @@ return [
 
         'default' => [
             'url' => env('REDIS_URL'),
-            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'host' => env('REDIS_HOST', $localHost),
             'username' => env('REDIS_USERNAME'),
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
@@ -243,7 +284,7 @@ return [
 
         'cache' => [
             'url' => env('REDIS_URL'),
-            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'host' => env('REDIS_HOST', $localHost),
             'username' => env('REDIS_USERNAME'),
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
@@ -258,7 +299,7 @@ return [
         // evictable (DB 1) y de las colas/locks (DB 0). La usa config/session.php (SESSION_CONNECTION).
         'session' => [
             'url' => env('REDIS_URL'),
-            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'host' => env('REDIS_HOST', $localHost),
             'username' => env('REDIS_USERNAME'),
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),

@@ -317,6 +317,67 @@ final class ShipmentTracking extends AggregateRoot
     }
 
     /**
+     * Alinea el seguimiento con la ruta REAL del camión (la que ejecuta el chofer): fija ruta, posición y
+     * cuántas paradas PENDIENTES tiene por delante. A diferencia de {@see placeOnRoute()} las paradas no se
+     * derivan de la posición: llegan contadas, porque en una ruta en curso las paradas anteriores ya
+     * resueltas no cuentan.
+     *
+     * Graba ShipmentPlacedOnRoute solo cuando el envío entra a la ruta o cambia de posición; un ajuste del
+     * conteo solo (otra parada se sumó o se quitó por delante) es silencioso, igual que
+     * {@see decrementStops()}. Idempotente. No toca un seguimiento terminal.
+     */
+    public function syncRouteProgress(string $routeId, RoutePosition $position, int $stopsAhead): void
+    {
+        if ($this->status->isTerminal()) {
+            return;
+        }
+
+        $routeId = trim($routeId);
+        if ($routeId === '') {
+            throw TrackingException::because('el id de la ruta no puede estar vacío');
+        }
+        if ($this->shipmentId === null) {
+            throw TrackingException::because('no se puede ubicar en ruta un seguimiento sin envío ligado');
+        }
+        if ($stopsAhead < 0) {
+            throw TrackingException::because("las paradas restantes no pueden ser negativas: {$stopsAhead}");
+        }
+
+        $moved = $this->routeId !== $routeId
+            || $this->routePosition === null
+            || !$this->routePosition->equals($position);
+
+        $this->routeId = $routeId;
+        $this->routePosition = $position;
+        $this->remainingStops = $stopsAhead;
+
+        if ($moved) {
+            $this->recordEvent(new ShipmentPlacedOnRoute(
+                $this->id->toString(),
+                $this->shipmentId,
+                $routeId,
+                $position->value,
+                $this->remainingStops,
+            ));
+        }
+    }
+
+    /**
+     * Saca al envío de la ruta (el camión ya no lo lleva: se lo reasignó o se quitó la parada). Queda sin
+     * ruta ni paradas por delante hasta que otra ruta lo ubique. Silencioso; no toca un seguimiento terminal.
+     */
+    public function leaveRoute(string $routeId): void
+    {
+        if ($this->status->isTerminal() || $this->routeId !== trim($routeId)) {
+            return;
+        }
+
+        $this->routeId = null;
+        $this->routePosition = null;
+        $this->remainingStops = 0;
+    }
+
+    /**
      * Descuenta una parada restante: una parada previa de la ruta se completó, así que el envío queda
      * una parada más cerca del cliente. No baja de cero ni graba evento (es un ajuste de proyección de
      * alta frecuencia, no un hecho de negocio nuevo).

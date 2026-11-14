@@ -30,6 +30,7 @@ final class RecordOdometerController extends ApiController
                 source: $request->string('source')->toString(),
                 readAt: $request->string('read_at')->toString(),
                 note: $request->filled('note') ? $request->string('note')->toString() : null,
+                routeId: $request->filled('route_id') ? $request->string('route_id')->toString() : null,
             ));
 
             return $this->accepted(['vehicle_id' => $request->string('vehicle_id')->toString()]);

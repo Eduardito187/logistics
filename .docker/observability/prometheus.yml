@@ -1,0 +1,78 @@
+# ============================================================
+# prometheus.yml — scrape de la plataforma logística (Ola 5)
+# ============================================================
+# Lo carga el servicio `prometheus` de .docker/compose/docker-compose.observability.yml.
+#
+# CÓMO SE INYECTA EL TOKEN (METRICS_TOKEN):
+#   Prometheus NO expande variables de entorno en este archivo. El entrypoint del contenedor toma la
+#   env METRICS_TOKEN (la misma que lee la app en config/observability.php) y la escribe en
+#   /prometheus/runtime/metrics_token (0600, dentro del volumen de datos). Acá se referencia con
+#   `credentials_file`, así el secreto nunca vive en el repo ni en la config.
+#   Rotación: cambiar METRICS_TOKEN en el .env, recrear `app` (o `config:clear`) y `prometheus`.
+#
+# CÓMO SE DEFINE EL TARGET DE LA APP:
+#   El mismo entrypoint escribe /prometheus/runtime/app-targets.json con OBS_METRICS_TARGET
+#   (dev: nginx:80 · staging: web:8080) y acá se lee por file_sd.
+#
+# Recargar tras editar reglas/config (sin reiniciar):
+#   curl -X POST http://localhost:9190/-/reload
+# ============================================================
+
+global:
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    evaluation_interval: 15s
+    external_labels:
+        stack: logistics
+
+rule_files:
+    - /etc/logistics-observability/rules.yml
+    - /etc/logistics-observability/alerts.yml
+
+alerting:
+    alertmanagers:
+        - static_configs:
+              - targets: ["alertmanager:9093"]
+
+scrape_configs:
+    # ---- La app (Laravel) vía nginx: GET /api/metrics con Bearer token ----
+    # Se entra por nginx (no directo a FPM, que habla FastCGI). Con varias réplicas de app detrás del
+    # balanceador cada scrape cae en una cualquiera: los contadores/histogramas del collector viven en
+    # Valkey (compartidos), así que el resultado es el mismo desde cualquier réplica.
+    - job_name: logistics-app
+      metrics_path: /api/metrics
+      scheme: http
+      authorization:
+          type: Bearer
+          credentials_file: /prometheus/runtime/metrics_token
+      file_sd_configs:
+          - files:
+                - /prometheus/runtime/app-targets.json
+            refresh_interval: 1m
+
+    # ---- PostgreSQL (postgres_exporter contra el Postgres directo) ----
+    - job_name: postgres
+      static_configs:
+          - targets: ["postgres-exporter:9187"]
+            labels:
+                service: logistics
+
+    # ---- Valkey (redis_exporter) ----
+    - job_name: valkey
+      static_configs:
+          - targets: ["valkey-exporter:9121"]
+            labels:
+                service: logistics
+
+    # ---- El propio stack de observabilidad ----
+    - job_name: prometheus
+      static_configs:
+          - targets: ["localhost:9090"]
+
+    - job_name: alertmanager
+      static_configs:
+          - targets: ["alertmanager:9093"]
+
+    - job_name: grafana
+      static_configs:
+          - targets: ["grafana:3000"]

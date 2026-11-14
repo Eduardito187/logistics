@@ -17,5 +17,6 @@ final readonly class ListOdometerReadings implements Query
         public ?string $to = null,
         public ?int $limit = null,
         public ?int $offset = null,
+        public ?string $routeId = null,
     ) {}
 }

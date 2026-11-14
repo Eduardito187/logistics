@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\Role;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Js;
 use Illuminate\Support\Str;
@@ -18,7 +19,6 @@ use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Factory\MaintenanceOr
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Factory\MaintenancePlanFactory;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Factory\RefuelFactory;
 use Logistics\FleetOps\Presentation\Filament\Pages\FleetCostDashboard;
-use Logistics\FleetOps\Presentation\Filament\Support\VehiclePlates;
 use Logistics\Shared\Application\Command\CommandBus;
 
 /**
@@ -59,11 +59,10 @@ function fleetopsDashboardVehicle(string $plate = 'DASH-001'): string
         'updated_at' => now(),
     ]);
 
-    // VehiclePlates memoiza el mapa id→placa en una propiedad estática (una vez por request). En la suite
-    // ese estado persiste entre tests, así que se invalida tras sembrar para que el Select buscable
-    // `vehicle_id` reconozca el vehículo recién creado y no falle la validación de la acción.
-    $map = new ReflectionProperty(VehiclePlates::class, 'map');
-    $map->setValue(null, null);
+    // VehiclePlates cachea el mapa id→placa en Valkey con TTL corto (Octane-safe). En la suite ese caché
+    // persiste entre tests, así que se invalida tras sembrar para que el Select buscable `vehicle_id`
+    // reconozca el vehículo recién creado y no falle la validación de la acción.
+    Cache::forget('admin:vehicle-plates');
 
     return $id;
 }

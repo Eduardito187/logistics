@@ -33,6 +33,8 @@ final class RecordOdometerRequest extends FormRequest
             'source' => ['required', 'string', Rule::in(array_map(static fn (OdometerSource $s): string => $s->value, OdometerSource::cases()))],
             'read_at' => ['required', 'string', 'date'],
             'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            // Ruta del chofer a la que pertenece la lectura (salida/llegada). Opcional.
+            'route_id' => ['sometimes', 'nullable', 'string', 'uuid'],
         ];
     }
 }

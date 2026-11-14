@@ -173,6 +173,7 @@ final class ScanCommandFactory
             occurredAt: self::str($data, 'occurred_at'),
             idempotencyKey: $key,
             unitIds: $unitIds,
+            counterHandover: self::isStoreCounter($user),
             photoPaths: self::strList($data['photo_paths'] ?? []),
             evidenceIds: self::strList($data['evidence_ids'] ?? []),
             accuracyM: $location !== null ? self::num($location, 'accuracy_m') : null,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Infrastructure\Providers;
 
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRoute;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRouteHandler;
@@ -43,6 +44,8 @@ use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparat
 use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScanHandler;
 use Logistics\Execution\Application\Command\RecordProofOfDelivery\RecordProofOfDelivery;
 use Logistics\Execution\Application\Command\RecordProofOfDelivery\RecordProofOfDeliveryHandler;
+use Logistics\Execution\Application\Command\RecordStoreDrop\RecordStoreDrop;
+use Logistics\Execution\Application\Command\RecordStoreDrop\RecordStoreDropHandler;
 use Logistics\Execution\Application\Command\RecordUnloadScan\RecordUnloadScan;
 use Logistics\Execution\Application\Command\RecordUnloadScan\RecordUnloadScanHandler;
 use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIssue;
@@ -115,6 +118,8 @@ use Logistics\Execution\Infrastructure\ReadModel\DbStopEnrichmentReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbVehicleFitnessReader;
 use Logistics\Execution\Infrastructure\ReadModel\EloquentDeliveryEvidenceReader;
 use Logistics\Execution\Infrastructure\Storage\FilesystemEvidenceStorage;
+use Logistics\Execution\Presentation\Http\ServeEvidenceFileController;
+use Logistics\Execution\Presentation\Support\EvidenceFileUrl;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\HandlerRegistry;
 
@@ -139,6 +144,7 @@ final class ExecutionServiceProvider extends ServiceProvider
         MarkShipmentDeparted::class => MarkShipmentDepartedHandler::class,
         RecordUnloadScan::class => RecordUnloadScanHandler::class,
         RecordProofOfDelivery::class => RecordProofOfDeliveryHandler::class,
+        RecordStoreDrop::class => RecordStoreDropHandler::class,
         AttachDeliveryPhotos::class => AttachDeliveryPhotosHandler::class,
         RecordFailedDelivery::class => RecordFailedDeliveryHandler::class,
         RecordNodeReception::class => RecordNodeReceptionHandler::class,
@@ -349,6 +355,13 @@ final class ExecutionServiceProvider extends ServiceProvider
         // Vistas Blade del contexto (p. ej. el mapa de la ruta en el admin), bajo el namespace
         // `logistics-execution::`.
         $this->loadViewsFrom(__DIR__.'/../../../resources/views', 'logistics-execution');
+
+        // Archivos de evidencia de entrega (firma, fotos, documento) en disco privado local: ruta FIRMADA y
+        // con vencimiento (la firma es la credencial; sin sesión ni token). La emite EvidenceFileUrl.
+        Route::get('api/v1/evidence-files/{disk}/{path}', ServeEvidenceFileController::class)
+            ->middleware(['signed:relative', 'throttle:240,1'])
+            ->where('path', '[A-Za-z0-9_-]+')
+            ->name(EvidenceFileUrl::ROUTE);
 
         /** @var HandlerRegistry $registry */
         $registry = $this->app->make(HandlerRegistry::class);

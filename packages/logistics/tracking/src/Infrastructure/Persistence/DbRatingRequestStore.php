@@ -88,16 +88,17 @@ final readonly class DbRatingRequestStore implements RatingRequestStore
     }
 
     /**
-     * Reinterpreta la fecha leída de la base (sesión PG en UTC, escritura naive de Eloquent) como el mismo
-     * reloj de pared en la zona de la app: el instante del view coincide así con el que lee Eloquent (Clock).
-     * Mismo criterio que los mappers de telemetría. Si se alinea la zona de la sesión de PG, quitar esto.
+     * Reinterpreta la fecha leída de la base (escritura de Eloquent como hora de pared sin offset) como el
+     * mismo reloj de pared en la zona de la app. Se toma el reloj de pared tal como lo devuelve PostgreSQL
+     * (en la zona de su sesión, sea UTC o la de la app) sin convertirlo a UTC: así no depende de la zona de
+     * la sesión. Mismo criterio que los mappers de telemetría.
      */
     private static function wallInstant(string $raw): DateTimeImmutable
     {
         $stored = new DateTimeImmutable($raw);
 
         return new DateTimeImmutable(
-            $stored->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
+            $stored->format('Y-m-d H:i:s'),
             new DateTimeZone(date_default_timezone_get()),
         );
     }

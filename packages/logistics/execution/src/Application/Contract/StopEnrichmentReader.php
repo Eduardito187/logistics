@@ -13,7 +13,7 @@ namespace Logistics\Execution\Application\Contract;
  * los datos por lectura directa de las tablas, EN LOTE, para evitar una consulta por parada.
  *
  * @phpstan-type StopItem array{sku: string, name: string, quantity: int, image_url: string|null}
- * @phpstan-type StopDestination array{type: string, name: string|null, node_code: string|null, node_id?: string|null}
+ * @phpstan-type StopDestination array{type: string, name: string|null, node_code: string|null, node_id?: string|null, delivery_mode?: string}
  * @phpstan-type StopEnrichment array{customer_phone: string|null, address_reference: string|null, items: list<StopItem>, unit_ids: list<string>, units_total?: int, destination?: StopDestination}
  */
 interface StopEnrichmentReader

@@ -28,6 +28,7 @@ final class ListOdometerReadingsRequest extends FormRequest
             'vehicle_id' => ['sometimes', 'nullable', 'string', 'uuid'],
             'from' => ['sometimes', 'nullable', 'string', 'date'],
             'to' => ['sometimes', 'nullable', 'string', 'date'],
+            'route_id' => ['sometimes', 'nullable', 'string', 'uuid'],
         ];
     }
 }

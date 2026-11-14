@@ -18,7 +18,10 @@ namespace Logistics\Shipments\Application\ReadModel;
  *    store_pickup / transfer);
  *  - `pendingPreparation`: solo envíos asignados (PLANNED / IN_EXECUTION) cuya entrega en ejecución aún no
  *    tiene escaneo de PREPARACIÓN (o no tiene entrega todavía). Incluye los que ya tienen etiquetas emitidas
- *    pero no se prepararon.
+ *    pero no se prepararon;
+ *  - `search`: texto libre que busca por código de pedido, nombre o documento del cliente;
+ *  - `readyForPickup`: solo pedidos cuya recepción en la tienda destino ya se concilió y que todavía no se
+ *    entregaron (el cliente puede pasar a retirarlos).
  */
 final readonly class ShipmentListFilter
 {
@@ -35,5 +38,9 @@ final readonly class ShipmentListFilter
         public ?array $statuses = null,
         public ?string $deliveryMode = null,
         public bool $pendingPreparation = false,
+        // Aditivo: búsqueda por texto (código de pedido, nombre o documento del cliente); null = sin filtro.
+        public ?string $search = null,
+        // Aditivo: solo pedidos que YA están en su tienda listos para que el cliente los retire.
+        public bool $readyForPickup = false,
     ) {}
 }

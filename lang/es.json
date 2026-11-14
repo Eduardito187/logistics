@@ -2052,5 +2052,14 @@
     "Current status": "Estado actual",
     "Delivery status": "Estado de entrega",
     "No labels yet": "Sin etiquetas aún",
-    "Printed": "Impresa"
+    "Printed": "Impresa",
+    "Return products": "Devolver productos",
+    "Choose which products of this delivered order are returned. The rest stay delivered.": "Elegí qué productos de este pedido entregado se devuelven. El resto sigue entregado.",
+    "Register return": "Registrar devolución",
+    "Return warehouse": "Almacén de devolución",
+    "Products to return": "Productos a devolver",
+    "Add product": "Agregar producto",
+    "The quantity to return exceeds what was delivered.": "La cantidad a devolver supera lo entregado.",
+    "The return could not be registered.": "No se pudo registrar la devolución.",
+    "Return registered": "Devolución registrada"
 }

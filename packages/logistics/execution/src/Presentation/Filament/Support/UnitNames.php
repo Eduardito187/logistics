@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Presentation\Filament\Support;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -15,14 +16,16 @@ use Illuminate\Support\Facades\DB;
  * la etiqueta escaneada en terreno (p. ej. "U-10001"). Aquí se enriquece a una etiqueta humana (nombre
  * del producto + SKU, más la pieza física N de M si la unidad está partida) uniendo `shipment_units` con
  * `shipment_lines` en SOLO lectura mediante el query builder, sin acoplar el Eloquent del contexto
- * Shipments. El mapa id→etiqueta se memoiza por request (evita el N+1 al pintar tablas e infolists).
- * NUNCA se devuelve un UUID crudo ni vacío: un UUID que no resuelve a un producto conocido cae al texto
- * "Producto".
+ * Shipments. El mapa id→etiqueta se cachea en Valkey con TTL corto (evita el N+1 al
+ * pintar tablas e infolists). Antes se acumulaba en una propiedad estática por-id ("por request"), pero
+ * bajo Octane el worker vive entre requests: esa estática crecería sin límite y serviría etiquetas
+ * viejas; el caché por-id con TTL se refresca y no acumula en la memoria del proceso. NUNCA se devuelve
+ * un UUID crudo ni vacío: un UUID que no resuelve a un producto conocido cae al texto "Producto".
  */
 final class UnitNames
 {
-    /** @var array<string, string> Memoización por request de los identificadores ya resueltos. */
-    private static array $resolved = [];
+    /** Vida del caché por unidad (segundos); el producto de una unidad casi no cambia, 60s sobra. */
+    private const CACHE_TTL_SECONDS = 60;
 
     /**
      * Etiqueta legible de un producto por el `unit_id` de su unidad física:
@@ -37,23 +40,24 @@ final class UnitNames
             return 'Producto';
         }
 
-        if (array_key_exists($unitId, self::$resolved)) {
-            return self::$resolved[$unitId];
-        }
-
-        return self::$resolved[$unitId] = self::resolve($unitId);
-    }
-
-    /**
-     * Resuelve un `unit_id` a su etiqueta legible. Solo un UUID puede ser id de `shipment_units`; un
-     * código escaneado legible se devuelve sin tocar.
-     */
-    private static function resolve(string $unitId): string
-    {
+        // Un código legible (no UUID) se devuelve tal cual: no toca la base ni se cachea (es barato).
         if (!self::looksLikeUuid($unitId)) {
             return $unitId;
         }
 
+        // Solo los UUID consultan la base; se cachean por id con TTL corto (nunca acumula en el proceso).
+        return Cache::remember(
+            'admin:unit-name:'.$unitId,
+            self::CACHE_TTL_SECONDS,
+            static fn (): string => self::resolve($unitId),
+        );
+    }
+
+    /**
+     * Resuelve un `unit_id` (UUID) a su etiqueta legible leyendo `shipment_units` + `shipment_lines`.
+     */
+    private static function resolve(string $unitId): string
+    {
         /** @var object{product_name: string|null, sku: string|null, unit_index: int|string|null, unit_total: int|string|null, piece_index: int|string|null, piece_total: int|string|null}|null $row */
         $row = DB::table('shipment_units')
             ->leftJoin('shipment_lines', 'shipment_lines.id', '=', 'shipment_units.line_id')

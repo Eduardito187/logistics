@@ -1,0 +1,204 @@
+# ============================================================
+# rules.yml — recording rules de los SLOs (Ola 5)
+# ============================================================
+# Fuente única de las consultas de SLO: las usan alerts.yml, el dashboard de Grafana y docs/slo.md.
+# Si se recalibra un objetivo o cambia un selector, se cambia ACÁ y nada más.
+#
+# Etiquetas que emite el collector de la app (app/Metrics):
+#   - `status`  código HTTP exacto ("200", "503"), SOLO en el contador logistics_http_requests_total
+#               (el histograma de duración lleva route, method, gate y le; no lleva status).
+#   - `gate`    puerta: app, channels, integrations, admin, public, other.
+#   - buckets   le = 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, +Inf. Los objetivos de latencia se fijan
+#               SOBRE un límite de bucket para que el p95 comparado sea exacto y no interpolado.
+#   - /api/metrics y /up no se miden: el scrape y las sondas no entran al SLI.
+#
+# Los contadores e histogramas son GLOBALES (compartidos por todas las réplicas vía Valkey, sin
+# etiqueta de instancia). Se scrapea UN solo target lógico (prometheus.yml); si algún día se
+# scrapean varias réplicas, estas sumas contarían doble: agregar antes con `max by (...)`.
+#
+# Las ventanas largas (30m…30d) se calculan sobre las series YA agregadas de 5 min (1 serie cada
+# una), no sobre el contador crudo con todas sus etiquetas: consultas baratas aunque `route` tenga
+# alta cardinalidad.
+# ============================================================
+
+groups:
+    # --------------------------------------------------------
+    # Tráfico y errores por puerta (para dashboard y alertas simples)
+    # --------------------------------------------------------
+    - name: logistics-http
+      interval: 30s
+      rules:
+          - record: logistics:http_requests:rate5m
+            expr: sum by (gate) (rate(logistics_http_requests_total[5m]))
+
+          - record: logistics:http_requests_5xx:rate5m
+            expr: sum by (gate) (rate(logistics_http_requests_total{status=~"5.."}[5m]))
+
+          # Tasa de 5xx por puerta sobre requests válidos (sin 4xx). 0 si no hubo ningún 5xx.
+          - record: logistics:http_requests_5xx:ratio_rate5m
+            expr: |
+                (
+                    sum by (gate) (rate(logistics_http_requests_total{status=~"5.."}[5m]))
+                    or
+                    0 * sum by (gate) (rate(logistics_http_requests_total[5m]))
+                )
+                /
+                (sum by (gate) (rate(logistics_http_requests_total{status!~"4.."}[5m])) > 0)
+
+    # --------------------------------------------------------
+    # SLO de DISPONIBILIDAD: 1 − 5xx / (total − 4xx), objetivo 99,9 % en 30 días
+    # --------------------------------------------------------
+    - name: logistics-slo-availability
+      interval: 30s
+      rules:
+          # Requests válidos (todo menos 4xx).
+          - record: logistics:slo_http_valid:rate5m
+            expr: sum(rate(logistics_http_requests_total{status!~"4.."}[5m]))
+
+          # Requests fallidos (5xx). `or vector(0)`: sin 5xx el SLI vale 0, no "sin datos".
+          - record: logistics:slo_http_errors:rate5m
+            expr: sum(rate(logistics_http_requests_total{status=~"5.."}[5m])) or vector(0)
+
+          - record: logistics:slo_availability:error_ratio_5m
+            expr: logistics:slo_http_errors:rate5m / (logistics:slo_http_valid:rate5m > 0)
+
+          - record: logistics:slo_availability:error_ratio_30m
+            expr: sum_over_time(logistics:slo_http_errors:rate5m[30m]) / (sum_over_time(logistics:slo_http_valid:rate5m[30m]) > 0)
+
+          - record: logistics:slo_availability:error_ratio_1h
+            expr: sum_over_time(logistics:slo_http_errors:rate5m[1h]) / (sum_over_time(logistics:slo_http_valid:rate5m[1h]) > 0)
+
+          - record: logistics:slo_availability:error_ratio_2h
+            expr: sum_over_time(logistics:slo_http_errors:rate5m[2h]) / (sum_over_time(logistics:slo_http_valid:rate5m[2h]) > 0)
+
+          - record: logistics:slo_availability:error_ratio_6h
+            expr: sum_over_time(logistics:slo_http_errors:rate5m[6h]) / (sum_over_time(logistics:slo_http_valid:rate5m[6h]) > 0)
+
+          - record: logistics:slo_availability:error_ratio_1d
+            expr: sum_over_time(logistics:slo_http_errors:rate5m[1d]) / (sum_over_time(logistics:slo_http_valid:rate5m[1d]) > 0)
+
+          - record: logistics:slo_availability:error_ratio_3d
+            expr: sum_over_time(logistics:slo_http_errors:rate5m[3d]) / (sum_over_time(logistics:slo_http_valid:rate5m[3d]) > 0)
+
+          - record: logistics:slo_availability:error_ratio_30d
+            expr: sum_over_time(logistics:slo_http_errors:rate5m[30d]) / (sum_over_time(logistics:slo_http_valid:rate5m[30d]) > 0)
+
+          # Objetivo y presupuesto de error (1 − objetivo). Único lugar donde vive el número.
+          - record: logistics:slo_availability:objective
+            expr: vector(0.999)
+
+          # Fracción del presupuesto de error de 30 días que QUEDA (1 = intacto, 0 = agotado, <0 = excedido).
+          - record: logistics:slo_availability:error_budget_remaining_ratio
+            expr: 1 - (logistics:slo_availability:error_ratio_30d / scalar(1 - logistics:slo_availability:objective))
+
+          # Complemento: el SLI de arriba se mide DESDE la app, así que una caída total (sin scrape) no
+          # deja muestras. Esta serie cuenta el tiempo en que Prometheus pudo scrapear la app.
+          - record: logistics:slo_uptime:ratio_30d
+            expr: avg_over_time(up{job="logistics-app"}[30d])
+
+    # --------------------------------------------------------
+    # SLO de LATENCIA: p95 por tipo de request (ventana de 5 min)
+    # --------------------------------------------------------
+    - name: logistics-slo-latency
+      interval: 30s
+      rules:
+          - record: logistics:slo_latency:p95_5m
+            labels:
+                slo_class: app_read
+            expr: |
+                histogram_quantile(0.95, sum by (le) (
+                    rate(logistics_http_request_duration_seconds_bucket{gate="app", method=~"GET|HEAD"}[5m])
+                ))
+
+          - record: logistics:slo_latency:p95_5m
+            labels:
+                slo_class: app_write
+            expr: |
+                histogram_quantile(0.95, sum by (le) (
+                    rate(logistics_http_request_duration_seconds_bucket{gate="app", method!~"GET|HEAD|OPTIONS"}[5m])
+                ))
+
+          - record: logistics:slo_latency:p95_5m
+            labels:
+                slo_class: tracking_public
+            expr: |
+                histogram_quantile(0.95, sum by (le) (
+                    rate(logistics_http_request_duration_seconds_bucket{gate="public"}[5m])
+                ))
+
+          - record: logistics:slo_latency:p95_5m
+            labels:
+                slo_class: admin
+            expr: |
+                histogram_quantile(0.95, sum by (le) (
+                    rate(logistics_http_request_duration_seconds_bucket{gate="admin"}[5m])
+                ))
+
+          # Objetivos INICIALES en segundos, cada uno sobre un límite de bucket del histograma
+          # (recalibrar tras el primer load test, ver docs/slo.md §3.3).
+          - record: logistics:slo_latency:objective_seconds
+            labels:
+                slo_class: app_read
+            expr: vector(0.25)
+
+          - record: logistics:slo_latency:objective_seconds
+            labels:
+                slo_class: app_write
+            expr: vector(1)
+
+          - record: logistics:slo_latency:objective_seconds
+            labels:
+                slo_class: tracking_public
+            expr: vector(0.5)
+
+          - record: logistics:slo_latency:objective_seconds
+            labels:
+                slo_class: admin
+            expr: vector(2.5)
+
+          # 1 si la ventana de 5 min cumplió su objetivo, 0 si no. Su promedio en 30 días es el
+          # cumplimiento del SLO de latencia (objetivo: 0.99 de las ventanas con tráfico).
+          - record: logistics:slo_latency:within_objective
+            expr: logistics:slo_latency:p95_5m <= bool on (slo_class) logistics:slo_latency:objective_seconds
+
+          # Percentiles globales para el dashboard.
+          - record: logistics:http_request_duration_seconds:p50_5m
+            expr: histogram_quantile(0.50, sum by (le) (rate(logistics_http_request_duration_seconds_bucket[5m])))
+
+          - record: logistics:http_request_duration_seconds:p95_5m
+            expr: histogram_quantile(0.95, sum by (le) (rate(logistics_http_request_duration_seconds_bucket[5m])))
+
+          - record: logistics:http_request_duration_seconds:p99_5m
+            expr: histogram_quantile(0.99, sum by (le) (rate(logistics_http_request_duration_seconds_bucket[5m])))
+
+    # --------------------------------------------------------
+    # SLO de FRESCURA DEL OUTBOX: 99 % del tiempo el pendiente más viejo tiene < 60 s
+    # --------------------------------------------------------
+    - name: logistics-slo-outbox
+      interval: 30s
+      rules:
+          - record: logistics:slo_outbox_freshness:objective_seconds
+            expr: vector(60)
+
+          # 1 si el pendiente más viejo es más joven que el objetivo, 0 si no. La métrica vale 0
+          # cuando no hay pendientes, así que un outbox vacío cuenta como fresco.
+          - record: logistics:slo_outbox_freshness:within_objective
+            expr: logistics_outbox_oldest_pending_age_seconds < bool scalar(logistics:slo_outbox_freshness:objective_seconds)
+
+          - record: logistics:slo_outbox_freshness:ratio_30d
+            expr: avg_over_time(logistics:slo_outbox_freshness:within_objective[30d])
+
+    # --------------------------------------------------------
+    # Auxiliares de saturación (dashboard + alertas)
+    # --------------------------------------------------------
+    - name: logistics-saturation
+      interval: 30s
+      rules:
+          - record: logistics:db_connections:usage_ratio
+            expr: sum(logistics_db_connections) / (max(logistics_db_max_connections) > 0)
+
+          - record: logistics:cache:hit_ratio_rate5m
+            expr: |
+                sum(rate(logistics_cache_hits_total[5m]))
+                /
+                ((sum(rate(logistics_cache_hits_total[5m])) + sum(rate(logistics_cache_misses_total[5m]))) > 0)

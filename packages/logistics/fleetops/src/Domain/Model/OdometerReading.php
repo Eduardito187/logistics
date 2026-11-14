@@ -27,6 +27,7 @@ final class OdometerReading extends AggregateRoot
         private readonly OdometerSource $source,
         private readonly DateTimeImmutable $readAt,
         private readonly ?string $note,
+        private readonly ?string $routeId = null,
     ) {}
 
     /**
@@ -39,13 +40,16 @@ final class OdometerReading extends AggregateRoot
         OdometerSource $source,
         DateTimeImmutable $readAt,
         ?string $note,
+        ?string $routeId = null,
     ): self {
         $vehicleId = trim($vehicleId);
         if ($vehicleId === '') {
             throw FleetOpsException::because('La lectura de odómetro debe referenciar un vehículo.');
         }
 
-        $reading = new self($id, $vehicleId, $odometer, $source, $readAt, $note);
+        $routeId = $routeId !== null && trim($routeId) !== '' ? trim($routeId) : null;
+
+        $reading = new self($id, $vehicleId, $odometer, $source, $readAt, $note, $routeId);
 
         $reading->recordEvent(new OdometerRecorded(
             $id->toString(),
@@ -68,8 +72,9 @@ final class OdometerReading extends AggregateRoot
         OdometerSource $source,
         DateTimeImmutable $readAt,
         ?string $note,
+        ?string $routeId = null,
     ): self {
-        return new self($id, $vehicleId, $odometer, $source, $readAt, $note);
+        return new self($id, $vehicleId, $odometer, $source, $readAt, $note, $routeId);
     }
 
     public function id(): OdometerReadingId
@@ -100,5 +105,11 @@ final class OdometerReading extends AggregateRoot
     public function note(): ?string
     {
         return $this->note;
+    }
+
+    /** Ruta del chofer a la que pertenece la lectura (salida/llegada); null si no es de una ruta. */
+    public function routeId(): ?string
+    {
+        return $this->routeId;
     }
 }

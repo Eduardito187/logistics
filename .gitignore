@@ -94,6 +94,9 @@ package-lock.json.rejected
 *.orig
 *.rej
 
+# ---------- Load test (pool con tokens y resultados de k6) ----------
+loadtest/data/
+
 # ---------- Documentos generados ----------
 /docs/api/generated/
 /docs/coverage/

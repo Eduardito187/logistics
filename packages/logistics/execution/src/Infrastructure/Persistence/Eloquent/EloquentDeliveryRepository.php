@@ -67,11 +67,14 @@ final class EloquentDeliveryRepository implements DeliveryRepository
     /**
      * @return list<Delivery>
      */
-    public function findByVehicleId(string $vehicleId, ?int $limit = null, int $offset = 0): array
+    public function findByVehicleId(string $vehicleId, ?int $limit = null, int $offset = 0, array $statuses = []): array
     {
         $query = DeliveryRecord::query()
             ->with(['scans'])
             ->where('vehicle_id', $vehicleId)
+            // Con filtro de estado se listan las que siguen EN el camión: lo que ya se dejó en una tienda
+            // (entrega en tienda) no vuelve a aparecer para cargar.
+            ->when($statuses !== [], static fn ($q) => $q->whereIn('status', $statuses)->whereNull('store_dropped_at'))
             ->orderBy('id');
 
         if ($limit !== null) {
@@ -85,8 +88,11 @@ final class EloquentDeliveryRepository implements DeliveryRepository
             ->all();
     }
 
-    public function countByVehicleId(string $vehicleId): int
+    public function countByVehicleId(string $vehicleId, array $statuses = []): int
     {
-        return DeliveryRecord::query()->where('vehicle_id', $vehicleId)->count();
+        return DeliveryRecord::query()
+            ->where('vehicle_id', $vehicleId)
+            ->when($statuses !== [], static fn ($q) => $q->whereIn('status', $statuses)->whereNull('store_dropped_at'))
+            ->count();
     }
 }

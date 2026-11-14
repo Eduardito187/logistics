@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Logistics\Outbox\Presentation\Console;
 
+use App\Observability\Span;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
 use Logistics\Outbox\Application\EnqueueOutbox\EnqueueOutboxBatch;
+use Logistics\Outbox\Application\EnqueueOutbox\EnqueueOutboxResult;
 
 /**
  * Dispatcher del outbox (C-2 de la auditoría de throughput). Reemplaza al relay sincrónico como latido
@@ -32,7 +34,8 @@ final class PumpOutboxCommand extends Command
             return self::FAILURE;
         }
 
-        $result = $pump->handle($limit);
+        // Ola 5: se cronometra la corrida del pump (histograma + log con request_id) sin tocar su lógica.
+        $result = Span::measure('outbox.pump', static fn (): EnqueueOutboxResult => $pump->handle($limit));
 
         $this->info(sprintf('Outbox pump finished: %d messages enqueued to workers.', $result->enqueued));
 

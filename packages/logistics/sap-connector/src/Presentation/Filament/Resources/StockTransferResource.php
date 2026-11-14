@@ -17,6 +17,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Logistics\Access\Presentation\Filament\Concerns\AdminOnly;
 use Logistics\SapConnector\Application\Command\AcknowledgeStockTransfer\AcknowledgeStockTransfer;
 use Logistics\SapConnector\Domain\Exception\SapConnectorException;
@@ -43,12 +44,13 @@ final class StockTransferResource extends Resource
     use AdminOnly;
 
     /**
-     * Nombres de sellers memoizados por request (id => razón social), para resolver el dueño legible de
-     * las consignaciones en lote y evitar N+1 en el panel (patrón de enriquecimiento cross-context).
+     * Vida del caché del mapa de sellers (segundos).
      *
-     * @var array<string, string>|null
+     * Antes se memoizaba en una propiedad estática ("por request"), pero bajo Octane el worker vive
+     * entre requests y esa estática serviría nombres viejos indefinidamente además de crecer en memoria;
+     * el caché con TTL se refresca solo (staleness ≤60s, aceptable para razones sociales).
      */
-    private static ?array $sellerNames = null;
+    private const SELLER_NAMES_TTL = 60;
 
     protected static ?string $model = StockTransferRecord::class;
 
@@ -284,19 +286,28 @@ final class StockTransferResource extends Resource
     }
 
     /**
-     * Mapa id => razón social de los sellers, cargado una sola vez por request (memoizado).
+     * Mapa id => razón social de los sellers, resuelto en lote y cacheado con TTL corto. Comparte la
+     * clave 'admin:seller-names' con los demás resources que resuelven la misma tabla (reutiliza caché).
+     * Degrada a mapa vacío si la tabla no existe (el dueño cae al placeholder, nunca rompe el render).
      *
      * @return array<string, string>
      */
     private static function sellerNames(): array
     {
-        if (self::$sellerNames === null) {
-            /** @var array<string, string> $names */
-            $names = SellerRecord::query()->pluck('legal_name', 'id')->all();
-            self::$sellerNames = $names;
-        }
+        return Cache::remember(
+            'admin:seller-names',
+            self::SELLER_NAMES_TTL,
+            static function (): array {
+                try {
+                    /** @var array<string, string> $names */
+                    $names = SellerRecord::query()->pluck('legal_name', 'id')->all();
 
-        return self::$sellerNames;
+                    return $names;
+                } catch (\Throwable) {
+                    return [];
+                }
+            },
+        );
     }
 
     /**

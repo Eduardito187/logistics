@@ -25,6 +25,7 @@ use Logistics\Execution\Presentation\Http\RecordNodeReceptionController;
 use Logistics\Execution\Presentation\Http\RecordPreparationScanController;
 use Logistics\Execution\Presentation\Http\RecordProofOfDeliveryController;
 use Logistics\Execution\Presentation\Http\RecordScanBatchController;
+use Logistics\Execution\Presentation\Http\RecordStoreDropController;
 use Logistics\Execution\Presentation\Http\RecordUnloadScanController;
 use Logistics\Execution\Presentation\Http\ReportDeliveryIssueController;
 use Logistics\Execution\Presentation\Http\ReportVehicleIncidentController;
@@ -132,6 +133,11 @@ return [
                 ->name('proof-of-delivery');
             Route::post('deliveries/failed', RecordFailedDeliveryController::class)
                 ->name('failed');
+            // Entrega EN TIENDA del chofer: deja en la tienda un pedido que el cliente retira ahí (o un
+            // traspaso). Cierra su parada; el pedido queda «listo para retirar», no entregado.
+            Route::post('deliveries/{shipmentId}/store-drop', RecordStoreDropController::class)
+                ->whereUuid('shipmentId')
+                ->name('store-drop');
             // Cierre de la entrega por envío (POD en lote: unit_ids, una sola firma/GPS). Mismo controller.
             Route::post('deliveries/{shipmentId}/complete', RecordProofOfDeliveryController::class)
                 ->name('complete');

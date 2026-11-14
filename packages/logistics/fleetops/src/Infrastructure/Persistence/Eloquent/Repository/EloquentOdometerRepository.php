@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Logistics\FleetOps\Domain\Contract\OdometerRepository;
 use Logistics\FleetOps\Domain\Model\OdometerReading;
 use Logistics\FleetOps\Domain\ValueObject\OdometerReadingId;
+use Logistics\FleetOps\Domain\ValueObject\OdometerSource;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Mapper\OdometerReadingMapper;
 use Logistics\FleetOps\Infrastructure\Persistence\Eloquent\Model\OdometerReadingRecord;
 
@@ -42,15 +43,24 @@ final readonly class EloquentOdometerRepository implements OdometerRepository
         return $record instanceof OdometerReadingRecord ? $this->mapper->toDomain($record) : null;
     }
 
+    public function existsForRouteAndSource(string $routeId, OdometerSource $source): bool
+    {
+        return OdometerReadingRecord::query()
+            ->where('route_id', $routeId)
+            ->where('source', $source->value)
+            ->exists();
+    }
+
     public function listBy(
         ?string $vehicleId = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
         ?int $limit = null,
         ?int $offset = null,
+        ?string $routeId = null,
     ): array {
         // Orden determinista para la paginación: read_at desc con desempate por id (UUID v7).
-        $query = $this->filtered($vehicleId, $from, $to)
+        $query = $this->filtered($vehicleId, $from, $to, $routeId)
             ->orderByDesc('read_at')
             ->orderByDesc('id');
 
@@ -71,8 +81,9 @@ final readonly class EloquentOdometerRepository implements OdometerRepository
         ?string $vehicleId = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
+        ?string $routeId = null,
     ): int {
-        return $this->filtered($vehicleId, $from, $to)->count();
+        return $this->filtered($vehicleId, $from, $to, $routeId)->count();
     }
 
     /**
@@ -84,8 +95,12 @@ final readonly class EloquentOdometerRepository implements OdometerRepository
         ?string $vehicleId,
         ?DateTimeImmutable $from,
         ?DateTimeImmutable $to,
+        ?string $routeId = null,
     ): Builder {
         $query = OdometerReadingRecord::query();
+        if ($routeId !== null) {
+            $query->where('route_id', $routeId);
+        }
 
         if ($vehicleId !== null) {
             $query->where('vehicle_id', $vehicleId);

@@ -160,7 +160,37 @@ services:
             retries: 5
             start_period: 45s
 
-    # -------------------- Workers (supervisor: 5 colas + scheduler) --------------------
+    # -------------------- Servicio de telemetría (unidad de despliegue propia, Ola 6) --------------------
+    # Misma imagen con APP_SERVICE_ROLE=telemetry: atiende SOLO /api/v1/(app|integrations)/telemetry/*
+    # (más salud y métricas) con su propio pool FPM. El nginx de `web` le manda esas rutas y cae a `app`
+    # si esta unidad no responde. Ingesta `buffered`: responde 202 sin tocar PostgreSQL; persiste el
+    # programa `worker-telemetry` del contenedor `worker`. Cada contenedor tiene su propio filesystem, así
+    # que no comparte caché de config con `app`. Ver docs/perf/extraccion-telemetry.md.
+    telemetry-api:
+        <<: *app
+        environment:
+            APP_SERVICE_ROLE: telemetry
+            TELEMETRY_INGEST_MODE: ${TELEMETRY_INGEST_MODE:-buffered}
+            # Las migraciones y el backfill los corre el deploy contra `app`, no esta unidad.
+            AUTO_MIGRATE: "false"
+            AUTO_BACKFILL_ORDERS: "false"
+            FPM_MAX_CHILDREN: ${TELEMETRY_API_FPM_MAX_CHILDREN:-20}
+            FPM_START_SERVERS: ${TELEMETRY_API_FPM_START_SERVERS:-2}
+            FPM_MIN_SPARE: ${TELEMETRY_API_FPM_MIN_SPARE:-2}
+            FPM_MAX_SPARE: ${TELEMETRY_API_FPM_MAX_SPARE:-6}
+        labels:
+            autoheal: "true"
+        healthcheck:
+            test: ["CMD", "php", "/var/www/html/artisan", "health:check"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 45s
+        depends_on:
+            app:
+                condition: service_healthy
+
+    # -------------------- Workers (supervisor: 6 colas + scheduler) --------------------
     # Un solo contenedor con supervisord (.docker/supervisor/supervisord.conf): workers default/outbox/sap/
     # notifications/planning y el ÚNICO scheduler. Sobrescribe el healthcheck de la imagen (FPM :9000),
     # que aquí no aplica.

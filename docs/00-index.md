@@ -8,6 +8,11 @@
 | [opensource-stack.md](opensource-stack.md) | Stack 100% open-source y gratuito (sin Google ni servicios de pago) |
 | [roadmap.md](roadmap.md) | Roadmap vivo: qué está hecho y qué falta para producción |
 | [roadmap-estructura-escalabilidad.md](roadmap-estructura-escalabilidad.md) | Roadmap de consolidación de modelo, admin CRUD→CRM entidad-céntrico y escalabilidad a millones (auditoría de los 35 contextos, por olas) |
+| [roadmap-alta-disponibilidad-escala.md](roadmap-alta-disponibilidad-escala.md) | Roadmap de alta disponibilidad y escala (2.000 concurrentes, 99,9 %), por olas |
+| [observability.md](observability.md) | Observabilidad: logs estructurados, métricas a exponer, trazabilidad de la cadena asíncrona |
+| [slo.md](slo.md) | SLOs: SLIs y objetivos (disponibilidad, latencia p95, frescura del outbox), presupuesto de error y su política |
+| [observability-runbook.md](observability-runbook.md) | Runbook de observabilidad: levantar Prometheus/Alertmanager/Grafana, integración en staging y respuesta por alerta |
+| [ha-runbook.md](ha-runbook.md) | Runbook de alta disponibilidad: topología HA, failover, deploy sin downtime |
 | [../openapi/v1.yaml](../openapi/v1.yaml) | Contrato de la API |
 
 ## ADRs

@@ -87,12 +87,17 @@ function fakeOdometerRepository(array $kmByVehicle): OdometerRepository
             );
         }
 
-        public function listBy(?string $vehicleId = null, ?DateTimeImmutable $from = null, ?DateTimeImmutable $to = null, ?int $limit = null, ?int $offset = null): array
+        public function existsForRouteAndSource(string $routeId, OdometerSource $source): bool
+        {
+            return false;
+        }
+
+        public function listBy(?string $vehicleId = null, ?DateTimeImmutable $from = null, ?DateTimeImmutable $to = null, ?int $limit = null, ?int $offset = null, ?string $routeId = null): array
         {
             return [];
         }
 
-        public function countBy(?string $vehicleId = null, ?DateTimeImmutable $from = null, ?DateTimeImmutable $to = null): int
+        public function countBy(?string $vehicleId = null, ?DateTimeImmutable $from = null, ?DateTimeImmutable $to = null, ?string $routeId = null): int
         {
             return 0;
         }
