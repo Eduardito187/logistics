@@ -6,6 +6,7 @@ namespace App\Metrics;
 
 use App\Observability\Heartbeat;
 use Illuminate\Database\Connection;
+use Illuminate\Redis\Connections\PhpRedisConnection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Logistics\Telemetry\Application\Contract\PingIngestBuffer;
@@ -171,7 +172,10 @@ final class MetricsCollector
         try {
             $connection = (string) config('observability.metrics.queue_connection', 'default');
 
-            $raw = Redis::connection($connection)->pipeline(static function (mixed $pipe) use ($names): void {
+            $redis = Redis::connection($connection);
+            assert($redis instanceof PhpRedisConnection);
+
+            $raw = $redis->pipeline(static function (mixed $pipe) use ($names): void {
                 foreach ($names as $name) {
                     $pipe->llen('queues:'.$name);
                     $pipe->zcard('queues:'.$name.':delayed');

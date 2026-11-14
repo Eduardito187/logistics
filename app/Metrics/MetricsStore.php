@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Metrics;
 
-use Illuminate\Redis\Connections\Connection;
+use Illuminate\Redis\Connections\PhpRedisConnection;
 use Illuminate\Support\Facades\Redis;
 use Throwable;
 
@@ -225,8 +225,13 @@ final class MetricsStore
         return (string) config('observability.metrics.store.prefix', 'obs:').$family;
     }
 
-    private function connection(): Connection
+    private function connection(): PhpRedisConnection
     {
-        return Redis::connection((string) config('observability.metrics.store.connection', 'default'));
+        // El store de métricas usa phpredis (el `pipeline(callable)` real vive en PhpRedisConnection; el tipo
+        // abstracto Connection lo resuelve por __call al stub de \Redis sin el callback). Narrowing explícito.
+        $connection = Redis::connection((string) config('observability.metrics.store.connection', 'default'));
+        assert($connection instanceof PhpRedisConnection);
+
+        return $connection;
     }
 }

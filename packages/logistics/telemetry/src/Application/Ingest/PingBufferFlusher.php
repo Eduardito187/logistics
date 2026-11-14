@@ -121,7 +121,7 @@ final readonly class PingBufferFlusher
     {
         $delivered = 0;
 
-        foreach (array_chunk($group['pings'], $maxBatch) as $chunk) {
+        foreach (array_chunk($group['pings'], max(1, $maxBatch)) as $chunk) {
             $this->commands->dispatch(new RecordVehiclePings(
                 vehicleId: $group['vehicle_id'],
                 driverId: $group['driver_id'],

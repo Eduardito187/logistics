@@ -83,10 +83,10 @@ final class QueueHealthCheckCommand extends Command
     private function resolveQueues(): array
     {
         $option = $this->option('queues');
-        if ($option === null || trim((string) $option) === '') {
+        if (!is_string($option) || trim($option) === '') {
             return self::KNOWN_QUEUES;
         }
 
-        return array_values(array_filter(array_map('trim', explode(',', (string) $option)), static fn (string $q): bool => $q !== ''));
+        return array_values(array_filter(array_map('trim', explode(',', $option)), static fn (string $q): bool => $q !== ''));
     }
 }

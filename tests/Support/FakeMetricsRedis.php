@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Support;
 
-use Illuminate\Redis\Connections\Connection;
+use Illuminate\Redis\Connections\PhpRedisConnection;
 use Illuminate\Support\Facades\Redis;
 use Mockery;
 
@@ -34,7 +34,9 @@ final class FakeMetricsRedis
     {
         $fake = new self;
 
-        $connection = Mockery::mock(Connection::class);
+        // El store/collector usan phpredis y hacen narrowing a PhpRedisConnection: el doble simula ESA clase
+        // concreta (no la abstracta Connection) para que el `assert(instanceof PhpRedisConnection)` pase.
+        $connection = Mockery::mock(PhpRedisConnection::class);
 
         $connection->shouldReceive('pipeline')->andReturnUsing(
             static function (callable $callback) use ($fake, $pipelineResult): array {

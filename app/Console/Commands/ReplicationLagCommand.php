@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\Connection;
 use Illuminate\Database\DatabaseManager;
 use stdClass;
 
@@ -63,7 +63,7 @@ final class ReplicationLagCommand extends Command
     /**
      * Motivo por el que no aplica medir el lag acá (otro motor, o este nodo es un standby); null si aplica.
      */
-    private function skipReason(ConnectionInterface $connection): ?string
+    private function skipReason(Connection $connection): ?string
     {
         if ($connection->getDriverName() !== 'pgsql') {
             return 'logistics:replication:lag solo aplica a PostgreSQL.';

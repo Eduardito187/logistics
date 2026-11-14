@@ -546,7 +546,9 @@ final class LoadTestPrepareCommand extends Command
      */
     private function intOption(string $key, int $default, int $min, int $max): int
     {
-        $value = $this->stringOption($key);
+        // Leer la opción CRUDA (no vía stringOption): por CLI llega como string, pero invocada por código
+        // (p. ej. tests con `['--drivers' => 2]`) llega como int. Ambos escalares numéricos son válidos.
+        $value = $this->option($key);
         $number = is_numeric($value) ? (int) $value : $default;
 
         return max($min, min($max, $number));
