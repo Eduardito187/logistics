@@ -21,6 +21,9 @@ use Logistics\Execution\Application\Contract\StopEnrichmentReader;
 final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
 {
     /** network_nodes.type → tipo de destino expuesto (store|warehouse); igual que en dispatch-lines. */
+    /** Fuente de un traspaso interno entre nodos (shipments.source); no es un pedido de cliente. */
+    private const string INTERNAL_TRANSFER_SOURCE = 'TRANSFER';
+
     private const array NODE_TYPE_MAP = [
         'distribution_center' => 'warehouse',
         'central_warehouse' => 'warehouse',
@@ -41,7 +44,7 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
 
         $headers = $this->connection->table('shipments')
             ->whereIn('id', $ids)
-            ->get(['id', 'customer_phone', 'address_reference', 'customer_name', 'destination_node_id']);
+            ->get(['id', 'customer_phone', 'address_reference', 'customer_name', 'destination_node_id', 'source']);
 
         $lines = $this->connection->table('shipment_lines')
             ->whereIn('shipment_id', $ids)
@@ -104,8 +107,8 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
      * Tipo de destino de la parada: domicilio (sin nodo) o nodo (store|warehouse) con su nombre y código.
      * Es lo que la app usa para elegir la acción: "Entregar" (POD) vs "Descargar" (escaneo de descarga).
      *
-     * @param  array<string, array{name: string|null, type: string, code: string|null}>             $nodesById
-     * @return array{type: string, name: string|null, node_code: string|null, node_id: string|null}
+     * @param  array<string, array{name: string|null, type: string, code: string|null}>                                    $nodesById
+     * @return array{type: string, name: string|null, node_code: string|null, node_id: string|null, delivery_mode: string}
      */
     private function resolveDestination(\stdClass $header, array $nodesById): array
     {
@@ -113,7 +116,23 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
         if ($nodeId !== '' && isset($nodesById[$nodeId])) {
             $node = $nodesById[$nodeId];
 
-            return ['type' => $node['type'], 'name' => $node['name'], 'node_code' => $node['code'], 'node_id' => $nodeId];
+            // Modalidad derivada, con la misma regla que el listado de envíos: un traspaso interno a un nodo
+            // es `transfer`; un pedido de cliente a una tienda/punto de retiro es `store_pickup`.
+            $internal = strtoupper(trim((string) ($header->source ?? ''))) === self::INTERNAL_TRANSFER_SOURCE;
+            $mode = 'home_delivery';
+            if ($internal) {
+                $mode = 'transfer';
+            } elseif ($node['type'] === 'store') {
+                $mode = 'store_pickup';
+            }
+
+            return [
+                'type' => $node['type'],
+                'name' => $node['name'],
+                'node_code' => $node['code'],
+                'node_id' => $nodeId,
+                'delivery_mode' => $mode,
+            ];
         }
 
         // Sin nodo destino: entrega a domicilio. El nombre, si lo hay, es el del cliente.
@@ -122,6 +141,7 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
             'name' => $header->customer_name !== null && trim((string) $header->customer_name) !== '' ? (string) $header->customer_name : null,
             'node_code' => null,
             'node_id' => null,
+            'delivery_mode' => 'home_delivery',
         ];
     }
 

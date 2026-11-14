@@ -47,6 +47,10 @@ final class DeliveryMapper
             // Dimensión de fulfillment: solo el modo (dato para reportes/liquidaciones). Las columnas
             // dropship_handling / *_confirmation_key quedan en la tabla sin uso (no se borran: regla aditiva).
             'fulfillment_mode' => $delivery->fulfillmentMode()->value,
+            // Entrega en tienda del chofer (pedido que el cliente retira en la tienda).
+            'store_dropped_at' => $delivery->storeDroppedAt()?->format(DATE_ATOM),
+            'store_drop_node_id' => $delivery->storeDropNodeId(),
+            'store_drop_photo_path' => $delivery->storeDropPhotoPath(),
         ];
     }
 
@@ -103,7 +107,7 @@ final class DeliveryMapper
             );
         }
 
-        return Delivery::reconstitute(
+        $delivery = Delivery::reconstitute(
             DeliveryId::fromString($record->id),
             $record->shipment_id,
             (string) ($record->vehicle_id ?? ''),
@@ -113,6 +117,17 @@ final class DeliveryMapper
             $record->failure_reason !== null ? FailureReason::from($record->failure_reason) : null,
             FulfillmentMode::fromLoose($record->fulfillment_mode),
         );
+
+        $droppedAt = $record->getAttribute('store_dropped_at');
+        $dropNode = $record->getAttribute('store_drop_node_id');
+        $dropPhoto = $record->getAttribute('store_drop_photo_path');
+        $delivery->restoreStoreDrop(
+            is_string($droppedAt) && $droppedAt !== '' ? new DateTimeImmutable($droppedAt) : null,
+            is_string($dropNode) && $dropNode !== '' ? $dropNode : null,
+            is_string($dropPhoto) && $dropPhoto !== '' ? $dropPhoto : null,
+        );
+
+        return $delivery;
     }
 
     /**

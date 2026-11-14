@@ -44,6 +44,8 @@ use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparat
 use Logistics\Execution\Application\Command\RecordPreparationScan\RecordPreparationScanHandler;
 use Logistics\Execution\Application\Command\RecordProofOfDelivery\RecordProofOfDelivery;
 use Logistics\Execution\Application\Command\RecordProofOfDelivery\RecordProofOfDeliveryHandler;
+use Logistics\Execution\Application\Command\RecordStoreDrop\RecordStoreDrop;
+use Logistics\Execution\Application\Command\RecordStoreDrop\RecordStoreDropHandler;
 use Logistics\Execution\Application\Command\RecordUnloadScan\RecordUnloadScan;
 use Logistics\Execution\Application\Command\RecordUnloadScan\RecordUnloadScanHandler;
 use Logistics\Execution\Application\Command\ReportDeliveryIssue\ReportDeliveryIssue;
@@ -142,6 +144,7 @@ final class ExecutionServiceProvider extends ServiceProvider
         MarkShipmentDeparted::class => MarkShipmentDepartedHandler::class,
         RecordUnloadScan::class => RecordUnloadScanHandler::class,
         RecordProofOfDelivery::class => RecordProofOfDeliveryHandler::class,
+        RecordStoreDrop::class => RecordStoreDropHandler::class,
         AttachDeliveryPhotos::class => AttachDeliveryPhotosHandler::class,
         RecordFailedDelivery::class => RecordFailedDeliveryHandler::class,
         RecordNodeReception::class => RecordNodeReceptionHandler::class,

@@ -129,6 +129,11 @@ final readonly class RouteStopView
             'unit_ids' => $this->unitIds,
             'units_total' => $this->unitsTotal(),
             'destination' => $this->destination,
+            // Modalidad y tienda destino a nivel de la parada: con store_pickup / transfer el chofer NO entrega
+            // al cliente; deja el pedido en la tienda (POST /app/deliveries/{shipmentId}/store-drop).
+            'delivery_mode' => $this->destination['delivery_mode'] ?? 'home_delivery',
+            'destination_node_id' => $this->destination['node_id'] ?? null,
+            'destination_node_name' => ($this->destination['node_id'] ?? null) !== null ? ($this->destination['name'] ?? null) : null,
             'pod_confirmation' => $this->podConfirmation,
             'pod_photo_url' => $this->podPhotoUrl,
         ];
