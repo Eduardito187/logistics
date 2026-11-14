@@ -130,7 +130,10 @@ final class AuthController
 
         // EnsureDeviceToken ya dejó el dispositivo cargado en la relación del token (sin re-consultar).
         $device = null;
-        if ($token instanceof PersonalAccessToken && $token->device_id !== null) {
+        // Solo un id REAL de dispositivo (numérico; el driver puede devolverlo como entero o como texto): un
+        // token sin dispositivo ligado (o el doble de token de los tests) no debe llegar a consultar `devices`
+        // con un valor que no es un id.
+        if ($token instanceof PersonalAccessToken && is_numeric($token->device_id)) {
             $loaded = $token->relationLoaded('device') ? $token->getRelation('device') : null;
             $device = $loaded instanceof Device ? $loaded : Device::find($token->device_id);
         }
