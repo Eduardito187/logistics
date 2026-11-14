@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use DateTimeImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\DatabaseManager;
 
 /**
@@ -34,43 +35,37 @@ final class ManagePartitionsCommand extends Command
 
     protected $description = 'Create future monthly partitions or detach old ones for the hot partitioned tables';
 
+    /** Límite de costo de autovacuum común a las tablas calientes (vacuum más agresivo, sin frenar). */
+    private const AUTOVACUUM_COST_LIMIT = 'autovacuum_vacuum_cost_limit = 2000';
+
+    /** Autovacuum de tablas de inserción masiva (pings, escaneos): umbrales bajos por partición. */
+    private const INSERT_HEAVY_AUTOVACUUM = 'autovacuum_vacuum_scale_factor = 0.01, '
+        .'autovacuum_vacuum_threshold = 2000, '
+        .'autovacuum_vacuum_insert_scale_factor = 0.01, '
+        .'autovacuum_vacuum_insert_threshold = 2000, '
+        .'autovacuum_analyze_scale_factor = 0.005, '
+        .'autovacuum_analyze_threshold = 2000, '
+        .self::AUTOVACUUM_COST_LIMIT;
+
+    /** Autovacuum de tablas de alta rotación (outbox: insert, update y delete por retención). */
+    private const HIGH_CHURN_AUTOVACUUM = 'fillfactor = 85, '
+        .'autovacuum_vacuum_scale_factor = 0.02, '
+        .'autovacuum_vacuum_threshold = 1000, '
+        .'autovacuum_vacuum_insert_scale_factor = 0.02, '
+        .'autovacuum_vacuum_insert_threshold = 1000, '
+        .'autovacuum_analyze_scale_factor = 0.01, '
+        .'autovacuum_analyze_threshold = 1000, '
+        .self::AUTOVACUUM_COST_LIMIT;
+
     /**
      * Tablas calientes particionadas y sus configuraciones.
      *
      * @var array<string, array{time_column: string, autovacuum: string}>
      */
     private const PARTITIONED_TABLES = [
-        'telemetry_pings' => [
-            'time_column' => 'recorded_at',
-            'autovacuum' => 'autovacuum_vacuum_scale_factor = 0.01, '
-                .'autovacuum_vacuum_threshold = 2000, '
-                .'autovacuum_vacuum_insert_scale_factor = 0.01, '
-                .'autovacuum_vacuum_insert_threshold = 2000, '
-                .'autovacuum_analyze_scale_factor = 0.005, '
-                .'autovacuum_analyze_threshold = 2000, '
-                .'autovacuum_vacuum_cost_limit = 2000',
-        ],
-        'execution_scan_events' => [
-            'time_column' => 'occurred_at',
-            'autovacuum' => 'autovacuum_vacuum_scale_factor = 0.01, '
-                .'autovacuum_vacuum_threshold = 2000, '
-                .'autovacuum_vacuum_insert_scale_factor = 0.01, '
-                .'autovacuum_vacuum_insert_threshold = 2000, '
-                .'autovacuum_analyze_scale_factor = 0.005, '
-                .'autovacuum_analyze_threshold = 2000, '
-                .'autovacuum_vacuum_cost_limit = 2000',
-        ],
-        'outbox_messages' => [
-            'time_column' => 'created_at',
-            'autovacuum' => 'fillfactor = 85, '
-                .'autovacuum_vacuum_scale_factor = 0.02, '
-                .'autovacuum_vacuum_threshold = 1000, '
-                .'autovacuum_vacuum_insert_scale_factor = 0.02, '
-                .'autovacuum_vacuum_insert_threshold = 1000, '
-                .'autovacuum_analyze_scale_factor = 0.01, '
-                .'autovacuum_analyze_threshold = 1000, '
-                .'autovacuum_vacuum_cost_limit = 2000',
-        ],
+        'telemetry_pings' => ['time_column' => 'recorded_at', 'autovacuum' => self::INSERT_HEAVY_AUTOVACUUM],
+        'execution_scan_events' => ['time_column' => 'occurred_at', 'autovacuum' => self::INSERT_HEAVY_AUTOVACUUM],
+        'outbox_messages' => ['time_column' => 'created_at', 'autovacuum' => self::HIGH_CHURN_AUTOVACUUM],
     ];
 
     public function handle(DatabaseManager $db): int
@@ -83,20 +78,19 @@ final class ManagePartitionsCommand extends Command
             return self::SUCCESS;
         }
 
-        $action = (string) $this->argument('action');
-        if (!in_array($action, ['create', 'detach'], true)) {
-            $this->error('Acción inválida. Usar "create" o "detach".');
+        $action = $this->argument('action');
+        $tables = $this->resolveTables();
+
+        if (!is_string($action) || !in_array($action, ['create', 'detach'], true) || $tables === null) {
+            if ($tables !== null) {
+                $this->error('Acción inválida. Usar "create" o "detach".');
+            }
 
             return self::FAILURE;
         }
 
         $months = max(1, (int) $this->option('months'));
         $dryRun = (bool) $this->option('dry-run');
-        $tables = $this->resolveTables();
-
-        if ($tables === null) {
-            return self::FAILURE;
-        }
 
         foreach ($tables as $table) {
             if (!$this->isPartitioned($connection, $table)) {
@@ -105,10 +99,8 @@ final class ManagePartitionsCommand extends Command
                 continue;
             }
 
-            $config = self::PARTITIONED_TABLES[$table];
-
             if ($action === 'create') {
-                $this->createFuturePartitions($connection, $table, $months, $config['autovacuum'], $dryRun);
+                $this->createFuturePartitions($connection, $table, $months, self::PARTITIONED_TABLES[$table]['autovacuum'], $dryRun);
             } else {
                 $this->detachOldPartitions($connection, $table, $months, $dryRun);
             }
@@ -121,7 +113,7 @@ final class ManagePartitionsCommand extends Command
      * Crea particiones mensuales para los próximos N meses.
      */
     private function createFuturePartitions(
-        \Illuminate\Database\ConnectionInterface $connection,
+        ConnectionInterface $connection,
         string $table,
         int $months,
         string $autovacuum,
@@ -172,7 +164,7 @@ final class ManagePartitionsCommand extends Command
      * Detacha particiones más viejas que N meses.
      */
     private function detachOldPartitions(
-        \Illuminate\Database\ConnectionInterface $connection,
+        ConnectionInterface $connection,
         string $table,
         int $retainMonths,
         bool $dryRun,
@@ -212,10 +204,10 @@ final class ManagePartitionsCommand extends Command
         }
     }
 
-    private function isPartitioned(\Illuminate\Database\ConnectionInterface $connection, string $table): bool
+    private function isPartitioned(ConnectionInterface $connection, string $table): bool
     {
         return $connection->selectOne(
-            "SELECT 1 FROM pg_partitioned_table pt JOIN pg_class c ON c.oid = pt.partrelid WHERE c.relname = ?",
+            'SELECT 1 FROM pg_partitioned_table pt JOIN pg_class c ON c.oid = pt.partrelid WHERE c.relname = ?',
             [$table],
         ) !== null;
     }
@@ -226,13 +218,13 @@ final class ManagePartitionsCommand extends Command
     private function resolveTables(): ?array
     {
         $option = $this->option('tables');
-        if ($option === null || trim((string) $option) === '') {
+        if (!is_string($option) || trim($option) === '') {
             return array_keys(self::PARTITIONED_TABLES);
         }
 
         $requested = array_values(array_filter(array_map(
             static fn (string $t): string => trim($t),
-            explode(',', (string) $option),
+            explode(',', $option),
         ), static fn (string $t): bool => $t !== ''));
 
         $unknown = array_diff($requested, array_keys(self::PARTITIONED_TABLES));

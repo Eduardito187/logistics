@@ -122,8 +122,8 @@ final class DocumentResource extends Resource
      */
     private static function expiringSummary(): array
     {
-        /** @var array{count: int, expired: bool} $summary */
-        $summary = Cache::remember(
+        /** @var array{count: int, expired: bool} */
+        return Cache::remember(
             'admin:fleet-expiring-documents',
             self::EXPIRING_CACHE_TTL,
             static function (): array {
@@ -150,8 +150,6 @@ final class DocumentResource extends Resource
                 }
             },
         );
-
-        return $summary;
     }
 
     // Título legible del registro: el tipo de documento, nunca el UUID.

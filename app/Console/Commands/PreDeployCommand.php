@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Exceptions\PreDeployCheckFailed;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Ola 4 — Preparación para deploy sin downtime (pre-deploy hook).
@@ -44,7 +46,7 @@ final class PreDeployCommand extends Command
                 DB::connection()->getPdo();
                 $version = DB::connection()->selectOne('SELECT version() as v');
                 $this->info(sprintf('  PostgreSQL OK: %s', substr((string) ($version->v ?? '?'), 0, 80)));
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $this->error(sprintf('  PostgreSQL FALLO: %s', $e->getMessage()));
                 $failed = true;
             }
@@ -56,10 +58,10 @@ final class PreDeployCommand extends Command
             Cache::store('redis')->put('deploy:check', 'ok', 10);
             $val = Cache::store('redis')->get('deploy:check');
             if ($val !== 'ok') {
-                throw new \RuntimeException('Lectura de Valkey no coincide con la escritura.');
+                throw new PreDeployCheckFailed('Lectura de Valkey no coincide con la escritura.');
             }
             $this->info('  Valkey OK.');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->error(sprintf('  Valkey FALLO: %s', $e->getMessage()));
             $failed = true;
         }

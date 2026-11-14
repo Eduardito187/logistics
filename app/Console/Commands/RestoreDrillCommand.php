@@ -55,20 +55,41 @@ final class RestoreDrillCommand extends Command
             return self::SUCCESS;
         }
 
-        $path = $this->resolvePath();
-        if ($path === null) {
-            $this->error('No se encontró un archivo de backup para verificar.');
-
+        // Cada paso imprime su propio error; null/false corta la cadena sin ejecutar los siguientes.
+        $path = $this->locateBackup();
+        $toc = $path !== null && $this->isReadableDump($path) ? $this->readToc($path) : null;
+        if ($toc === null || !$this->hasCriticalTables($toc)) {
             return self::FAILURE;
         }
 
+        $this->info('Simulacro de restauración EXITOSO. El backup es válido y restaurable.');
+
+        return self::SUCCESS;
+    }
+
+    /** Ubica el dump a verificar; null (con el error ya impreso) si no hay ninguno. */
+    private function locateBackup(): ?string
+    {
+        $path = $this->resolvePath();
+        if ($path === null) {
+            $this->error('No se encontró un archivo de backup para verificar.');
+        }
+
+        return $path;
+    }
+
+    /**
+     * Paso 1: verifica que el archivo existe y no está vacío, reportando tamaño y fecha de modificación.
+     * Devuelve false (con el error ya impreso) si no sirve para continuar.
+     */
+    private function isReadableDump(string $path): bool
+    {
         $this->info(sprintf('Verificando backup: %s', $path));
 
-        // 1. Verificar que el archivo existe y es legible.
         if (!file_exists($path)) {
             $this->error(sprintf('El archivo no existe: %s', $path));
 
-            return self::FAILURE;
+            return false;
         }
 
         $size = filesize($path);
@@ -78,10 +99,18 @@ final class RestoreDrillCommand extends Command
         if ($size === false || $size === 0) {
             $this->error('El archivo está vacío.');
 
-            return self::FAILURE;
+            return false;
         }
 
-        // 2. Validar el formato con pg_restore --list.
+        return true;
+    }
+
+    /**
+     * Paso 2: valida el formato con `pg_restore --list` y devuelve el TOC del dump; null (con el error ya
+     * impreso) si pg_restore falla.
+     */
+    private function readToc(string $path): ?string
+    {
         $tocFile = tempnam(sys_get_temp_dir(), 'restore_drill_');
         $exitCode = 0;
         $output = [];
@@ -92,13 +121,20 @@ final class RestoreDrillCommand extends Command
             $this->error('pg_restore --list falló: el archivo puede estar corrupto.');
             $this->line(implode("\n", array_slice($output, 0, 10)));
 
-            return self::FAILURE;
+            return null;
         }
 
         $this->info('  pg_restore --list: OK (formato válido).');
-        $toc = implode("\n", $output);
 
-        // 3. Verificar que las tablas críticas aparecen en el TOC.
+        return implode("\n", $output);
+    }
+
+    /**
+     * Paso 3: verifica que las tablas críticas aparecen en el TOC. Devuelve false (con el error ya impreso)
+     * si falta alguna.
+     */
+    private function hasCriticalTables(string $toc): bool
+    {
         $tables = $this->resolveTables();
         $missing = [];
         foreach ($tables as $table) {
@@ -110,13 +146,12 @@ final class RestoreDrillCommand extends Command
         if ($missing !== []) {
             $this->error(sprintf('Tablas críticas ausentes en el dump: %s', implode(', ', $missing)));
 
-            return self::FAILURE;
+            return false;
         }
 
         $this->info(sprintf('  %d tabla(s) crítica(s) presentes en el dump.', count($tables)));
-        $this->info('Simulacro de restauración EXITOSO. El backup es válido y restaurable.');
 
-        return self::SUCCESS;
+        return true;
     }
 
     private function resolvePath(): ?string
@@ -157,11 +192,12 @@ final class RestoreDrillCommand extends Command
     private function resolveTables(): array
     {
         $option = $this->option('tables');
-        if ($option === null || trim((string) $option) === '') {
+        $raw = is_string($option) ? $option : '';
+        if (trim($raw) === '') {
             return self::CRITICAL_TABLES;
         }
 
-        return array_values(array_filter(array_map('trim', explode(',', (string) $option)), static fn (string $t): bool => $t !== ''));
+        return array_values(array_filter(array_map('trim', explode(',', $raw)), static fn (string $t): bool => $t !== ''));
     }
 
     private function humanSize(int $bytes): string

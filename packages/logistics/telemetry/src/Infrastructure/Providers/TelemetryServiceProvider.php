@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Infrastructure\Providers;
 
+use App\Support\ServiceRole;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
@@ -31,6 +32,9 @@ use Logistics\Telemetry\Application\Command\RenameGeofence\RenameGeofence;
 use Logistics\Telemetry\Application\Command\RenameGeofence\RenameGeofenceHandler;
 use Logistics\Telemetry\Application\Contract\ActiveRouteReader;
 use Logistics\Telemetry\Application\Contract\FleetDirectory;
+use Logistics\Telemetry\Application\Contract\LivePositionHotState;
+use Logistics\Telemetry\Application\Contract\PingFlushScheduler;
+use Logistics\Telemetry\Application\Contract\PingIngestBuffer;
 use Logistics\Telemetry\Application\Contract\ShipmentCustodyReader;
 use Logistics\Telemetry\Application\Query\ClassifyPingFixes\ClassifyPingFixes;
 use Logistics\Telemetry\Application\Query\ClassifyPingFixes\ClassifyPingFixesHandler;
@@ -69,11 +73,14 @@ use Logistics\Telemetry\Domain\Contract\StreetStatsRepository;
 use Logistics\Telemetry\Domain\Contract\TripRepository;
 use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
 use Logistics\Telemetry\Infrastructure\Console\AggregateStreetTrafficCommand;
+use Logistics\Telemetry\Infrastructure\Console\FlushPingBufferCommand;
 use Logistics\Telemetry\Infrastructure\Console\PruneTelemetryPingsCommand;
 use Logistics\Telemetry\Infrastructure\Console\RefreshStopEtasCommand;
 use Logistics\Telemetry\Infrastructure\CrossContext\DbActiveRouteReader;
 use Logistics\Telemetry\Infrastructure\CrossContext\DbFleetDirectory;
 use Logistics\Telemetry\Infrastructure\CrossContext\DbShipmentCustodyReader;
+use Logistics\Telemetry\Infrastructure\Ingest\QueuedPingFlushScheduler;
+use Logistics\Telemetry\Infrastructure\Ingest\RedisPingIngestBuffer;
 use Logistics\Telemetry\Infrastructure\LiveState\BroadcastingLivePositionBroadcaster;
 use Logistics\Telemetry\Infrastructure\LiveState\FleetPlateResolver;
 use Logistics\Telemetry\Infrastructure\LiveState\LiveVehicleState;
@@ -160,6 +167,12 @@ final class TelemetryServiceProvider extends ServiceProvider
         $this->app->singleton(LiveVehicleState::class);
         $this->app->bind(LivePositionBroadcaster::class, BroadcastingLivePositionBroadcaster::class);
 
+        // Ingesta dedicada (modo `buffered`): buffer en Valkey, drenado por job en la cola `telemetry` y
+        // última posición caliente adelantada en el momento del POST (mismo hot-state del fan-out).
+        $this->app->bind(PingIngestBuffer::class, RedisPingIngestBuffer::class);
+        $this->app->bind(PingFlushScheduler::class, QueuedPingFlushScheduler::class);
+        $this->app->bind(LivePositionHotState::class, LiveVehicleState::class);
+
         // Reactor del outbox (Fase 3.3): al iniciar la ruta del chofer, liga el trip activo del vehículo a
         // la ruta. El relay lo compone por eventName (ver routing del outbox); se bindea para resolverlo con
         // su dependencia (bus de comandos).
@@ -172,6 +185,10 @@ final class TelemetryServiceProvider extends ServiceProvider
         // Vistas del package (mapas Leaflet del admin): namespace `logistics-telemetry::`.
         $this->loadViewsFrom(__DIR__.'/../../../resources/views', 'logistics-telemetry');
 
+        // Rol de despliegue (config/service.php): con `monolith` es un no-op; con un rol acotado (p. ej.
+        // `telemetry`) el proceso atiende solo las rutas HTTP de ese rol. Ver docs/perf/extraccion-telemetry.md.
+        ServiceRole::enforce($this->app);
+
         $registry = $this->app->make(HandlerRegistry::class);
         foreach (self::HANDLERS as $message => $handler) {
             $registry->register($message, $handler);
@@ -180,6 +197,7 @@ final class TelemetryServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 AggregateStreetTrafficCommand::class,
+                FlushPingBufferCommand::class,
                 PruneTelemetryPingsCommand::class,
                 RefreshStopEtasCommand::class,
             ]);
@@ -195,6 +213,11 @@ final class TelemetryServiceProvider extends ServiceProvider
                 $schedule->command('telemetry:refresh-etas')
                     ->everyMinute()
                     ->withoutOverlapping(5);
+
+                // Drenado de respaldo del buffer de ingesta (modo `buffered`): el camino normal es el job de la
+                // cola `telemetry`; esto evita que un lote quede varado si el worker cae. Sin withoutOverlapping
+                // a propósito: el drenado ya lleva su propio candado por fragmento, con vencimiento.
+                $schedule->command('telemetry:flush-ping-buffer')->everyMinute();
             });
         }
     }

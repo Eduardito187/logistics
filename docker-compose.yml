@@ -478,7 +478,7 @@ services:
         restart: unless-stopped
         # Drena TODAS las colas en dev (el pump del outbox encola a outbox/notifications/sap; planning tiene
         # sus propios jobs). En prod, supervisord corre un worker dedicado por cola (ver .docker/supervisor).
-        command: php artisan queue:work redis --queue=default,outbox,notifications,sap,planning --sleep=3 --tries=1 --timeout=600 --max-time=3600
+        command: php artisan queue:work redis --queue=default,outbox,notifications,sap,planning,telemetry --sleep=3 --tries=1 --timeout=600 --max-time=3600
         healthcheck:
             test: ["CMD-SHELL", "pgrep -f 'queue:work' || exit 1"]
             interval: 30s

@@ -65,6 +65,11 @@ la escala real; la 5-6 sostienen la operación a escala.
 > TTL NO recalculan todos a la vez; uno refresca en segundo plano y el resto recibe el valor reciente).
 > **Pendiente de tu lado** (necesita docker/EXPLAIN o coordinación con la app): el audit de índices/N+1 y la
 > paginación por cursor (ver abajo).
+>
+> **Corrección (2026-11-13):** el preload activado en `php.prod.ini` rompía el build de la imagen
+> (`php artisan filament:assets` salía con error): ese ini lo comparte el CLI (`opcache.enable_cli=1`), así que
+> cada `artisan` intentaba precargar. Ahora el preload es **solo para php-fpm y opt-in**: lo activa el
+> entrypoint con `OPCACHE_PRELOAD=true` (pasa `-d opcache.preload=…` a php-fpm). Apagado por defecto.
 
 - **OPcache + preload afinados**: `opcache.validate_timestamps=0` en prod (ya hay preload opt-in; activarlo con
   el classmap del monolito). Elimina recompilar PHP en cada request.
@@ -203,6 +208,29 @@ la escala real; la 5-6 sostienen la operación a escala.
 
 ### Ola 5 — Observabilidad, load testing y SLOs (operar a escala)
 
+> **Estado (2026-11-13): IMPLEMENTADA en código; falta EJECUTARLA** (gates, levantar el stack y correr la
+> carga: nada de esto se corrió todavía).
+>
+> - **Métricas** (`/api/metrics`, formato Prometheus): tráfico HTTP por ruta/método/estado/puerta + histograma
+>   de duración (`RecordRequestMetrics`, acumulado en Valkey después de enviar la respuesta), spans de los
+>   caminos lentos (`Span::measure`: pump del outbox, plan diario, agregados del cockpit), colas (profundidad,
+>   diferidos, reservados), latidos de workers y scheduler, outbox, conexiones y lag de réplica de PostgreSQL,
+>   Valkey, buffer de pings. Catálogo: `docs/observability.md`.
+> - **Correlación**: `AssignRequestId` propaga el id del request a logs y jobs.
+> - **Stack opt-in** (`.docker/compose/docker-compose.observability.yml`): Prometheus + Alertmanager + Grafana
+>   + exporters de PostgreSQL y Valkey, publicado solo en `127.0.0.1`; reglas, alertas por burn-rate y tablero
+>   en `.docker/observability/`. Operación: `docs/observability-runbook.md`.
+> - **SLOs** (`docs/slo.md`): disponibilidad 99,9 %; p95 lectura 250 ms, escritura/POD 1 s, rastreo público
+>   500 ms, admin 2,5 s.
+> - **Load test** (`loadtest/`, k6): smoke, baseline, pico a 2.000 VUs, spike y soak, con
+>   `loadtest:prepare` / `loadtest:cleanup` para el pool de datos y plantilla de reporte. Guía:
+>   `loadtest/README.md`.
+> - **Tracing**: spans propios con histograma + log por umbral; OpenTelemetry completo queda para cuando haya
+>   un colector (no se agregó la dependencia).
+>
+> **Pendiente de tu lado:** definir `METRICS_TOKEN`, levantar el stack, configurar el destino de las alertas
+> (`ALERT_WEBHOOK_URL` o correo) y correr smoke → baseline → pico a 2k en staging, FPM vs Octane.
+
 - **Métricas (Prometheus)**: latencia p50/p95/p99 por endpoint, RPS, profundidad de cada cola, lag del outbox,
   conexiones de DB en uso, hit rate de Valkey, lag de réplica, salud de workers.
 - **Tracing (OpenTelemetry)** en los caminos lentos (ingesta, planning, cockpits).
@@ -213,6 +241,28 @@ la escala real; la 5-6 sostienen la operación a escala.
   **encontrar el cuello ANTES de prod**. Repetir tras cada ola para validar el retorno.
 
 ### Ola 6 — Escalar horizontalmente / extraer contextos calientes
+
+> **Estado (2026-11-13): PREPARADA en código y APAGADA por defecto.** La extracción física NO se hizo, a
+> propósito: se activa cuando las métricas de la Ola 5 lo pidan. Sin correr gates todavía.
+>
+> - **Read-side del rastreo público** (activo por defecto, sin procesos extra): caché en Valkey por token con
+>   stale-while-revalidate, caché negativo para tokens inexistentes e invalidación por evento al cambiar el
+>   estado; `Cache-Control` público + `ETag`/304 para navegador y caché de borde; `/t/{token}` fuera del stack
+>   `web` (sin sesión ni cookies). Diseño: `docs/perf/tracking-read-side.md`.
+> - **Ingesta de pings dedicada** (`TELEMETRY_INGEST_MODE=buffered`, default `sync`): el request valida,
+>   encola en Valkey y responde 202 sin tocar PostgreSQL; un worker de la cola `telemetry` persiste por lotes,
+>   con un fragmento por vehículo, backpressure (429 + `Retry-After`), reintentos y lista de descartes
+>   recuperable. El worker ya está en supervisord y en el compose de desarrollo.
+> - **Unidad de despliegue** (`APP_SERVICE_ROLE=telemetry`): la misma imagen sirve solo las rutas de telemetry
+>   (`.docker/compose/docker-compose.telemetry-service.yml` + snippet de nginx).
+> - **Mapa de acoples y los 9 pasos de la extracción física**: `docs/perf/extraccion-telemetry.md`.
+>
+> **Señales para activar** (medidas con la Ola 5): p95 de `POST /app/telemetry/pings` por encima de 1 s o
+> workers FPM saturados por pings → `buffered`; CPU de la app dominada por telemetry aun con `buffered` →
+> unidad `telemetry-api`; recién si eso no alcanza, base propia (pasos del doc).
+>
+> **Antes de activar `buffered`:** probar `RedisPingIngestBuffer` contra Valkey real (sus tests usan el buffer
+> en memoria) y avisar a la app: puede llegar 429 + `Retry-After`, `duplicate_count` siempre 0 y `buffered: true`.
 
 - Cuando el volumen lo pida (lo dicen las métricas, no la intuición), **extraer el bounded context más caliente**
   a un servicio independiente (ADR 001/008): candidatos probables = **telemetry** (ingesta de pings GPS, write

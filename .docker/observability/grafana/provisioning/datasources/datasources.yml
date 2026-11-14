@@ -1,0 +1,30 @@
+# Datasources de Grafana, provisionados desde el repo (no se crean a mano en la UI).
+# El uid `prometheus` es un contrato: lo referencia el dashboard logistics-overview.json.
+apiVersion: 1
+
+# Evita datasources huérfanos si se renombra alguno.
+prune: true
+
+datasources:
+    - name: Prometheus
+      uid: prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: false
+      jsonData:
+          httpMethod: POST
+          # Igual al scrape_interval de prometheus.yml: Grafana calcula bien $__rate_interval.
+          timeInterval: 15s
+
+    # Plugin de núcleo (no externo): permite ver alertas activas y silencios desde Grafana.
+    - name: Alertmanager
+      uid: alertmanager
+      type: alertmanager
+      access: proxy
+      url: http://alertmanager:9093
+      editable: false
+      jsonData:
+          implementation: prometheus
+          handleGrafanaManagedAlerts: false

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Cockpit\Concerns;
 
 use App\Filament\Widgets\Concerns\ReadsControlTowerData;
+use App\Observability\Span;
 use App\Support\Cockpit\CockpitStates;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
@@ -50,7 +51,13 @@ trait ReadsCockpitAggregates
      */
     private function remember(string $key, \Closure $resolver): mixed
     {
-        return Cache::flexible('cockpit:'.$key, [self::COCKPIT_TTL_SECONDS, self::COCKPIT_STALE_SECONDS], $resolver);
+        // Ola 5: se cronometra SOLO el recálculo real del agregado (cuando el caché no lo sirve), con un
+        // nombre de span fijo para no multiplicar series por cada clave.
+        return Cache::flexible(
+            'cockpit:'.$key,
+            [self::COCKPIT_TTL_SECONDS, self::COCKPIT_STALE_SECONDS],
+            static fn () => Span::measure('cockpit.aggregate', $resolver),
+        );
     }
 
     /**

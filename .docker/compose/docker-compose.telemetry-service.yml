@@ -1,0 +1,79 @@
+# ============================================================
+# docker-compose.telemetry-service.yml — OPT-IN: telemetry como unidad de despliegue aparte (Ola 6)
+# ============================================================
+# Levanta `telemetry-api`: la MISMA imagen de la app con APP_SERVICE_ROLE=telemetry y su propio pool
+# PHP-FPM. Ese proceso atiende SOLO las rutas HTTP del contexto telemetry (más /up, /api/v1/health y
+# /api/metrics); el resto responde 404. Así la ingesta de pings GPS deja de competir por los workers
+# FPM del request del usuario y se escala por separado. No parte el código: es un cambio de despliegue.
+#
+# Uso (sobre el base; las rutas relativas se resuelven desde la raíz del repo):
+#   docker compose -f docker-compose.yml \
+#       -f .docker/compose/docker-compose.telemetry-service.yml \
+#       up -d --scale telemetry-api=2
+#
+# Con el override de producción, agregar también `-f .docker/compose/docker-compose.prod.yml` y fijar
+# TELEMETRY_API_IMAGE=dismac/logistics-app:prod, TELEMETRY_API_APP_ENV=production y
+# TELEMETRY_API_OPTIMIZE_ON_BOOT=true.
+#
+# FALTA UN PASO para que reciba tráfico: nginx debe rutear /api/v1/(app|integrations)/telemetry/* a este
+# upstream. Ver .docker/nginx/snippets/telemetry-upstream.conf.example y docs/perf/extraccion-telemetry.md.
+# Sin ese include el servicio queda levantado pero ocioso (el monolito sigue atendiendo telemetry).
+#
+# Qué NO hace este servicio: no migra, no instala composer, no corre colas ni scheduler. El worker de la
+# cola `telemetry` (drenado del buffer de ingesta) sigue en el contenedor de workers del stack.
+# ============================================================
+
+services:
+    telemetry-api:
+        # Sin `container_name` a propósito: permite `--scale telemetry-api=N`.
+        image: ${TELEMETRY_API_IMAGE:-dismac/logistics-app:dev}
+        restart: unless-stopped
+        volumes:
+            - .:/var/www/html:cached
+            - vendor:/var/www/html/vendor
+        environment:
+            APP_ENV: ${TELEMETRY_API_APP_ENV:-local}
+            # Rol acotado: solo rutas del contexto telemetry (config/service.php).
+            APP_SERVICE_ROLE: telemetry
+            # Caché de config PROPIA: bootstrap/cache puede estar compartido con `app` por el bind mount, y
+            # la config cacheada lleva el rol adentro. Sin esto, `config:cache` de un contenedor le
+            # cambiaría el rol al otro.
+            APP_CONFIG_CACHE: /tmp/config-telemetry.php
+            # La ingesta dedicada rinde con el buffer: el request no toca PostgreSQL.
+            TELEMETRY_INGEST_MODE: ${TELEMETRY_INGEST_MODE:-buffered}
+            # Este contenedor no prepara el entorno: eso lo hace `app` (del que depende).
+            COMPOSER_INSTALL_ON_BOOT: "false"
+            AUTO_MIGRATE: "false"
+            AUTO_BACKFILL_ORDERS: "false"
+            OPTIMIZE_ON_BOOT: ${TELEMETRY_API_OPTIMIZE_ON_BOOT:-false}
+            DB_CONNECTION: pgsql
+            DB_HOST: pgbouncer
+            DB_PORT: 6432
+            DB_DATABASE: logistics
+            DB_USERNAME: logistics
+            DB_PASSWORD: logistics
+            REDIS_HOST: valkey
+            REDIS_PORT: 6379
+            # Pool FPM propio: requests cortos y parejos, así que pocos hijos rinden mucho.
+            FPM_PM: ${TELEMETRY_API_FPM_PM:-dynamic}
+            FPM_MAX_CHILDREN: ${TELEMETRY_API_FPM_MAX_CHILDREN:-30}
+            FPM_START_SERVERS: ${TELEMETRY_API_FPM_START_SERVERS:-6}
+            FPM_MIN_SPARE: ${TELEMETRY_API_FPM_MIN_SPARE:-6}
+            FPM_MAX_SPARE: ${TELEMETRY_API_FPM_MAX_SPARE:-12}
+        depends_on:
+            # `app` healthy implica vendor instalado, migraciones aplicadas y pgbouncer/valkey arriba.
+            app:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD-SHELL", "nc -z 127.0.0.1 9000 || exit 1"]
+            interval: 15s
+            timeout: 5s
+            retries: 6
+            start_period: 60s
+        networks:
+            - dismac_lg
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"

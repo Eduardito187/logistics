@@ -82,13 +82,11 @@ final class CategoryResource extends Resource
             'admin:catalog:category-options',
             60,
             static function (): array {
-                /** @var array<string, string> $options */
-                $options = CategoryRecord::query()
+                /** @var array<string, string> */
+                return CategoryRecord::query()
                     ->orderBy('name')
                     ->pluck('name', 'id')
                     ->all();
-
-                return $options;
             },
         );
     }

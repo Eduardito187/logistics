@@ -10,6 +10,7 @@ use App\Models\ApiChannel;
 use App\Providers\AuthServiceProvider;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -47,7 +48,12 @@ final class AuthenticateChannel
             )->toResponse($request);
         }
 
-        $channel->markUsed();
+        // `last_used_at` es informativo: se escribe como mucho una vez por minuto y por canal. Escribirlo en
+        // cada request ponía un UPDATE en el camino caliente del tracking público y, con réplicas de lectura
+        // (`sticky`), mandaba al primario el resto de las lecturas del request.
+        if (Cache::add('channel:last-used:'.$channel->getKey(), true, 60)) {
+            $channel->markUsed();
+        }
         $request->attributes->set(self::ATTRIBUTE, $channel);
 
         return $next($request);

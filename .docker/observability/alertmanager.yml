@@ -1,0 +1,90 @@
+# ============================================================
+# alertmanager.yml — PLANTILLA de ruteo de alertas (Ola 5)
+# ============================================================
+# NO es la config final: el entrypoint del servicio `alertmanager` reemplaza los marcadores (nombre
+# de la env entre dobles guiones bajos) con las variables de entorno y escribe
+# /alertmanager/alertmanager.rendered.yml.
+# (Alertmanager no expande envs por sí mismo.) Variables y defaults: ver el compose de observabilidad.
+#
+#   ALERT_CHANNEL             webhook (default) | email     → elige el juego de receptores
+#   ALERT_WEBHOOK_URL         destino de ticket/default     ALERT_WEBHOOK_URL_PAGE   destino de page
+#   ALERT_EMAIL_TO            destino de ticket/default     ALERT_EMAIL_TO_PAGE      destino de page
+#   ALERT_SMTP_SMARTHOST / _FROM / _USERNAME / _PASSWORD / _REQUIRE_TLS
+#
+# Ruteo por severidad (label `severity` de alerts.yml):
+#   page    → despierta a la guardia: aviso rápido y repetición cada hora.
+#   ticket  → se atiende en horario hábil: agrupado, repetición cada 12 h.
+#   (resto) → receptor por defecto.
+# ============================================================
+
+global:
+    resolve_timeout: 5m
+    smtp_smarthost: '__ALERT_SMTP_SMARTHOST__'
+    smtp_from: '__ALERT_SMTP_FROM__'
+    smtp_auth_username: '__ALERT_SMTP_USERNAME__'
+    smtp_auth_password: '__ALERT_SMTP_PASSWORD__'
+    smtp_require_tls: __ALERT_SMTP_REQUIRE_TLS__
+
+route:
+    receiver: 'default-__ALERT_CHANNEL__'
+    group_by: ['alertname', 'service']
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+        - matchers:
+              - severity="page"
+          receiver: 'page-__ALERT_CHANNEL__'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 1h
+        - matchers:
+              - severity="ticket"
+          receiver: 'ticket-__ALERT_CHANNEL__'
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 12h
+
+# Si la app está caída, sus métricas desaparecen y el resto de las alertas derivadas de la app
+# (layer="app") son ruido: se silencian mientras dure LogisticsAppCaida. Las de infraestructura
+# (layer="infra": PostgreSQL/Valkey caídos) NO se silencian: suelen ser la causa raíz.
+inhibit_rules:
+    - source_matchers:
+          - alertname="LogisticsAppCaida"
+      target_matchers:
+          - layer="app"
+          - alertname!="LogisticsAppCaida"
+      equal: ['service']
+
+receivers:
+    # ---------- Canal webhook ----------
+    - name: 'default-webhook'
+      webhook_configs:
+          - url: '__ALERT_WEBHOOK_URL__'
+            send_resolved: true
+    - name: 'ticket-webhook'
+      webhook_configs:
+          - url: '__ALERT_WEBHOOK_URL__'
+            send_resolved: true
+    - name: 'page-webhook'
+      webhook_configs:
+          - url: '__ALERT_WEBHOOK_URL_PAGE__'
+            send_resolved: true
+
+    # ---------- Canal email ----------
+    - name: 'default-email'
+      email_configs:
+          - to: '__ALERT_EMAIL_TO__'
+            send_resolved: true
+    - name: 'ticket-email'
+      email_configs:
+          - to: '__ALERT_EMAIL_TO__'
+            send_resolved: true
+            headers:
+                Subject: '[ticket] {{ .GroupLabels.alertname }} ({{ .Status }})'
+    - name: 'page-email'
+      email_configs:
+          - to: '__ALERT_EMAIL_TO_PAGE__'
+            send_resolved: true
+            headers:
+                Subject: '[PAGE] {{ .GroupLabels.alertname }} ({{ .Status }})'

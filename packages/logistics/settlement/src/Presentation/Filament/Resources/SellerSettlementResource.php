@@ -148,10 +148,8 @@ final class SellerSettlementResource extends Resource
             self::SELLER_NAMES_TTL,
             static function (): array {
                 try {
-                    /** @var array<string, string> $names */
-                    $names = DB::table('sellers')->pluck('legal_name', 'id')->all();
-
-                    return $names;
+                    /** @var array<string, string> */
+                    return DB::table('sellers')->pluck('legal_name', 'id')->all();
                 } catch (Throwable) {
                     return [];
                 }

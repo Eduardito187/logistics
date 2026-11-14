@@ -13,6 +13,55 @@ return [
     // Ingesta de pings en lote (el app agrupa lecturas para ahorrar batería/datos).
     'ingest' => [
         'max_batch' => (int) env('TELEMETRY_INGEST_MAX_BATCH', 500),
+
+        // Camino de ingesta (ver docs/perf/extraccion-telemetry.md):
+        //  - `sync`     (default): el request persiste el lote en su propia transacción, como siempre.
+        //  - `buffered`: el request solo valida y encola el lote en un buffer de Valkey (responde 202 sin
+        //    tocar PostgreSQL) y el worker de la cola `telemetry` lo persiste después, agrupado por vehículo.
+        // `sync` es el default porque no depende de ningún proceso extra; pasar a `buffered` es cambiar
+        // esta variable (el worker de la cola ya viene en dev, staging y prod).
+        'mode' => strtolower((string) env('TELEMETRY_INGEST_MODE', 'sync')),
+
+        // Cola del job que drena el buffer (la consume el worker dedicado del supervisor).
+        'queue' => (string) env('TELEMETRY_INGEST_QUEUE', 'telemetry'),
+
+        'buffer' => [
+            // Conexión Redis/Valkey del buffer (config/database.php → redis.<nombre>). La `default` es la
+            // de colas y locks: durable (AOF) y sin evicción, a diferencia de la de caché.
+            'connection' => (string) env('TELEMETRY_INGEST_BUFFER_CONNECTION', 'default'),
+
+            // Fragmentos del buffer (por hash del vehículo). Cada fragmento lo drena UN proceso a la vez,
+            // así un vehículo nunca se procesa en paralelo; más fragmentos = más paralelismo de drenado.
+            'shards' => max(1, (int) env('TELEMETRY_INGEST_BUFFER_SHARDS', 4)),
+
+            // Backpressure: tope TOTAL de lotes en espera (se reparte entre los fragmentos). Al alcanzarlo
+            // el POST responde 429 + Retry-After en vez de seguir acumulando memoria en Valkey.
+            'max_batches' => max(1, (int) env('TELEMETRY_INGEST_BUFFER_MAX_BATCHES', 20000)),
+            'retry_after_seconds' => max(1, (int) env('TELEMETRY_INGEST_RETRY_AFTER_SECONDS', 15)),
+
+            // Si el buffer no responde (Valkey caído), el request cae al camino `sync` en vez de fallar.
+            'fallback_to_sync' => (bool) env('TELEMETRY_INGEST_FALLBACK_TO_SYNC', true),
+
+            // Intervalo de flush (segundos): espera entre el primer lote encolado y el drenado, para
+            // juntar lecturas. Es el atraso máximo normal de la persistencia respecto del POST.
+            'flush_interval_seconds' => max(0, (int) env('TELEMETRY_INGEST_FLUSH_INTERVAL_SECONDS', 2)),
+
+            // Tamaño de lote del drenado: lotes del buffer que se toman por pasada de un fragmento.
+            'flush_batches' => max(1, (int) env('TELEMETRY_INGEST_FLUSH_BATCHES', 200)),
+
+            // Presupuesto de tiempo de un drenado (segundos) y vida del candado del fragmento. El candado
+            // debe durar más que una pasada; el presupuesto debe ser menor que el --timeout del worker.
+            'drain_seconds' => max(1, (int) env('TELEMETRY_INGEST_DRAIN_SECONDS', 20)),
+            'lock_seconds' => max(5, (int) env('TELEMETRY_INGEST_LOCK_SECONDS', 60)),
+
+            // Reintentos de un lote que falla al persistirse antes de apartarlo a la lista de descartes, y
+            // espera antes de reintentar cuando falla la pasada entera (base caída).
+            'max_attempts' => max(1, (int) env('TELEMETRY_INGEST_MAX_ATTEMPTS', 5)),
+            'failure_backoff_seconds' => max(1, (int) env('TELEMETRY_INGEST_FAILURE_BACKOFF_SECONDS', 15)),
+
+            // Tope de la lista de descartes (lotes que agotaron sus reintentos; se pueden reencolar).
+            'max_dead' => max(1, (int) env('TELEMETRY_INGEST_MAX_DEAD', 10000)),
+        ],
     ],
 
     // Umbral de movimiento: por debajo se considera detenido (ruido GPS en reposo).

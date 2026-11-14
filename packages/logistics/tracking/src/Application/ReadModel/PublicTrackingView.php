@@ -48,6 +48,60 @@ final readonly class PublicTrackingView
     }
 
     /**
+     * Reconstruye la vista desde su forma primitiva ({@see toArray()}), que es lo que se guarda en el
+     * caché de lectura. Devuelve null si faltan los campos obligatorios o tienen otro tipo (entrada
+     * corrupta o de otra versión): el llamador descarta la entrada y relee de la base.
+     *
+     * @param array<array-key, mixed> $data
+     */
+    public static function fromArray(array $data): ?self
+    {
+        $status = $data['status'] ?? null;
+        $remainingStops = $data['remaining_stops'] ?? null;
+        $stopsMessage = $data['stops_message'] ?? null;
+
+        if (!is_string($status) || !is_int($remainingStops) || !is_string($stopsMessage)) {
+            return null;
+        }
+
+        $routePosition = $data['route_position'] ?? null;
+        $eta = $data['eta'] ?? null;
+        $positionIsLive = $data['position_is_live'] ?? null;
+
+        return new self(
+            $status,
+            $remainingStops,
+            is_int($routePosition) ? $routePosition : null,
+            is_string($eta) ? $eta : null,
+            self::positionFromArray($data['last_position'] ?? null),
+            $stopsMessage,
+            is_bool($positionIsLive) ? $positionIsLive : null,
+        );
+    }
+
+    /**
+     * Última posición desde su forma primitiva, o null si no vino o está incompleta.
+     *
+     * @return array{lat: float, lng: float, reported_at: string}|null
+     */
+    private static function positionFromArray(mixed $position): ?array
+    {
+        if (!is_array($position)) {
+            return null;
+        }
+
+        $lat = $position['lat'] ?? null;
+        $lng = $position['lng'] ?? null;
+        $reportedAt = $position['reported_at'] ?? null;
+
+        if (!is_numeric($lat) || !is_numeric($lng) || !is_string($reportedAt)) {
+            return null;
+        }
+
+        return ['lat' => (float) $lat, 'lng' => (float) $lng, 'reported_at' => $reportedAt];
+    }
+
+    /**
      * Arma el mensaje al cliente según el estado y las paradas restantes. En español (copy de cliente).
      */
     private static function buildStopsMessage(VisibleStatus $status, int $remainingStops): string

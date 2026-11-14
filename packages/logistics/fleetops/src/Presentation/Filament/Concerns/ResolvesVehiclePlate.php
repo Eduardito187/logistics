@@ -49,13 +49,11 @@ trait ResolvesVehiclePlate
             'admin:vehicle-plates',
             self::VEHICLE_PLATES_TTL,
             static function (): array {
-                /** @var array<string, string> $map */
-                $map = VehicleModel::query()
+                /** @var array<string, string> */
+                return VehicleModel::query()
                     ->orderBy('plate')
                     ->pluck('plate', 'id')
                     ->all();
-
-                return $map;
             },
         );
     }
@@ -67,14 +65,12 @@ trait ResolvesVehiclePlate
      */
     protected static function searchVehiclePlates(string $search): array
     {
-        /** @var array<string, string> $options */
-        $options = VehicleModel::query()
+        /** @var array<string, string> */
+        return VehicleModel::query()
             ->where('plate', 'ilike', "%{$search}%")
             ->orderBy('plate')
             ->limit(50)
             ->pluck('plate', 'id')
             ->all();
-
-        return $options;
     }
 }

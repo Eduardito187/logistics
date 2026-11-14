@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Infrastructure\Queue;
 
+use App\Observability\Span;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -52,12 +53,15 @@ final class GenerateDailyPlanJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(DailyPlanRunner $runner, ConnectionInterface $connection): void
     {
-        $connection->transaction(function () use ($runner): void {
-            $runner->run(
-                AutoPlanRunId::fromString($this->runId),
-                PlanDate::fromString($this->planDate),
-                $this->params,
-            );
+        // Ola 5: se cronometra la generación completa (histograma + log con request_id) sin tocar su lógica.
+        Span::measure('planning.daily_plan', function () use ($runner, $connection): void {
+            $connection->transaction(function () use ($runner): void {
+                $runner->run(
+                    AutoPlanRunId::fromString($this->runId),
+                    PlanDate::fromString($this->planDate),
+                    $this->params,
+                );
+            });
         });
     }
 

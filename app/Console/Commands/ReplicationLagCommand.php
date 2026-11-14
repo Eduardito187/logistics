@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\DatabaseManager;
+use stdClass;
 
 /**
  * Ola 4 — Monitoreo del lag de replicación de PostgreSQL.
@@ -13,7 +15,7 @@ use Illuminate\Database\DatabaseManager;
  * Consulta al primario el estado de replicación de los standbys conectados y reporta el lag en
  * bytes y/o tiempo. Útil para:
  *   - Verificar que el standby está al día antes de un failover.
- *   - Alertar si el lag excede un umbral (el scraper de métricas ya exporta `pg_replication_lag_bytes`
+ *   - Alertar si el lag excede un umbral (el scraper de métricas ya exporta `logistics_db_replication_lag_bytes`
  *     en MetricsCollector, pero este comando da una vista humana).
  *   - Incluirlo en el pre-deploy check para no cortar el primario si el standby está retrasado.
  *
@@ -33,22 +35,15 @@ final class ReplicationLagCommand extends Command
     public function handle(DatabaseManager $db): int
     {
         $connection = $db->connection();
+        $skipReason = $this->skipReason($connection);
 
-        if ($connection->getDriverName() !== 'pgsql') {
-            $this->warn('logistics:replication:lag solo aplica a PostgreSQL.');
-
-            return self::SUCCESS;
-        }
-
-        // Verificar si este nodo es un primario (no un standby).
-        $isRecovery = $connection->selectOne('SELECT pg_is_in_recovery() AS recovering');
-        if ($isRecovery !== null && ($isRecovery->recovering ?? false)) {
-            $this->warn('Este nodo es un STANDBY, no el primario. El lag se consulta desde el primario.');
+        if ($skipReason !== null) {
+            $this->warn($skipReason);
 
             return self::SUCCESS;
         }
 
-        $standbys = $connection->select("
+        $standbys = $connection->select('
             SELECT
                 client_addr,
                 state,
@@ -60,49 +55,71 @@ final class ReplicationLagCommand extends Command
                 (EXTRACT(EPOCH FROM replay_lag) * 1000)::bigint AS lag_ms
             FROM pg_stat_replication
             ORDER BY client_addr
-        ");
+        ');
 
-        if (count($standbys) === 0) {
+        return $this->report($standbys);
+    }
+
+    /**
+     * Motivo por el que no aplica medir el lag acá (otro motor, o este nodo es un standby); null si aplica.
+     */
+    private function skipReason(ConnectionInterface $connection): ?string
+    {
+        if ($connection->getDriverName() !== 'pgsql') {
+            return 'logistics:replication:lag solo aplica a PostgreSQL.';
+        }
+
+        $isRecovery = $connection->selectOne('SELECT pg_is_in_recovery() AS recovering');
+        if ($isRecovery !== null && ($isRecovery->recovering ?? false)) {
+            return 'Este nodo es un STANDBY, no el primario. El lag se consulta desde el primario.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Imprime la tabla de standbys y devuelve el código de salida según el umbral.
+     *
+     * @param array<int, stdClass> $standbys
+     */
+    private function report(array $standbys): int
+    {
+        if ($standbys === []) {
             $this->info('No hay standbys conectados por streaming replication.');
 
             return self::SUCCESS;
         }
 
         $warnBytes = max(0, (int) $this->option('warn-bytes'));
-        $exitOnLag = (bool) $this->option('exit-on-lag');
         $anyLagging = false;
 
         $rows = [];
         foreach ($standbys as $s) {
             $lagBytes = (int) ($s->lag_bytes ?? 0);
             $lagMs = (int) ($s->lag_ms ?? 0);
-            $status = 'OK';
-
-            if ($lagBytes > $warnBytes) {
-                $status = 'LAGGING';
-                $anyLagging = true;
-            }
+            $lagging = $lagBytes > $warnBytes;
+            $anyLagging = $anyLagging || $lagging;
 
             $rows[] = [
                 $s->client_addr ?? '?',
                 $s->state ?? '?',
                 $this->humanSize($lagBytes),
                 $lagMs > 0 ? sprintf('%d ms', $lagMs) : '< 1 ms',
-                $status,
+                $lagging ? 'LAGGING' : 'OK',
             ];
         }
 
         $this->table(['Client', 'State', 'Lag (bytes)', 'Lag (time)', 'Status'], $rows);
 
-        if ($anyLagging) {
-            $this->warn(sprintf('Uno o más standbys exceden el umbral de lag (%s).', $this->humanSize($warnBytes)));
+        if (!$anyLagging) {
+            $this->info('Todos los standbys dentro del umbral de lag.');
 
-            return $exitOnLag ? self::FAILURE : self::SUCCESS;
+            return self::SUCCESS;
         }
 
-        $this->info('Todos los standbys dentro del umbral de lag.');
+        $this->warn(sprintf('Uno o más standbys exceden el umbral de lag (%s).', $this->humanSize($warnBytes)));
 
-        return self::SUCCESS;
+        return (bool) $this->option('exit-on-lag') ? self::FAILURE : self::SUCCESS;
     }
 
     private function humanSize(int $bytes): string

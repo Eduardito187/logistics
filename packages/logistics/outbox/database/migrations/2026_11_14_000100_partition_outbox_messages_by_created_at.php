@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Exceptions\DataMigrationException;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\DB;
  * y la poda por retención (DROP partición vieja = instantáneo vs DELETE masivo).
  *
  * PRESERVA DATOS (regla no-destructiva): recrea la tabla como particionada con la MISMA forma, copia
- * TODAS las filas, verifica el conteo y reemplaza la original, todo en una sola transacción.
+ * TODAS las filas, verifica el conteo y reemplaza la original, íntegramente en una sola transacción.
  * Idempotente: si ya está particionada, no hace nada.
  *
  * La PK pasa a ser COMPUESTA `(id, created_at)` porque Postgres exige la clave de partición en la PK.
@@ -77,7 +78,7 @@ return new class extends Migration
             $before = (int) DB::table('outbox_messages')->count();
             $after = (int) DB::table('outbox_messages_part')->count();
             if ($before !== $after) {
-                throw new RuntimeException("Partition copy mismatch: {$before} vs {$after} rows; aborting (data preserved).");
+                throw new DataMigrationException("Partition copy mismatch: {$before} vs {$after} rows; aborting (data preserved).");
             }
 
             // 5) Reemplaza la original.

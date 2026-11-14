@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Exceptions\DataMigrationException;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\DB;
  *
  * PRESERVA DATOS (regla no-destructiva): recrea la tabla como particionada con la MISMA forma
  * (`LIKE ... INCLUDING ALL` para columnas, defaults, NOT NULL y almacenamiento), copia TODAS las
- * filas, verifica que el conteo coincide y recién entonces reemplaza la original, todo en una sola
+ * filas, verifica que el conteo coincide y recién entonces reemplaza la original, íntegramente en una sola
  * transacción (atómico: si algo falla, se revierte y la tabla queda intacta). Idempotente: si ya
  * está particionada, no hace nada.
  *
@@ -82,7 +83,7 @@ return new class extends Migration
             $before = (int) DB::table('execution_scan_events')->count();
             $after = (int) DB::table('execution_scan_events_part')->count();
             if ($before !== $after) {
-                throw new RuntimeException("Partition copy mismatch: {$before} vs {$after} rows; aborting (data preserved).");
+                throw new DataMigrationException("Partition copy mismatch: {$before} vs {$after} rows; aborting (data preserved).");
             }
 
             // 5) Reemplaza la original: elimina la vieja (libera nombres de índices) y renombra la nueva.

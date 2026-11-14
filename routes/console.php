@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Observability\Heartbeat;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -211,6 +212,20 @@ Schedule::command('logistics:replication:lag --warn-bytes=33554432')
     ->onOneServer()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Ola 5 — Observabilidad: latido del scheduler
+|--------------------------------------------------------------------------
+*/
+
+// Latido del scheduler: cada minuto deja un timestamp en Valkey y /api/metrics expone su edad como
+// `logistics_scheduler_last_tick_age_seconds` (sano: < 120 s). Es un closure liviano que corre dentro del
+// propio proceso del scheduler (una escritura a Valkey, tolerante a fallos). SIN withoutOverlapping a
+// propósito: un mutex colgado lo silenciaría y daría una falsa alarma de "scheduler caído".
+Schedule::call(static function (): void {
+    Heartbeat::scheduler();
+})->everyMinute()->name('observability:scheduler-heartbeat');
 
 // Simulacro semanal de restauración: verifica que el último dump es válido y restaurable (no destructivo).
 // Corre los domingos a las 04:00. Si falla, el log de error dispara la alerta.
