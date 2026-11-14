@@ -54,6 +54,23 @@ la escala real; la 5-6 sostienen la operación a escala.
 
 ### Ola 1 — Quick wins de CPU y latencia (bajo riesgo, alto retorno)
 
+> **Estado (2026-11-13): ~95% ya estaba hecho** (señal de madurez del proyecto). Ya en su lugar: OPcache
+> afinado (prod `validate_timestamps=0`, 512 MB, JIT tracing `1255` + buffer 128 MB), FPM `pm=dynamic` con
+> fórmula documentada + `pm.max_requests=1000`, nginx gzip (comp_level 5, vary), `Cache-Control: immutable` 30d
+> para assets versionados, ETag/304 en los endpoints calientes (live-fleet, tracking público), rate limiting
+> extenso (`throttle:api` por IP/token + login), y los cockpits ya cacheaban. **Agregado en esta pasada:**
+> (a) **OPcache preload ACTIVADO** (`bootstrap/preload.php`, estaba opt-in/comentado) → menos parseo en el
+> primer request de cada worker; (b) **anti-stampede en el caché de los cockpits** (`ReadsCockpitAggregates`
+> pasó de `Cache::remember` a `Cache::flexible` stale-while-revalidate: a 2k clientes polleando, al vencer el
+> TTL NO recalculan todos a la vez; uno refresca en segundo plano y el resto recibe el valor reciente).
+> **Pendiente de tu lado** (necesita docker/EXPLAIN o coordinación con la app): el audit de índices/N+1 y la
+> paginación por cursor (ver abajo).
+>
+> **Corrección (2026-11-13):** el preload activado en `php.prod.ini` rompía el build de la imagen
+> (`php artisan filament:assets` salía con error): ese ini lo comparte el CLI (`opcache.enable_cli=1`), así que
+> cada `artisan` intentaba precargar. Ahora el preload es **solo para php-fpm y opt-in**: lo activa el
+> entrypoint con `OPCACHE_PRELOAD=true` (pasa `-d opcache.preload=…` a php-fpm). Apagado por defecto.
+
 - **OPcache + preload afinados**: `opcache.validate_timestamps=0` en prod (ya hay preload opt-in; activarlo con
   el classmap del monolito). Elimina recompilar PHP en cada request.
 - **PHP-FPM tuning**: `pm=static` dimensionado a la RAM real (cada worker ~40-80 MB), `pm.max_requests` para
@@ -91,6 +108,41 @@ la escala real; la 5-6 sostienen la operación a escala.
   volumen), dejar el admin Filament en FPM al principio (sesión + estado más delicado), migrarlo después con los
   singletons auditados. Load test comparativo FPM vs Octane antes de cortar.
 
+> **Estado (2026-11-13): auditoría de Octane-safety HECHA.** Resultado:
+> - **App API: Octane-ready.** DI limpia, controllers con `__invoke(Request $request)` (el request NO se captura
+>   en constructor), los ~20 singletons son servicios de infraestructura STATELESS (bus CQRS, firmantes, readers,
+>   renderers), sin mutación de `config()`/container por request. Los únicos `config()->set` están en providers
+>   (boot, una vez por worker = correcto) y los `headers->set`/`query->set` son del response/request (per-request).
+>   Las 2 estáticas de proceso que hay (`FleetTableVehicleFitnessGate::$ready` = "¿existe la columna?";
+>   `IntegrationRuntimeOverrides::$lastWorkerRefresh` = throttle de refresco del worker) son intencionales y
+>   CORRECTAS bajo Octane (estado de proceso que debe persistir).
+> - **Admin Filament: RESUELTO.** Había ~17 helpers/resources (`VehiclePlates`, `NodeNames`, `UserNames`,
+>   `UnitNames`, `MunicipalityOptions`, `TripLookups`, `ProductResource`, `CategoryResource`, `PromiseResource`,
+>   `ResolvesVehiclePlate`, `DocumentResource`, `StockOnHandResource`, 2 de sap-connector, `SellerSettlementResource`)
+>   que memoizaban en `private static ?array` ("por request" bajo FPM, pero PERSISTE bajo Octane → datos viejos +
+>   memoria). **Todos pasados a `Cache::remember` Valkey con TTL 60s** (Octane-safe y más rápido en FPM también),
+>   con claves namespaced y COMPARTIDAS donde resuelven la misma tabla (`admin:vehicle-plates`, `admin:seller-names`).
+>   API pública y regla NO-UUID intactas; `DocumentResource` cachea un resumen primitivo `{count, expired}` (regla 7,
+>   nunca ReadModels serializados). Barrido final: 0 estáticas memoizadoras restantes en `Presentation/Filament`.
+>   **Conclusión: todo el código (app API + admin) es Octane-ready.** Lo único que falta es encender + load test.
+>
+> **Runbook de adopción (ejecutar con validación, NO prender de golpe):**
+> 1. **Instalar**: `docker compose exec -T app composer require laravel/octane` →
+>    `docker compose exec -T app php artisan octane:install --server=frankenphp` (baja el binario FrankenPHP y
+>    crea `config/octane.php`).
+> 2. **Config**: en `config/octane.php` dejar `max_requests` (p. ej. 500) para reciclar workers y acotar fugas;
+>    revisar los `warm`/`flush`. PgBouncer en transaction mode + conexiones persistentes de Octane → mantener la
+>    emulación de prepares por default ([[pg-pgbouncer-gotchas]]).
+> 3. **Servicio canario**: agregar un servicio de compose SOLO para el **app API** que corra
+>    `php artisan octane:frankenphp --workers=auto --max-requests=500` (o la FrankenPHP image), y rutear SOLO el
+>    tráfico de `/api/v1/app/*` a ese servicio. Admin Filament, tracking público y el resto siguen en FPM.
+> 4. **Load test comparativo** (Ola 5): k6/Gatling contra el app API en FPM vs Octane con un escenario realista
+>    (login, ver ruta, POD, tracking). Comparar **p95, CPU por request y throughput**. El salto esperado de CPU es
+>    grande; confirmarlo con número, no por fe.
+> 5. **Rollback trivial**: volver a rutear el app API a FPM. Sin cambios de datos, es solo enrutamiento.
+> 6. **Después** (cuando el canario del app API esté validado): migrar el admin a Octane, ya con los helpers
+>    Support en caché (hecho) + una pasada de verificación de los singletons/estado de Filament/Livewire.
+
 ### Ola 3 — Base de datos a escala (el cuello real a 2k)
 
 - **Réplicas de lectura + routing CQRS**: configurar `read`/`write` connections de Laravel; que los
@@ -107,6 +159,41 @@ la escala real; la 5-6 sostienen la operación a escala.
 
 ### Ola 4 — Alta disponibilidad (sin punto único de falla)
 
+> **Estado (2026-11-14): IMPLEMENTADA.** Todos los puntos cubiertos:
+>
+> **1. App tier multi-instancia (stateless):**
+>   - `docker-compose.ha.yml` con `deploy.replicas: 2` para el tier de app.
+>   - Nginx upstream con load balancing y health checks (`ha-upstream.conf`).
+>   - Sesión del admin YA en Valkey (DB 2, `config/session.php` → `redis`), no en archivo local.
+>
+> **2. PostgreSQL HA (streaming replication):**
+>   - `postgres-standby` en `docker-compose.ha.yml` con `pg_basebackup` + WAL streaming.
+>   - `pgbouncer-read` dedicado al standby para el read/write split de Ola 3.
+>   - Comando `logistics:replication:lag` para monitorear lag (scheduler cada 5 min).
+>   - Runbook de failover manual documentado; Patroni recomendado para auto-failover en prod.
+>
+> **3. Valkey HA (Sentinel):**
+>   - `valkey-replica` + 3 Sentinels en `docker-compose.ha.yml` (quórum de 2).
+>   - Failover automático en 5s + documentación de cómo conectar la app vía Sentinel.
+>
+> **4. Deploy sin downtime:**
+>   - `logistics:pre-deploy` valida PG + Valkey, señaliza `queue:restart` y limpia caches del scheduler.
+>   - Rolling deploy con `deploy.restart_policy` + nginx health-gated.
+>   - Graceful shutdown de FPM (`SIGQUIT` + `stop_grace_period`).
+>   - `schedule:clear-cache` en boot evita congelamiento del outbox pump.
+>
+> **5. Workers resilientes:**
+>   - `logistics:queue:health` monitorea profundidad de colas cada 5 min (scheduler).
+>   - Exit code 1 con `--exit-on-overload` para integración con autoscaling externo.
+>   - Escalar horizontal: `docker compose up --scale queue-worker=N`.
+>
+> **6. Backups + restore probados:**
+>   - `logistics:restore-drill` verifica dumps sin tocar datos (non-destructive).
+>   - Scheduler lo corre semanalmente (domingos 04:00).
+>   - Ya existía `backup:create/verify/restore`; el drill cierra el ciclo.
+>
+> **Runbook completo**: `docs/ha-runbook.md` con topología, checklist y procedimientos.
+
 - **App tier multi-instancia** (stateless) detrás de un **load balancer** con health checks → una instancia caída
   no corta el servicio; escalar = sumar instancias. Sesión del admin en Valkey (no en archivo local).
 - **PostgreSQL HA**: primario + standby con **replicación en streaming** y **failover automático** (Patroni /
@@ -121,6 +208,29 @@ la escala real; la 5-6 sostienen la operación a escala.
 
 ### Ola 5 — Observabilidad, load testing y SLOs (operar a escala)
 
+> **Estado (2026-11-13): IMPLEMENTADA en código; falta EJECUTARLA** (gates, levantar el stack y correr la
+> carga: nada de esto se corrió todavía).
+>
+> - **Métricas** (`/api/metrics`, formato Prometheus): tráfico HTTP por ruta/método/estado/puerta + histograma
+>   de duración (`RecordRequestMetrics`, acumulado en Valkey después de enviar la respuesta), spans de los
+>   caminos lentos (`Span::measure`: pump del outbox, plan diario, agregados del cockpit), colas (profundidad,
+>   diferidos, reservados), latidos de workers y scheduler, outbox, conexiones y lag de réplica de PostgreSQL,
+>   Valkey, buffer de pings. Catálogo: `docs/observability.md`.
+> - **Correlación**: `AssignRequestId` propaga el id del request a logs y jobs.
+> - **Stack opt-in** (`.docker/compose/docker-compose.observability.yml`): Prometheus + Alertmanager + Grafana
+>   + exporters de PostgreSQL y Valkey, publicado solo en `127.0.0.1`; reglas, alertas por burn-rate y tablero
+>   en `.docker/observability/`. Operación: `docs/observability-runbook.md`.
+> - **SLOs** (`docs/slo.md`): disponibilidad 99,9 %; p95 lectura 250 ms, escritura/POD 1 s, rastreo público
+>   500 ms, admin 2,5 s.
+> - **Load test** (`loadtest/`, k6): smoke, baseline, pico a 2.000 VUs, spike y soak, con
+>   `loadtest:prepare` / `loadtest:cleanup` para el pool de datos y plantilla de reporte. Guía:
+>   `loadtest/README.md`.
+> - **Tracing**: spans propios con histograma + log por umbral; OpenTelemetry completo queda para cuando haya
+>   un colector (no se agregó la dependencia).
+>
+> **Pendiente de tu lado:** definir `METRICS_TOKEN`, levantar el stack, configurar el destino de las alertas
+> (`ALERT_WEBHOOK_URL` o correo) y correr smoke → baseline → pico a 2k en staging, FPM vs Octane.
+
 - **Métricas (Prometheus)**: latencia p50/p95/p99 por endpoint, RPS, profundidad de cada cola, lag del outbox,
   conexiones de DB en uso, hit rate de Valkey, lag de réplica, salud de workers.
 - **Tracing (OpenTelemetry)** en los caminos lentos (ingesta, planning, cockpits).
@@ -131,6 +241,26 @@ la escala real; la 5-6 sostienen la operación a escala.
   **encontrar el cuello ANTES de prod**. Repetir tras cada ola para validar el retorno.
 
 ### Ola 6 — Escalar horizontalmente / extraer contextos calientes
+
+> **Estado (2026-11-13): HECHA a nivel de servicio.** Telemetry corre como unidad de despliegue propia y
+> el read-side del rastreo público está activo. Sigue compartida la base (a propósito, ver abajo).
+>
+> - **Servicio de telemetría**: `telemetry-api` (misma imagen, `APP_SERVICE_ROLE=telemetry`, pool FPM
+>   propio, escalable con `--scale`) + worker propio de la cola `telemetry`, en desarrollo y en staging.
+>   nginx le manda `/api/v1/(app|integrations)/telemetry/*` y **cae al monolito** si la unidad no responde.
+> - **Ingesta `buffered`** en esa unidad: valida, encola en Valkey y responde 202 sin tocar PostgreSQL; el
+>   worker persiste por lotes, con un fragmento por vehículo, backpressure (429 + `Retry-After`),
+>   reintentos y descartes recuperables. El monolito conserva `sync` como camino de respaldo.
+> - **Read-side del rastreo público**: caché en Valkey por token con stale-while-revalidate, caché negativo
+>   e invalidación por evento; `Cache-Control` público + `ETag`/304; `/t/{token}` fuera del stack `web`.
+>   Diseño: `docs/perf/tracking-read-side.md`.
+> - Verificado contra los containers: buffer contra Valkey real, POST → Valkey → drenado → PostgreSQL,
+>   ruteo, filtro de rol y respaldo. Detalle: `docs/perf/extraccion-telemetry.md`.
+>
+> **Lo que NO se separó:** la base de datos y el repositorio. Fleetops, shipments y el cockpit leen tablas
+> `telemetry_*` por SQL, y telemetry lee tablas de execution, planning y fleet: partir la base exige antes
+> reemplazar esas lecturas por eventos/proyecciones y migrar datos (pasos 2 a 9 del doc). Se hace cuando
+> las métricas muestren que la base compartida es el cuello, no antes (ADR 001).
 
 - Cuando el volumen lo pida (lo dicen las métricas, no la intuición), **extraer el bounded context más caliente**
   a un servicio independiente (ADR 001/008): candidatos probables = **telemetry** (ingesta de pings GPS, write

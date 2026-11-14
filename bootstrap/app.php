@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\EnsureAppVersion;
 use App\Http\Middleware\HandleInertiaRequests;
-use App\Http\Middleware\RequestId;
+use App\Http\Middleware\RecordRequestMetrics;
 use App\Http\Problem\ProblemExceptionRenderer;
+use App\Observability\Heartbeat;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -13,7 +15,9 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\Looping;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -30,9 +34,16 @@ return Application::configure(basePath: dirname(__DIR__))
     // y carga la autorización de canales de routes/channels.php (fleet/vehicle/shipment).
     ->withBroadcasting(__DIR__.'/../routes/channels.php')
     ->withMiddleware(function (Middleware $middleware): void {
-        // M-7: request-id de correlación lo más temprano posible (antes que cualquier otro middleware),
-        // para que X-Request-Id ya esté en el Context y en los logs del resto de la cadena del request.
-        $middleware->prepend(RequestId::class);
+        // Ola 5 — métricas RED del tráfico HTTP (contador + histograma de duración en Valkey). Global y no
+        // por grupo web/api a propósito: así también cuenta los 404 de URLs sin ruta (`route="unmatched"`),
+        // que nunca entran a un grupo. Terminable: escribe DESPUÉS de enviar la respuesta. Se antepone (y no
+        // se agrega al final) para medir la pila completa; no altera el orden relativo del resto.
+        $middleware->prepend(RecordRequestMetrics::class);
+
+        // M-7 / Ola 5: request-id de correlación lo más temprano posible (antes que cualquier otro
+        // middleware, por eso se antepone ÚLTIMO), para que X-Request-Id ya esté en el Context y en los
+        // logs del resto de la cadena del request. Toma el header entrante o genera un UUID v7.
+        $middleware->prepend(AssignRequestId::class);
 
         // Versión mínima de la app interna: cabecera X-Min-App-Version en toda respuesta /api/v1/app/* y
         // 426 Upgrade Required si X-App-Version está por debajo. Global (se autolimita a la puerta app)
@@ -101,4 +112,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // en App\Http\Problem\ErrorCode.
         $problemRenderer = new ProblemExceptionRenderer;
         $exceptions->render(fn (Throwable $e, Request $request): ?Response => $problemRenderer->render($e, $request));
+    })
+    // Ola 5 — latido de los workers de cola: el worker dispara `Looping` en cada vuelta de su bucle (con
+    // o sin trabajos), y Heartbeat deja el timestamp en Valkey (limitado a uno cada pocos segundos por
+    // proceso). Se escucha el evento en vez de usar `Queue::looping()` para no resolver el QueueManager
+    // (provider diferido) en cada request HTTP: registrar el listener no cuesta nada si nadie lo dispara.
+    ->booted(static function (): void {
+        Event::listen(Looping::class, static function (Looping $event): void {
+            Heartbeat::worker($event->queue);
+        });
     })->create();

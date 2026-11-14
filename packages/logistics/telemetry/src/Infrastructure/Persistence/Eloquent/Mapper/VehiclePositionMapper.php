@@ -59,14 +59,18 @@ final class VehiclePositionMapper
     }
 
     /**
-     * Reinterpreta una fecha leída de la base (sesión PG en UTC) como el mismo reloj de pared en la zona de
-     * la app: evita el desfase al compararla con instantes reales (Clock). Si alguna vez se alinea la zona de
-     * la sesión de PG con la app, quitar este método y leer la fecha directo.
+     * Reinterpreta una fecha leída de la base como el mismo reloj de pared en la zona de la app.
+     *
+     * Eloquent escribe la fecha como hora de pared de la app SIN offset; PostgreSQL la interpreta en la zona
+     * de SU sesión y la devuelve con el offset de esa zona. El reloj de pared que devuelve es entonces
+     * siempre el que escribió la app, sea cual sea la zona de la sesión (UTC o la de la app): se toma ese
+     * reloj tal cual (sin convertir a UTC) y se lo ancla a la zona de la app. Convertirlo a UTC primero solo
+     * funcionaba con la sesión en UTC y corría la fecha en cada lectura si la sesión estaba en otra zona.
      */
     private static function wallInstant(DateTimeImmutable $value): DateTimeImmutable
     {
         return new DateTimeImmutable(
-            $value->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
+            $value->format('Y-m-d H:i:s'),
             new DateTimeZone(date_default_timezone_get()),
         );
     }

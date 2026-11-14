@@ -1,0 +1,157 @@
+# ============================================================================
+# Micro-caché de nginx para el SEGUIMIENTO PÚBLICO (ola 6) — OPCIONAL, apagado por defecto
+# ============================================================================
+# Qué hace: guarda 5 s la página pública `GET /t/{token}` (y, si se habilita, el JSON de canal
+# `GET /api/v1/channels/tracking/{token}`) en el propio nginx. Con 2.000 clientes mirando su enlace,
+# un mismo token llega a PHP-FPM como mucho una vez cada 5 s; el resto se sirve desde memoria/disco de
+# nginx sin gastar un worker de FPM ni una ida a Valkey.
+#
+# Es la capa MÁS EXTERNA del diseño (docs/perf/tracking-read-side.md):
+#   navegador/CDN -> [micro-caché nginx 5 s] -> Valkey (invalidado por evento) -> réplica -> primario
+#
+# OJO: esta capa NO se invalida por evento. Suma hasta 5 s de antigüedad al cambio de estado. Por eso
+# el TTL es de segundos y no se sube: quien necesite más absorción debe usar un CDN con purga.
+#
+# ----------------------------------------------------------------------------
+# CÓMO ACTIVARLO (no se edita .docker/nginx/default.conf en el repo: son dos montajes)
+# ----------------------------------------------------------------------------
+# 1) PARTE A (contexto http): copiar el bloque "PARTE A" de abajo, descomentado, a un archivo propio y
+#    montarlo en /etc/nginx/conf.d/ (los .conf de conf.d se incluyen dentro de `http {}`):
+#
+#      # docker-compose.override.yml (o el compose del entorno)
+#      services:
+#        nginx:
+#          volumes:
+#            - ./.docker/nginx/tracking-microcache-http.conf:/etc/nginx/conf.d/00-tracking-microcache-http.conf:ro
+#            - ./.docker/nginx/snippets/tracking-microcache.conf:/etc/nginx/snippets/tracking-microcache.conf:ro
+#            - tracking_microcache:/var/cache/nginx/tracking
+#      volumes:
+#        tracking_microcache:
+#
+# 2) PARTE B (contexto server): copiar este archivo SIN el sufijo `.example` (queda como
+#    snippets/tracking-microcache.conf) y agregar UNA línea dentro del `server { ... }` del entorno,
+#    ANTES del `location ~ \.php$`:
+#
+#      include /etc/nginx/snippets/tracking-microcache.conf;
+#
+# 3) Validar y recargar:  nginx -t && nginx -s reload
+#
+# 4) Verificar:  curl -sI https://<host>/t/<token> | grep -i x-tracking-cache
+#      MISS la primera vez, HIT las siguientes (5 s), BYPASS si el request trae sesión o Authorization.
+#
+# Requisito del lado de la app (ya cumplido): la ruta /t/{token} responde SIN `Set-Cookie` (va fuera de
+# la pila "web"). nginx nunca guarda una respuesta con `Set-Cookie`; si alguien devuelve la ruta a "web",
+# este caché deja de tener HIT (falla seguro, no filtra sesiones).
+#
+# ============================================================================
+# PARTE A — contexto http  (copiar DESCOMENTADO a conf.d/00-tracking-microcache-http.conf)
+# ============================================================================
+#
+# # Zona de claves de 10 MB (~80.000 entradas); el contenido se purga a los 60 s sin uso y nunca pasa de
+# # 256 MB en disco. use_temp_path=off escribe directo en el directorio del caché.
+# fastcgi_cache_path /var/cache/nginx/tracking levels=1:2 keys_zone=tracking_micro:10m
+#                    max_size=256m inactive=60s use_temp_path=off;
+#
+# # No usar ni poblar el caché si el request trae credenciales de usuario: sesión de Laravel/Filament,
+# # cookie "recordarme" o Authorization. (No se mira CUALQUIER cookie: una cookie de analítica del
+# # dominio anularía el caché para casi todos los visitantes.)
+# map $http_cookie $tracking_has_session {
+#     default                          0;
+#     "~*(_session|remember_web_)"     1;
+# }
+# map $http_authorization $tracking_has_authorization {
+#     default  1;
+#     ""       0;
+# }
+#
+# ============================================================================
+# PARTE B — contexto server  (este archivo, incluido dentro de `server {}`)
+# ============================================================================
+
+# Página pública de rastreo. Solo coincide con el token (32-64 caracteres base64url, el rango que
+# acepta TrackingToken): `POST /t/{token}/survey` y cualquier otra ruta siguen su camino normal.
+location ~ "^/t/[A-Za-z0-9_-]{32,64}$" {
+    # Front controller directo (equivale al try_files -> /index.php del location /). REQUEST_URI viaja
+    # intacto en fastcgi_params, así que Laravel enruta igual que siempre.
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $realpath_root/index.php;
+    fastcgi_param SCRIPT_NAME /index.php;
+    set $upstream_app app:9000;
+    fastcgi_pass $upstream_app;
+    fastcgi_hide_header X-Powered-By;
+    fastcgi_read_timeout 65s;
+    fastcgi_send_timeout 65s;
+    fastcgi_buffers 16 16k;
+    fastcgi_buffer_size 32k;
+
+    fastcgi_cache tracking_micro;
+    fastcgi_cache_methods GET HEAD;
+    # Clave por URI NORMALIZADA ($uri, sin query string): `?x=1`, `?x=2`... no revientan el caché.
+    fastcgi_cache_key "$request_method|$host|$uri";
+
+    # TTL propio de nginx (micro): se ignora el max-age de la app para que acá mande el 5 s. El
+    # Cache-Control igual se reenvía al navegador. Set-Cookie NO se ignora: con cookie no se guarda.
+    fastcgi_ignore_headers Cache-Control Expires;
+    fastcgi_cache_valid 200 5s;
+    # 404/410 también 5 s: un barrido de tokens inexistentes ni siquiera llega a PHP.
+    fastcgi_cache_valid 404 410 5s;
+
+    fastcgi_cache_bypass $tracking_has_session $tracking_has_authorization;
+    fastcgi_no_cache     $tracking_has_session $tracking_has_authorization;
+
+    # Anti-stampede en el borde: una sola petición por clave va a FPM, el resto espera o recibe el
+    # valor anterior. Si FPM falla o tarda, se sirve lo último conocido (hasta `inactive`).
+    fastcgi_cache_lock on;
+    fastcgi_cache_lock_timeout 3s;
+    fastcgi_cache_use_stale updating error timeout http_500 http_503;
+    fastcgi_cache_background_update on;
+    # Revalida contra la app con If-None-Match: la app responde 304 sin cuerpo (ETag del read-side).
+    fastcgi_cache_revalidate on;
+
+    # `add_header` dentro de un location REEMPLAZA a los del server: se repiten los de seguridad.
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Tracking-Cache $upstream_cache_status always;
+}
+
+# ----------------------------------------------------------------------------
+# JSON de canal — OPCIONAL DENTRO DE LO OPCIONAL. Leer antes de descomentar.
+# ----------------------------------------------------------------------------
+# `GET /api/v1/channels/tracking/{token}` exige credenciales de canal (X-Channel-Key + X-Channel-Secret).
+# Un HIT del caché NO vuelve a verificar el secreto ni cuenta para el rate limit del canal durante esos
+# 5 s. La clave incluye X-Channel-Key para no mezclar canales, pero NO el secreto (la clave del caché se
+# escribe en claro en disco). Es aceptable solo porque la respuesta no lleva datos personales y el token
+# de la URL es la credencial del enlace; si el canal necesita conteo exacto por request, no activarlo.
+#
+# location ~ "^/api/v1/channels/tracking/[A-Za-z0-9_-]{32,64}$" {
+#     include fastcgi_params;
+#     fastcgi_param SCRIPT_FILENAME $realpath_root/index.php;
+#     fastcgi_param SCRIPT_NAME /index.php;
+#     set $upstream_app app:9000;
+#     fastcgi_pass $upstream_app;
+#     fastcgi_hide_header X-Powered-By;
+#     fastcgi_read_timeout 65s;
+#     fastcgi_send_timeout 65s;
+#
+#     fastcgi_cache tracking_micro;
+#     fastcgi_cache_methods GET HEAD;
+#     fastcgi_cache_key "$request_method|$host|$uri|$http_x_channel_key";
+#     fastcgi_ignore_headers Cache-Control Expires;
+#     # Solo 200: los 401/404/429 de la puerta deben evaluarse siempre en la app.
+#     fastcgi_cache_valid 200 5s;
+#     fastcgi_cache_bypass $tracking_has_session $tracking_has_authorization;
+#     fastcgi_no_cache     $tracking_has_session $tracking_has_authorization;
+#     fastcgi_cache_lock on;
+#     fastcgi_cache_lock_timeout 3s;
+#     fastcgi_cache_use_stale updating error timeout http_500 http_503;
+#     fastcgi_cache_background_update on;
+#     fastcgi_cache_revalidate on;
+#
+#     add_header X-Frame-Options "SAMEORIGIN" always;
+#     add_header X-Content-Type-Options "nosniff" always;
+#     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+#     add_header X-XSS-Protection "1; mode=block" always;
+#     add_header X-Tracking-Cache $upstream_cache_status always;
+# }

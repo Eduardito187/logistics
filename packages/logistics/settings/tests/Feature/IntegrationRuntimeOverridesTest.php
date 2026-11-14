@@ -160,7 +160,8 @@ it('el refresco de worker nunca lanza si el resolver falla', function (): void {
         throw new RuntimeException('sin DB');
     }, 30);
 
-    // El reloj igual avanzó (se fija antes del try), así que no reintenta en bucle dentro de la ventana.
+    // Si el resolver lanza, refreshForWorker NO debe propagar: de hacerlo, este test fallaría aquí.
+    // Y el reloj igual avanzó (se fija antes del try), así que no reintenta en bucle dentro de la ventana.
     $property = new ReflectionProperty(IntegrationRuntimeOverrides::class, 'lastWorkerRefresh');
     expect($property->getValue())->toBeGreaterThan(0);
-})->throwsNoExceptions();
+});

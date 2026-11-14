@@ -27,6 +27,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Logistics\Coverage\Infrastructure\Persistence\Eloquent\ZoneRecord;
 use Logistics\Promise\Application\Command\ConfirmPromise\ConfirmPromise;
 use Logistics\Promise\Application\Command\ExpireReservation\ExpireReservation;
@@ -128,16 +129,13 @@ final class PromiseResource extends Resource
         ];
     }
 
-    /** @var array<string, string> Caché por request zone_id → nombre (evita N+1 al pintar la tabla). */
-    private static array $zoneNameCache = [];
+    /** Vida del caché del mapa zone_id→nombre (segundos); los nombres de zona casi no cambian. */
+    private const ZONE_NAMES_TTL = 60;
 
     /**
      * Nombre legible de la zona (contexto coverage) a partir de su id. Promise está desacoplado de
      * coverage y solo guarda el id primitivo; para no mostrar un UUID crudo en el panel se resuelve
      * aquí el nombre de solo lectura desde ZoneRecord. Devuelve null si la zona no existe.
-     *
-     * La resolución se memoiza en lote: la primera llamada precarga el nombre de todas las zonas
-     * referenciadas por las promesas, así Filament no dispara una consulta por fila.
      */
     private static function zoneName(?string $zoneId): ?string
     {
@@ -145,41 +143,47 @@ final class PromiseResource extends Resource
             return null;
         }
 
-        if (!array_key_exists($zoneId, self::$zoneNameCache)) {
-            self::primeZoneNames();
-        }
+        $name = self::zoneNames()[$zoneId] ?? null;
 
-        $name = self::$zoneNameCache[$zoneId] ?? null;
-
-        return $name === '' ? null : $name;
+        return ($name === null || $name === '') ? null : $name;
     }
 
     /**
-     * Precarga en lote zone_id → nombre para todas las zonas referenciadas por las promesas, de solo
-     * lectura (whereIn + pluck), y cachea '' para los ids sin zona existente (así no se reconsultan).
+     * Mapa zone_id→nombre de las zonas referenciadas por las promesas, resuelto en lote (whereIn +
+     * pluck) y cacheado en Valkey con TTL corto para no disparar una consulta por fila.
+     *
+     * Antes se memoizaba en una propiedad estática ("por request"), pero bajo Octane el worker vive
+     * entre requests y esa estática serviría nombres viejos indefinidamente además de crecer en memoria;
+     * el caché con TTL se refresca solo (staleness ≤60s, aceptable para nombres de zona).
+     *
+     * @return array<string, string>
      */
-    private static function primeZoneNames(): void
+    private static function zoneNames(): array
     {
-        /** @var list<string> $zoneIds */
-        $zoneIds = PromiseRecord::query()
-            ->whereNotNull('zone_id')
-            ->distinct()
-            ->pluck('zone_id')
-            ->all();
+        return Cache::remember(
+            'admin:promise-zone-names',
+            self::ZONE_NAMES_TTL,
+            static function (): array {
+                /** @var list<string> $zoneIds */
+                $zoneIds = PromiseRecord::query()
+                    ->whereNotNull('zone_id')
+                    ->distinct()
+                    ->pluck('zone_id')
+                    ->all();
 
-        if ($zoneIds === []) {
-            return;
-        }
+                if ($zoneIds === []) {
+                    return [];
+                }
 
-        /** @var array<string, string> $names */
-        $names = ZoneRecord::query()
-            ->whereIn('id', $zoneIds)
-            ->pluck('name', 'id')
-            ->all();
+                /** @var array<string, string> $names */
+                $names = ZoneRecord::query()
+                    ->whereIn('id', $zoneIds)
+                    ->pluck('name', 'id')
+                    ->all();
 
-        foreach ($zoneIds as $zoneId) {
-            self::$zoneNameCache[$zoneId] = $names[$zoneId] ?? '';
-        }
+                return $names;
+            },
+        );
     }
 
     /**

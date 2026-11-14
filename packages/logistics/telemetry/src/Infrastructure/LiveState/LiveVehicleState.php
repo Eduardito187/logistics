@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Infrastructure\LiveState;
 
+use DateTimeImmutable;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Facades\Cache;
+use Logistics\Telemetry\Application\Contract\LivePositionHotState;
 use Throwable;
 
 /**
@@ -23,7 +25,7 @@ use Throwable;
  *
  * Se cachea la FORMA PRIMITIVA (array), nunca un objeto de dominio serializado (regla 7 de CLAUDE.md).
  */
-final class LiveVehicleState
+final class LiveVehicleState implements LivePositionHotState
 {
     /** Prefijo de las claves de última posición por vehículo. */
     private const POSITION_KEY = 'telemetry:live:pos:';
@@ -43,6 +45,47 @@ final class LiveVehicleState
         } catch (Throwable) {
             // Degradación con gracia: el hot-state es un acelerador, no la fuente de verdad.
         }
+    }
+
+    /**
+     * Adelanta la última posición en el momento de la ingesta (modo `buffered`), sin tocar la base: conserva
+     * la placa ya conocida del estado caliente y solo avanza si la lectura es más reciente que la guardada
+     * (un lote atrasado no retrocede el dato). El estado (en marcha / ralentí / detenido) se deriva igual
+     * que en el fan-out. No lanza: `get` y `remember` ya degradan con gracia.
+     */
+    public function touch(
+        string $vehicleId,
+        float $lat,
+        float $lng,
+        ?float $speedKph,
+        ?bool $ignition,
+        DateTimeImmutable $occurredAt,
+    ): void {
+        $current = $this->get($vehicleId);
+
+        if ($current !== null) {
+            $known = strtotime($current['occurred_at']);
+            if ($known !== false && $known >= $occurredAt->getTimestamp()) {
+                return;
+            }
+        }
+
+        $threshold = (float) config('logistics-telemetry.movement.moving_threshold_kph', 3.0);
+        $status = 'stopped';
+        if ($speedKph !== null && $speedKph >= $threshold) {
+            $status = 'moving';
+        } elseif ($ignition === true) {
+            $status = 'idle';
+        }
+
+        $this->remember($vehicleId, [
+            'vehicle_id' => $vehicleId,
+            'plate' => $current['plate'] ?? null,
+            'lat' => $lat,
+            'lng' => $lng,
+            'status' => $status,
+            'occurred_at' => $occurredAt->format(DATE_ATOM),
+        ]);
     }
 
     /**

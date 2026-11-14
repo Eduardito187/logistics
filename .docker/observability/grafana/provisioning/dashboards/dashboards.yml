@@ -1,0 +1,16 @@
+# Proveedor de dashboards: carga todo JSON de /etc/grafana/dashboards (montado desde
+# .docker/observability/grafana/dashboards). La fuente de verdad es el archivo del repo: los cambios
+# hechos en la UI no se guardan (allowUiUpdates: false); se exporta el JSON y se commitea.
+apiVersion: 1
+
+providers:
+    - name: logistics
+      orgId: 1
+      folder: Logistics
+      type: file
+      disableDeletion: true
+      allowUiUpdates: false
+      updateIntervalSeconds: 30
+      options:
+          path: /etc/grafana/dashboards
+          foldersFromFilesStructure: false

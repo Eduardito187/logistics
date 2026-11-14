@@ -5414,9 +5414,25 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]+$
+      - name: If-None-Match
+        in: header
+        required: false
+        description: ETag devuelto por una respuesta anterior. Si la vista no cambió, responde 304 sin cuerpo.
+        schema:
+          type: string
       responses:
         '200':
           description: Seguimiento encontrado
+          headers:
+            ETag:
+              description: Huella de la vista. Reenviarla en If-None-Match para revalidar.
+              schema:
+                type: string
+            Cache-Control:
+              description: |
+                Para visitantes anónimos `public, max-age=20, stale-while-revalidate=30` (configurable): el navegador o el caché de borde absorben el polling. Con credenciales queda privado.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -5426,8 +5442,21 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/PublicTracking'
+        '304':
+          description: La vista no cambió desde el ETag enviado en If-None-Match (sin cuerpo)
+          headers:
+            ETag:
+              description: Huella vigente de la vista
+              schema:
+                type: string
         '404':
           description: Ningún seguimiento corresponde al token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '410':
+          description: El enlace de rastreo venció (código `tracking_link_expired`)
           content:
             application/json:
               schema:
@@ -5450,9 +5479,25 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]+$
+      - name: If-None-Match
+        in: header
+        required: false
+        description: ETag devuelto por una respuesta anterior. Si la vista no cambió, responde 304 sin cuerpo.
+        schema:
+          type: string
       responses:
         '200':
           description: Seguimiento encontrado (la lista puede estar vacía)
+          headers:
+            ETag:
+              description: Huella de la vista. Reenviarla en If-None-Match para revalidar.
+              schema:
+                type: string
+            Cache-Control:
+              description: |
+                Para visitantes anónimos `public, max-age=20, stale-while-revalidate=30` (configurable): el navegador o el caché de borde absorben el polling. Con credenciales queda privado.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -5469,8 +5514,21 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/PublicUnit'
+        '304':
+          description: La vista no cambió desde el ETag enviado en If-None-Match (sin cuerpo)
+          headers:
+            ETag:
+              description: Huella vigente de la vista
+              schema:
+                type: string
         '404':
           description: Ningún seguimiento corresponde al token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '410':
+          description: El enlace de rastreo venció (código `tracking_link_expired`)
           content:
             application/json:
               schema:
@@ -7679,6 +7737,20 @@ paths:
                 $ref: '#/components/schemas/PingBatchResultEnvelope'
         '422':
           $ref: '#/components/responses/DomainError'
+        '429':
+          description: >-
+            Ingest buffer full (backpressure, only when TELEMETRY_INGEST_MODE=buffered). The batch was NOT taken;
+            retry it unchanged after Retry-After seconds. Error code is ingest_backpressure and
+            error.details.retry_after_seconds repeats the wait.
+          headers:
+            Retry-After:
+              description: Segundos a esperar antes de reenviar el mismo lote
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/telemetry/fleet/live:
@@ -8277,6 +8349,20 @@ paths:
                 $ref: '#/components/schemas/AcceptedEnvelope'
         '422':
           $ref: '#/components/responses/DomainError'
+        '429':
+          description: >-
+            Ingest buffer full (backpressure, only when TELEMETRY_INGEST_MODE=buffered). The batch was NOT taken;
+            retry it unchanged after Retry-After seconds. Error code is ingest_backpressure and
+            error.details.retry_after_seconds repeats the wait.
+          headers:
+            Retry-After:
+              description: Segundos a esperar antes de reenviar el mismo lote
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - serviceCredential: []
   /app/auth/login:
@@ -11709,6 +11795,12 @@ components:
               type: integer
             rejected_count:
               type: integer
+            buffered:
+              type: boolean
+              description: >-
+                Present (true) only when the batch was queued for asynchronous persistence
+                (TELEMETRY_INGEST_MODE=buffered). In that mode every well-formed fix is reported as accepted and
+                duplicate_count is 0; duplicates are still discarded when persisted.
             results:
               type: array
               items:

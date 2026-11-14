@@ -136,3 +136,11 @@ Dominio, aplicación y presentación implementados: read model por envío y por 
 de la posición en vivo del camión, página pública por token y endpoints en las tres puertas. Pendiente
 solo el cableado del relay (suscribir `ProjectExecutionEvent` / `ProjectUnitExecutionEvent` a los
 eventos de execution vía outbox), hoy marcado donde corresponde.
+
+## Read-side público (caché de lectura)
+
+La vista pública por token sale de un caché de lectura en Valkey (`Cache::flexible`, forma primitiva)
+con invalidación por evento en un único punto (`CacheInvalidatingTrackingRepository::save()`), y las
+respuestas públicas llevan `Cache-Control: public` + `ETag` para el caché de borde. Configuración en
+`config/logistics-tracking.php`. Diseño, mapa de acoples y pasos de extracción del read-side en
+`docs/perf/tracking-read-side.md`.
