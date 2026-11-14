@@ -17,9 +17,10 @@ use Throwable;
  *
  * Fase `status`: recorre por keyset (id UUID v7) los envíos en RECEIVED/PLANNED y deriva su estado real de
  * las tablas de otros contextos (lectura cruzada de SOLO LECTURA):
- *  - execution_deliveries.status DELIVERED                         → DELIVERED
- *  - execution_deliveries.status PREPARED / LOADED / IN_TRANSIT / FAILED → IN_EXECUTION
- *  - execution_deliveries PENDING, execution_driver_route_stops o una parada de un plan PUBLICADO → PLANNED
+ *  - execution_deliveries.status DELIVERED                                       → DELIVERED
+ *  - execution_deliveries.status PENDING / PREPARED / LOADED / IN_TRANSIT / FAILED → IN_EXECUTION
+ *    (PENDING ya trae el camión asignado: asignar vehículo = preparar = en ejecución, flujo vigente)
+ *  - execution_driver_route_stops o una parada de un plan PUBLICADO (sin entrega aún)              → PLANNED
  * Solo AVANZA (el UPDATE lleva la guarda del estado de partida: nunca retrocede ni pisa un estado cerrado).
  *
  * Fase `nodes`: completa el nodo destino de los envíos hermanos de retiro cuyo id externo trae el sufijo
@@ -42,9 +43,13 @@ final class SyncShipmentStatusCommand extends Command
 
     private const TABLE = 'shipments';
 
-    /** Estado de la entrega en ejecución → estado del envío al que corresponde. */
+    /**
+     * Estado de la entrega en ejecución → estado del envío al que corresponde. Flujo vigente: una entrega
+     * PENDING ya tiene el camión asignado (asignar vehículo = preparar), así que el envío está IN_EXECUTION,
+     * no PLANNED. (Antes PENDING → PLANNED, cuando preparar era un escaneo aparte, ya eliminado.)
+     */
     private const DELIVERY_TARGETS = [
-        'PENDING' => ShipmentStatus::Planned,
+        'PENDING' => ShipmentStatus::InExecution,
         'PREPARED' => ShipmentStatus::InExecution,
         'LOADED' => ShipmentStatus::InExecution,
         'IN_TRANSIT' => ShipmentStatus::InExecution,
@@ -119,7 +124,7 @@ final class SyncShipmentStatusCommand extends Command
             foreach ($rows as $row) {
                 /** @var \stdClass $row */
                 $id = is_scalar($row->id ?? null) ? (string) $row->id : '';
-                $status = is_string($row->status ?? null) ? ShipmentStatus::tryFrom($row->status) : null;
+                $status = is_string($row->status ?? null) ? ShipmentStatus::tryFromLoose($row->status) : null;
                 if ($id === '' || $status === null) {
                     continue;
                 }
@@ -368,7 +373,7 @@ final class SyncShipmentStatusCommand extends Command
     /** Nodo de retiro del id externo (misma regla del ingreso), o null si no aplica. */
     private static function pickupNodeOf(mixed $source, mixed $externalId): ?string
     {
-        $orderSource = is_string($source) ? OrderSource::tryFrom($source) : null;
+        $orderSource = is_string($source) ? OrderSource::tryFromLoose($source) : null;
         if ($orderSource === null || !is_string($externalId)) {
             return null;
         }

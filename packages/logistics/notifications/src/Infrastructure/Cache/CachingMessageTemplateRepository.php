@@ -98,8 +98,8 @@ final readonly class CachingMessageTemplateRepository implements MessageTemplate
     {
         return MessageTemplate::reconstitute(
             MessageTemplateId::fromString((string) $data['id']),
-            MessageType::from((string) $data['messageType']),
-            Channel::from((string) $data['channel']),
+            MessageType::fromLoose((string) $data['messageType']),
+            Channel::fromLoose((string) $data['channel']),
             (string) $data['locale'],
             (string) $data['subject'],
             (string) $data['body'],

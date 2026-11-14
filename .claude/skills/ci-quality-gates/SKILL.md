@@ -12,6 +12,24 @@ description: >-
 Objetivo: cerrar el PR en verde **en una sola pasada**. El loop histórico viene de arreglar issues de
 ruido que **no** bloquean el gate, y de adivinar cuál bloquea. No adivinar: **consultar la API de Sonar**.
 
+## Paso 0 — ¿El fix llegó al CI? (el CI corre el commit PUSHEADO, no tu working tree)
+
+Antes de re-diagnosticar nada: **si el dueño pega el MISMO error de CI byte-por-byte igual tras un "fix", el
+fix casi seguro NO está commiteado/pusheado.** El CI buildea el commit del remoto, no tu working tree. Chequear:
+`git status --short` (¿el archivo sale como `M`/`??`?) y `git show HEAD:<archivo> | grep <lo-que-arreglaste>`
+(¿está en HEAD?). Si el fix está solo en el working tree, decirle que falta `git add/commit/push` (por la regla
+de no commitear sin pedido explícito no lo hago solo; ofrecer hacerlo si lo autoriza en el turno). Caso real
+2026-11-13: `composer.lock` arreglado pero sin commitear → el dueño pegó el error idéntico dos veces.
+
+## Paso 0b — `composer install` FATAL: package nuevo ausente del lock
+
+`Error: Required package "logistics/<ctx>" is not present in the lock file.` (exit 4) = un package nuevo quedó
+en `require` del `composer.json` pero **`composer.lock` no se regeneró**. NO es un bug de código. Fix normal
+(dueño): `composer update logistics/<ctx>`. Fix a mano sin docker: insertar la entrada en el array `packages`
+del lock espejando una entrada `path` existente (molde `logistics/carriers`), en orden alfabético; validar con
+`python -c "json.load(...)"`. El `content-hash` desfasado solo da el warning cosmético *"lock file is not up to
+date"* (NO frena el install). Detalle: [[new-package-composer-lock]], [[bounded-context]] paso 5.
+
 ## Regla de oro: el Quality Gate SOLO falla por 3 cosas
 
 En **New Code** (el diff del PR), el gate falla por:
@@ -102,6 +120,9 @@ scanner de CI, que sí las honra).
 ### Duplication (CPD)
 - Va en `sonar.cpd.exclusions` de `.sonarcloud.properties` (ESO sí se honra). Ya excluidos a propósito:
   `**/Presentation/**`, `app/Filament/**`, tests, seeders (duplicación intencional por ADR 001/008).
+- **`lang/**` también va excluido (2026-11-13).** Un archivo de traducciones (p. ej. `lang/es/validation.php`,
+  el de Laravel) es inherentemente repetitivo (mismas claves/estructura para cada regla) → disparó Duplication
+  10.8% y tumbó el gate. Agregar `lang/**` a `sonar.cpd.exclusions`. No es deuda: la repetición es del formato.
 
 ### Mantenibilidad: recetas seguras cuando el dueño pide "fix all" (no bloquean el gate)
 
@@ -184,6 +205,44 @@ No pipear `pest` a `tail -N` en background: trunca el resumen "Tests: N passed".
 migraciones no crean la extensión; solo el init de la imagen la puso en `logistics_test`) → ~1.000 fallas
 falsas `type "geography" does not exist`. La suite válida es la serial (igual que CI): `./vendor/bin/pest`.
 
+### Gotchas de Pest que rompen al escribir tests nuevos (arreglar a mano, sin adivinar)
+
+- **`UniqueConstraintViolationException` en un campo único derivado de un UUID v7** (p. ej.
+  `fleet_vehicles_plate_unique` al crear 2 vehículos en un test): el UUID v7 lleva el timestamp en el PREFIJO,
+  así que `substr($id, 0, N)` colisiona entre entidades creadas en el mismo milisegundo. Usar la COLA
+  aleatoria: `strtoupper(substr(str_replace('-', '', $id), -6))`. Vale para plate/external_id/cualquier
+  derivado. (Ver [[testing-coverage-filament-gotchas]].)
+- **Lecturas que degradan a `null`**: varias queries devuelven `null` en el caso legítimo "no hay nada"
+  (p. ej. `GetDriverRoute` solo retorna rutas ABIERTAS → null si la ruta quedó sin paradas pendientes). El
+  test debe tratar `null` como el caso esperado, no asumir el objeto (si no: "read property X on null").
+- **`fulfillment_mode` y enums string en minúscula**: el valor canónico es minúscula (`owned`/`fbd`/`dropship`);
+  sembrar `'OWNED'` en un test revienta con `ValueError ... not a valid backing value`. Sembrar en minúscula.
+- **Floats por acumulación** (distancias): comparar con `toEqualWithDelta($esperado, 1.0)`, no `===`.
+- **`assertSent`/payload `(object)`**: un payload enviado como `(object)` es stdClass, no array; castear
+  `(array) ($body['payload'] ?? [])` antes de leerlo.
+- **`->skip(config(...), 'motivo')` ROMPE con "Target class [config] does not exist"**: el argumento del
+  `->skip()` se evalúa en tiempo de COLECCIÓN (app sin bootear), y `config()` necesita el container. Fix:
+  pasar un CLOSURE que se evalúa al correr → `->skip(fn (): bool => config('x') !== 'y', 'motivo')`. OJO:
+  `env(...)` en skip NO rompe (lee `$_ENV` sin container); solo `config()`/helpers que resuelven del container.
+- **Pint `no_blank_lines_after_phpdoc`** en tests Pest: un docblock de archivo (`/** ... */`) colocado entre
+  los `use` y el primer `it(`, con una línea en blanco antes del `it(`, se marca. Pint quita esa blanca
+  (el docblock queda pegado al `it(`). Escribir el docblock del archivo SIN línea en blanco antes del primer
+  `it(`, o como comentario `//`.
+- **Un cambio de comportamiento INTENCIONAL rompe los tests que afirmaban el viejo — actualizarlos, no
+  revertir (2026-11-13).** Cuando el dueño pide un cambio de regla (p. ej. POD sobre una entrega ya Delivered
+  pasó de lanzar 422 a ser idempotente 200), los tests que esperaban el throw/422 van a FALLAR: eso es
+  correcto, NO una regresión. Actualizar el test a la nueva conducta (y renombrar/reescribir el comentario
+  que explica el porqué) en el MISMO cambio que el código. Confirmar que el único motivo del fallo es el
+  cambio pedido (leer el diff del test), nunca "arreglar" el fallo volviendo el código atrás.
+
+### Pint a mano (el dueño suele prohibir docker)
+
+Reglas reales en [[pint-rules-by-hand]]. Las que más fallan al escribir docblocks: `phpdoc_align` es
+**vertical** → con `@param` y `@return` en el mismo grupo, `@param` lleva **dos** espacios (`@param  tipo $var`)
+para alinear la columna de tipo con `@return`, y la variable se alinea a la columna del tipo más ancho del
+grupo. `@param`/`@return` van JUNTOS (sin línea ` *` en blanco entre ellos). Verificar contra un archivo de
+`origin/production` que ya pase, columna por columna.
+
 ## Mapa de workflows (`.github/workflows/`)
 
 | Workflow | Cuándo | Runner | Qué valida |
@@ -207,5 +266,15 @@ ejecución → 755→644 falsos). Verificar: `git ls-files --eol <archivo>`.
 - `DB::table()->first()` → tipar el método como `?\stdClass` (acceso a props de stdClass exento). NO
   `@return object{...}` (error return.type) ni `@var` temporal (dispara "immediate return" de Sonar).
 - `bindec()`/binario → castear `(int)`.
+- **Método de repositorio cuyo resultado cambia entre llamadas con el MISMO argumento → `@phpstan-impure`
+  (2026-11-13).** PHPStan 8 asume que una función pura con los mismos args devuelve lo mismo, así que
+  "narrowea" tras un `if ($repo->findByX(...) === null)` y luego marca "always null"/"always true" en una
+  segunda llamada. Si el estado puede cambiar entre llamadas (p. ej. el backfill crea el producto y luego
+  `findByCanonicalSku` lo vuelve a buscar para publicarlo, o un repo con outbox), anotar el método del
+  CONTRATO con `@phpstan-impure` y documentar el porqué. No usar `@var`/casts para tapar el falso narrowing.
+- **El error de PHPStan "always null / Cannot access property on null" puede ser un fantasma de la caché de
+  resultados.** Antes de reescribir la lógica por un error que contradice lo que ves (p. ej. "never null" en
+  una propiedad que el código deja como null-safe), confiar en el ÚLTIMO error tras limpiar la caché; no
+  oscilar entre `?->x` y `->x` según errores de corridas distintas.
 
 Relacionado: memoria [[ci-quality-gates-playbook]], [[project-rules]].

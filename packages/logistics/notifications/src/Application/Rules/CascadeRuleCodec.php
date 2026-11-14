@@ -38,7 +38,7 @@ final class CascadeRuleCodec
     {
         $policies = [];
         foreach (self::rulesOf($value ?? []) as $type => $entry) {
-            if (!is_string($type) || MessageType::tryFrom($type) === null) {
+            if (!is_string($type) || MessageType::tryFromLoose($type) === null) {
                 continue;
             }
 

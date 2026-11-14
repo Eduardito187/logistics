@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Condición que dispara el paso al siguiente canal de la cascada.
  *
@@ -13,6 +15,8 @@ namespace Logistics\Notifications\Domain\ValueObject;
  */
 enum EscalateCondition: string
 {
+    use CaseInsensitiveEnum;
+
     /** Escalar si el cliente no abrió la notificación en el canal actual. */
     case NoOpen = 'NO_OPEN';
 

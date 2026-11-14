@@ -23,7 +23,7 @@ final class TariffMapper
             TariffId::fromString($record->id),
             $record->carrier_id,
             CorridorRef::of($record->corridor_from, $record->corridor_to, $record->corridor_type),
-            VehicleClass::from($record->vehicle_class),
+            VehicleClass::fromLoose($record->vehicle_class),
             Money::of($record->price_cents, $record->currency),
             new DateTimeImmutable($record->effective_from),
         );

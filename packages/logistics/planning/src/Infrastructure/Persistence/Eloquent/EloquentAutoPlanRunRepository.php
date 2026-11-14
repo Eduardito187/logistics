@@ -79,8 +79,8 @@ final class EloquentAutoPlanRunRepository implements AutoPlanRunRepository
         return AutoPlanRun::reconstitute(
             AutoPlanRunId::fromString($record->id),
             PlanDate::fromString(substr($record->plan_date, 0, 10)),
-            PlanStrategy::from($record->strategy),
-            AutoPlanRunStatus::from($record->status),
+            PlanStrategy::fromLoose($record->strategy),
+            AutoPlanRunStatus::fromLoose($record->status),
             new DateTimeImmutable($record->requested_at),
             $record->completed_at !== null ? new DateTimeImmutable($record->completed_at) : null,
             $record->trucks_planned,

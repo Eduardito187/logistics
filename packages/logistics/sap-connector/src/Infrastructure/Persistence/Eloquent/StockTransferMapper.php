@@ -48,9 +48,9 @@ final class StockTransferMapper
             SapCenter::of($record->center),
             SapWarehouse::of($record->warehouse),
             $record->quantity,
-            TransferStatus::from($record->status),
+            TransferStatus::fromLoose($record->status),
             $record->last_error,
-            TransferKind::from($record->transfer_kind),
+            TransferKind::fromLoose($record->transfer_kind),
             $record->owner_party_id,
         );
     }

@@ -378,7 +378,7 @@ final class LiveFleetMap extends Page
      */
     private function typeLabel(string $type): string
     {
-        return AlertType::tryFrom($type)?->label() ?? $type;
+        return AlertType::tryFromLoose($type)?->label() ?? $type;
     }
 
     /**

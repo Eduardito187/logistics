@@ -132,7 +132,7 @@ final class FuelPriceResource extends Resource
                 TextColumn::make('fuel_type')
                     ->label(__('Fuel type'))
                     ->badge()
-                    ->formatStateUsing(static fn (string $state): string => __(FuelType::from($state)->label()))
+                    ->formatStateUsing(static fn (string $state): string => __(FuelType::fromLoose($state)->label()))
                     ->sortable(),
                 TextColumn::make('price_cents')
                     ->label(__('Price (Bs)'))

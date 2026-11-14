@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de una orden de mantenimiento dentro de su ciclo de vida. Las transiciones válidas las protege
  * el agregado MaintenanceOrder; el enum solo enumera los estados posibles.
  */
 enum MaintenanceStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Programada: agendada pero aún no iniciada en el taller. */
     case Scheduled = 'scheduled';
 

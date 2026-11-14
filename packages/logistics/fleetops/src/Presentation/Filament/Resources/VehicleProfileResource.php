@@ -162,7 +162,7 @@ final class VehicleProfileResource extends Resource
                         ->label(__('Fuel type'))
                         ->badge()
                         ->placeholder('—')
-                        ->formatStateUsing(static fn (?string $state): string => $state === null ? '—' : __(FuelType::from($state)->label())),
+                        ->formatStateUsing(static fn (?string $state): string => $state === null ? '—' : __(FuelType::fromLoose($state)->label())),
                     TextEntry::make('brand')
                         ->label(__('Brand'))
                         ->placeholder('—'),
@@ -216,7 +216,7 @@ final class VehicleProfileResource extends Resource
                     ->label(__('Fuel type'))
                     ->badge()
                     ->placeholder('—')
-                    ->formatStateUsing(static fn (?string $state): string => $state === null ? '—' : __(FuelType::from($state)->label())),
+                    ->formatStateUsing(static fn (?string $state): string => $state === null ? '—' : __(FuelType::fromLoose($state)->label())),
                 TextColumn::make('current_odometer_km')
                     ->label(__('Odometer'))
                     ->numeric()

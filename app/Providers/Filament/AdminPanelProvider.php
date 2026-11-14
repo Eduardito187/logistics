@@ -217,6 +217,10 @@ final class AdminPanelProvider extends PanelProvider
                 for: 'Logistics\Network\Presentation\Filament',
             )
             ->discoverResources(
+                in: base_path('packages/logistics/compensation/src/Presentation/Filament'),
+                for: 'Logistics\Compensation\Presentation\Filament',
+            )
+            ->discoverResources(
                 in: base_path('packages/logistics/coverage/src/Presentation/Filament'),
                 for: 'Logistics\Coverage\Presentation\Filament',
             )

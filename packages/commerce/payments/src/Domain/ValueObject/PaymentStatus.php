@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Payments\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de un pago.
  *
@@ -13,6 +15,8 @@ namespace Commerce\Payments\Domain\ValueObject;
  */
 enum PaymentStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Iniciado: a la espera de confirmación de la pasarela (p. ej. QR por webhook). */
     case Pending = 'pending';
 

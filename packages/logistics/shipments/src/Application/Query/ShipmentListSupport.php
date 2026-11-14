@@ -24,7 +24,7 @@ final class ShipmentListSupport
      */
     public static function status(string $value): string
     {
-        return ShipmentStatus::from(strtoupper(trim($value)))->value;
+        return ShipmentStatus::fromLoose($value)->value;
     }
 
     /**
@@ -71,7 +71,7 @@ final class ShipmentListSupport
      */
     public static function deliveryMode(?string $value): ?string
     {
-        return $value !== null ? DeliveryMode::from(strtolower(trim($value)))->value : null;
+        return $value !== null ? DeliveryMode::fromLoose($value)->value : null;
     }
 
     /**
@@ -103,7 +103,7 @@ final class ShipmentListSupport
                 if ($node === null || $node === '') {
                     return $view->withDeliveryMode(DeliveryMode::HomeDelivery);
                 }
-                if (OrderSource::tryFrom($view->source)?->isInternalTransfer() === true) {
+                if (OrderSource::tryFromLoose($view->source)?->isInternalTransfer() === true) {
                     return $view->withDeliveryMode(DeliveryMode::Transfer);
                 }
 

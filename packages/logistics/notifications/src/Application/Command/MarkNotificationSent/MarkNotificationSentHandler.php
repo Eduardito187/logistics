@@ -36,7 +36,7 @@ final class MarkNotificationSentHandler implements CommandHandler
             throw NotificationsException::because("no existe la notificación {$command->notificationId}");
         }
 
-        $notification->markSentVia(Channel::from($command->channel));
+        $notification->markSentVia(Channel::fromLoose($command->channel));
 
         $this->notifications->save($notification);
 

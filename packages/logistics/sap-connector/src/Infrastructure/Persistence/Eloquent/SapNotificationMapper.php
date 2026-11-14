@@ -73,7 +73,7 @@ final class SapNotificationMapper
             $record->aggregate_id,
             $payload,
             self::date($record->occurred_at) ?? self::date($record->created_at) ?? new DateTimeImmutable,
-            SapNotificationStatus::tryFrom($record->status) ?? SapNotificationStatus::Failed,
+            SapNotificationStatus::tryFromLoose($record->status) ?? SapNotificationStatus::Failed,
             $record->attempts,
             new SapDeliveryTrace(
                 $record->last_error,

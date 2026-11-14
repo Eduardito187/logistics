@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Inbound\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Resultado del control de calidad de una línea recibida.
  *
@@ -12,6 +14,8 @@ namespace Logistics\Inbound\Domain\ValueObject;
  */
 enum QcOutcome: string
 {
+    use CaseInsensitiveEnum;
+
     /** Aceptada: lo recibido pasa el control de calidad. */
     case Accepted = 'accepted';
 

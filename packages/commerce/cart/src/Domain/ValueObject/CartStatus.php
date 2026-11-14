@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Cart\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del carrito.
  *
@@ -13,6 +15,8 @@ namespace Commerce\Cart\Domain\ValueObject;
  */
 enum CartStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Open = 'open';
     case Converted = 'converted';
     case Abandoned = 'abandoned';

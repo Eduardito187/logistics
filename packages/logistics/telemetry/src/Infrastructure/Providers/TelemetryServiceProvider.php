@@ -13,6 +13,8 @@ use Logistics\Telemetry\Application\Command\ActivateGeofence\ActivateGeofence;
 use Logistics\Telemetry\Application\Command\ActivateGeofence\ActivateGeofenceHandler;
 use Logistics\Telemetry\Application\Command\AggregateStreetTraffic\AggregateStreetTraffic;
 use Logistics\Telemetry\Application\Command\AggregateStreetTraffic\AggregateStreetTrafficHandler;
+use Logistics\Telemetry\Application\Command\BindTripToRoute\BindTripToRoute;
+use Logistics\Telemetry\Application\Command\BindTripToRoute\BindTripToRouteHandler;
 use Logistics\Telemetry\Application\Command\DeactivateGeofence\DeactivateGeofence;
 use Logistics\Telemetry\Application\Command\DeactivateGeofence\DeactivateGeofenceHandler;
 use Logistics\Telemetry\Application\Command\DefineGeofence\DefineGeofence;
@@ -75,6 +77,7 @@ use Logistics\Telemetry\Infrastructure\CrossContext\DbShipmentCustodyReader;
 use Logistics\Telemetry\Infrastructure\LiveState\BroadcastingLivePositionBroadcaster;
 use Logistics\Telemetry\Infrastructure\LiveState\FleetPlateResolver;
 use Logistics\Telemetry\Infrastructure\LiveState\LiveVehicleState;
+use Logistics\Telemetry\Infrastructure\Outbox\BindTripToRouteOnRouteStarted;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentAlertRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentGeofenceRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentPingRepository;
@@ -100,6 +103,7 @@ final class TelemetryServiceProvider extends ServiceProvider
     private const HANDLERS = [
         // Ingesta + posición en vivo + trips.
         RecordVehiclePings::class => RecordVehiclePingsHandler::class,
+        BindTripToRoute::class => BindTripToRouteHandler::class,
         ClassifyPingFixes::class => ClassifyPingFixesHandler::class,
         GetLiveFleetPositions::class => GetLiveFleetPositionsHandler::class,
         GetVehicleTrack::class => GetVehicleTrackHandler::class,
@@ -155,6 +159,11 @@ final class TelemetryServiceProvider extends ServiceProvider
         $this->app->singleton(FleetPlateResolver::class);
         $this->app->singleton(LiveVehicleState::class);
         $this->app->bind(LivePositionBroadcaster::class, BroadcastingLivePositionBroadcaster::class);
+
+        // Reactor del outbox (Fase 3.3): al iniciar la ruta del chofer, liga el trip activo del vehículo a
+        // la ruta. El relay lo compone por eventName (ver routing del outbox); se bindea para resolverlo con
+        // su dependencia (bus de comandos).
+        $this->app->bind(BindTripToRouteOnRouteStarted::class);
     }
 
     public function boot(): void

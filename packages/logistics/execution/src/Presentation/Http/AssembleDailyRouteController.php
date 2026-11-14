@@ -24,9 +24,7 @@ final class AssembleDailyRouteController extends ExecutionController
         try {
             $this->commandBus->dispatch($command);
         } catch (ExecutionException $exception) {
-            return new JsonResponse([
-                'error' => ['code' => 'invalid_route', 'message' => $exception->getMessage()],
-            ], 422);
+            return $this->problem('invalid_route', $exception->getMessage(), 422);
         }
 
         /** @var DriverRouteView|null $view */

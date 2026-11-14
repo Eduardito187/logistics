@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Settlement\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de una liquidación de seller.
  *
@@ -13,6 +15,8 @@ namespace Logistics\Settlement\Domain\ValueObject;
  */
 enum SettlementStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Borrador recién agregado del periodo, pendiente de revisión. */
     case Draft = 'draft';
 

@@ -34,7 +34,7 @@ final class VehicleMapper
             PlateNumber::of($model->plate),
             Capacity::of($model->capacity_kg, $model->capacity_m3),
             $model->home_base_node_id,
-            VehicleStatus::from($model->status),
+            VehicleStatus::fromLoose($model->status),
             array_values($documents),
             $model->make,
             $model->model,

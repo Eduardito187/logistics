@@ -85,6 +85,9 @@ trait RespondsWithJson
                 return ['slot_taken', 409];
             case PromiseException::KIND_DAY_UNAVAILABLE:
                 return ['day_unavailable', 422];
+            case PromiseException::KIND_NO_WINDOW:
+                // Día despachable pero sin franja con cupo factible: a la cola "Unslotted" (Módulo 1).
+                return ['no_window', 422];
             case PromiseException::KIND_NOT_FOUND:
                 return ['not_found', 404];
         }

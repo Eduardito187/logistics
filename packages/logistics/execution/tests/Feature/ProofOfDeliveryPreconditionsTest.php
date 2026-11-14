@@ -78,11 +78,12 @@ it('sin entrega abierta para el envío, el POD responde 422 con el motivo (no 50
         ->assertJsonPath('detail', fn (string $m): bool => str_contains($m, 'entrega'));
 });
 
-it('si el bulto no está cargado todavía, el POD responde 422 (transición inválida), no 500', function (): void {
+it('el POD sobre una entrega ya cerrada responde 422 (transición inválida), no 500', function (): void {
     $shipment = Uuid::generate()->value;
     $unit = Uuid::generate()->value;
 
-    // Solo preparación: la entrega queda en Prepared, no Loaded → el POD no es una transición válida.
+    // Flujo vigente: la entrega abierta ya permite el POD directo (no se exige escaneo de carga). Se abre
+    // con la preparación y se entrega una vez.
     app(CommandBus::class)->dispatch(new RecordPreparationScan(
         shipmentId: $shipment,
         vehicleId: Uuid::generate()->value,
@@ -94,8 +95,10 @@ it('si el bulto no está cargado todavía, el POD responde 422 (transición inv�
         occurredAt: '2026-10-16T08:00:00+00:00',
         idempotencyKey: 'prep-'.$unit,
     ));
+    $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podBody($shipment, $unit))->assertOk();
 
-    $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podBody($shipment, $unit))
-        ->assertStatus(422)
-        ->assertJsonPath('code', 'business_rule_violation');
+    // Un SEGUNDO POD (otra idempotency-key) sobre la entrega ya DELIVERED es IDEMPOTENTE: 200 (no-op), no un
+    // error de transición (decisión del dueño: un reintento de la cola offline no debe figurar como fallo).
+    $this->postJson('/api/v1/app/deliveries/proof-of-delivery', podBody($shipment, $unit, ['idempotency_key' => 'pod2-'.$unit]))
+        ->assertOk();
 });

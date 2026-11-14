@@ -77,7 +77,7 @@ final class PlanMapper
             PlanId::fromString($record->id),
             PlanDate::fromString($record->plan_date),
             $record->vehicle_id,
-            PlanStatus::from($record->status),
+            PlanStatus::fromLoose($record->status),
             $stops,
             $this->toGeometry($record),
         );

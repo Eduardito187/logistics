@@ -109,6 +109,11 @@ function muniReserveOrders(?array $current): OrderDeliverySlotGateway
             return $this->current;
         }
 
+        public function pendingDeliveryDate(string $orderId): ?string
+        {
+            return null;
+        }
+
         public function assignSlot(string $orderId, string $date, string $windowStart, string $windowEnd): void
         {
             $this->assigned[] = ['order' => $orderId, 'date' => $date, 'start' => $windowStart, 'end' => $windowEnd];

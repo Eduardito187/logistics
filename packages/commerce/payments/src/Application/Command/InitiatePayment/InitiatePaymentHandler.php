@@ -39,7 +39,7 @@ final readonly class InitiatePaymentHandler implements CommandHandler
 
         $orderId = Uuid::fromString($command->orderId);
         $amount = Money::of($command->amountCents, $command->currency);
-        $method = PaymentMethod::from($command->method);
+        $method = PaymentMethod::fromLoose($command->method);
 
         $payment = Payment::initiate($this->payments->nextIdentity(), $orderId, $amount, $method);
 

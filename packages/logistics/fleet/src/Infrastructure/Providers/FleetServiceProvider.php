@@ -60,6 +60,7 @@ use Logistics\Fleet\Domain\Contract\CrewRepository;
 use Logistics\Fleet\Domain\Contract\DocumentExpiryPolicy;
 use Logistics\Fleet\Domain\Contract\DocumentRepository;
 use Logistics\Fleet\Domain\Contract\DriverRepository;
+use Logistics\Fleet\Domain\Contract\FleetLabelReader;
 use Logistics\Fleet\Domain\Contract\HelperRepository;
 use Logistics\Fleet\Domain\Contract\PreTripInspectionRepository;
 use Logistics\Fleet\Domain\Contract\ShiftRulesPolicy;
@@ -71,6 +72,7 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentCheck
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentCrewRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentDocumentRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentDriverRepository;
+use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentFleetLabelReader;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentHelperRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentPreTripInspectionRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentVehicleFitnessLog;
@@ -135,6 +137,7 @@ final class FleetServiceProvider extends ServiceProvider
         $this->app->bind(HelperRepository::class, EloquentHelperRepository::class);
         $this->app->bind(CrewRepository::class, EloquentCrewRepository::class);
         $this->app->bind(PreTripInspectionRepository::class, EloquentPreTripInspectionRepository::class);
+        $this->app->bind(FleetLabelReader::class, EloquentFleetLabelReader::class);
         $this->app->bind(DocumentRepository::class, EloquentDocumentRepository::class);
         $this->app->bind(ChecklistTemplateRepository::class, EloquentChecklistTemplateRepository::class);
         $this->app->bind(VehicleFitnessLog::class, EloquentVehicleFitnessLog::class);

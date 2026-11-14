@@ -29,6 +29,7 @@ use Commerce\Catalog\Application\Query\ListProducts\ListProducts;
 use Commerce\Catalog\Application\Query\ListProducts\ListProductsHandler;
 use Commerce\Catalog\Domain\Contract\CategoryRepository;
 use Commerce\Catalog\Domain\Contract\ProductRepository;
+use Commerce\Catalog\Infrastructure\Console\BackfillCatalogFromOrdersCommand;
 use Commerce\Catalog\Infrastructure\Persistence\Eloquent\Repository\EloquentCategoryRepository;
 use Commerce\Catalog\Infrastructure\Persistence\Eloquent\Repository\EloquentProductRepository;
 use Commerce\Catalog\Infrastructure\ReadModel\InventoryProductAvailabilityReader;
@@ -76,6 +77,12 @@ final class CatalogServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                BackfillCatalogFromOrdersCommand::class,
+            ]);
+        }
 
         $registry = $this->app->make(HandlerRegistry::class);
         foreach (self::HANDLERS as $message => $handler) {

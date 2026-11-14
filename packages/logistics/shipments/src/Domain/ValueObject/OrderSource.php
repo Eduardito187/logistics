@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Fuente de origen del pedido. La plataforma vive FUERA de SAP (ADR 002): SAP es una fuente más,
  * igual que Magento, las tiendas, la carga manual o un Excel. Todas se normalizan al modelo propio.
  */
 enum OrderSource: string
 {
+    use CaseInsensitiveEnum;
+
     case Sap = 'SAP';
 
     /**

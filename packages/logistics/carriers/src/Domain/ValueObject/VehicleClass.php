@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Carriers\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Clase de vehículo por la que se tarifa un corredor, para la consolidación entre departamentos.
  *
@@ -12,6 +14,8 @@ namespace Logistics\Carriers\Domain\ValueObject;
  */
 enum VehicleClass: string
 {
+    use CaseInsensitiveEnum;
+
     /** Tráiler: mayor volumen, típicamente corredores CD→CD de alto flujo. */
     case Trailer = 'trailer';
 

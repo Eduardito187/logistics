@@ -46,7 +46,7 @@ final readonly class RegisterUserHandler implements CommandHandler
             $email,
             $this->passwordHasher->hash($command->plainPassword),
             $command->roleKeys,
-            UserStatus::from($command->status),
+            UserStatus::fromLoose($command->status),
         );
 
         $this->users->save($user);

@@ -142,9 +142,23 @@ services:
         logging: *default-logging
 
     # -------------------- App (PHP-FPM) --------------------
-    # Hereda el HEALTHCHECK de la imagen prod (FPM aceptando en :9000).
+    # Healthcheck de READINESS/LIVENESS real: `health:check` corre el mismo HealthProbe que
+    # `/api/v1/health` (PostgreSQL/PostGIS + tabla real del esquema + Valkey) y sale 0/1. Reemplaza al
+    # `nc -z 9000` de la imagen (que solo veía "FPM acepta" y por eso NO detectó el 500 masivo del
+    # 0A000). Umbral CONSERVADOR a propósito: unhealthy recién tras ~2,5 min de fallo SOSTENIDO
+    # (interval×retries), para que un blip transitorio de DB no dispare reinicios. La etiqueta
+    # `autoheal` autoriza al sidecar a reiniciarlo cuando quede unhealthy (defensa en profundidad; la
+    # defensa principal es que la falla no ocurra, emulate-prepares contra PgBouncer).
     app:
         <<: *app
+        labels:
+            autoheal: "true"
+        healthcheck:
+            test: ["CMD", "php", "/var/www/html/artisan", "health:check"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 45s
 
     # -------------------- Workers (supervisor: 5 colas + scheduler) --------------------
     # Un solo contenedor con supervisord (.docker/supervisor/supervisord.conf): workers default/outbox/sap/
@@ -153,6 +167,8 @@ services:
     worker:
         <<: *app
         command: ["supervisord", "-c", "/etc/supervisor/supervisord.conf", "-n"]
+        labels:
+            autoheal: "true"
         healthcheck:
             test: ["CMD-SHELL", "pgrep -f 'queue:work' >/dev/null && pgrep -f 'schedule:work' >/dev/null || exit 1"]
             interval: 30s
@@ -181,6 +197,28 @@ services:
         depends_on:
             app:
                 condition: service_healthy
+        networks:
+            - staging
+        logging: *default-logging
+
+    # -------------------- Autoheal (defensa en profundidad) --------------------
+    # Docker Compose por sí solo NO reinicia un contenedor por estar `unhealthy`; este sidecar es quien
+    # lo hace. Reinicia SOLO los contenedores etiquetados `autoheal=true` (app, worker) cuando Docker los
+    # reporta unhealthy, lo que —por el umbral conservador de sus healthchecks— solo ocurre tras un fallo
+    # SOSTENIDO, no ante un blip. Es la RED de seguridad por si un contenedor queda trabado; la defensa
+    # PRINCIPAL sigue siendo que la falla no ocurra (emulate-prepares contra PgBouncer + migrate directo).
+    # OJO (seguridad): monta el socket de Docker, lo que da control del daemon. Aceptable en staging;
+    # revisar/aislar antes de replicarlo en PRODUCCIÓN (punto 5 del plan de robustez).
+    autoheal:
+        image: willfarrell/autoheal:1.2.0
+        restart: unless-stopped
+        environment:
+            AUTOHEAL_CONTAINER_LABEL: autoheal
+            AUTOHEAL_INTERVAL: 15
+            AUTOHEAL_START_PERIOD: 60
+            AUTOHEAL_DEFAULT_STOP_TIMEOUT: 20
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
         networks:
             - staging
         logging: *default-logging

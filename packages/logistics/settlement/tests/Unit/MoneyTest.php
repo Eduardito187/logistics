@@ -42,3 +42,24 @@ it('expone zero y compara con isGreaterThan y equals', function (): void {
         ->and(Money::of(200)->isGreaterThan(Money::of(100)))->toBeTrue()
         ->and(Money::of(100)->equals(Money::of(100)))->toBeTrue();
 });
+
+it('rechaza una moneda vacía o solo con espacios', function (): void {
+    expect(fn () => Money::of(100, '   '))->toThrow(SettlementException::class);
+});
+
+it('rechaza un factor negativo al multiplicar', function (): void {
+    expect(fn () => Money::of(100)->multiply(-2))->toThrow(SettlementException::class);
+});
+
+it('rechaza basis points negativos', function (): void {
+    expect(fn () => Money::of(100)->percentageByBasisPoints(-1))->toThrow(SettlementException::class);
+});
+
+it('serializa a array primitivo con centavos y moneda', function (): void {
+    expect(Money::of(2_500, 'usd')->toArray())->toBe(['cents' => 2_500, 'currency' => 'USD']);
+});
+
+it('distingue montos de distinta moneda o distinto importe en equals', function (): void {
+    expect(Money::of(100, 'BOB')->equals(Money::of(100, 'USD')))->toBeFalse()
+        ->and(Money::of(100)->equals(Money::of(200)))->toBeFalse();
+});

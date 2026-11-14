@@ -173,7 +173,7 @@ final class MaintenanceOrderResource extends Resource
                 TextColumn::make('type')
                     ->label(__('Type'))
                     ->badge()
-                    ->formatStateUsing(static fn (string $state): string => __(MaintenanceType::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(MaintenanceType::fromLoose($state)->label())),
                 TextColumn::make('status')
                     ->label(__('Status'))
                     ->badge()
@@ -183,7 +183,7 @@ final class MaintenanceOrderResource extends Resource
                         MaintenanceStatus::Cancelled->value => 'danger',
                         default => 'gray',
                     })
-                    ->formatStateUsing(static fn (string $state): string => __(MaintenanceStatus::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(MaintenanceStatus::fromLoose($state)->label())),
                 TextColumn::make('total_cost_cents')
                     ->label(__('Total (Bs)'))
                     ->formatStateUsing(static fn (int $state): string => number_format($state / 100, 2))

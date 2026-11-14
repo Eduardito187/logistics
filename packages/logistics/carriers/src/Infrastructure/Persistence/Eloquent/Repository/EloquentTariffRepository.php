@@ -92,7 +92,7 @@ final readonly class EloquentTariffRepository implements TariffRepository
         $classes = [];
         foreach ($values as $value) {
             // Valores fuera del enum (datos viejos o manuales) se descartan en vez de romper la lectura.
-            $class = is_string($value) ? VehicleClass::tryFrom($value) : null;
+            $class = is_string($value) ? VehicleClass::tryFromLoose($value) : null;
             if ($class !== null) {
                 $classes[] = $class;
             }

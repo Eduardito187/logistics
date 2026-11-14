@@ -970,6 +970,10 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ProofOfDeliveryRequest'
+          # Variante con la foto INLINE: multipart/form-data con los mismos campos + el archivo `photo`.
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProofOfDeliveryRequest'
       responses:
         '200':
           $ref: '#/components/responses/DeliveryState'
@@ -995,6 +999,10 @@ paths:
         required: true
         content:
           application/json:
+            schema:
+              $ref: '#/components/schemas/ProofOfDeliveryRequest'
+          # Variante con la foto INLINE: multipart/form-data con los mismos campos + el archivo `photo`.
+          multipart/form-data:
             schema:
               $ref: '#/components/schemas/ProofOfDeliveryRequest'
       responses:
@@ -1741,6 +1749,13 @@ paths:
         schema:
           type: string
           format: date
+      - name: route_id
+        in: query
+        required: false
+        description: Filter checklists by route/trip to tell whether a route already has its checklist.
+        schema:
+          type: string
+          format: uuid
       - $ref: '#/components/parameters/PageNumber'
       - $ref: '#/components/parameters/PerPage'
       - $ref: '#/components/parameters/Cursor'
@@ -14412,6 +14427,18 @@ components:
               type: string
               format: uuid
               nullable: true
+        pod_confirmation:
+          type: string
+          nullable: true
+          description: >-
+            Confirmación de la prueba de entrega ya capturada para este envío (firma/receptor), misma fuente
+            que GET /app/deliveries/{shipmentId}. Null mientras no haya POD.
+        pod_photo_url:
+          type: string
+          nullable: true
+          description: >-
+            URL de la foto del POD si el disco de evidencia la expone (puede ser null en disco privado aunque
+            exista la foto; la referencia durable vive en la entrega).
     DriverRoute:
       type: object
       description: The driver route sheet of a vehicle for a day, with its ordered stops
@@ -14448,6 +14475,15 @@ components:
           type: integer
         completed_stops:
           type: integer
+          description: >-
+            Paradas ENTREGADAS con éxito (solo entregas). NO incluye fallidas ni replanificadas: esas van en
+            failed_stops / rescheduled_stops.
+        failed_stops:
+          type: integer
+          description: Paradas con intento de entrega fallido.
+        rescheduled_stops:
+          type: integer
+          description: Paradas replanificadas por incidente del camión (sacadas de esta ruta).
         stops_remaining:
           type: integer
         current_stop:
@@ -15043,6 +15079,11 @@ components:
           type: string
           maxLength: 1000
           nullable: true
+        route_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional route/trip the inspection belongs to (pre-trip check is per route, not per day).
     CorridorType:
       type: string
       enum:
@@ -16034,11 +16075,15 @@ components:
           type: object
           required:
           - database
+          - schema
           - cache
           properties:
             database:
               type: boolean
               description: PostgreSQL reachable with PostGIS enabled
+            schema:
+              type: boolean
+              description: A real schema table is queryable (detects schema/plan breakage)
             cache:
               type: boolean
               description: Valkey reachable
@@ -17387,6 +17432,19 @@ components:
         notes:
           type: string
           nullable: true
+        route_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Route/trip this inspection belongs to (pre-trip check is per route, not per day).
+        plate:
+          type: string
+          nullable: true
+          description: Plate of the inspected vehicle (null if the vehicle was removed from the fleet).
+        driver_name:
+          type: string
+          nullable: true
+          description: Name of the driver who performed the inspection (null if removed from the fleet).
     PreparationScanRequest:
       allOf:
       - $ref: '#/components/schemas/GeoScanBase'
@@ -17427,6 +17485,21 @@ components:
           description: Ruta de la petición que produjo el error.
         code:
           $ref: '#/components/schemas/ProblemCode'
+        error:
+          type: object
+          description: |
+            Bloque redundante con el motivo (contrato unificado): `error.message` repite `detail` —o
+            `title` si no hay detalle— y `error.code` repite `code`. Está SIEMPRE presente en errores, para
+            que el cliente lea el motivo sin importar qué campo consuma (`detail` o `error.message`).
+          required:
+          - code
+          - message
+          properties:
+            code:
+              $ref: '#/components/schemas/ProblemCode'
+            message:
+              type: string
+              description: Motivo legible; idéntico a `detail` cuando este existe.
         errors:
           type: object
           description: Errores por campo; presente solo en fallos de validación (code=validation_failed).
@@ -17437,8 +17510,10 @@ components:
     ProblemCode:
       type: string
       description: |
-        Código del catálogo de errores de la API (App\Http\Problem\ErrorCode). Valor
-        estable, legible por máquina, que los clientes usan para ramificar su lógica.
+        Código del catálogo de errores de la API. Valor estable, legible por máquina, que los clientes
+        usan para ramificar su lógica. Incluye el catálogo central (App\Http\Problem\ErrorCode) y códigos
+        estables específicos de contexto (entregas, etiquetas, pedidos, vales). La lista puede crecer: un
+        cliente debe tolerar un valor no enumerado (mostrar `detail`) en vez de romper.
       enum:
       - bad_request
       - invalid_idempotency_key
@@ -17463,6 +17538,20 @@ components:
       - rate_limited
       - server_error
       - service_unavailable
+      # Códigos estables específicos de contexto (mismo formato; los clientes pueden ramificar por ellos).
+      - invalid_route
+      - delivery_not_found
+      - node_reception_not_found
+      - evidence_unreadable
+      - evidence_upload_failed
+      - label_already_emitted
+      - order_not_found
+      - voucher_not_found
+      - voucher_expired
+      - voucher_redeemed
+      - voucher_held
+      - voucher_holder_mismatch
+      - voucher_revoked
     Promise:
       type: object
       required:
@@ -17591,6 +17680,16 @@ components:
             Durable `path` returned by POST /app/deliveries/photos. OPTIONAL (option A, async POD): the delivery
             is not blocked if the photo has not uploaded yet; it links automatically when it does. If a reference
             IS sent it must exist on the evidence disk, else 422 errors.photo_path.
+        photo:
+          type: string
+          format: binary
+          nullable: true
+          description: >-
+            OPTIONAL inline photo sent in the SAME request as multipart/form-data (field `photo`). The backend
+            stores it on the evidence disk and links it as `photo_path` in the same operation — no separate
+            upload needed. Image only; max 10 MB. If the inline upload fails the POD still closes (offline-first)
+            and the photo can be uploaded afterwards via POST /app/deliveries/photos. Used only with
+            multipart/form-data, not JSON.
         photo_paths:
           type: array
           description: Each entry must exist on the evidence disk (same 422 as photo_path).
@@ -17666,6 +17765,11 @@ components:
         total_stops:
           type: integer
         completed_stops:
+          type: integer
+          description: Paradas ENTREGADAS con éxito al cierre (no incluye fallidas ni replanificadas).
+        failed_stops:
+          type: integer
+        rescheduled_stops:
           type: integer
         stops_remaining:
           type: integer

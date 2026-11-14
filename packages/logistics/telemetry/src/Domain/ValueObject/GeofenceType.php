@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de geocerca: para qué sirve el polígono. El tipo decide la semántica de una incursión:
  * entrar a una ForbiddenZone es una violación; estar dentro de un DistributionCenter es normal.
  */
 enum GeofenceType: string
 {
+    use CaseInsensitiveEnum;
+
     /** Centro de distribución propio. */
     case DistributionCenter = 'distribution_center';
 

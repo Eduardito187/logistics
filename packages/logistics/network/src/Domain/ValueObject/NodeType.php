@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Network\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de nodo de la red logística.
  *
@@ -11,6 +13,8 @@ namespace Logistics\Network\Domain\ValueObject;
  */
 enum NodeType: string
 {
+    use CaseInsensitiveEnum;
+
     /** Centro de distribución: origen y pulmón del stock. */
     case DistributionCenter = 'distribution_center';
 

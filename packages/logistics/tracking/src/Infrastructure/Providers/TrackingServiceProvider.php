@@ -31,6 +31,7 @@ use Logistics\Tracking\Application\Contract\CustomerEmailBackfill;
 use Logistics\Tracking\Application\Contract\DeliveredAtBackfill;
 use Logistics\Tracking\Application\Contract\PublicLinkTtl;
 use Logistics\Tracking\Application\Contract\RatingRequestStore;
+use Logistics\Tracking\Application\Contract\ShipmentOrderReferenceReader;
 use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
 use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkStateHandler;
 use Logistics\Tracking\Application\Query\GetPublicSurveyState\GetPublicSurveyState;
@@ -57,9 +58,12 @@ use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentSatisfactionS
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentTrackingRepository;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentUnitTrackingRepository;
 use Logistics\Tracking\Infrastructure\ReadSide\DbCustomerContactReader;
+use Logistics\Tracking\Infrastructure\ReadSide\DbShipmentOrderReferenceReader;
 use Logistics\Tracking\Infrastructure\Settings\SettingsPublicLinkTtl;
 use Logistics\Tracking\Presentation\Console\BackfillCustomerEmailCommand;
 use Logistics\Tracking\Presentation\Console\BackfillDeliveredAtCommand;
+use Logistics\Tracking\Presentation\Console\ReconcileTrackingFromExecutionCommand;
+use Logistics\Tracking\Presentation\Console\SendSurveyInvitationsCommand;
 use Logistics\Tracking\Presentation\Http\Controller\PublicTrackingPageController;
 use Logistics\Tracking\Presentation\Http\Controller\RecordSatisfactionSurveyController;
 
@@ -104,6 +108,15 @@ final class TrackingServiceProvider extends ServiceProvider
             return new DbRatingRequestStore($connections);
         });
 
+        // Lado lectura cross-context: el order_reference de un envío, para ABRIR el seguimiento de un envío
+        // sin fila en tracking (upsert de ProjectExecutionEventHandler). Solo lectura de `shipments`.
+        $this->app->bind(ShipmentOrderReferenceReader::class, static function ($app): DbShipmentOrderReferenceReader {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+
+            return new DbShipmentOrderReferenceReader($connections);
+        });
+
         // Backfill idempotente de customer_email (comando logistics:tracking:backfill-customer-email).
         $this->app->bind(CustomerEmailBackfill::class, static function ($app): SqlCustomerEmailBackfill {
             $connections = $app['db'];
@@ -123,7 +136,12 @@ final class TrackingServiceProvider extends ServiceProvider
         $this->registerPublicPageRoute();
 
         if ($this->app->runningInConsole()) {
-            $this->commands([BackfillDeliveredAtCommand::class, BackfillCustomerEmailCommand::class]);
+            $this->commands([
+                BackfillDeliveredAtCommand::class,
+                BackfillCustomerEmailCommand::class,
+                SendSurveyInvitationsCommand::class,
+                ReconcileTrackingFromExecutionCommand::class,
+            ]);
         }
 
         // Los handlers se registran contra el HandlerRegistry singleton del núcleo compartido.

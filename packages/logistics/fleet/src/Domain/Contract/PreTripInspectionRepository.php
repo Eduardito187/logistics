@@ -26,8 +26,9 @@ interface PreTripInspectionRepository
 
     /**
      * Lista inspecciones con filtros opcionales, en orden determinista: fecha de inspección desc y, a
-     * igual fecha, id desc (UUID v7 = más reciente primero). `$limit`/`$offset` bajan LIMIT/OFFSET a SQL
-     * al paginar (null = sin recorte).
+     * igual fecha, id desc (UUID v7 = más reciente primero). `$routeId` filtra las inspecciones de una
+     * ruta/viaje (así se sabe si una ruta ya tiene su checklist). `$limit`/`$offset` bajan LIMIT/OFFSET
+     * a SQL al paginar (null = sin recorte).
      *
      * @return list<PreTripInspection>
      */
@@ -38,6 +39,7 @@ interface PreTripInspectionRepository
         ?DateTimeImmutable $to = null,
         ?int $limit = null,
         ?int $offset = null,
+        ?string $routeId = null,
     ): array;
 
     /**
@@ -48,6 +50,7 @@ interface PreTripInspectionRepository
         ?bool $onlyPassed = null,
         ?DateTimeImmutable $from = null,
         ?DateTimeImmutable $to = null,
+        ?string $routeId = null,
     ): int;
 
     /**

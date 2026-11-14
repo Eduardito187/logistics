@@ -95,9 +95,9 @@ final class CoverageMap extends Page
         return [
             'zones' => $this->zonesGeoJson(),
             'cities' => $this->cities(),
-            // Opciones del dropdown "Editar zona existente", ya filtradas por el municipio elegido.
-            // getViewData se recomputa en cada render de Livewire, así que al cambiar parentAreaId
-            // (prop `live`) el dropdown de zonas se re-renderiza filtrado automáticamente.
+            // Opciones del dropdown "Editar zona existente": SIEMPRE la lista completa y estable de zonas.
+            // No se filtra por el municipio elegido: filtrarla hacía que, al seleccionar una zona o un
+            // municipio (props `live` → re-render), el dropdown colapsara a una sola opción (bug reportado).
             'zoneOptions' => $this->zoneOptions(),
             // Capa de nodos de la red (marcadores): el mapa de nodos se absorbe aquí como una capa
             // conmutable, para tener un único cockpit geográfico.
@@ -174,10 +174,21 @@ final class CoverageMap extends Page
 
     public function save(): void
     {
-        $this->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'drawnGeoJson' => ['required', 'string'],
-        ]);
+        // Validación con notificación EXPLÍCITA: ni `name` (input crudo) ni `drawnGeoJson` (sin campo
+        // visible) tienen anchor de error en el blade, así que un `$this->validate()` fallaba en silencio
+        // y «Guardar» parecía no responder. Mostramos un mensaje claro por cada caso.
+        $name = trim($this->name);
+        if ($name === '') {
+            Notification::make()->title(__('Zone name is required'))->danger()->send();
+
+            return;
+        }
+
+        if (mb_strlen($name) > 120) {
+            Notification::make()->title(__('Zone name is too long'))->danger()->send();
+
+            return;
+        }
 
         $ring = $this->extractRing($this->drawnGeoJson);
         if ($ring === null) {
@@ -204,8 +215,9 @@ final class CoverageMap extends Page
                 ? GeoAreaId::fromString($this->parentAreaId)
                 : null;
 
-            $repo->save(Zone::define($id, $this->name, $parent, $polygon, $rules));
+            $repo->save(Zone::define($id, $name, $parent, $polygon, $rules));
 
+            $this->name = $name;
             $this->zoneId = $id->toString();
             Notification::make()->title(__('Coverage zone saved'))->success()->send();
             $this->dispatch('zones-updated', zones: $this->zonesGeoJson());
@@ -237,20 +249,16 @@ final class CoverageMap extends Page
     }
 
     /**
-     * Zonas para el dropdown "Editar zona existente", filtradas por el municipio elegido.
-     * Si no hay municipio seleccionado, devuelve todas las zonas.
+     * Zonas para el dropdown "Editar zona existente": SIEMPRE todas las zonas, en una query estable y
+     * ordenada por nombre. No depende del estado del formulario (no se filtra por `parentAreaId`): así el
+     * dropdown conserva TODAS sus opciones tras cada re-render de Livewire, se elija lo que se elija.
      *
      * @return list<array{id: string, name: string}>
      */
     private function zoneOptions(): array
     {
-        $query = DB::table('coverage_zones')->orderBy('name');
-
-        if ($this->parentAreaId !== null && $this->parentAreaId !== '') {
-            $query->where('parent_area_id', $this->parentAreaId);
-        }
-
-        return array_values($query
+        return array_values(DB::table('coverage_zones')
+            ->orderBy('name')
             ->get(['id', 'name'])
             ->map(fn ($r): array => [
                 'id' => (string) $r->id,

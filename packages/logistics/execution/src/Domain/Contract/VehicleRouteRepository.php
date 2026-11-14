@@ -25,6 +25,11 @@ interface VehicleRouteRepository
 
     /**
      * Ruta de un camión para un día concreto (una por camión y día). Null si no se armó.
+     *
+     * Impura a propósito: otra entrega del mismo hecho (relay concurrente) puede armar la ruta entre dos
+     * llamadas, así que el resultado puede cambiar de null a no-null sin que varíe el argumento.
+     *
+     * @phpstan-impure
      */
     public function findByVehicleAndDate(string $vehicleId, RouteDate $date): ?VehicleRoute;
 

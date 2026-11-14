@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de un trip (tramo continuo de conducción de un vehículo).
  *
@@ -11,6 +13,8 @@ namespace Logistics\Telemetry\Domain\ValueObject;
  */
 enum TripStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Activo: el vehículo sigue reportando pings dentro del hueco temporal del trip. */
     case Active = 'active';
 

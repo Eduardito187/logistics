@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool                                                                                                                                  $fit_to_dispatch
  * @property string|null                                                                                                                           $checklist_template_id
  * @property array{failed_critical?: list<string>, failed_major?: list<string>, failed_minor?: list<string>, missing_critical?: list<string>}|null $evaluation
+ * @property string|null                                                                                                                           $route_id
  * @property-read VehicleModel|null $vehicle
  * @property-read DriverModel|null  $driver
  */

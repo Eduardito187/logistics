@@ -530,7 +530,7 @@ final class FleetCostDashboard extends Page
             $rows[] = [
                 'vehicle' => VehiclePlates::label($item->vehicleId) ?? '—',
                 'vehicle_id' => $item->vehicleId,
-                'service_kind' => __(ServiceKind::from($item->serviceKind)->label()),
+                'service_kind' => __(ServiceKind::fromLoose($item->serviceKind)->label()),
                 'next_due_km' => $item->nextDueKm,
                 'next_due_at' => $item->nextDueAt,
                 'current_odometer_km' => $item->currentOdometerKm,
@@ -783,7 +783,7 @@ final class FleetCostDashboard extends Page
      */
     private function documentTypeLabel(string $documentType): string
     {
-        $known = FleetDocumentType::tryFrom($documentType);
+        $known = FleetDocumentType::tryFromLoose($documentType);
 
         return $known !== null ? (string) __($known->label()) : $documentType;
     }

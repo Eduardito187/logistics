@@ -12,11 +12,7 @@ use Logistics\Shipments\Domain\ValueObject\MeasurementsSource;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\SourceReference;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
-
-/**
- * Falla al sembrar: el envío recién recibido no apareció en el repositorio.
- */
-final class LineMeasurementsShipmentNotFound extends RuntimeException {}
+use Logistics\Shipments\Tests\Feature\LineMeasurementsShipmentNotFound;
 
 /**
  * Foto de medidas por línea al recibir el envío (Roadmap 02, Fase 2.1) y su backfill, contra PostgreSQL

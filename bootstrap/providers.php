@@ -18,6 +18,7 @@ use Commerce\Search\Infrastructure\Providers\SearchServiceProvider;
 use Logistics\Access\Infrastructure\Providers\AccessServiceProvider;
 use Logistics\Capacity\Infrastructure\Providers\CapacityServiceProvider;
 use Logistics\Carriers\Infrastructure\Providers\CarriersServiceProvider;
+use Logistics\Compensation\Infrastructure\Providers\CompensationServiceProvider;
 use Logistics\Coverage\Infrastructure\Providers\CoverageServiceProvider;
 use Logistics\Execution\Infrastructure\Providers\ExecutionServiceProvider;
 use Logistics\Fleet\Infrastructure\Providers\FleetServiceProvider;
@@ -86,6 +87,10 @@ return [
     TrackingServiceProvider::class,
     TelemetryServiceProvider::class,
     NotificationsServiceProvider::class,
+
+    // Compensación por problemas de entrega (vales/cupones de un solo uso). Se alimenta de execution.* y
+    // tracking.* por reactores del outbox (ver logistics-outbox.php).
+    CompensationServiceProvider::class,
 
     // Fase 2 — Prometer: cupos, promesa, conector SAP y transportistas
     CapacityServiceProvider::class,

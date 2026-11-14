@@ -6,6 +6,8 @@ namespace Logistics\Execution\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Execution\Domain\Event\DeliveryFailed;
+use Logistics\Execution\Domain\Event\DeliveryOpened;
+use Logistics\Execution\Domain\Event\DeliveryVehicleReassigned;
 use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
 use Logistics\Execution\Domain\Event\ShipmentDeparted;
@@ -48,7 +50,7 @@ final class Delivery extends AggregateRoot
     private function __construct(
         private readonly DeliveryId $id,
         private readonly string $shipmentId,
-        private readonly string $vehicleId,
+        private string $vehicleId,
         private DeliveryStatus $status,
         private array $scans,
         private ?ProofOfDelivery $proofOfDelivery,
@@ -85,6 +87,36 @@ final class Delivery extends AggregateRoot
             null,
             $fulfillmentMode,
         );
+    }
+
+    /**
+     * Abre la entrega al ASIGNAR el camión de reparto (flujo vigente: asignar vehículo = preparar). Igual
+     * que `start`, pero graba `DeliveryOpened`: el envío entra en ejecución y sale del worklist "por
+     * preparar" (shipments avanza PLANNED/RECEIVED → IN_EXECUTION al consumir ese hecho). El flujo viejo del
+     * escaneo de preparación sigue usando `start` (su `ShipmentPrepared` hace el mismo avance).
+     */
+    public static function open(
+        DeliveryId $id,
+        string $shipmentId,
+        string $vehicleId,
+        FulfillmentMode $fulfillmentMode,
+        DateTimeImmutable $occurredAt,
+    ): self {
+        $delivery = self::start($id, $shipmentId, $vehicleId, $fulfillmentMode);
+        // Abre en LOADED (no Pending): el app ya no manda escaneos de preparación ni de carga, así que la
+        // entrega queda lista para el POD directo (Loaded → Delivered) y para salida/recepción/fallo, sin
+        // clavarse en Pending. Solo graba DeliveryOpened (el envío avanza a IN_EXECUTION); NO emite
+        // ShipmentPrepared/ShipmentLoaded, para no disparar notificaciones de "preparando/en camino" antes
+        // de tiempo (la pantalla de carga, si manda escaneos, sigue válida: Loaded → Loaded).
+        $delivery->status = DeliveryStatus::Loaded;
+        $delivery->recordEvent(new DeliveryOpened(
+            $id->toString(),
+            $delivery->shipmentId,
+            $delivery->vehicleId,
+            $occurredAt,
+        ));
+
+        return $delivery;
     }
 
     /**
@@ -234,6 +266,14 @@ final class Delivery extends AggregateRoot
             return;
         }
 
+        // Idempotente a nivel de ESTADO: si la entrega YA está entregada, un POD reintentado —incluso con
+        // OTRA clave de idempotencia, como cuando la cola offline del app reencola con una clave nueva— es
+        // un no-op EXITOSO, no un error de transición ("transición inválida a Delivered desde DELIVERED").
+        // Así un reintento no figura como fallo en la cola del teléfono.
+        if ($this->status === DeliveryStatus::Delivered) {
+            return;
+        }
+
         $units = [];
         foreach ($unitIds as $unitId) {
             $trimmed = trim($unitId);
@@ -245,7 +285,13 @@ final class Delivery extends AggregateRoot
             throw ExecutionException::because('la prueba de entrega requiere al menos un producto (unitId)');
         }
 
-        $this->guardTransition([DeliveryStatus::Loaded, DeliveryStatus::InTransit], 'Delivered');
+        // Acepta también Pending/Prepared además de Loaded/InTransit: en el flujo vigente (sin escaneos de
+        // preparación/carga en el app) una entrega abierta puede estar todavía en Pending/Prepared y aun así
+        // debe poder entregarse. Esto desatasca además las entregas que ya quedaron en PENDING.
+        $this->guardTransition(
+            [DeliveryStatus::Pending, DeliveryStatus::Prepared, DeliveryStatus::Loaded, DeliveryStatus::InTransit],
+            'Delivered',
+        );
 
         foreach ($units as $index => $unitId) {
             $key = $index === 0 ? $idempotencyKey : self::derivedKey($idempotencyKey, $unitId);
@@ -281,7 +327,12 @@ final class Delivery extends AggregateRoot
             return;
         }
 
-        $this->guardTransition([DeliveryStatus::Loaded, DeliveryStatus::InTransit], 'Failed');
+        // Mismo criterio que la entrega: un intento fallido también vale desde Pending/Prepared (flujo sin
+        // escaneos de preparación/carga en el app) y desatasca las entregas ya abiertas en PENDING.
+        $this->guardTransition(
+            [DeliveryStatus::Pending, DeliveryStatus::Prepared, DeliveryStatus::Loaded, DeliveryStatus::InTransit],
+            'Failed',
+        );
 
         $this->appendScan(ScanType::ProofOfDelivery, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
 
@@ -442,6 +493,38 @@ final class Delivery extends AggregateRoot
     }
 
     /**
+     * Mueve la entrega al camión nuevo (el pedido pasa al ÚLTIMO camión asignado y ESE chofer lo entrega).
+     * Regla del dueño — NUNCA perder una entrega REAL: si ya está entregada (DELIVERED) o fallida (FAILED),
+     * NO se mueve (se respeta el POD/desenlace ya registrado). Solo se mueve mientras está en curso
+     * (Pending/Prepared/Loaded/InTransit). Idempotente: mismo camión o id vacío → no hace nada.
+     *
+     * Devuelve true si realmente cambió (para que el repositorio guarde y se grabe el evento de auditoría).
+     */
+    public function reassignVehicle(string $newVehicleId, DateTimeImmutable $occurredAt): bool
+    {
+        $newVehicleId = trim($newVehicleId);
+
+        if ($this->status === DeliveryStatus::Delivered || $this->status === DeliveryStatus::Failed) {
+            return false;
+        }
+        if ($newVehicleId === '' || $newVehicleId === $this->vehicleId) {
+            return false;
+        }
+
+        $fromVehicleId = $this->vehicleId;
+        $this->vehicleId = $newVehicleId;
+        $this->recordEvent(new DeliveryVehicleReassigned(
+            $this->id->toString(),
+            $this->shipmentId,
+            $fromVehicleId,
+            $newVehicleId,
+            $occurredAt,
+        ));
+
+        return true;
+    }
+
+    /**
      * ¿La entrega se cerró sin foto y sigue esperándola? (DELIVERED sin path ni evidencia ligada).
      */
     public function isPendingPhoto(): bool
@@ -481,7 +564,10 @@ final class Delivery extends AggregateRoot
     private function guardTransition(array $allowed, string $target): void
     {
         if (!in_array($this->status, $allowed, true)) {
-            throw ExecutionException::because("transición inválida a {$target} desde {$this->status->value}");
+            // La comparación es por IDENTIDAD de enum (no por string), así que ya es inmune a mayúsculas:
+            // "Delivered" y "DELIVERED" son el MISMO case. En el mensaje usamos `->name` (CamelCase) para que
+            // coincida con el casing del `$target` y no parezca un falso problema de mayúsculas.
+            throw ExecutionException::because("transición inválida a {$target} desde {$this->status->name}");
         }
     }
 

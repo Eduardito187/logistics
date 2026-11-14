@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de la ruta del chofer a lo largo de la jornada. Lo gobierna el agregado VehicleRoute: cada
  * parada que se completa (o falla) mueve la ruta de Planned a InProgress, y a Completed cuando ya no
@@ -11,6 +13,8 @@ namespace Logistics\Execution\Domain\ValueObject;
  */
 enum RouteStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Armada pero todavía sin ninguna parada atendida. */
     case Planned = 'PLANNED';
 

@@ -86,9 +86,9 @@ final class EloquentNodeRepository implements NodeRepository
             NodeId::fromString($record->id),
             NodeCode::fromString($record->code),
             $record->name,
-            NodeType::from($record->type),
+            NodeType::fromLoose($record->type),
             GeoPoint::of((float) $record->lat, (float) $record->lng),
-            NodeStatus::from($record->status),
+            NodeStatus::fromLoose($record->status),
             $record->department === null ? null : Department::from($record->department),
         );
     }

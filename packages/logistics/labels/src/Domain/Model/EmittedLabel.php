@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Labels\Domain\Model;
 
+use Logistics\Labels\Domain\ValueObject\LabelSizeProfile;
 use Logistics\Labels\Domain\ValueObject\SignedLabel;
 
 /**
@@ -12,6 +13,9 @@ use Logistics\Labels\Domain\ValueObject\SignedLabel;
  * El `id` de almacenamiento (uuid pk de la fila) es un detalle de infraestructura y NO vive acá: la
  * identidad de negocio es `labelId()` (el campo `id` del payload), único por bulto físico. Ese campo
  * es el que lleva índice único en la base para detectar duplicados (ADR 004).
+ *
+ * `sizeProfile` es el PERFIL de tamaño con el que se renderizó este ZPL (presentación, no identidad): se
+ * guarda para saber a qué tamaño se emitió y para que la reimpresión mantenga el mismo tamaño por defecto.
  */
 final readonly class EmittedLabel
 {
@@ -20,6 +24,7 @@ final readonly class EmittedLabel
         public SignedLabel $label,
         public string $zpl,
         public int $emittedAt,
+        public LabelSizeProfile $sizeProfile,
     ) {}
 
     public static function of(
@@ -27,8 +32,9 @@ final readonly class EmittedLabel
         SignedLabel $label,
         string $zpl,
         int $emittedAt,
+        LabelSizeProfile $sizeProfile = LabelSizeProfile::Standard,
     ): self {
-        return new self($orderNumber, $label, $zpl, $emittedAt);
+        return new self($orderNumber, $label, $zpl, $emittedAt, $sizeProfile);
     }
 
     /** Identidad de negocio: el `id` del payload, único por bulto físico. */
@@ -93,5 +99,11 @@ final readonly class EmittedLabel
     public function signedJson(): string
     {
         return $this->label->toQrContent();
+    }
+
+    /** Perfil de tamaño con el que se renderizó el ZPL (presentación): standard | lite | lite_40x30 | micro. */
+    public function sizeProfileValue(): string
+    {
+        return $this->sizeProfile->value;
     }
 }

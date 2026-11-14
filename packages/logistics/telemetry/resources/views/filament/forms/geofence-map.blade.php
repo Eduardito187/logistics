@@ -28,6 +28,10 @@
                     maxZoom: @js((int) config('maps.tile_max_zoom', 19)),
                 }).addTo(this.map);
 
+                // Idioma de Geoman en español (botones/tooltips: "Finalizar", "Editar", "Arrastrar"…).
+                // Leaflet-Geoman trae el paquete 'es' incorporado; si la versión no lo tuviera, cae al inglés.
+                try { this.map.pm.setLang('es'); } catch (e) {}
+
                 // Controles de Geoman: solo polígono (dibujar, editar, arrastrar, borrar).
                 this.map.pm.addControls({
                     position: 'topleft',

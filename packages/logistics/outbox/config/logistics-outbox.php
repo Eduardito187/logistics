@@ -7,7 +7,13 @@ use Commerce\Orders\Infrastructure\Dispatch\OrderPaidShipmentDispatcher;
 use Commerce\Orders\Infrastructure\Dispatch\PaymentCapturedOrderDispatcher;
 use Commerce\Payments\Infrastructure\Dispatch\OrderCancelledRefundDispatcher;
 use Commerce\Search\Infrastructure\Dispatch\CatalogProductIndexerDispatcher;
+use Logistics\Compensation\Infrastructure\Outbox\DamageEvidenceCompensationReactor;
+use Logistics\Compensation\Infrastructure\Outbox\DeliveryFailedCompensationReactor;
+use Logistics\Compensation\Infrastructure\Outbox\LowRatingCompensationReactor;
+use Logistics\Execution\Infrastructure\Outbox\AssembleRouteOnPlanPublished;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
+use Logistics\FleetOps\Infrastructure\Outbox\CloseDepartureOnRouteClosed;
+use Logistics\FleetOps\Infrastructure\Outbox\OpenDepartureOnRouteStarted;
 use Logistics\Inventory\Infrastructure\Dispatch\GoodsReceivedStockDispatcher;
 use Logistics\Inventory\Infrastructure\Dispatch\ReturnRestockDispatcher;
 use Logistics\Notifications\Infrastructure\Dispatch\CommerceEventNotificationDispatcher;
@@ -17,10 +23,13 @@ use Logistics\Notifications\Infrastructure\Dispatch\VehicleIncidentNotificationD
 use Logistics\Outbox\Infrastructure\Dispatch\FanOutMessageDispatcher;
 use Logistics\Outbox\Infrastructure\Dispatch\NullMessageDispatcher;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
+use Logistics\Promise\Infrastructure\Dispatch\AutoSlotOnOrderPaid;
+use Logistics\Promise\Infrastructure\Dispatch\AutoSlotOnShipmentReceived;
 use Logistics\Promise\Infrastructure\Dispatch\OrderCancelledCupoReleaseDispatcher;
 use Logistics\Promise\Infrastructure\Dispatch\OrderPaidCupoConfirmDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\ShipmentStatusProgressionDispatcher;
+use Logistics\Telemetry\Infrastructure\Outbox\BindTripToRouteOnRouteStarted;
 use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
 use Logistics\Tracking\Infrastructure\Outbox\CancelOnOrderCancelled;
 use Logistics\Tracking\Infrastructure\Outbox\InProgressOnLabelsEmitted;
@@ -161,7 +170,25 @@ return [
         'execution.shipment_prepared' => FanOutMessageDispatcher::class,
         'execution.route_stop_attached' => FanOutMessageDispatcher::class,
         'execution.driver_route_assembled' => FanOutMessageDispatcher::class,
-        'planning.plan_published' => ShipmentStatusProgressionDispatcher::class,
+        // Asignar vehículo abre la entrega = preparar: solo avanza el estado del envío a IN_EXECUTION (un
+        // reactor; no necesita abanico ni notificación). El nombre exacto gana al prefijo 'execution.'.
+        'execution.delivery_opened' => ShipmentStatusProgressionDispatcher::class,
+        // Plan publicado: ABANICO — arma la ruta de ejecución (encadenamiento Fase 3.3) Y avanza el estado
+        // del envío a PLANNED (SSPD, SIEMPRE último en su fanout).
+        'planning.plan_published' => FanOutMessageDispatcher::class,
+        // Inicio de la ruta del chofer: ABANICO — abre la salida de flota + liga el trip de telemetría.
+        'execution.driver_route_started' => FanOutMessageDispatcher::class,
+        // Cierre de la ruta del chofer: cierra la salida de flota (un solo reactor; nombre exacto gana al
+        // prefijo 'execution.', que caería en notificación no-op).
+        'execution.driver_route_closed' => CloseDepartureOnRouteClosed::class,
+        // Ventana de entrega asignada (promise, Módulo 1): aviso al cliente de su franja (hoy no-op hasta que
+        // notifications mapee el evento; inofensivo).
+        'promise.delivery_window_assigned' => DomainEventNotificationDispatcher::class,
+        // Encuesta de satisfacción registrada: ABANICO — aviso (prefijo previo) + compensación por puntaje bajo.
+        'tracking.satisfaction_survey_recorded' => FanOutMessageDispatcher::class,
+        // Evidencia de entrega validada: reactor de compensación por daño (nombre exacto gana al prefijo
+        // 'execution.', que caía en notificación no-op para este evento interno).
+        'execution.delivery_evidence_validated' => DamageEvidenceCompensationReactor::class,
         // Un solo reactor cada uno (no necesitan abanico): etiqueta generada → «en curso»; devolución → «devuelta».
         'labels.labels_emitted' => InProgressOnLabelsEmitted::class,
         // Lote de telemetría → posición del camión en el seguimiento de cada envío a bordo.
@@ -188,6 +215,9 @@ return [
             // Fulfillment: crea el envío en logística (ReceiveShipment, idempotente por ('commerce', orderId))
             // y pasa la orden a "fulfilling". Es el puente comercio → última milla.
             OrderPaidShipmentDispatcher::class,
+            // Auto-slot (promise, Módulo 1): si el envío quedó con fecha y sin ventana, le asigna la franja.
+            // DESPUÉS del fulfillment para que el envío ya exista al leer su fecha.
+            AutoSlotOnOrderPaid::class,
             // Cupo (promise): confirma el cupo que la orden había reservado antes de pagar, para que el
             // barrido de vencimiento no lo libere ahora que la orden está pagada (ADR 020). Va después
             // del fulfillment para que el envío ya exista al conciliar la franja.
@@ -233,6 +263,8 @@ return [
         'shipments.shipment_received' => [
             DomainEventNotificationDispatcher::class,
             BindShipmentOnReceived::class,
+            // Auto-slot (promise, Módulo 1): pedidos que entran con fecha y sin ventana (Magento/POS).
+            AutoSlotOnShipmentReceived::class,
         ],
 
         // Reprogramación de entrega: aviso al cliente + seguimiento → «reprogramada» (por envío).
@@ -264,6 +296,8 @@ return [
         'execution.delivery_failed' => [
             DomainEventNotificationDispatcher::class,
             ProjectExecutionTracking::class,
+            // Compensación: una entrega fallida puede proponer/auto-emitir un vale (config-gated).
+            DeliveryFailedCompensationReactor::class,
             // Estado del envío (shipments.status): SIEMPRE último y nunca lanza (no corta a los demás).
             ShipmentStatusProgressionDispatcher::class,
         ],
@@ -282,6 +316,25 @@ return [
         'execution.driver_route_assembled' => [
             DomainEventNotificationDispatcher::class,
             ShipmentStatusProgressionDispatcher::class,
+        ],
+
+        // Plan publicado (encadenamiento automático Fase 3.3): execution ARMA la ruta del chofer, y luego el
+        // estado del envío avanza a PLANNED. ShipmentStatusProgressionDispatcher SIEMPRE último.
+        'planning.plan_published' => [
+            AssembleRouteOnPlanPublished::class,
+            ShipmentStatusProgressionDispatcher::class,
+        ],
+        // Inicio de la ruta del chofer: fleetops ABRE la salida (Departure → Out) y telemetry liga el trip a
+        // la ruta. Ambos idempotentes; no avanzan el estado del envío.
+        'execution.driver_route_started' => [
+            OpenDepartureOnRouteStarted::class,
+            BindTripToRouteOnRouteStarted::class,
+        ],
+        // Encuesta de satisfacción: aviso al cliente PRIMERO (preserva el ruteo previo por prefijo
+        // 'tracking.') + compensación por puntaje bajo (propone un vale si el rating ≤ umbral, config-gated).
+        'tracking.satisfaction_survey_recorded' => [
+            DomainEventNotificationDispatcher::class,
+            LowRatingCompensationReactor::class,
         ],
     ],
 

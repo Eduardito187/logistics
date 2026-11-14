@@ -28,7 +28,7 @@ final class TripMapper
             $record->vehicle_id,
             $record->driver_id,
             $record->route_id,
-            TripStatus::from($record->status),
+            TripStatus::fromLoose($record->status),
             self::wallInstant($record->started_at->toDateTimeImmutable()),
             $record->ended_at !== null ? self::wallInstant($record->ended_at->toDateTimeImmutable()) : null,
             GeoPoint::of($record->start_lat, $record->start_lng),

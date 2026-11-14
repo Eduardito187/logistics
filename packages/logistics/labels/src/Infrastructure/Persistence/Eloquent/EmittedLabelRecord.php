@@ -22,6 +22,7 @@ use Logistics\Labels\Database\Factories\EmittedLabelRecordFactory;
  * @property string      $label_id
  * @property int         $key_id
  * @property string      $zpl
+ * @property string      $size_profile
  * @property string      $signed_json
  * @property string      $created_at
  * @property string|null $revoked_at
@@ -47,6 +48,7 @@ final class EmittedLabelRecord extends Model
         'label_id',
         'key_id',
         'zpl',
+        'size_profile',
         'signed_json',
         'created_at',
         'revoked_at',

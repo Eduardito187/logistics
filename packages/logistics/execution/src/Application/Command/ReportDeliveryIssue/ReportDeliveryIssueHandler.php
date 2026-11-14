@@ -45,7 +45,7 @@ final class ReportDeliveryIssueHandler implements CommandHandler
             return;
         }
 
-        $type = DeliveryIssueType::from($command->type);
+        $type = DeliveryIssueType::fromLoose($command->type);
 
         $occurredAt = $command->occurredAt !== null && trim($command->occurredAt) !== ''
             ? new DateTimeImmutable($command->occurredAt)

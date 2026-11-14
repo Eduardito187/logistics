@@ -26,6 +26,9 @@ final class PromiseException extends DomainException
     /** Recurso inexistente (envío/promesa no encontrados, 404). */
     public const string KIND_NOT_FOUND = 'not_found';
 
+    /** El día es despachable pero ninguna franja tiene cupo/factibilidad: a la cola "Unslotted" (422). */
+    public const string KIND_NO_WINDOW = 'no_window';
+
     private function __construct(string $message, private readonly ?string $kind = null)
     {
         parent::__construct($message);
@@ -49,6 +52,11 @@ final class PromiseException extends DomainException
     public static function notFound(string $reason): self
     {
         return new self($reason, self::KIND_NOT_FOUND);
+    }
+
+    public static function noWindow(string $reason): self
+    {
+        return new self($reason, self::KIND_NO_WINDOW);
     }
 
     /**

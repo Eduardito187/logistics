@@ -17,10 +17,14 @@ use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliv
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidenceHandler;
 use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRoute;
 use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRouteHandler;
+use Logistics\Execution\Application\Command\DetachShipmentFromRoute\DetachShipmentFromRoute;
+use Logistics\Execution\Application\Command\DetachShipmentFromRoute\DetachShipmentFromRouteHandler;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDeparted;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDepartedHandler;
 use Logistics\Execution\Application\Command\MarkStopArrived\MarkStopArrived;
 use Logistics\Execution\Application\Command\MarkStopArrived\MarkStopArrivedHandler;
+use Logistics\Execution\Application\Command\OpenDelivery\OpenDelivery;
+use Logistics\Execution\Application\Command\OpenDelivery\OpenDeliveryHandler;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReception;
 use Logistics\Execution\Application\Command\OpenNodeReception\OpenNodeReceptionHandler;
 use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNode;
@@ -87,6 +91,8 @@ use Logistics\Execution\Domain\Contract\LabelVerificationGateway;
 use Logistics\Execution\Domain\Contract\NodeReceptionRepository;
 use Logistics\Execution\Domain\Contract\VehicleIncidentRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
+use Logistics\Execution\Infrastructure\Console\AdvanceStuckDeliveriesCommand;
+use Logistics\Execution\Infrastructure\Console\OpenMissingDeliveriesCommand;
 use Logistics\Execution\Infrastructure\Console\PruneScanEventsCommand;
 use Logistics\Execution\Infrastructure\Labels\SodiumLabelVerificationGateway;
 use Logistics\Execution\Infrastructure\Labels\StubLabelVerificationGateway;
@@ -126,6 +132,8 @@ final class ExecutionServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     private const HANDLERS = [
+        OpenDelivery::class => OpenDeliveryHandler::class,
+        DetachShipmentFromRoute::class => DetachShipmentFromRouteHandler::class,
         RecordPreparationScan::class => RecordPreparationScanHandler::class,
         RecordLoadScan::class => RecordLoadScanHandler::class,
         MarkShipmentDeparted::class => MarkShipmentDepartedHandler::class,
@@ -356,9 +364,10 @@ final class ExecutionServiceProvider extends ServiceProvider
             $registry->register($message, $handler);
         }
 
-        // Comando de poda de retención de escaneos (C7). No se agenda aquí: la retención es manual/ops.
+        // Comandos de ops (no se agendan: manual/ops). Poda de escaneos (C7) y backfill de consistencia que
+        // avanza las entregas atascadas en PENDING a LOADED.
         if ($this->app->runningInConsole()) {
-            $this->commands([PruneScanEventsCommand::class]);
+            $this->commands([PruneScanEventsCommand::class, AdvanceStuckDeliveriesCommand::class, OpenMissingDeliveriesCommand::class]);
         }
     }
 }

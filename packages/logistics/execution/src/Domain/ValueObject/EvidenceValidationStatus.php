@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de validación anti-fraude de una evidencia.
  *
@@ -17,6 +19,8 @@ namespace Logistics\Execution\Domain\ValueObject;
  */
 enum EvidenceValidationStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Pending = 'pending';
     case Ok = 'ok';
     case Review = 'review';
@@ -24,6 +28,6 @@ enum EvidenceValidationStatus: string
 
     public static function fromCode(?string $code): self
     {
-        return self::tryFrom(trim((string) $code)) ?? self::Pending;
+        return self::tryFromLoose($code) ?? self::Pending;
     }
 }

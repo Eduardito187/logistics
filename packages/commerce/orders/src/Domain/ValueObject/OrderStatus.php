@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Orders\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado del ciclo de vida de una orden comercial.
  *
@@ -14,6 +16,8 @@ namespace Commerce\Orders\Domain\ValueObject;
  */
 enum OrderStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Pending = 'pending';
     case Paid = 'paid';
     case Fulfilling = 'fulfilling';

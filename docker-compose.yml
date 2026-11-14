@@ -45,6 +45,10 @@ x-php: &php
         # DEV turnkey: corre migraciones PENDIENTES al arrancar el web (idempotente; solo las no aplicadas),
         # así `docker compose up` deja el esquema listo sin pasos manuales. Prod NO (migra en job de deploy).
         AUTO_MIGRATE: "true"
+        # DEV turnkey: reconcilia "Pedidos" (commerce Orders) desde los envíos existentes al arrancar
+        # (idempotente), así `docker compose up` deja Pedidos poblado sin correr el backfill a mano. Prod NO
+        # (lo hace el job de deploy). Ver AUTO_BACKFILL_ORDERS en el entrypoint.
+        AUTO_BACKFILL_ORDERS: "true"
         DB_CONNECTION: pgsql
         # La app apunta a PgBouncer (transaction pooling, C-3) en vez de a postgres
         # directo: multiplexa miles de conexiones de cliente sobre un pool pequeño de

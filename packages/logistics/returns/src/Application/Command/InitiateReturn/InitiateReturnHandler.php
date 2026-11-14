@@ -38,7 +38,7 @@ final readonly class InitiateReturnHandler implements CommandHandler
             $command->originalReference,
             $command->ownerPartyId,
             $command->warehouseId,
-            ReturnKind::from($command->kind),
+            ReturnKind::fromLoose($command->kind),
             $lines,
         );
 

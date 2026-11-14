@@ -13,14 +13,10 @@ use Logistics\Shipments\Domain\ValueObject\GeocodeResult;
 use Logistics\Shipments\Infrastructure\Geocoding\CachingGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\GeocodeScoring;
 use Logistics\Shipments\Infrastructure\Geocoding\NominatimGeocoder;
+use Logistics\Shipments\Tests\Feature\SimulatedGeocoderFailure;
 
 // Motivo del skip cuando la suite no corre contra PostgreSQL (base logistics_test).
 const CACHING_GEOCODER_PG_REASON = 'Requiere PostgreSQL (base logistics_test).';
-
-/**
- * Fallo simulado del geocoder interno: debe NO invocarse en un acierto de caché.
- */
-final class SimulatedGeocoderFailure extends RuntimeException {}
 
 /**
  * Dedup persistente del geocoding contra PostgreSQL (logistics_test): el decorador CachingGeocoder

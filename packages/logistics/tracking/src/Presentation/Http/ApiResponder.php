@@ -32,11 +32,18 @@ trait ApiResponder
      */
     private function error(string $code, string $message, int $status): JsonResponse
     {
+        // Body unificado (decisión del dueño): el motivo viaja SIEMPRE en `detail` y en `error.message`,
+        // con `code` estable, igual que el renderer global RFC 7807; ninguna API responde distinto a otra.
         return new JsonResponse([
+            'type' => rtrim((string) config('api.problem_type_base_uri', '/problems'), '/').'/'.$code,
+            'title' => ucfirst(str_replace('_', ' ', $code)),
+            'status' => $status,
+            'code' => $code,
+            'detail' => $message,
             'error' => [
                 'code' => $code,
                 'message' => $message,
             ],
-        ], $status);
+        ], $status, ['Content-Type' => 'application/problem+json']);
     }
 }

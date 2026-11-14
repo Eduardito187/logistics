@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de mensaje que origina una notificación al cliente. Cada tipo puede tener su propia cascada de
  * canales (ver NotificationRulesProvider) y su propia plantilla por canal (MessageTemplate).
@@ -14,6 +16,8 @@ namespace Logistics\Notifications\Domain\ValueObject;
  */
 enum MessageType: string
 {
+    use CaseInsensitiveEnum;
+
     /** La compra se registró y cobró correctamente (origen del pedido). */
     case PurchaseConfirmed = 'PURCHASE_CONFIRMED';
 

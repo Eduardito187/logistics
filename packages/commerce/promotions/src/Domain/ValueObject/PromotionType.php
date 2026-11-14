@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Promotions\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Tipo de beneficio que otorga una promoción.
  *
@@ -13,6 +15,8 @@ namespace Commerce\Promotions\Domain\ValueObject;
  */
 enum PromotionType: string
 {
+    use CaseInsensitiveEnum;
+
     case PercentageOff = 'percentage_off';
     case FixedAmountOff = 'fixed_amount_off';
     case FreeShipping = 'free_shipping';

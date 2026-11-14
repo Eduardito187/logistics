@@ -144,18 +144,46 @@ it('records a node reception and moves the delivery to InTransit', function (): 
     expect($node->payload()['node_id'])->toBe('n-5');
 });
 
-it('rejects an invalid transition: proof of delivery before loading', function (): void {
+it('permite la prueba de entrega desde Prepared (flujo sin escaneo de carga): entrega directo', function (): void {
+    // En el flujo vigente el app ya no manda escaneo de carga, así que el POD vale sin pasar por Loaded.
     $delivery = newDelivery();
     $delivery->recordPreparationScan('u-1', geo(), device(), at('2026-10-13T08:00:00+00:00'), 'k-prep');
 
-    expect(fn () => $delivery->recordProofOfDelivery(
+    $delivery->recordProofOfDelivery(
         'u-1',
         ProofOfDelivery::of('QR', null, at('2026-10-13T12:00:00+00:00')),
         geo(),
         device(),
         at('2026-10-13T12:00:00+00:00'),
         'k-pod',
-    ))->toThrow(ExecutionException::class, 'transición inválida');
+    );
+
+    expect($delivery->status())->toBe(DeliveryStatus::Delivered);
+});
+
+it('is idempotent on an already-delivered delivery (re-POD is a no-op)', function (): void {
+    $delivery = Delivery::reconstitute(
+        newDelivery()->id(),
+        's-closed',
+        'v-closed',
+        DeliveryStatus::Delivered,
+        [],
+        null,
+        null,
+    );
+
+    // Un POD sobre una entrega YA entregada (p. ej. la cola offline reintenta con otra clave) es un no-op
+    // EXITOSO, no un error de transición (decisión del dueño: un reintento no debe figurar como fallo).
+    $delivery->recordProofOfDelivery(
+        'u-1',
+        ProofOfDelivery::of('QR', null, at('2026-10-13T12:00:00+00:00')),
+        geo(),
+        device(),
+        at('2026-10-13T12:00:00+00:00'),
+        'k-pod',
+    );
+
+    expect($delivery->status())->toBe(DeliveryStatus::Delivered);
 });
 
 it('rejects loading a delivery that was never prepared', function (): void {

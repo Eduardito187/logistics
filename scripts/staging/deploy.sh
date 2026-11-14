@@ -80,12 +80,33 @@ endstep
 step "Migraciones (una sola vez, contenedor efímero con la imagen nueva)"
 # Antes de recrear el web: migraciones aditivas (expand/contract, docs/deploy.md §6). Sin caches de
 # arranque en este contenedor descartable (OPTIMIZE_ON_BOOT=false) para que sea rápido.
-dc run --rm --no-deps -e OPTIMIZE_ON_BOOT=false app php artisan migrate --force --no-interaction
+# El DDL va por la conexión DIRECTA a Postgres (`pgsql_direct`, DB_DIRECT_HOST=postgres), NO por
+# PgBouncer: el pooler en transaction pooling no debe cargar DDL/estado de sesión, y así el cambio de
+# esquema no interactúa con los planes preparados del pool (ver config/database.php y deploy.md).
+dc run --rm --no-deps -e OPTIMIZE_ON_BOOT=false app php artisan migrate --force --no-interaction --database=pgsql_direct
 endstep
 
 step "Deploy: up -d --build --remove-orphans (espera healthy de todos los servicios)"
 dc up -d --build --remove-orphans --wait --wait-timeout 420
 dc ps
+endstep
+
+step "Reconciliar Pedidos: backfill de órdenes desde envíos (idempotente, automático)"
+# "Pedidos" (commerce Orders) debe reflejar los envíos que entraron por ingesta/seeders sin pasar por el
+# checkout de commerce. Idempotente (salta las que ya existen), así que correrlo en cada deploy es seguro.
+# Va DESPUÉS de up --wait (stack sano: usa la conexión normal). NO bloquea el deploy si falla: es un reconcile
+# de datos, no una condición de arranque. Así el dueño nunca corre el comando a mano.
+dc exec -T app php artisan commerce:orders:backfill-from-shipments --force --no-interaction \
+    || echo "AVISO: el backfill de Pedidos falló; el deploy sigue. Revisar commerce:orders:backfill-from-shipments."
+endstep
+
+step "Recuperar tracking: reproyectar entregas DELIVERED/FAILED desde execution (idempotente, automático)"
+# Un ShipmentDelivered que se despachó del outbox contra el read model viejo se descartó y dejó el envío
+# atascado en «Cargada»/«Procesando»; el mensaje ya quedó Despachado y no se re-dispara solo. Este reconcile
+# reproyecta el tracking desde la fuente de verdad (execution_deliveries) tras subir el código nuevo (ya con la
+# guardia ampliada). Idempotente (no-op si el tracking ya está al día). NO bloquea el deploy si falla.
+dc exec -T app php artisan logistics:tracking:reconcile-from-execution --force \
+    || echo "AVISO: el reconcile de tracking falló; el deploy sigue. Revisar logistics:tracking:reconcile-from-execution."
 endstep
 
 step "Smoke test HTTP"

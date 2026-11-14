@@ -125,7 +125,7 @@ final class NodeReceptionMapper
             Corridor::from($record->corridor),
             $record->expected_unit_ids,
             $received,
-            NodeReceptionStatus::from($record->status),
+            NodeReceptionStatus::fromLoose($record->status),
             new DateTimeImmutable($record->opened_at),
             $record->reconciled_at !== null ? new DateTimeImmutable($record->reconciled_at) : null,
             $locations,

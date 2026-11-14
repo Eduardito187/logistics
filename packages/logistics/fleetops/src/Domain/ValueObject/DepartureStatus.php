@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\FleetOps\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de una salida/despacho de un vehículo de flota propia.
  *
@@ -11,6 +13,8 @@ namespace Logistics\FleetOps\Domain\ValueObject;
  */
 enum DepartureStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** En ruta: el vehículo salió y todavía no retornó. */
     case Out = 'out';
 

@@ -87,4 +87,25 @@ return [
             'strategy' => env('PLANNING_AUTO_PLAN_STRATEGY', 'optimization'),
         ],
     ],
+
+    // AUTO-PUBLICACIÓN de los planes propuestos (Fase 3.2, comando logistics:planning:auto-publish, ver
+    // routes/console.php). Corre después del auto-plan nocturno y publica los planes que pasan la
+    // PublishGate; los retenidos quedan propuestos y se alerta al planificador (ADR 012: el auto-planner
+    // asiste, no decide).
+    'auto_publish' => [
+        // Interruptor MAESTRO: OFF por defecto. Mientras esté en false, el comando no publica nada y el
+        // scheduler no lo agenda (se opera con publicación manual hasta habilitarlo).
+        'enabled' => (bool) env('PLANNING_AUTO_PUBLISH_ENABLED', false),
+
+        // Hora local (HH:MM) del disparo diario, después del auto-plan de las 21:00.
+        'at' => env('PLANNING_AUTO_PUBLISH_AT', '21:45'),
+
+        // Umbrales de la PublishGate (ratios de ocupación 0..1 = 0..100 %):
+        //  - max_occupancy: por encima el camión está sobrecargado → se RETIENE (1.0 = 100 %). 0 desactiva.
+        //  - min_occupancy: por debajo el camión va demasiado vacío → se RETIENE. 0 (por defecto) desactiva.
+        //  - require_vehicle_available: exige que el vehículo siga disponible/apto para la fecha.
+        'max_occupancy' => (float) env('PLANNING_PUBLISH_MAX_OCCUPANCY', 1.0),
+        'min_occupancy' => (float) env('PLANNING_PUBLISH_MIN_OCCUPANCY', 0.0),
+        'require_vehicle_available' => (bool) env('PLANNING_PUBLISH_REQUIRE_AVAILABLE', true),
+    ],
 ];

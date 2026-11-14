@@ -128,10 +128,67 @@ it('ignores applying the same status: no event', function (): void {
 });
 
 it('rejects a jump that skips the flow (no illegal transitions)', function (): void {
+    // La ENTREGA/FALLO sí se admiten desde cualquier estado activo (la verdad la graba execution). Lo que
+    // sigue prohibido es saltar hacia ADELANTE en la secuencia operativa sin pasar por los pasos: Pendiente
+    // no puede ir directo a Cargado (debe procesar/preparar antes).
     $tracking = openTracking();
 
-    expect(fn () => $tracking->applyStatus(VisibleStatus::Delivered))
+    expect(fn () => $tracking->applyStatus(VisibleStatus::Loaded))
         ->toThrow(TrackingException::class, 'no admitida');
+});
+
+// La entrega es la verdad del negocio (execution + POD): si el estado visible quedó atrás porque un evento
+// intermedio se perdió (outbox congelado / sin OnTheWay), el ShipmentDelivered igual debe aplicar. Verificado
+// en terreno: entregas DELIVERED con el tracking atascado en PROCESSING/ON_THE_WAY.
+it('allows delivery from an early state (Processing) when execution delivered it', function (): void {
+    $tracking = openTracking();
+    $tracking->markProcessing();
+    $tracking->releaseEvents();
+
+    $tracking->markDelivered(new DateTimeImmutable('2026-11-13T12:00:00+00:00'));
+
+    expect($tracking->status())->toBe(VisibleStatus::Delivered);
+});
+
+// Regresión del POD que dejaba el envío atascado en «Cargada»: el app entrega con el POD aunque nunca se
+// haya registrado la salida del camión (OnTheWay lo emite el inicio de ruta, que puede faltar). La entrega
+// debe admitirse directo desde Cargado — antes se descartaba y el envío no avanzaba a Entregado.
+it('allows delivery directly from Loaded (POD without a departed event)', function (): void {
+    $tracking = openTracking();
+    $tracking->markProcessing();
+    $tracking->markInProgress();
+    $tracking->markLoaded();
+    $tracking->releaseEvents();
+
+    $tracking->markDelivered(new DateTimeImmutable('2026-11-13T12:00:00+00:00'));
+
+    expect($tracking->status())->toBe(VisibleStatus::Delivered)
+        ->and($tracking->releaseEvents())->toHaveCount(1);
+});
+
+// POD directo desde Preparado (el app ya no manda escaneo de carga): igual que el agregado Delivery de
+// execution, el seguimiento debe poder entregar sin pasar por Cargado.
+it('allows delivery directly from InProgress (POD without a load scan)', function (): void {
+    $tracking = openTracking();
+    $tracking->markProcessing();
+    $tracking->markInProgress();
+    $tracking->releaseEvents();
+
+    $tracking->markDelivered();
+
+    expect($tracking->status())->toBe(VisibleStatus::Delivered);
+});
+
+it('allows a failed attempt directly from Loaded', function (): void {
+    $tracking = openTracking();
+    $tracking->markProcessing();
+    $tracking->markInProgress();
+    $tracking->markLoaded();
+    $tracking->releaseEvents();
+
+    $tracking->markFailed();
+
+    expect($tracking->status())->toBe(VisibleStatus::Failed);
 });
 
 it('does not allow leaving a terminal status', function (): void {

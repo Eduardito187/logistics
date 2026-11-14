@@ -20,7 +20,7 @@ final class CarrierMapper
             CarrierId::fromString($record->id),
             $record->name,
             $record->tax_id,
-            CarrierStatus::from($record->status),
+            CarrierStatus::fromLoose($record->status),
             $record->rating,
             $record->rating_count,
             array_values($record->documents),

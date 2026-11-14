@@ -36,7 +36,7 @@ final class InvoiceMapper
             $record->subtotal_cents,
             $record->tax_cents,
             $record->total_cents,
-            InvoiceStatus::from($record->status),
+            InvoiceStatus::fromLoose($record->status),
             $issuedAt,
         );
     }

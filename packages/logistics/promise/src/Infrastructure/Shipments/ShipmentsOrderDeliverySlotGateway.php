@@ -48,6 +48,24 @@ final readonly class ShipmentsOrderDeliverySlotGateway implements OrderDeliveryS
         ];
     }
 
+    public function pendingDeliveryDate(string $orderId): ?string
+    {
+        /** @var ShipmentView|null $view */
+        $view = $this->queryBus->ask(new FindShipment($orderId));
+
+        // Sin envío o sin fecha solicitada no hay nada que slotear.
+        if ($view === null || $view->deliveryDate === null) {
+            return null;
+        }
+
+        // Ya tiene ventana (franja completa): no es candidato al auto-slot. Idempotencia de los reactores.
+        if ($view->deliveryWindowStart !== null && $view->deliveryWindowEnd !== null) {
+            return null;
+        }
+
+        return $view->deliveryDate;
+    }
+
     public function assignSlot(string $orderId, string $date, string $windowStart, string $windowEnd): void
     {
         try {

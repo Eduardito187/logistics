@@ -18,14 +18,10 @@ use Logistics\Notifications\Domain\ValueObject\SmsBudget;
 use Logistics\Notifications\Infrastructure\Channel\RoutingChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\SmsChannelSender;
 use Logistics\Notifications\Infrastructure\Channel\TelegramChannelSender;
+use Logistics\Notifications\Tests\Feature\SimulatedChannelFailure;
 use Logistics\Outbox\Infrastructure\Resilience\CircuitBreaker;
 use Logistics\Outbox\Infrastructure\Resilience\CircuitOpenException;
 use Logistics\Shared\Domain\Clock\Clock;
-
-/**
- * Fallo simulado de un canal caído (sender doble): el breaker debe aislarlo.
- */
-final class SimulatedChannelFailure extends RuntimeException {}
 
 /**
  * Resiliencia de los canales de notificación: connectTimeout (B-2) en Telegram y SMS, y circuit breaker

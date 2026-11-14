@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Commerce\Payments\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Método de pago con el que se intenta cobrar una orden.
  *
@@ -12,6 +14,8 @@ namespace Commerce\Payments\Domain\ValueObject;
  */
 enum PaymentMethod: string
 {
+    use CaseInsensitiveEnum;
+
     /** QR Simple del Banco Central de Bolivia (confirmación async por webhook). */
     case QrBcb = 'qr_bcb';
 

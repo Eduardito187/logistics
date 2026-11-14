@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Carriers\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de un transportista tercero dentro de la plataforma.
  *
@@ -11,6 +13,8 @@ namespace Logistics\Carriers\Domain\ValueObject;
  */
 enum CarrierStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Activo: puede recibir asignaciones y tarifas vigentes. */
     case Active = 'active';
 

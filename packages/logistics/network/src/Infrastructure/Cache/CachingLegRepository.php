@@ -102,7 +102,7 @@ final readonly class CachingLegRepository implements LegRepository
             LegId::fromString((string) $data['id']),
             NodeId::fromString((string) $data['from']),
             NodeId::fromString((string) $data['to']),
-            CorridorType::from((string) $data['corridor']),
+            CorridorType::fromLoose((string) $data['corridor']),
         );
     }
 }

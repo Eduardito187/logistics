@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\SapConnector\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado de un traspaso de stock a lo largo de su despacho asíncrono hacia SAP (ADR 002).
  *
@@ -14,6 +16,8 @@ namespace Logistics\SapConnector\Domain\ValueObject;
  */
 enum TransferStatus: string
 {
+    use CaseInsensitiveEnum;
+
     case Pending = 'PENDING';
 
     case Sent = 'SENT';

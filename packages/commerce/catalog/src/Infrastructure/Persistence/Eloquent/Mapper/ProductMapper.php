@@ -29,7 +29,7 @@ final class ProductMapper
             $record->name,
             $record->description,
             Sku::of($record->canonical_sku),
-            ProductStatus::from($record->status),
+            ProductStatus::fromLoose($record->status),
             array_values(array_map(
                 static fn (array $variant): ProductVariant => ProductVariant::fromArray($variant),
                 $record->variants,

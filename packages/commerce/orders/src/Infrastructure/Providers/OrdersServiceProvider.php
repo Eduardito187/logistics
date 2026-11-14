@@ -25,6 +25,7 @@ use Commerce\Orders\Application\Query\GetOrder\GetOrderHandler;
 use Commerce\Orders\Application\Query\ListOrders\ListOrders;
 use Commerce\Orders\Application\Query\ListOrders\ListOrdersHandler;
 use Commerce\Orders\Domain\Contract\OrderRepository;
+use Commerce\Orders\Infrastructure\Console\BackfillOrdersFromShipmentsCommand;
 use Commerce\Orders\Infrastructure\Console\ExpireUnpaidOrdersCommand;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Repository\EloquentOrderRepository;
 use Commerce\Orders\Infrastructure\ReadModel\DbCartSnapshotReader;
@@ -68,9 +69,13 @@ final class OrdersServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
 
-        // Comando de expiración de órdenes impagas (programado en el scheduler por el integrador).
+        // Comandos de consola: expiración de órdenes impagas (programada por el integrador) y backfill
+        // one-shot de órdenes desde los envíos existentes (reconstrucción histórica, no recurrente).
         if ($this->app->runningInConsole()) {
-            $this->commands([ExpireUnpaidOrdersCommand::class]);
+            $this->commands([
+                ExpireUnpaidOrdersCommand::class,
+                BackfillOrdersFromShipmentsCommand::class,
+            ]);
         }
 
         $registry = $this->app->make(HandlerRegistry::class);

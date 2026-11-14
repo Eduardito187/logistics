@@ -67,6 +67,7 @@ final readonly class ConductPreTripChecklistHandler implements CommandHandler
             $performedOn,
             $command->notes,
             $evaluation,
+            $command->routeId,
         );
 
         $this->inspections->save($inspection);

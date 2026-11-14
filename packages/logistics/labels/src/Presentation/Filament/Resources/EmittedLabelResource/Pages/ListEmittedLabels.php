@@ -19,6 +19,7 @@ use Logistics\Labels\Application\Query\GetPublicKeysBundle\GetPublicKeysBundle;
 use Logistics\Labels\Application\ReadModel\PublicKeyBundleView;
 use Logistics\Labels\Domain\Exception\DuplicateLabelException;
 use Logistics\Labels\Domain\Exception\InvalidLabelException;
+use Logistics\Labels\Presentation\Filament\Actions\ScanLabelAction;
 use Logistics\Labels\Presentation\Filament\Resources\EmittedLabelResource;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
@@ -47,6 +48,8 @@ final class ListEmittedLabels extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            // Escáner de etiquetas como MODAL (cámara por switch o código a mano); resuelve el bulto.
+            ScanLabelAction::make(),
             $this->emitLabelsAction(),
             $this->preEmitLabelsAction(),
             $this->publicKeysAction(),

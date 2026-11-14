@@ -26,6 +26,10 @@ final class AssignShelfLocationController extends ExecutionController
             ? [$unitId]
             : array_values(array_map('strval', (array) ($data['unit_ids'] ?? [])));
 
+        // El producto se ubica escaneando su ETIQUETA (ruta o lote): normaliza label_id → bulto real, para
+        // que el estante quede atado al `shipment_unit.id` de la recepción (y no dé 422 "no es de la recepción").
+        $unitIds = $this->resolveScannedUnitIdList($unitIds);
+
         $nodeId = (string) $data['node_id'];
 
         $this->commandBus->dispatch(new AssignShelfLocation(

@@ -35,7 +35,7 @@ final readonly class ScheduleMaintenanceHandler implements CommandHandler
         $order = MaintenanceOrder::schedule(
             $this->orders->nextIdentity(),
             $command->vehicleId,
-            MaintenanceType::from($command->type),
+            MaintenanceType::fromLoose($command->type),
             $command->odometerKm !== null ? Odometer::km($command->odometerKm) : null,
             $command->workshop,
             new DateTimeImmutable($command->scheduledAt),

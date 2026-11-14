@@ -7,6 +7,15 @@
 set -e
 
 # ------------------------------------------------------------
+# 0. Git: confiar en el repo montado (evita "dubious ownership")
+# ------------------------------------------------------------
+# El working dir es un bind mount cuyo dueño (uid del host) no coincide con el usuario del contenedor, así que
+# git se niega a operar ("fatal: detected dubious ownership in repository at '/var/www/html'") y ensucia la
+# salida de composer (que usa git para detectar versiones). Marcar el directorio como seguro lo silencia. Es
+# idempotente y no falla el arranque si git no está. (Ver docs: git safe.directory para repos montados.)
+git config --global --add safe.directory /var/www/html > /dev/null 2>&1 || true
+
+# ------------------------------------------------------------
 # 1. Esperar a PostgreSQL
 # ------------------------------------------------------------
 # DB_WAIT_TIMEOUT (segundos): tope de espera. 0 = esperar indefinidamente (default, comportamiento de dev).
@@ -34,6 +43,23 @@ fi
 mkdir -p /var/www/html/storage/framework/{cache,sessions,views}
 mkdir -p /var/www/html/storage/logs
 mkdir -p /var/www/html/bootstrap/cache
+# Disco `public` de Laravel: carpeta destino de la media subida (fotos de POD/daños/collages, etc.).
+mkdir -p /var/www/html/storage/app/public
+
+# ------------------------------------------------------------
+# 2a-bis. Symlink public/storage -> storage/app/public (equivalente a `php artisan storage:link`)
+# ------------------------------------------------------------
+# El symlink se hornea en la imagen (Dockerfile), PERO en DEV el bind mount del código monta el
+# `public/` del host ENCIMA y TAPA el symlink del build → sin esto, la media subida al disco `public`
+# no se sirve por `/storage/...` (y nginx, que resuelve /storage al symlink, devolvería 404). Se
+# (re)crea en cada arranque de forma idempotente con `ln -sfn` (más robusto que `storage:link` en un
+# entrypoint: no necesita bootear la app ni falla si el enlace ya existe). En PROD (sin bind mount) es
+# un no-op: el enlace ya apunta bien. Si el bind mount del host no admite symlinks, solo avisa.
+if ln -sfn /var/www/html/storage/app/public /var/www/html/public/storage 2>/dev/null; then
+    echo "[entrypoint] Symlink public/storage -> storage/app/public listo (media del disco public servible)."
+else
+    echo "[entrypoint] AVISO: no se pudo crear public/storage (¿el bind mount del host no admite symlinks?)." >&2
+fi
 
 # ------------------------------------------------------------
 # 2a. Autoloader de Composer — sincronizar en DEV (COMPOSER_INSTALL_ON_BOOT=true)
@@ -87,6 +113,16 @@ fi
 # réplica es seguro e idempotente. Dev lo deja apagado (OPTIMIZE_ON_BOOT=false).
 if [ "${OPTIMIZE_ON_BOOT:-false}" = "true" ]; then
     echo "[entrypoint] OPTIMIZE_ON_BOOT=true → cacheando config/route/view/event..."
+    # Limpiar los caches LOCALES (archivos en bootstrap/cache) antes de regenerarlos: en un
+    # `docker restart` el filesystem del contenedor persiste, así que `route:cache` sobre rutas
+    # ya cacheadas carga una CompiledRouteCollection (no una RouteCollection fresca) y revienta
+    # con TypeError en RouteCacheCommand::buildRouteCacheFile(). NO usar `optimize:clear` aquí:
+    # ese también hace `cache:clear` y vaciaría el Valkey COMPARTIDO en cada arranque de cada
+    # réplica. Estos `*:clear` solo tocan archivos locales y son idempotentes.
+    php artisan route:clear
+    php artisan config:clear
+    php artisan view:clear
+    php artisan event:clear
     php artisan config:cache
     php artisan route:cache
     php artisan view:cache
@@ -107,6 +143,24 @@ if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_MIGRATE:-false}" = "tr
 fi
 
 # ------------------------------------------------------------
+# 4b. Reconciliar "Pedidos" desde los envíos — OPT-IN (AUTO_BACKFILL_ORDERS=true)
+# ------------------------------------------------------------
+# "Pedidos" (commerce Orders) debe reflejar los envíos que entraron por ingesta/seeders sin pasar por el
+# checkout. Idempotente (salta las que ya existen), tolerante: no tumba el arranque si falla. En DEV se activa
+# para que `docker compose up` deje Pedidos poblado sin correr nada a mano; en cloud lo hace el job de deploy
+# (scripts/staging/deploy.sh), así que ahí queda apagado para no correrlo desde cada réplica web.
+if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_BACKFILL_ORDERS:-false}" = "true" ]; then
+    echo "[entrypoint] AUTO_BACKFILL_ORDERS=true → reconciliando Pedidos desde envíos..."
+    php artisan commerce:orders:backfill-from-shipments --force --no-interaction \
+        || echo "[entrypoint] AVISO: el backfill de Pedidos falló; el arranque sigue."
+    # Recupera el tracking de entregas ya hechas en execution que quedaron atascadas en el estado visible
+    # (p. ej. «Cargada»/«Procesando») por un evento perdido. Idempotente. Misma puerta turnkey.
+    echo "[entrypoint] → reproyectando tracking desde las entregas de execution..."
+    php artisan logistics:tracking:reconcile-from-execution --force \
+        || echo "[entrypoint] AVISO: el reconcile de tracking falló; el arranque sigue."
+fi
+
+# ------------------------------------------------------------
 # 5. Recarga de workers — SIEMPRE
 # ------------------------------------------------------------
 # `queue:work` mantiene el framework en memoria: sin esta señal un worker sigue ejecutando
@@ -124,6 +178,22 @@ if [ "$1" = "php-fpm" ]; then
             sleep 2
         fi
     done
+fi
+
+# ------------------------------------------------------------
+# 5b. Limpieza de locks colgados del scheduler — SIEMPRE
+# ------------------------------------------------------------
+# `withoutOverlapping()` deja un mutex en la caché (Valkey). Si una tarea se mató a mitad (deploy, OOM,
+# suspensión), el mutex NO se libera y el scheduler SALTA esa tarea hasta que el lock expira → incidente real:
+# el pump del outbox quedó congelado horas y los eventos no se despachaban. Un deploy NO limpia ese lock por sí
+# solo (vive en Valkey, no en el proceso). Esta limpieza al arrancar lo borra, así el outbox se recupera en el
+# deploy. Tolerante: Valkey puede no estar listo; no debe tumbar el arranque.
+if [ "$1" = "php-fpm" ]; then
+    # OJO: el comando es `schedule:clear-cache` (ScheduleClearCacheCommand), NO `schedule:clear-mutex` (ese NO
+    # existe en Laravel). Borra los mutex de withoutOverlapping/onOneServer cacheados (Valkey) por el scheduler.
+    echo "[entrypoint] Limpiando locks colgados del scheduler (schedule:clear-cache)..."
+    php artisan schedule:clear-cache > /dev/null 2>&1 \
+        || echo "[entrypoint] AVISO: no se pudo limpiar los mutex del scheduler (¿Valkey no disponible?)."
 fi
 
 # ------------------------------------------------------------

@@ -21,11 +21,11 @@ final class AccountMapper
     {
         return Account::reconstitute(
             AccountId::fromString($record->id),
-            AccountType::from($record->type),
+            AccountType::fromLoose($record->type),
             Uuid::fromString($record->user_id),
             $record->display_name,
             $record->tax_id,
-            AccountStatus::from($record->status),
+            AccountStatus::fromLoose($record->status),
             array_values(array_map(
                 static fn (array $address): Address => Address::fromArray($address),
                 $record->addresses,

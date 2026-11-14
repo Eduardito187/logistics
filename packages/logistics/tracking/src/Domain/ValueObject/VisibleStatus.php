@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Domain\ValueObject;
 
+use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
+
 /**
  * Estado visible del pedido tal como lo ve el cliente en la página pública de rastreo: un ciclo de vida
  * único y ordenado, desde que ingresa la orden hasta que se entrega (o se devuelve).
@@ -17,6 +19,8 @@ namespace Logistics\Tracking\Domain\ValueObject;
  */
 enum VisibleStatus: string
 {
+    use CaseInsensitiveEnum;
+
     /** Orden ingresada, esperando el pago. Todavía sin etiqueta. INICIAL. */
     case Pending = 'PENDING';
 
@@ -52,18 +56,29 @@ enum VisibleStatus: string
      * Regla del negocio: tras el pago y antes de entregar se puede reprogramar o anular; tras entregar,
      * devolver; una entrega fallida puede reintentarse (vuelve a «en camino») o reprogramarse.
      *
+     * La ENTREGA y el FALLO se admiten desde cualquier estado EN CURSO —procesando, preparado, cargado, en
+     * camino, reprogramado y hasta fallido (un reintento que entrega)—, NO desde PENDIENTE. Razón: el hecho de
+     * entrega es la VERDAD del negocio (lo graba execution con su POD); el estado visible puede haber quedado
+     * atrás porque un evento intermedio (preparado/cargado/salida) se perdió o llegó fuera de orden —el outbox se
+     * congeló, o el inicio de ruta no emitió OnTheWay—. Verificado en terreno (2026-11-13): había entregas
+     * DELIVERED en execution con el tracking atascado en PROCESSING/ON_THE_WAY porque la guardia vieja exigía la
+     * secuencia estricta y descartaba el `ShipmentDelivered` en silencio (envío «Cargada»). PENDIENTE sí sigue
+     * estricto a propósito: un pedido sin pago/procesamiento no puede figurar entregado; un «entregado desde
+     * pendiente» es un dato ANÓMALO que se saltea (no un evento tardío de un flujo real). Solo los terminales
+     * (Cancelada/Devuelta) bloquean todo. Recuperación de los ya atascados: `logistics:tracking:reconcile-from-execution`.
+     *
      * @return list<self>
      */
     public function allowedNext(): array
     {
         return match ($this) {
             self::Pending => [self::Processing, self::Cancelled],
-            self::Processing => [self::InProgress, self::Cancelled, self::Rescheduled],
-            self::InProgress => [self::Loaded, self::Cancelled, self::Rescheduled],
-            self::Loaded => [self::OnTheWay, self::Cancelled, self::Rescheduled],
+            self::Processing => [self::InProgress, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
+            self::InProgress => [self::Loaded, self::OnTheWay, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
+            self::Loaded => [self::OnTheWay, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
             self::OnTheWay => [self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
-            self::Failed => [self::OnTheWay, self::Rescheduled, self::Cancelled],
-            self::Rescheduled => [self::Processing],
+            self::Failed => [self::OnTheWay, self::Delivered, self::Rescheduled, self::Cancelled],
+            self::Rescheduled => [self::Processing, self::Delivered, self::Failed],
             self::Delivered => [self::Returned],
             self::Cancelled, self::Returned => [],
         };

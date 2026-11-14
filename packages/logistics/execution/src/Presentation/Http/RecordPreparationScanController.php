@@ -20,6 +20,9 @@ final class RecordPreparationScanController extends ExecutionController
         /** @var array<string, mixed> $data */
         $data = $request->validated();
 
+        // El producto se identifica escaneando su ETIQUETA: normaliza `unit_id` (label_id → bulto real).
+        $data = $this->resolveScannedUnitIds($data);
+
         $this->commandBus->dispatch(ScanCommandFactory::preparation(
             $data,
             $this->deviceId($request),

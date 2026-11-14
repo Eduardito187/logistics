@@ -61,6 +61,7 @@ $contextMaps = [
     require __DIR__.'/api/carriers.php',
     require __DIR__.'/api/cart.php',
     require __DIR__.'/api/catalog.php',
+    require __DIR__.'/api/compensation.php',
     require __DIR__.'/api/coverage.php',
     require __DIR__.'/api/execution.php',
     require __DIR__.'/api/fleet.php',

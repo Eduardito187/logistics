@@ -146,7 +146,7 @@ final class LegResource extends Resource
             TextEntry::make('corridor_type')
                 ->label(__('Corridor type'))
                 ->badge()
-                ->formatStateUsing(static fn (string $state): string => __(CorridorType::from($state)->label())),
+                ->formatStateUsing(static fn (string $state): string => __(CorridorType::fromLoose($state)->label())),
         ]);
     }
 
@@ -169,7 +169,7 @@ final class LegResource extends Resource
                 TextColumn::make('corridor_type')
                     ->label(__('Corridor type'))
                     ->badge()
-                    ->formatStateUsing(static fn (string $state): string => __(CorridorType::from($state)->label())),
+                    ->formatStateUsing(static fn (string $state): string => __(CorridorType::fromLoose($state)->label())),
                 // El UUID del tramo no se muestra: el tramo se identifica por origen → destino (nombre de nodo).
             ])
             ->filters([

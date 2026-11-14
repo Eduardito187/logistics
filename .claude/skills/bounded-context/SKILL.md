@@ -94,8 +94,16 @@ packages/logistics/<context>/
 4. `Infrastructure`: modelo Eloquent (`$incrementing=false`, `$keyType='string'`), mapper dominio↔fila,
    repo Eloquent, migración (uuid pk; PostGIS con `ST_*` por SQL si hay geometría), y el ServiceProvider
    que bindea repos, registra handlers en `HandlerRegistry` y hace `loadMigrationsFrom`.
-5. **Registrar el package en DOS lugares** (regla 3 de `CLAUDE.md`): `bootstrap/providers.php` y
-   `extra.laravel.dont-discover` del `composer.json` raíz. El núcleo `SharedServiceProvider` va primero.
+5. **Registrar el package** (regla 3 de `CLAUDE.md`): `bootstrap/providers.php` (el núcleo
+   `SharedServiceProvider` va primero) **Y** `extra.laravel.dont-discover` del `composer.json` raíz **Y**
+   regenerar **`composer.lock`**. El `composer.lock` es el lugar que SIEMPRE se olvida y tumba el CI entero:
+   `composer install --no-interaction` (job del CI) falla **FATAL** con *"Required package logistics/<ctx> is
+   not present in the lock file"* (exit 4) si el package está en `require` pero no en el lock. Fix normal (lo
+   corre el dueño): `composer update logistics/<ctx>`. Fix a mano cuando no se puede correr composer: insertar
+   la entrada en el array `packages` del lock espejando una entrada `path` existente (molde `logistics/carriers`),
+   en orden alfabético; el `content-hash` queda desfasado (warning cosmético, no frena el install, se silencia
+   con `composer update --lock`). Ver [[new-package-composer-lock]]. **Recordar: nada de esto llega al CI hasta
+   que el dueño commitea+pushea — el CI corre el commit pusheado, no el working tree.**
 6. Tests: `Unit` (dominio, sin Laravel) + `Feature` (stack contra PostgreSQL real; PostGIS si aplica).
 
 ## Definición de Terminado
@@ -380,9 +388,36 @@ dependencia composer (así cada contexto queda extraíble a microservicio). Patr
    `Application\Subscriber\XOnY` que ya mapea payload→Command. Molde: `inventory/.../Dispatch/GoodsReceivedStockDispatcher`.
 4. **Idempotencia**: el outbox reentrega at-least-once → el command destino debe deduplicar por una clave natural
    (p.ej. `goods_receipt_ref`/`return_id` + sku), o el relay crea stock duplicado en un reintento.
+4b. **Una proyección tolerante que "descarta en silencio" puede TRAGARSE un hecho crítico** (verificado
+   2026-11-13). Si el reactor hace `if (!$agg->canApply($x)) return;` sobre una máquina de estados, un hecho
+   terminal/importante (p.ej. `shipment_delivered`) se pierde cuando su transición no está admitida desde el
+   estado actual → el read model queda atascado. Regla: un hecho de ese peso debe ser alcanzable desde TODOS los
+   estados previos realistas (ampliar `allowedNext()`), no solo desde el "camino feliz". El silencio tolerante
+   es para duplicados y eventos irrelevantes, no para un hecho que el negocio exige reflejar. Ver
+   [[tracking-lifecycle-state-machine]].
 5. **Verificar el cableado de verdad** (no basta que el config cargue): insertar un `outbox_messages` pendiente con
    el `event_name` + payload, correr `php artisan logistics:outbox:relay`, y afirmar el efecto (p.ej. se creó el
    lote), luego limpiar. Los tests de paquete son aislados y NO cubren el relay cruzado.
+
+## Comando de reconciliación / backfill de un contexto (verificado 2026-11-13)
+
+Cuando entran datos por un camino que SALTEA el flujo canónico (seeders, ingesta directa, versiones viejas, un
+path forzado), queda estado huérfano. Dar al contexto un **comando de reconciliación/backfill** idempotente que
+lo rellene (moldes: `commerce:orders:backfill-from-shipments`, `commerce:catalog:backfill-from-orders`,
+`logistics:execution:open-missing-deliveries`). Forma:
+
+- **Dry-run por defecto, efecto solo con `--force`**; `--chunk=N` y `chunkById` para escalar a millones.
+- **Idempotente por clave estable**: `exists(clave)` antes de crear; reanudable; marcar lo rellenado con una
+  columna `source` ('backfill' vs el default) + migración ADITIVA (`hasColumn`).
+- **Tolerante por ítem**: build en try/catch, loguea y sigue, cuenta `skipped`.
+- Registrar en el provider dentro de `runningInConsole`; NO programarlo recurrente; SÍ invocarlo al final del
+  seeder demo orquestador (`TestDataSeeder`) para que docker nuevo quede poblado.
+- **REGLA DURA — al rellenar un agregado NO reemitir sus eventos de dominio al outbox.** Construir el agregado por
+  la vía de dominio (respeta invariantes) pero PERSISTIR directo por el mapper/Eloquent
+  (`...Mapper::toRow()` + `...Record::updateOrCreate`), descartando `releaseEvents()`. Si se reemitiera el evento,
+  su reactor del outbox (§ sección anterior) volvería a correr el efecto downstream → DUPLICACIÓN. Caso real:
+  republicar `orders.order_paid` dispara `OrderPaidShipmentDispatcher`, que recrea los envíos de los que salió el
+  backfill. El backfill reconcilia el read side; no re-ejecuta el flujo. Ver [[reconcile-backfill-commands]].
 
 ## Olas de agentes para un build multi-contexto (orquestador ↔ agente) (2026-10-16)
 

@@ -37,7 +37,8 @@ final class BackupRestoreCommand extends Command
 
     public function handle(): int
     {
-        $bundle = (string) $this->argument('bundle');
+        $bundleArg = $this->argument('bundle');
+        $bundle = is_string($bundleArg) ? $bundleArg : '';
         if (!is_file($bundle)) {
             $this->error("No existe el bundle: {$bundle}");
 

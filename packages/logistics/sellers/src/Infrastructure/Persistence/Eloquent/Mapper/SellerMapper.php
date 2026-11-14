@@ -25,7 +25,7 @@ final class SellerMapper
             SellerId::fromString($record->id),
             $record->legal_name,
             $record->tax_id,
-            SellerStatus::from($record->status),
+            SellerStatus::fromLoose($record->status),
             ContactInfo::of($record->contact_name, $record->contact_email, $record->contact_phone),
             $terms !== null
                 ? SettlementTerms::fromPrimitives(

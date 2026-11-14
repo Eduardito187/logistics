@@ -11,6 +11,7 @@ use Logistics\Execution\Domain\Event\DriverRouteStarted;
 use Logistics\Execution\Domain\Event\DriverRouteStopArrived;
 use Logistics\Execution\Domain\Event\DriverRouteStopAttached;
 use Logistics\Execution\Domain\Event\DriverRouteStopCompleted;
+use Logistics\Execution\Domain\Event\DriverRouteStopDetached;
 use Logistics\Execution\Domain\Event\DriverRouteStopFailed;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\ArrivalSource;
@@ -21,6 +22,7 @@ use Logistics\Execution\Domain\ValueObject\RouteId;
 use Logistics\Execution\Domain\ValueObject\RouteLifecycleSnapshot;
 use Logistics\Execution\Domain\ValueObject\RouteStatus;
 use Logistics\Execution\Domain\ValueObject\RouteStopId;
+use Logistics\Execution\Domain\ValueObject\RouteStopStatus;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
 /**
@@ -176,7 +178,8 @@ final class VehicleRoute extends AggregateRoot
             $this->vehicleId,
             $this->date->toString(),
             $this->totalStops(),
-            $this->settledCount(),
+            // Completadas = ENTREGADAS (consistente con el read model); fallidas/replanificadas no cuentan.
+            $this->deliveredCount(),
             $this->stopsRemaining(),
             $odometerKm,
             $geo?->lat,
@@ -403,6 +406,51 @@ final class VehicleRoute extends AggregateRoot
     }
 
     /**
+     * Saca el envío de esta ruta porque se reasignó a OTRO camión (el pedido pasó al último asignado). SOLO
+     * desengancha una parada aún PENDIENTE: si ya está atendida (entregada/fallida/reprogramada) se respeta
+     * y no se toca (mismo criterio seguro que el movimiento de la entrega). Recompacta la secuencia 1..n y
+     * graba DriverRouteStopDetached. Devuelve true si realmente quitó la parada.
+     */
+    public function detachShipment(string $shipmentId, DateTimeImmutable $at): bool
+    {
+        $target = null;
+        foreach ($this->stops as $stop) {
+            if ($stop->shipmentId() === $shipmentId) {
+                $target = $stop;
+                break;
+            }
+        }
+
+        if ($target === null || !$target->isPending()) {
+            return false;
+        }
+
+        $sequence = $target->sequence();
+        $this->stops = array_values(array_filter(
+            $this->stops,
+            static fn (RouteStop $stop): bool => $stop->shipmentId() !== $shipmentId,
+        ));
+
+        // Recompactar la secuencia para no dejar huecos (un futuro attach usa totalStops()+1).
+        foreach ($this->stops as $index => $stop) {
+            $stop->resequence($index + 1);
+        }
+
+        $this->refreshStatus();
+
+        $this->recordEvent(new DriverRouteStopDetached(
+            $this->id->toString(),
+            $this->vehicleId,
+            $shipmentId,
+            $sequence,
+            $this->totalStops(),
+            $at,
+        ));
+
+        return true;
+    }
+
+    /**
      * Paradas en el orden de reparto.
      *
      * @return list<RouteStop>
@@ -461,11 +509,35 @@ final class VehicleRoute extends AggregateRoot
     }
 
     /**
-     * Paradas ya atendidas (cerradas): entregadas o fallidas. Es el complemento de las restantes.
+     * Paradas ya atendidas (cerradas): entregadas, fallidas o replanificadas. Es el complemento de las
+     * restantes (pendientes). NO es lo mismo que "entregadas": para el conteo de completadas usar
+     * {@see deliveredCount()}, porque un fallo o una replanificación cerró la parada pero NO la entregó.
      */
     public function settledCount(): int
     {
         return $this->countBy(static fn (RouteStop $stop): bool => $stop->status()->isTerminal());
+    }
+
+    /**
+     * Paradas ENTREGADAS con éxito (solo Completed). Es el número que debe mostrarse como "completadas":
+     * un intento fallido o una replanificación NO cuentan como completados (antes se usaba settledCount,
+     * que los sumaba → "6 de 7 completada" aunque solo 5 se hubieran entregado).
+     */
+    public function deliveredCount(): int
+    {
+        return $this->countBy(static fn (RouteStop $stop): bool => $stop->status() === RouteStopStatus::Completed);
+    }
+
+    /** Paradas con intento fallido (se exponen aparte de las entregadas). */
+    public function failedCount(): int
+    {
+        return $this->countBy(static fn (RouteStop $stop): bool => $stop->status() === RouteStopStatus::Failed);
+    }
+
+    /** Paradas replanificadas por incidente del camión (se exponen aparte de las entregadas). */
+    public function rescheduledCount(): int
+    {
+        return $this->countBy(static fn (RouteStop $stop): bool => $stop->status() === RouteStopStatus::Rescheduled);
     }
 
     /**
