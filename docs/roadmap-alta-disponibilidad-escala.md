@@ -242,27 +242,25 @@ la escala real; la 5-6 sostienen la operación a escala.
 
 ### Ola 6 — Escalar horizontalmente / extraer contextos calientes
 
-> **Estado (2026-11-13): PREPARADA en código y APAGADA por defecto.** La extracción física NO se hizo, a
-> propósito: se activa cuando las métricas de la Ola 5 lo pidan. Sin correr gates todavía.
+> **Estado (2026-11-13): HECHA a nivel de servicio.** Telemetry corre como unidad de despliegue propia y
+> el read-side del rastreo público está activo. Sigue compartida la base (a propósito, ver abajo).
 >
-> - **Read-side del rastreo público** (activo por defecto, sin procesos extra): caché en Valkey por token con
->   stale-while-revalidate, caché negativo para tokens inexistentes e invalidación por evento al cambiar el
->   estado; `Cache-Control` público + `ETag`/304 para navegador y caché de borde; `/t/{token}` fuera del stack
->   `web` (sin sesión ni cookies). Diseño: `docs/perf/tracking-read-side.md`.
-> - **Ingesta de pings dedicada** (`TELEMETRY_INGEST_MODE=buffered`, default `sync`): el request valida,
->   encola en Valkey y responde 202 sin tocar PostgreSQL; un worker de la cola `telemetry` persiste por lotes,
->   con un fragmento por vehículo, backpressure (429 + `Retry-After`), reintentos y lista de descartes
->   recuperable. El worker ya está en supervisord y en el compose de desarrollo.
-> - **Unidad de despliegue** (`APP_SERVICE_ROLE=telemetry`): la misma imagen sirve solo las rutas de telemetry
->   (`.docker/compose/docker-compose.telemetry-service.yml` + snippet de nginx).
-> - **Mapa de acoples y los 9 pasos de la extracción física**: `docs/perf/extraccion-telemetry.md`.
+> - **Servicio de telemetría**: `telemetry-api` (misma imagen, `APP_SERVICE_ROLE=telemetry`, pool FPM
+>   propio, escalable con `--scale`) + worker propio de la cola `telemetry`, en desarrollo y en staging.
+>   nginx le manda `/api/v1/(app|integrations)/telemetry/*` y **cae al monolito** si la unidad no responde.
+> - **Ingesta `buffered`** en esa unidad: valida, encola en Valkey y responde 202 sin tocar PostgreSQL; el
+>   worker persiste por lotes, con un fragmento por vehículo, backpressure (429 + `Retry-After`),
+>   reintentos y descartes recuperables. El monolito conserva `sync` como camino de respaldo.
+> - **Read-side del rastreo público**: caché en Valkey por token con stale-while-revalidate, caché negativo
+>   e invalidación por evento; `Cache-Control` público + `ETag`/304; `/t/{token}` fuera del stack `web`.
+>   Diseño: `docs/perf/tracking-read-side.md`.
+> - Verificado contra los containers: buffer contra Valkey real, POST → Valkey → drenado → PostgreSQL,
+>   ruteo, filtro de rol y respaldo. Detalle: `docs/perf/extraccion-telemetry.md`.
 >
-> **Señales para activar** (medidas con la Ola 5): p95 de `POST /app/telemetry/pings` por encima de 1 s o
-> workers FPM saturados por pings → `buffered`; CPU de la app dominada por telemetry aun con `buffered` →
-> unidad `telemetry-api`; recién si eso no alcanza, base propia (pasos del doc).
->
-> **Antes de activar `buffered`:** probar `RedisPingIngestBuffer` contra Valkey real (sus tests usan el buffer
-> en memoria) y avisar a la app: puede llegar 429 + `Retry-After`, `duplicate_count` siempre 0 y `buffered: true`.
+> **Lo que NO se separó:** la base de datos y el repositorio. Fleetops, shipments y el cockpit leen tablas
+> `telemetry_*` por SQL, y telemetry lee tablas de execution, planning y fleet: partir la base exige antes
+> reemplazar esas lecturas por eventos/proyecciones y migrar datos (pasos 2 a 9 del doc). Se hace cuando
+> las métricas muestren que la base compartida es el cuello, no antes (ADR 001).
 
 - Cuando el volumen lo pida (lo dicen las métricas, no la intuición), **extraer el bounded context más caliente**
   a un servicio independiente (ADR 001/008): candidatos probables = **telemetry** (ingesta de pings GPS, write

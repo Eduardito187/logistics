@@ -1,12 +1,17 @@
-# Extracción de telemetry: ingesta dedicada y unidad de despliegue aparte (Ola 6)
+# Servicio de telemetría: ingesta dedicada y unidad de despliegue propia (Ola 6)
 
-> Estado: **implementado, apagado por defecto**. El código queda listo para (1) mover la ingesta de pings
-> GPS a un camino por buffer + lotes y (2) correr el contexto telemetry como unidad de despliegue propia,
-> las dos cosas con un cambio de configuración/despliegue. **No** se partió el código ni la base: sigue
-> siendo el monolito modular (ADR 001/008). La extracción física queda documentada en la sección 6.
+> Estado: **ACTIVO**. El contexto telemetry corre como servicio aparte dentro del stack: su propia API
+> (`telemetry-api`, rol `telemetry`, pool FPM propio) y su propio worker (`telemetry-worker` en desarrollo,
+> programa `worker-telemetry` en staging/producción). nginx le manda las rutas de telemetry y, si la
+> unidad no responde, cae al monolito. La ingesta de pings en esa unidad va en modo `buffered`.
 >
-> Los gates (Pest, PHPStan, Pint) y la prueba contra containers **no se corrieron** al escribir esto:
-> hay que pasarlos antes de activar nada (sección 7).
+> Qué sigue compartido **a propósito**: el repositorio (monolito modular, ADR 001/008), la base
+> PostgreSQL y Valkey. Separar la base es una migración de datos con lecturas cruzadas que cortar antes
+> (sección 6); no se hace hasta que las métricas lo pidan.
+>
+> Verificado contra los containers (2026-11-13): tests del package en verde incluido el buffer contra
+> Valkey real y el camino POST → Valkey → drenado → PostgreSQL; ruteo de nginx a la unidad; filtro de rol
+> en vivo (404 fuera de telemetry); respaldo al monolito con la unidad detenida.
 
 Roadmap de origen: `docs/roadmap-alta-disponibilidad-escala.md`, Ola 6.
 
@@ -139,8 +144,8 @@ y el crudo de pings alimenta las migas de pan por envío, donde un hueco silenci
 reintento. El tope se chequea con `LLEN` antes del `LPUSH` (no atómico): bajo concurrencia puede pasarse
 por unos pocos lotes, inocuo para un límite de protección.
 
-Profundidad del buffer: `php artisan telemetry:flush-ping-buffer --status` (por fragmento + descartes).
-La métrica Prometheus queda como integración pendiente (sección 7).
+Profundidad del buffer: `php artisan telemetry:flush-ping-buffer --status` (por fragmento + descartes) y
+la métrica `logistics_telemetry_ingest_buffer_depth{shard}` en `/api/metrics`.
 
 ### 2.7 Posición en vivo
 
@@ -161,23 +166,24 @@ La métrica Prometheus queda como integración pendiente (sección 7).
 
 En modo `sync` la respuesta es idéntica a la de siempre.
 
-## 3. Cómo activar `buffered`
+## 3. Dónde corre cada modo
 
-1. Pasar los gates y la verificación de la sección 7.
-2. Confirmar que el worker de la cola existe en el entorno:
-   - dev: el servicio `queue-worker` ya consume `telemetry` (`docker-compose.yml`).
-   - staging/prod: programa `worker-telemetry` en `.docker/supervisor/supervisord.conf`.
-3. `TELEMETRY_INGEST_MODE=buffered` en el entorno de los contenedores que atienden HTTP y reiniciarlos
-   (o `config:cache`). Los workers no necesitan la variable: el job y el drenado de respaldo corren
-   siempre.
-4. Mirar `php artisan telemetry:flush-ping-buffer --status` y la profundidad de la cola `telemetry`.
+| Proceso | Modo de ingesta | Por qué |
+|---|---|---|
+| `telemetry-api` (unidad propia) | `buffered` (lo fija el compose) | Camino normal: responde 202 sin tocar PostgreSQL. |
+| `app` (monolito) | `sync` (default de la config) | Camino de respaldo: solo recibe pings si la unidad no responde. |
 
-Volver atrás: `TELEMETRY_INGEST_MODE=sync`. Lo que haya quedado en el buffer lo sigue drenando el worker
-y el respaldo del scheduler.
+No hay nada que activar a mano. Para volver al comportamiento anterior en la unidad:
+`TELEMETRY_INGEST_MODE=sync` en el entorno del compose. Lo que haya quedado en el buffer lo siguen
+drenando el worker y el respaldo del scheduler.
 
-Ajuste: `TELEMETRY_INGEST_BUFFER_SHARDS` y `numprocs` de `worker-telemetry` definen el paralelismo del
-drenado. Antes de **bajar** la cantidad de fragmentos hay que vaciar el buffer (los fragmentos altos
-dejarían de drenarse).
+Operación:
+
+- `php artisan telemetry:flush-ping-buffer --status`: profundidad por fragmento y descartes.
+- `/api/metrics`: `logistics_telemetry_ingest_buffer_depth{shard}`, `logistics_telemetry_ingest_dead_batches`
+  y la cola `telemetry` en `logistics_queue_depth`.
+- `TELEMETRY_INGEST_BUFFER_SHARDS` y la cantidad de procesos del worker definen el paralelismo del
+  drenado. Antes de **bajar** la cantidad de fragmentos hay que vaciar el buffer.
 
 ## 4. `telemetry-api` como unidad de despliegue aparte
 
@@ -200,61 +206,39 @@ optimización posible, con una condición: la caché de rutas dejaría de ser co
 
 Para extraer otro contexto: agregar su rol en `config/service.php` (`contexts` + `paths`).
 
-### 4.2 Levantar el servicio
+### 4.2 El servicio en cada entorno
+
+| Entorno | API | Worker | Archivo |
+|---|---|---|---|
+| Desarrollo | `telemetry-api` | `telemetry-worker` (cola `telemetry`) | `docker-compose.yml` |
+| Staging | `telemetry-api` | programa `worker-telemetry` del contenedor `worker` | `.docker/compose/docker-compose.staging.yml` |
+
+Levanta con el `docker compose up` de siempre; todas sus variables tienen default. Escalar la API:
 
 ```bash
-docker compose -f docker-compose.yml \
-    -f .docker/compose/docker-compose.telemetry-service.yml \
-    up -d --scale telemetry-api=2
+docker compose up -d --scale telemetry-api=3
 ```
 
-`telemetry-api` usa la misma imagen, su propio pool FPM (`TELEMETRY_API_FPM_*`) y arranca en modo
-`buffered`. No migra, no instala composer, no corre colas ni scheduler.
+En desarrollo `bootstrap/cache` se comparte con `app` por el bind mount y la config cacheada lleva el
+rol adentro: por eso la unidad fija `APP_CONFIG_CACHE=/tmp/config-telemetry.php`. En staging cada
+contenedor tiene su propio filesystem y no hace falta.
 
-Importante: el servicio fija `APP_CONFIG_CACHE=/tmp/config-telemetry.php`. La config cacheada lleva el
-rol adentro; con `bootstrap/cache` compartido por bind mount, sin esa variable el `config:cache` de un
-contenedor le cambiaría el rol al otro.
+La unidad no migra, no instala composer, no corre el scheduler y no reinicia los workers del resto: el
+entrypoint salta `queue:restart` y `schedule:clear-cache` cuando `APP_SERVICE_ROLE` no es `monolith`.
 
-### 4.3 Rutear el tráfico
+### 4.3 Ruteo y respaldo
 
-Sin este paso el servicio queda levantado pero ocioso (el monolito sigue atendiendo telemetry).
+`.docker/nginx/default.conf` (el mismo archivo se hornea en la imagen `web` de staging):
 
-1. Copiar `.docker/nginx/snippets/telemetry-upstream.conf.example` a `telemetry-upstream.conf`.
-2. Montarlo en nginx e incluirlo dentro del bloque `server { ... }` del vhost, antes de `location /`:
-   `include /etc/nginx/snippets/telemetry-upstream.conf;`
-3. `nginx -s reload`.
+- `/api/v1/app/telemetry/*` y `/api/v1/integrations/telemetry/*` → `telemetry-api:9000`.
+- Upstream por variable + `resolver` de Docker: re-resuelve si el contenedor se recrea y reparte entre
+  las réplicas de `--scale`.
+- **Respaldo:** si la unidad no existe, está caída o reiniciando (502/503/504, conexión rechazada o
+  nombre sin resolver), el request se reenvía al monolito con su cuerpo intacto. Un deploy o una caída del
+  servicio no pierde lotes de pings.
 
-El snippet usa upstream por variable + el `resolver` de Docker que el vhost ya declara: con
-`--scale telemetry-api=N` nginx reparte entre las N réplicas y tolera que se recreen.
-
-### 4.4 Staging
-
-El compose de staging es autónomo (imagen horneada, `env_file`, red `staging`, nginx en la imagen
-`web`). El servicio equivalente, a agregar a mano en `.docker/compose/docker-compose.staging.yml`:
-
-```yaml
-    telemetry-api:
-        <<: *app
-        environment:
-            APP_SERVICE_ROLE: telemetry
-            TELEMETRY_INGEST_MODE: buffered
-        healthcheck:
-            test: ["CMD-SHELL", "nc -z 127.0.0.1 9000 || exit 1"]
-            interval: 15s
-            timeout: 5s
-            retries: 6
-            start_period: 60s
-```
-
-Ahí cada contenedor tiene su propio filesystem, así que no hace falta `APP_CONFIG_CACHE`. El include de
-nginx va en la config que hornea la imagen `web`.
-
-### 4.5 Efectos del entrypoint a tener en cuenta
-
-Todo contenedor `php-fpm` ejecuta al arrancar `queue:restart` y `schedule:clear-cache`
-(`.docker/php/entrypoint.sh`, pasos 5 y 5b). Cada réplica de `telemetry-api` que arranca o escala también
-lo hace: reinicia los workers y limpia los mutex del scheduler. Es inocuo pero innecesario; conviene
-saltar esos dos pasos cuando `APP_SERVICE_ROLE` no es `monolith` (cambio pendiente en el entrypoint).
+Para sacar la unidad del camino basta detenerla (`docker compose stop telemetry-api`): el respaldo
+atiende solo.
 
 ## 5. Mapa de acoples de telemetry
 
@@ -300,8 +284,8 @@ sin correr la suite.
 
 En orden; cada uno es desplegable por separado.
 
-1. **Activar y medir** lo de este documento: `buffered` y `telemetry-api` detrás de nginx. Con eso la
-   ingesta ya no compite con el request del usuario; solo seguir si las métricas lo piden.
+1. **Hecho:** ingesta `buffered` y unidad `telemetry-api` + worker propios detrás de nginx. Con eso la
+   ingesta ya no compite con el request del usuario. Los pasos siguientes solo si las métricas lo piden.
 2. **Cortar las lecturas SQL entrantes** a `telemetry_*` (fleetops, shipments, cockpit): que telemetry
    publique lo que necesitan (km por trip cerrado, alertas) por outbox y cada consumidor mantenga su
    proyección, o que consulten la API.
@@ -325,19 +309,19 @@ En orden; cada uno es desplegable por separado.
 9. **Buffer y colas propias**: instancia de Valkey dedicada para el buffer de ingesta y la cola
    `telemetry` (`TELEMETRY_INGEST_BUFFER_CONNECTION`).
 
-## 7. Antes de activar
+## 7. Verificación hecha y lo que falta medir
 
-Nada de esto se ejecutó contra los containers. Pendiente:
+Hecho contra los containers (2026-11-13):
 
-- Pest, PHPStan nivel 8 y Pint sobre los archivos nuevos (tests: `BufferedPingIngestTest`,
-  `ServiceRoleTest`).
-- `RedisPingIngestBuffer` contra Valkey real: los tests usan el buffer en memoria. Verificar `push`,
-  `reserve` con una pasada interrumpida, `acknowledge` y `--status`.
-- nginx: `nginx -t` con el snippet incluido y un POST real de pings por el upstream.
-- `docker compose ... config` del archivo de `telemetry-api` y arranque con `--scale`.
-- Métrica de profundidad del buffer en `/api/metrics` y la cola `telemetry` en
-  `config/observability.php` (no se tocaron: los integra el coordinador).
-- Actualizar `openapi/v1.yaml` (campo `buffered`, respuesta 429) y avisar al app Flutter del 429.
+- Tests del package telemetry en verde, incluidos `RedisPingIngestBufferTest` (buffer contra Valkey real:
+  orden, reserva tras una pasada interrumpida, backpressure, descartes y el camino completo POST → Valkey →
+  drenado → PostgreSQL) y `BufferedPingIngestTest`.
+- `nginx -t` y un POST real por nginx atendido por `telemetry-api`.
+- Filtro de rol dentro de la unidad: 404 para rutas ajenas, las de telemetry y `/up` responden.
+- Respaldo: con la unidad detenida el mismo POST lo atiende el monolito.
+
+Falta (necesita carga real): medir con `loadtest/` el p95 de `POST /app/telemetry/pings` y la profundidad
+del buffer a 2.000 usuarios, y ajustar `TELEMETRY_API_FPM_MAX_CHILDREN`, fragmentos y procesos del worker.
 
 ## 8. Variables
 
@@ -347,9 +331,11 @@ contexto), salvo el rol, que vive en `config/service.php`.
 | Variable | Default | Qué controla |
 |---|---|---|
 | `APP_SERVICE_ROLE` | `monolith` | Rol del proceso (`monolith` / `telemetry`). |
-| `TELEMETRY_INGEST_MODE` | `sync` | Camino de ingesta (`sync` / `buffered`). |
+| `TELEMETRY_INGEST_MODE` | `sync` en el monolito, `buffered` en `telemetry-api` | Camino de ingesta (`sync` / `buffered`). |
 | `TELEMETRY_INGEST_QUEUE` | `telemetry` | Cola del job de drenado. |
 | `TELEMETRY_INGEST_BUFFER_CONNECTION` | `default` | Conexión Redis/Valkey del buffer. |
+| `TELEMETRY_INGEST_BUFFER_KEY_PREFIX` | `telemetry:ingest` | Prefijo de las claves del buffer. |
+| `TELEMETRY_API_FPM_MAX_CHILDREN` (y `_START_SERVERS`, `_MIN_SPARE`, `_MAX_SPARE`) | `20` / `2` / `2` / `6` | Pool FPM propio de `telemetry-api` (solo compose). |
 | `TELEMETRY_INGEST_BUFFER_SHARDS` | `4` | Fragmentos del buffer (paralelismo del drenado). |
 | `TELEMETRY_INGEST_BUFFER_MAX_BATCHES` | `20000` | Tope total de lotes en espera (backpressure). |
 | `TELEMETRY_INGEST_RETRY_AFTER_SECONDS` | `15` | `Retry-After` del 429. |

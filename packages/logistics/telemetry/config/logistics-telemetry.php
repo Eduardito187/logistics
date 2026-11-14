@@ -18,8 +18,9 @@ return [
         //  - `sync`     (default): el request persiste el lote en su propia transacción, como siempre.
         //  - `buffered`: el request solo valida y encola el lote en un buffer de Valkey (responde 202 sin
         //    tocar PostgreSQL) y el worker de la cola `telemetry` lo persiste después, agrupado por vehículo.
-        // `sync` es el default porque no depende de ningún proceso extra; pasar a `buffered` es cambiar
-        // esta variable (el worker de la cola ya viene en dev, staging y prod).
+        // El servicio de telemetría (`telemetry-api`) corre en `buffered`: lo fija su compose. El default
+        // de la config es `sync` porque es el del monolito, que solo recibe pings como camino de respaldo
+        // cuando ese servicio no responde y no debe depender de ningún proceso extra.
         'mode' => strtolower((string) env('TELEMETRY_INGEST_MODE', 'sync')),
 
         // Cola del job que drena el buffer (la consume el worker dedicado del supervisor).
@@ -29,6 +30,10 @@ return [
             // Conexión Redis/Valkey del buffer (config/database.php → redis.<nombre>). La `default` es la
             // de colas y locks: durable (AOF) y sin evicción, a diferencia de la de caché.
             'connection' => (string) env('TELEMETRY_INGEST_BUFFER_CONNECTION', 'default'),
+
+            // Prefijo de las claves del buffer en Valkey. Los tests usan uno propio para no mezclarse con
+            // el buffer real cuando comparten instancia.
+            'key_prefix' => (string) env('TELEMETRY_INGEST_BUFFER_KEY_PREFIX', 'telemetry:ingest'),
 
             // Fragmentos del buffer (por hash del vehículo). Cada fragmento lo drena UN proceso a la vez,
             // así un vehículo nunca se procesa en paralelo; más fragmentos = más paralelismo de drenado.

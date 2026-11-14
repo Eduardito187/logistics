@@ -46,7 +46,7 @@ on_error() {
     echo "::endgroup::"
     echo "::error::Deploy de staging FALLÓ (código $code). Estado y logs:"
     dc ps -a || true
-    for svc in app worker web postgres pgbouncer valkey; do
+    for svc in app telemetry-api worker web postgres pgbouncer valkey; do
         echo "----- logs: $svc (últimas 80 líneas) -----"
         dc logs --no-color --tail=80 "$svc" 2>&1 || true
     done

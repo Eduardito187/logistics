@@ -18,7 +18,7 @@ declare(strict_types=1);
 | la suite no escriba en Valkey; cada test que los prueba los enciende por config.
 |
 | Envs (ver .env.example y docs/observability.md):
-|   METRICS_TOKEN                 token secreto para scrapear /api/metrics (Bearer o X-Metrics-Token)
+|   METRICS_TOKEN                 token para scrapear /api/metrics (Bearer o X-Metrics-Token); vacío = derivado de APP_KEY
 |   METRICS_IP_ALLOWLIST          IPs permitidas separadas por coma (alternativa/adición al token)
 |   METRICS_REDIS_CONNECTION      conexión Redis donde se acumulan las métricas (default `default`)
 |   METRICS_REDIS_PREFIX          prefijo de las claves de métricas (default `obs:`)
@@ -45,7 +45,19 @@ return [
     // Endpoint /api/metrics: señales RED/USE para Prometheus. Fail-closed: sin token NI allowlist
     // el endpoint se niega (ver App\Http\Controllers\Api\V1\MetricsController).
     'metrics' => [
-        'token' => env('METRICS_TOKEN'),
+        // Sin METRICS_TOKEN se usa un token DERIVADO de APP_KEY (sha256 de "logistics-metrics:<APP_KEY>"):
+        // el stack de observabilidad calcula el mismo valor, así Prometheus raspa sin configurar nada y el
+        // endpoint sigue cerrado para quien no conozca la clave de la app. Sin APP_KEY no hay token.
+        'token' => (static function (): ?string {
+            $explicit = trim((string) env('METRICS_TOKEN', ''));
+            if ($explicit !== '') {
+                return $explicit;
+            }
+
+            $appKey = (string) env('APP_KEY', '');
+
+            return $appKey !== '' ? hash('sha256', 'logistics-metrics:'.$appKey) : null;
+        })(),
         'ip_allowlist' => array_values(array_filter(array_map(
             'trim',
             explode(',', (string) env('METRICS_IP_ALLOWLIST', '')),

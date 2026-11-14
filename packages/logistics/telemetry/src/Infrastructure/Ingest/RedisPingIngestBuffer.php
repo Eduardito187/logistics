@@ -29,11 +29,7 @@ use Logistics\Telemetry\Application\Contract\PingIngestBuffer;
  */
 final readonly class RedisPingIngestBuffer implements PingIngestBuffer
 {
-    private const BUFFER_KEY = 'telemetry:ingest:buffer:';
-
-    private const PROCESSING_KEY = 'telemetry:ingest:processing:';
-
-    private const DEAD_KEY = 'telemetry:ingest:dead';
+    private const DEFAULT_PREFIX = 'telemetry:ingest';
 
     public function shards(): int
     {
@@ -47,7 +43,7 @@ final readonly class RedisPingIngestBuffer implements PingIngestBuffer
 
     public function push(array $batch): bool
     {
-        $key = self::BUFFER_KEY.$this->shardOf($batch['vehicle_id']);
+        $key = $this->bufferKey().$this->shardOf($batch['vehicle_id']);
         $redis = $this->redis();
 
         if ((int) $redis->command('llen', [$key]) >= $this->maxPerShard()) {
@@ -62,8 +58,8 @@ final readonly class RedisPingIngestBuffer implements PingIngestBuffer
     public function reserve(int $shard, int $max): array
     {
         $redis = $this->redis();
-        $buffer = self::BUFFER_KEY.$shard;
-        $processing = self::PROCESSING_KEY.$shard;
+        $buffer = $this->bufferKey().$shard;
+        $processing = $this->processingKey().$shard;
 
         // Completa la reserva hasta `$max` contando lo que quedó de una pasada interrumpida.
         $held = (int) $redis->command('llen', [$processing]);
@@ -93,13 +89,13 @@ final readonly class RedisPingIngestBuffer implements PingIngestBuffer
 
     public function acknowledge(int $shard): void
     {
-        $this->redis()->command('del', [self::PROCESSING_KEY.$shard]);
+        $this->redis()->command('del', [$this->processingKey().$shard]);
     }
 
     public function requeue(array $batch): void
     {
         $this->redis()->command('lpush', [
-            self::BUFFER_KEY.$this->shardOf($batch['vehicle_id']),
+            $this->bufferKey().$this->shardOf($batch['vehicle_id']),
             $this->encode($batch),
         ]);
     }
@@ -107,10 +103,10 @@ final readonly class RedisPingIngestBuffer implements PingIngestBuffer
     public function bury(array $batch): void
     {
         $redis = $this->redis();
-        $redis->command('lpush', [self::DEAD_KEY, $this->encode($batch)]);
+        $redis->command('lpush', [$this->deadKey(), $this->encode($batch)]);
         // Lista acotada: se conservan los descartes más recientes.
         $redis->command('ltrim', [
-            self::DEAD_KEY,
+            $this->deadKey(),
             0,
             max(1, (int) config('logistics-telemetry.ingest.buffer.max_dead', 10000)) - 1,
         ]);
@@ -122,7 +118,7 @@ final readonly class RedisPingIngestBuffer implements PingIngestBuffer
         $count = 0;
 
         while ($count < $max) {
-            $payload = $redis->command('rpop', [self::DEAD_KEY]);
+            $payload = $redis->command('rpop', [$this->deadKey()]);
             if (!is_string($payload)) {
                 break;
             }
@@ -144,13 +140,35 @@ final readonly class RedisPingIngestBuffer implements PingIngestBuffer
     {
         $redis = $this->redis();
 
-        return (int) $redis->command('llen', [self::BUFFER_KEY.$shard])
-            + (int) $redis->command('llen', [self::PROCESSING_KEY.$shard]);
+        return (int) $redis->command('llen', [$this->bufferKey().$shard])
+            + (int) $redis->command('llen', [$this->processingKey().$shard]);
     }
 
     public function deadCount(): int
     {
-        return (int) $this->redis()->command('llen', [self::DEAD_KEY]);
+        return (int) $this->redis()->command('llen', [$this->deadKey()]);
+    }
+
+    private function prefix(): string
+    {
+        $prefix = trim((string) config('logistics-telemetry.ingest.buffer.key_prefix', self::DEFAULT_PREFIX), ':');
+
+        return $prefix !== '' ? $prefix : self::DEFAULT_PREFIX;
+    }
+
+    private function bufferKey(): string
+    {
+        return $this->prefix().':buffer:';
+    }
+
+    private function processingKey(): string
+    {
+        return $this->prefix().':processing:';
+    }
+
+    private function deadKey(): string
+    {
+        return $this->prefix().':dead';
     }
 
     private function redis(): Connection

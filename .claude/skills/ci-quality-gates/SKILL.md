@@ -84,6 +84,16 @@ Implicación: **una vulnerability/bug NO se quita suprimiéndola en el archivo.*
 Mantener igual las entradas `issue.ignore` existentes (documentan intención y sirven si algún día usan el
 scanner de CI, que sí las honra).
 
+**PERO `sonar.exclusions` (exclusión de ARCHIVOS del análisis) SÍ se honra** por el Análisis Automático
+(verificado 2026-11-13, PR 75), igual que `sonar.cpd.exclusions`. Lo que NO se honra es solo
+`sonar.issue.ignore.multicriteria` (supresión por regla). Implicación práctica: si una vulnerability/bug/
+hotspot que baja el Rating cae en **código que no es de producción** (p. ej. `loadtest/**` = scripts k6 de
+carga, que no se despliegan), la vía más limpia y que limpia TODO de una es excluir ese directorio del
+análisis: `sonar.exclusions=<glob>`. Caso real PR 75: Security C (8× `javascript:S2245` Math.random de jitter +
+`S5332` http al target) y Reliability D (`javascript:S2871` sort) estaban TODOS en `loadtest/`; con
+`sonar.exclusions=loadtest/**` el gate vuelve a A/A sin tocar los scripts. NO excluir código de producción
+así: ahí el fix va en el código.
+
 ## Paso 3 — Recetas por tipo (fix por código)
 
 ### Security (vulnerabilities)
@@ -258,6 +268,14 @@ falsas `type "geography" does not exist`. La suite válida es la serial (igual q
 - **Leer el motivo COMPLETO de un risky/warn que Pest trunca** (sale `→ This t…`): correr con terminal ancho,
   `docker compose exec -T -e COLUMNS=400 app ./vendor/bin/pest <archivo> --filter="<nombre>"`. El `--log-junit`
   a `/tmp` a veces no escribe; `COLUMNS` es lo fiable.
+- **Opciones de artisan en test llegan con su TIPO crudo, no como string (2026-11-13).** `$this->artisan('cmd',
+  ['--drivers' => 2])` pasa el **int** `2`; por CLI la MISMA opción llega como **string** `'2'`. Un comando que
+  lea la opción con `is_string($this->option($k)) ? ... : <default>` DESCARTA el int del test y usa el default
+  → el test ve el comportamiento por defecto, no el pedido. Síntoma real (PR 75): el test pedía 2+1+1=4 usuarios
+  pero contó 110 = exactamente los defaults 50+50+10. Fix en el COMANDO (no en el test): leer la opción cruda y
+  aceptar escalar numérico, `$v = $this->option($k); is_numeric($v) ? (int) $v : $default;`. Regla general: un
+  parser de opciones debe tolerar int Y string (programático vs CLI). Pista diagnóstica: si un conteo esperado
+  sale igual a la suma de los defaults del `$signature`, las opciones no están llegando.
 
 ### Pint a mano (el dueño suele prohibir docker)
 
@@ -300,6 +318,25 @@ ejecución → 755→644 falsos). Verificar: `git ls-files --eol <archivo>`.
   resultados.** Antes de reescribir la lógica por un error que contradice lo que ves (p. ej. "never null" en
   una propiedad que el código deja como null-safe), confiar en el ÚLTIMO error tras limpiar la caché; no
   oscilar entre `?->x` y `->x` según errores de corridas distintas.
+- **`Cannot access property $x on T|null`: respetar el TIPO del getter, no el comentario de invariante
+  (2026-11-13).** Un getter tipado `?Odometer` accedido con `->km` falla aunque un comentario diga "una salida
+  abierta SIEMPRE lleva su odómetro". Fix: `?->` + guard (`$v = $x->getter()?->prop; if ($v === null) return;`),
+  no castear ni confiar en el invariante. Caso: reactor `CloseDepartureOnRouteClosed` (fleetops).
+- **`Method Redis::pipeline() invoked with 1 parameter, 0 required` (2026-11-13).** `Illuminate\Redis\
+  Connections\Connection` (abstracto) NO declara `pipeline()`; PHPStan lo resuelve por `__call` al stub de
+  phpredis `\Redis::pipeline()` (0 params). El método real `pipeline(?callable $callback = null)` vive en
+  `Illuminate\Redis\Connections\PhpRedisConnection`. Fix: narrowing a esa clase concreta con el patrón del repo
+  `assert($conn instanceof PhpRedisConnection)` (tras `Redis::connection(...)`, que PHPStan tipa como el
+  abstracto). **Y alinear el doble de test**: `Mockery::mock(PhpRedisConnection::class)`, NO el abstracto, o el
+  `assert` lanza en los tests (caso `tests/Support/FakeMetricsRedis.php`). Mismo criterio para Predis.
+- **`Call to an undefined method ConnectionInterface::getDriverName()` (2026-11-13).** `getDriverName()`,
+  `getConfig()`, `getPdo()` viven en el `Illuminate\Database\Connection` CONCRETO, no en la interfaz. Tipar el
+  parámetro/propiedad como `Connection` (DatabaseManager::connection() ya lo devuelve), no `ConnectionInterface`.
+- **`array_chunk($x, $n)` → "Parameter #2 $length expects int<1, max>, int given" (2026-11-13).** PHPStan no
+  sabe que `$n >= 1`. Fix: `array_chunk($x, max(1, $n))`.
+- **`cast.string` "Cannot cast array|bool|float|int|string to string" en `(string) $this->option('x')`
+  (2026-11-13).** Un option de artisan es `array|bool|string|null`. Usar `is_string()` como guard en vez de
+  castear: `$v = $this->option('x'); if (!is_string($v) || trim($v) === '') { ... }`.
 - **`Cannot access property $x on T|null`: respetar el TIPO del getter, no el comentario de invariante
   (2026-11-13).** Un getter tipado `?Odometer` accedido con `->km` falla aunque un comentario diga "una salida
   abierta SIEMPRE lleva su odómetro". El fix no es castear ni confiar en el invariante: usar `?->` y un guard

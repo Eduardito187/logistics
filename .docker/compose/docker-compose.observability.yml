@@ -48,6 +48,9 @@ services:
             # MISMO valor que lee la app (config/observability.php). Se escribe a un archivo 0600 dentro
             # del volumen y prometheus.yml lo referencia con `credentials_file` (nunca queda en la config).
             METRICS_TOKEN: ${METRICS_TOKEN:-}
+            # Sin METRICS_TOKEN, el token se deriva de APP_KEY igual que en la app (config/observability.php):
+            # sha256("logistics-metrics:<APP_KEY>"). Así el scrape funciona sin configurar nada.
+            APP_KEY: ${APP_KEY:-}
             # host:puerto que sirve /api/metrics. Dev: nginx:80. Staging: web:8080.
             OBS_METRICS_TARGET: ${OBS_METRICS_TARGET:-nginx:80}
         entrypoint:
@@ -58,8 +61,11 @@ services:
                 umask 077
                 mkdir -p /prometheus/runtime /prometheus/data
                 token="$${METRICS_TOKEN:-}"
+                if [ -z "$$token" ] && [ -n "$${APP_KEY:-}" ]; then
+                    token="$$(printf '%s' "logistics-metrics:$$APP_KEY" | sha256sum | cut -d' ' -f1)"
+                fi
                 if [ -z "$$token" ]; then
-                    echo "[prometheus] AVISO: METRICS_TOKEN vacio. La app responde 404 en /api/metrics (fail-closed) y el job logistics-app quedara DOWN. Definir METRICS_TOKEN en el .env (mismo valor para la app y para este stack)." >&2
+                    echo "[prometheus] AVISO: sin METRICS_TOKEN ni APP_KEY. La app responde 404 en /api/metrics (fail-closed) y el job logistics-app quedara DOWN." >&2
                     token="metrics-token-sin-configurar"
                 fi
                 printf '%s' "$$token" > /prometheus/runtime/metrics_token

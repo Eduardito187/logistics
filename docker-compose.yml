@@ -478,7 +478,8 @@ services:
         restart: unless-stopped
         # Drena TODAS las colas en dev (el pump del outbox encola a outbox/notifications/sap; planning tiene
         # sus propios jobs). En prod, supervisord corre un worker dedicado por cola (ver .docker/supervisor).
-        command: php artisan queue:work redis --queue=default,outbox,notifications,sap,planning,telemetry --sleep=3 --tries=1 --timeout=600 --max-time=3600
+        # La cola `telemetry` NO va acá: la drena el worker propio del servicio de telemetría (abajo).
+        command: php artisan queue:work redis --queue=default,outbox,notifications,sap,planning --sleep=3 --tries=1 --timeout=600 --max-time=3600
         healthcheck:
             test: ["CMD-SHELL", "pgrep -f 'queue:work' || exit 1"]
             interval: 30s
@@ -488,6 +489,78 @@ services:
         # Arranca recién con el WEB healthy: así el `composer install` del entrypoint ya pobló el vendor
         # compartido y el worker NO entra en crash-loop por un autoloader incompleto. app healthy implica
         # además que pgbouncer/valkey ya están healthy (el web los esperó).
+        depends_on:
+            app:
+                condition: service_healthy
+
+    # ============================================================
+    # Servicio de TELEMETRÍA (Ola 6) — unidad de despliegue propia, siempre encendida
+    # ------------------------------------------------------------
+    # El contexto telemetry corre en sus PROPIOS procesos: una API (`telemetry-api`) y un worker
+    # (`telemetry-worker`). Es la misma imagen del monolito con APP_SERVICE_ROLE=telemetry: ese proceso
+    # atiende SOLO /api/v1/(app|integrations)/telemetry/* (más salud y métricas) y responde 404 al resto.
+    # nginx le manda esas rutas (.docker/nginx/default.conf) y, si la unidad no responde, cae al monolito.
+    #
+    # Qué se gana: los pings GPS dejan de competir por los workers FPM y las conexiones del resto de la
+    # app; la unidad se escala y se reinicia sola (`docker compose up -d --scale telemetry-api=3`).
+    # Ingesta `buffered`: el request valida, encola en Valkey y responde 202 sin tocar PostgreSQL; el
+    # worker persiste por lotes. Qué sigue compartido (a propósito): la base y Valkey.
+    # Detalle y pasos siguientes: docs/perf/extraccion-telemetry.md.
+    #
+    # Sin `container_name` en la API para poder escalarla. Todo con defaults: no requiere variables.
+    # ============================================================
+    telemetry-api:
+        <<: *php
+        restart: unless-stopped
+        environment:
+            APP_ENV: local
+            APP_SERVICE_ROLE: telemetry
+            # Caché de config PROPIA: bootstrap/cache se comparte con `app` por el bind mount y la config
+            # cacheada lleva el rol adentro; sin esto un `config:cache` le cambiaría el rol al otro.
+            APP_CONFIG_CACHE: /tmp/config-telemetry.php
+            TELEMETRY_INGEST_MODE: ${TELEMETRY_INGEST_MODE:-buffered}
+            # Este contenedor no prepara el entorno (composer, migraciones, backfill): eso lo hace `app`.
+            COMPOSER_INSTALL_ON_BOOT: "false"
+            AUTO_MIGRATE: "false"
+            AUTO_BACKFILL_ORDERS: "false"
+            DB_CONNECTION: pgsql
+            DB_HOST: pgbouncer
+            DB_PORT: 6432
+            DB_DATABASE: logistics
+            DB_USERNAME: logistics
+            DB_PASSWORD: logistics
+            REDIS_HOST: valkey
+            REDIS_PORT: 6379
+            # Pool FPM propio: requests cortos y parejos, pocos hijos rinden mucho.
+            FPM_PM: ${TELEMETRY_API_FPM_PM:-dynamic}
+            FPM_MAX_CHILDREN: ${TELEMETRY_API_FPM_MAX_CHILDREN:-20}
+            FPM_START_SERVERS: ${TELEMETRY_API_FPM_START_SERVERS:-2}
+            FPM_MIN_SPARE: ${TELEMETRY_API_FPM_MIN_SPARE:-2}
+            FPM_MAX_SPARE: ${TELEMETRY_API_FPM_MAX_SPARE:-6}
+        # `app` healthy implica vendor instalado, migraciones aplicadas y pgbouncer/valkey arriba.
+        depends_on:
+            app:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD-SHELL", "nc -z 127.0.0.1 9000 || exit 1"]
+            interval: 15s
+            timeout: 5s
+            retries: 6
+            start_period: 60s
+
+    # Worker propio del servicio: drena el buffer de ingesta (cola `telemetry`) y persiste por lotes.
+    # Si este worker cae, el drenado de respaldo del scheduler (cada minuto) sigue vaciando el buffer.
+    telemetry-worker:
+        <<: *php
+        container_name: dismac_lg_telemetry_worker
+        restart: unless-stopped
+        command: php artisan queue:work redis --queue=telemetry --sleep=1 --tries=1 --timeout=90 --max-time=3600 --max-jobs=1000
+        healthcheck:
+            test: ["CMD-SHELL", "pgrep -f 'queue:work' || exit 1"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
         depends_on:
             app:
                 condition: service_healthy
