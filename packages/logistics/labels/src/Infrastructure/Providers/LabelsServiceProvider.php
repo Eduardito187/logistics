@@ -19,6 +19,7 @@ use Logistics\Labels\Application\Command\RemovePrinter\RemovePrinter;
 use Logistics\Labels\Application\Command\RemovePrinter\RemovePrinterHandler;
 use Logistics\Labels\Application\Command\UpdatePrinter\UpdatePrinter;
 use Logistics\Labels\Application\Command\UpdatePrinter\UpdatePrinterHandler;
+use Logistics\Labels\Application\Contract\DispatchAuthorizationReader;
 use Logistics\Labels\Application\Contract\DispatchLinesReader;
 use Logistics\Labels\Application\Contract\LabelEnricher;
 use Logistics\Labels\Application\Contract\LabelUnitResolver;
@@ -52,6 +53,7 @@ use Logistics\Labels\Infrastructure\Crypto\SodiumLabelSigner;
 use Logistics\Labels\Infrastructure\Crypto\SodiumLabelVerifier;
 use Logistics\Labels\Infrastructure\Persistence\Eloquent\EloquentEmittedLabelRepository;
 use Logistics\Labels\Infrastructure\Persistence\Eloquent\EloquentPrinterRepository;
+use Logistics\Labels\Infrastructure\ReadModel\DbDispatchAuthorizationReader;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentDispatchLinesReader;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentLabelEnricher;
 use Logistics\Labels\Infrastructure\ReadModel\EloquentLabelUnitResolver;
@@ -161,6 +163,8 @@ final class LabelsServiceProvider extends ServiceProvider
         $this->app->bind(EmittedLabelRepository::class, EloquentEmittedLabelRepository::class);
         // Enriquecimiento cross-context de etiquetas (producto/origen/destino humanos) en lectura.
         $this->app->bind(LabelEnricher::class, EloquentLabelEnricher::class);
+        // Autorización de despacho: plan publicado O asignación directa del camión (entrega/parada en ruta).
+        $this->app->bind(DispatchAuthorizationReader::class, DbDispatchAuthorizationReader::class);
         $this->app->bind(DispatchLinesReader::class, EloquentDispatchLinesReader::class);
         // Plan de emisión por orden (body vacío) y resolución del CD de origen del QR.
         $this->app->bind(OrderLabelEmissionPlanReader::class, EloquentDispatchLinesReader::class);

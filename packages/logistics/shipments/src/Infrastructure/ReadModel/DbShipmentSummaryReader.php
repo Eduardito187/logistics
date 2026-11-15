@@ -10,6 +10,7 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
 use Logistics\Shipments\Application\Contract\ShipmentSummaryReader;
 use Logistics\Shipments\Application\ReadModel\ShipmentSummaryView;
+use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 use Throwable;
 
@@ -71,12 +72,18 @@ final readonly class DbShipmentSummaryReader implements ShipmentSummaryReader
         ?string $deliveryDateFrom,
         ?string $deliveryDateTo,
         ?string $deliveryMode,
+        ?ShipmentScopeActor $scope = null,
     ): array {
-        $key = compact('source', 'destinationNodeId', 'deliveryDateFrom', 'deliveryDateTo', 'deliveryMode');
+        // El alcance entra en la clave (forma primitiva): dos usuarios con distinto alcance no comparten conteo.
+        $key = compact('source', 'destinationNodeId', 'deliveryDateFrom', 'deliveryDateTo', 'deliveryMode')
+            + ['scope' => $scope?->toArray()];
 
         $data = $this->cache->remember('count-by-status', $key, fn (): array => $this->statusCounts(
-            static function (Builder $query) use ($source, $destinationNodeId, $deliveryDateFrom, $deliveryDateTo, $deliveryMode): void {
+            static function (Builder $query) use ($source, $destinationNodeId, $deliveryDateFrom, $deliveryDateTo, $deliveryMode, $scope): void {
                 self::applyShipmentFilters($query, 'sh.', $source, $destinationNodeId, $deliveryDateFrom, $deliveryDateTo, $deliveryMode);
+                if ($scope !== null) {
+                    ShipmentSqlFilters::scope($query, $scope, 'sh.');
+                }
             },
         ));
 

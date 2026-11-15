@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Application\ReadModel;
 
+use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
+
 /**
  * Filtros del listado de envíos (lado de LECTURA, CQRS), agrupados en un objeto inmutable para que el
  * contrato ShipmentListReader no arrastre una lista larga de parámetros sueltos.
@@ -27,6 +29,7 @@ final readonly class ShipmentListFilter
 {
     /**
      * @param list<string>|null $statuses
+     * @param list<string>|null $shipmentIds
      */
     public function __construct(
         public ?string $status = null,
@@ -42,5 +45,15 @@ final readonly class ShipmentListFilter
         public ?string $search = null,
         // Aditivo: solo pedidos que YA están en su tienda listos para que el cliente los retire.
         public bool $readyForPickup = false,
+        // Aditivo: ciudad (texto) — coincide con la dirección del envío o con el departamento/nombre de su nodo destino.
+        public ?string $city = null,
+        // Aditivo: solo envíos asignados a ese vehículo (entrega abierta o parada en su ruta).
+        public ?string $vehicleId = null,
+        // Aditivo: solo estos envíos (ids ya resueltos y con forma de UUID; lo usa la consulta de pedidos).
+        // Null = sin filtro; lista vacía = ningún envío.
+        public ?array $shipmentIds = null,
+        // Alcance por rol de quien lista (ciudad / tienda / asignación). Null = sin alcance (procesos internos
+        // y la consulta abierta de pedidos).
+        public ?ShipmentScopeActor $scope = null,
     ) {}
 }

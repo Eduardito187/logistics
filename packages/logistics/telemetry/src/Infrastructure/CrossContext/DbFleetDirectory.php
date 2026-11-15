@@ -29,6 +29,35 @@ final readonly class DbFleetDirectory implements FleetDirectory
         return $this->pluck('fleet_drivers', 'name', $driverIds);
     }
 
+    public function homeBases(array $vehicleIds): array
+    {
+        $ids = SafeRead::uuids($vehicleIds);
+        if ($ids === []) {
+            return [];
+        }
+
+        /** @var array<string, array{node_id: string, node_name: string|null, department: string|null}> $found */
+        $found = SafeRead::run($this->connection, function () use ($ids): array {
+            $map = [];
+            $rows = $this->connection->table('fleet_vehicles as v')
+                ->join('network_nodes as n', 'n.id', '=', 'v.home_base_node_id')
+                ->whereIn('v.id', $ids)
+                ->get(['v.id', 'n.id as node_id', 'n.name as node_name', 'n.department']);
+
+            foreach ($rows as $row) {
+                $map[(string) $row->id] = [
+                    'node_id' => (string) $row->node_id,
+                    'node_name' => is_string($row->node_name) && $row->node_name !== '' ? $row->node_name : null,
+                    'department' => is_string($row->department) && $row->department !== '' ? $row->department : null,
+                ];
+            }
+
+            return $map;
+        }, []);
+
+        return $found;
+    }
+
     public function assignedDriverIds(array $vehicleIds, DateTimeImmutable $day): array
     {
         $result = array_fill_keys($vehicleIds, null);

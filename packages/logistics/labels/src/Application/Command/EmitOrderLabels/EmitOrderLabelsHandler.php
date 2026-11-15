@@ -13,8 +13,8 @@ use Logistics\Shared\Domain\Clock\Clock;
 /**
  * Emite las etiquetas de un pedido derivando todo del pedido (emisión por orden).
  *
- * Recorre el plan de emisión (un grupo por envío hermano) y emite SOLO lo autorizado (parada en plan
- * publicado) y aún PENDING; salta los grupos ya emitidos. Así es idempotente y parcial: reabrir la
+ * Recorre el plan de emisión (un grupo por envío hermano) y emite SOLO lo autorizado (el envío ya tiene
+ * camión: plan publicado o asignación directa, ver DispatchAuthorizationReader) y aún PENDING; salta los grupos ya emitidos. Así es idempotente y parcial: reabrir la
  * pantalla emite lo que falta sin duplicar bultos. Todos los hermanos se emiten bajo la referencia de la
  * orden (el `dst` del QR los distingue), con la misma marca de tiempo de emisión.
  *

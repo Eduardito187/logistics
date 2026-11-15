@@ -436,7 +436,7 @@ components:
 
     DispatchLine:
       type: object
-      required: [sku, product_name, image_url, quantity, pieces_per_unit, line_number, origin, destination, shipment_id, shipment_reference, authorized, authorized_reason, label_status]
+      required: [sku, product_name, image_url, quantity, pieces_per_unit, line_number, origin, destination, shipment_id, shipment_reference, authorized, authorized_reason, authorized_reason_code, label_status]
       properties:
         sku:
           type: string
@@ -477,11 +477,16 @@ components:
           description: Referencia legible del envío (mostrable como título del grupo)
         authorized:
           type: boolean
-          description: true si el envío está en un plan publicado
+          description: 'true si el envío ya tiene camión: parada en un plan publicado, o asignación directa del vehículo al pedido (entrega abierta o parada en la ruta de un camión apto)'
         authorized_reason:
           type: string
           nullable: true
-          description: Motivo si authorized=false (p. ej. "sin plan publicado")
+          description: 'Motivo legible si authorized=false: "sin plan publicado" (sin camión por ninguna vía) o "vehículo no apto"'
+        authorized_reason_code:
+          type: string
+          nullable: true
+          enum: [not_assigned, vehicle_unfit, null]
+          description: 'Código estable del motivo si authorized=false. not_assigned: se destraba con POST /app/orders/{orderNumber}/vehicle. vehicle_unfit: reasignar a otro camión o liberar el vehículo. null si authorized=true'
         label_status:
           type: string
           enum: [pending, emitted, revoked]

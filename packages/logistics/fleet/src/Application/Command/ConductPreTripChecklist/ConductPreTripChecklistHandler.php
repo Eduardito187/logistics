@@ -9,6 +9,7 @@ use Logistics\Fleet\Domain\Contract\ChecklistTemplateRepository;
 use Logistics\Fleet\Domain\Contract\PreTripInspectionRepository;
 use Logistics\Fleet\Domain\Contract\VehicleFitnessLog;
 use Logistics\Fleet\Domain\Contract\VehicleRepository;
+use Logistics\Fleet\Domain\Exception\RouteAlreadyInspected;
 use Logistics\Fleet\Domain\Model\ChecklistTemplate;
 use Logistics\Fleet\Domain\Model\PreTripInspection;
 use Logistics\Fleet\Domain\ValueObject\ChecklistEvaluation;
@@ -30,6 +31,10 @@ use Logistics\Shared\Domain\Clock\Clock;
  * supervisor lo habilite. Sin plantilla activa, el checklist no bloquea (comportamiento histórico). Si el
  * vehículo no está registrado en flota, se guarda la inspección sin marcar nada.
  *
+ * Cuando la inspección viene atada a una salida (`routeId`), esa salida admite UNA sola inspección válida:
+ * una segunda lanza RouteAlreadyInspected (409). Una inspección previa con falla crítica no cuenta, para
+ * que el chofer pueda volver a inspeccionar la misma salida después de la reparación.
+ *
  * El conjunto completo (inspección, vehículo, bitácora y outbox) corre en la misma transacción, que abre el decorador
  * transaccional del CommandBus (Infrastructure); por eso acá no hay nada del framework.
  *
@@ -50,6 +55,11 @@ final readonly class ConductPreTripChecklistHandler implements CommandHandler
     {
         assert($command instanceof ConductPreTripChecklist);
 
+        $routeId = $command->routeId !== null && trim($command->routeId) !== '' ? trim($command->routeId) : null;
+        if ($routeId !== null) {
+            $this->ensureRouteNotInspected($routeId);
+        }
+
         $checklist = PreTripChecklist::of($command->items);
         $performedOn = new DateTimeImmutable($command->performedOn);
 
@@ -67,7 +77,7 @@ final readonly class ConductPreTripChecklistHandler implements CommandHandler
             $performedOn,
             $command->notes,
             $evaluation,
-            $command->routeId,
+            $routeId,
         );
 
         $this->inspections->save($inspection);
@@ -76,6 +86,18 @@ final readonly class ConductPreTripChecklistHandler implements CommandHandler
 
         if (!$evaluation->fitToDispatch && $template instanceof ChecklistTemplate) {
             $this->markVehicleUnfit($inspection, $template, $evaluation);
+        }
+    }
+
+    /**
+     * Una salida (ruta) admite una sola inspección válida. Las que fallaron un ítem crítico no cuentan.
+     */
+    private function ensureRouteNotInspected(string $routeId): void
+    {
+        foreach ($this->inspections->listBy(routeId: $routeId) as $previous) {
+            if ($previous->fitToDispatch()) {
+                throw RouteAlreadyInspected::forRoute($routeId);
+            }
         }
     }
 

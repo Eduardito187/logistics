@@ -25,6 +25,9 @@ use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Domain\Exception\DomainException;
+use Logistics\Shipments\Application\Query\CheckShipmentScope\CheckShipmentScope;
+use Logistics\Shipments\Application\ReadModel\ShipmentScopeDecision;
+use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
 use Throwable;
 
 /**
@@ -125,6 +128,18 @@ final class RecordScanBatchController extends ExecutionController
 
             if ($kind === 'proof_of_delivery' && $shipmentId !== null && !StoreNodeScope::allows($request->user(), $shipmentId)) {
                 return $this->rejected($index, $item, $key, $shipmentId, ProblemDetails::fromCode(ErrorCode::Forbidden, StoreNodeScope::DENIED_DETAIL), $request);
+            }
+
+            // Mismo alcance por rol que los endpoints individuales (ciudad, tienda o asignación): el ítem
+            // fuera de alcance se rechaza solo, con su motivo, sin frenar el resto del lote.
+            if ($shipmentId !== null) {
+                /** @var ShipmentScopeDecision $scope */
+                $scope = $this->queryBus->ask(new CheckShipmentScope(ScopeActorResolver::fromUser($request->user()), shipmentIds: [$shipmentId]));
+                if (!$scope->allowed) {
+                    $problem = ProblemDetails::fromCode(ErrorCode::tryFrom((string) $scope->code) ?? ErrorCode::Forbidden, (string) $scope->message);
+
+                    return $this->rejected($index, $item, $key, $shipmentId, $problem, $request);
+                }
             }
 
             $this->commandBus->dispatch($this->commandFor($kind, $validated, $key, $request));

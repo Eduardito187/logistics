@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Shipments\Application\Query\ListShipmentsByCursor;
 
 use Logistics\Shared\Application\Query\Query;
+use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
 
 /**
  * Lista envíos con paginación por CURSOR (keyset), el modo preferido para la colección de envíos (crece
@@ -37,5 +38,12 @@ final readonly class ListShipmentsByCursor implements Query
         public ?string $search = null,
         // Aditivo: solo pedidos que YA están en su tienda listos para que el cliente los retire.
         public bool $readyForPickup = false,
+        // Aditivo: ciudad (texto) — coincide con la dirección del envío o con el departamento/nombre de su nodo destino.
+        public ?string $city = null,
+        // Aditivo: solo envíos asignados a ese vehículo (entrega abierta o parada en su ruta).
+        public ?string $vehicleId = null,
+        // Alcance por rol de quien lista; lo FUERZA la puerta app desde el usuario autenticado (nunca un
+        // parámetro del cliente). Null = sin alcance (consumidores internos).
+        public ?ShipmentScopeActor $scope = null,
     ) {}
 }

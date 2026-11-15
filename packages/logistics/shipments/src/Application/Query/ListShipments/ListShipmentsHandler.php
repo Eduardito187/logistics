@@ -10,6 +10,7 @@ use Logistics\Shared\Application\ReadModel\Page;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
+use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
 use Logistics\Shipments\Application\Query\ShipmentListSupport;
 use Logistics\Shipments\Application\ReadModel\ShipmentListFilter;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
@@ -36,6 +37,7 @@ final class ListShipmentsHandler implements QueryHandler
         private readonly ShipmentListReader $reader,
         private readonly ShipmentProgressReader $progress,
         private readonly DeliveryModeReader $deliveryModes,
+        private readonly ShipmentScopeReader $scope,
     ) {}
 
     /**
@@ -67,6 +69,9 @@ final class ListShipmentsHandler implements QueryHandler
             pendingPreparation: $query->pendingPreparation,
             search: $query->search,
             readyForPickup: $query->readyForPickup,
+            city: $query->city,
+            vehicleId: $query->vehicleId,
+            scope: $query->scope,
         );
 
         $views = $this->reader->list(
@@ -76,6 +81,7 @@ final class ListShipmentsHandler implements QueryHandler
         );
 
         $views = ShipmentListSupport::withDeliveryMode(ShipmentListSupport::withProgress($views, $this->progress), $this->deliveryModes);
+        $views = ShipmentListSupport::withOrigin($views, $this->scope);
 
         if ($query->limit === null) {
             return $views;

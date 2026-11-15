@@ -21,6 +21,7 @@ use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
 use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
+use Logistics\Execution\Domain\ValueObject\MissingUnitDeclaration;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
 use Logistics\Execution\Domain\ValueObject\ScanEventId;
 use Logistics\Execution\Domain\ValueObject\ScanType;
@@ -69,12 +70,24 @@ final class Delivery extends AggregateRoot
     private ?string $storeDropPhotoPath = null;
 
     /**
+     * Productos que el chofer declaró que NO pudo dejar en la tienda, con su motivo. Vacío = pedido completo.
+     *
+     * @var list<MissingUnitDeclaration>
+     */
+    private array $storeDropMissingUnits = [];
+
+    /**
      * ENTREGA EN TIENDA: el chofer deja el pedido en la tienda donde el cliente lo va a retirar (o adonde va
      * el traspaso). NO cierra la entrega: sigue abierta hasta la prueba de entrega del mostrador. Graba
      * ShipmentDroppedAtStore una sola vez; repetirla solo completa la foto si faltaba. No aplica a una entrega
      * ya cerrada (entregada o fallida).
+     *
+     * `$missingUnits` son los productos que el chofer NO pudo dejar (faltantes), con su motivo: quedan en la
+     * entrega y viajan en el hecho. Un producto se declara una sola vez.
+     *
+     * @param list<MissingUnitDeclaration> $missingUnits
      */
-    public function dropAtStore(string $nodeId, DateTimeImmutable $occurredAt, ?string $photoPath = null): void
+    public function dropAtStore(string $nodeId, DateTimeImmutable $occurredAt, ?string $photoPath = null, array $missingUnits = []): void
     {
         $nodeId = trim($nodeId);
         if ($nodeId === '') {
@@ -86,8 +99,17 @@ final class Delivery extends AggregateRoot
 
         $photoPath = $photoPath !== null && trim($photoPath) !== '' ? trim($photoPath) : null;
 
+        $declared = [];
+        foreach ($missingUnits as $missing) {
+            $declared[$missing->unitId] ??= $missing;
+        }
+        $declared = array_values($declared);
+
         if ($this->storeDroppedAt !== null) {
             $this->storeDropPhotoPath ??= $photoPath;
+            if ($this->storeDropMissingUnits === []) {
+                $this->storeDropMissingUnits = $declared;
+            }
 
             return;
         }
@@ -95,6 +117,7 @@ final class Delivery extends AggregateRoot
         $this->storeDroppedAt = $occurredAt;
         $this->storeDropNodeId = $nodeId;
         $this->storeDropPhotoPath = $photoPath;
+        $this->storeDropMissingUnits = $declared;
 
         $this->recordEvent(new ShipmentDroppedAtStore(
             $this->id->toString(),
@@ -102,15 +125,31 @@ final class Delivery extends AggregateRoot
             $nodeId,
             $this->vehicleId,
             $occurredAt,
+            array_map(static fn (MissingUnitDeclaration $missing): array => $missing->toArray(), $declared),
         ));
     }
 
-    /** Repone la entrega en tienda al reconstituir desde la persistencia (sin grabar eventos). */
-    public function restoreStoreDrop(?DateTimeImmutable $droppedAt, ?string $nodeId, ?string $photoPath): void
+    /**
+     * Repone la entrega en tienda al reconstituir desde la persistencia (sin grabar eventos).
+     *
+     * @param list<MissingUnitDeclaration> $missingUnits
+     */
+    public function restoreStoreDrop(?DateTimeImmutable $droppedAt, ?string $nodeId, ?string $photoPath, array $missingUnits = []): void
     {
         $this->storeDroppedAt = $droppedAt;
         $this->storeDropNodeId = $nodeId;
         $this->storeDropPhotoPath = $photoPath;
+        $this->storeDropMissingUnits = $missingUnits;
+    }
+
+    /**
+     * Productos que el chofer declaró que no pudo dejar en la tienda (faltantes de la entrega en tienda).
+     *
+     * @return list<MissingUnitDeclaration>
+     */
+    public function storeDropMissingUnits(): array
+    {
+        return $this->storeDropMissingUnits;
     }
 
     public function storeDroppedAt(): ?DateTimeImmutable

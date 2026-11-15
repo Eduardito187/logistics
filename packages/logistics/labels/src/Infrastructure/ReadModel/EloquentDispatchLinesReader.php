@@ -6,6 +6,7 @@ namespace Logistics\Labels\Infrastructure\ReadModel;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Logistics\Labels\Application\Contract\DispatchAuthorizationReader;
 use Logistics\Labels\Application\Contract\DispatchLinesReader;
 use Logistics\Labels\Application\Contract\OrderLabelEmissionPlanReader;
 use Logistics\Labels\Application\Contract\OriginResolver;
@@ -24,7 +25,8 @@ use Throwable;
  *  - Líneas y producto: `shipment_lines` del envío de la orden (external_id = orderNumber); nombre/imagen
  *    por SKU con fallback a catálogo (`commerce_products`). `line_number` = posición 1-based de la línea.
  *  - Destino: del envío (nodo store/warehouse o domicilio home), POR LÍNEA (hoy único por orden).
- *  - Autorización: el envío tiene parada en un plan PUBLICADO (`planning_plan_stops` × `planning_plans`).
+ *  - Autorización: el envío ya tiene camión, por plan PUBLICADO o por asignación directa (entrega abierta /
+ *    parada en la ruta de un camión apto). La regla vive en {@see DispatchAuthorizationReader}.
  *  - Estado de etiqueta y origen: de las etiquetas emitidas de la orden (dominio labels). `label_status`
  *    = emitted (hay etiqueta vigente) / revoked (solo revocadas) / pending (ninguna). El origen humano
  *    sale del `org` de la etiqueta emitida (resuelto a nombre de nodo); en líneas pending, origen vacío.
@@ -44,6 +46,7 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader, OrderLab
     public function __construct(
         private readonly EmittedLabelRepository $labels,
         private readonly OriginResolver $origin,
+        private readonly DispatchAuthorizationReader $authorization,
     ) {}
 
     /**
@@ -90,7 +93,7 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader, OrderLab
                 ),
                 destination: $destination,
                 lines: $lines,
-                authorized: $this->shipmentInPublishedPlan($shipmentId),
+                authorized: $this->authorization->forShipment($shipmentId)->authorized,
                 alreadyEmitted: in_array($destination, $activeDestinations, true),
             );
         }
@@ -137,8 +140,7 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader, OrderLab
             $shipmentRef = is_string($shipment->external_id) ? $shipment->external_id : null;
             $destination = $this->resolveDestination($shipment);
             $destCode = $this->destinationCode($shipment);
-            $authorized = $this->shipmentInPublishedPlan($shipmentId);
-            $authorizedReason = $authorized ? null : 'sin plan publicado';
+            $authorization = $this->authorization->forShipment($shipmentId);
 
             $rows = $this->shipmentLines($shipmentId);
             $skus = array_values(array_unique(array_map(static fn (array $r): string => $r['sku'], $rows)));
@@ -177,8 +179,9 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader, OrderLab
                     destinationAddress: $destination['address'],
                     shipmentId: $shipmentId,
                     shipmentReference: $shipmentRef,
-                    authorized: $authorized,
-                    authorizedReason: $authorizedReason,
+                    authorized: $authorization->authorized,
+                    authorizedReason: $authorization->reason,
+                    authorizedReasonCode: $authorization->reasonCode,
                     labelStatus: $label['status'] ?? 'pending',
                 );
                 $shipmentLineCount++;
@@ -310,20 +313,6 @@ final class EloquentDispatchLinesReader implements DispatchLinesReader, OrderLab
             return $out;
         } catch (Throwable) {
             return [];
-        }
-    }
-
-    /** ¿El envío tiene parada en un plan PUBLICADO? (autorización). */
-    private function shipmentInPublishedPlan(string $shipmentId): bool
-    {
-        try {
-            return DB::table('planning_plan_stops')
-                ->join('planning_plans', 'planning_plans.id', '=', 'planning_plan_stops.plan_id')
-                ->where('planning_plan_stops.shipment_id', $shipmentId)
-                ->where('planning_plans.status', 'PUBLISHED')
-                ->exists();
-        } catch (Throwable) {
-            return false;
         }
     }
 

@@ -20,6 +20,8 @@ use Logistics\Capacity\Application\Command\UnblockDispatchDay\UnblockDispatchDay
 use Logistics\Capacity\Application\Command\UnblockDispatchDay\UnblockDispatchDayHandler;
 use Logistics\Capacity\Application\Query\CheckDispatchDay\CheckDispatchDayHandler;
 use Logistics\Capacity\Application\Query\CheckDispatchDay\CheckDispatchDayQuery;
+use Logistics\Capacity\Application\Query\GetActivationOptions\GetActivationOptionsHandler;
+use Logistics\Capacity\Application\Query\GetActivationOptions\GetActivationOptionsQuery;
 use Logistics\Capacity\Application\Query\GetActiveHorizon\GetActiveHorizonHandler;
 use Logistics\Capacity\Application\Query\GetActiveHorizon\GetActiveHorizonQuery;
 use Logistics\Capacity\Application\Query\GetAvailableCapacity\GetAvailableCapacityHandler;
@@ -121,6 +123,8 @@ final class CapacityServiceProvider extends ServiceProvider
         $registry->register(CheckDispatchDayQuery::class, CheckDispatchDayHandler::class);
         $registry->register(ListBlackoutDaysQuery::class, ListBlackoutDaysHandler::class);
         $registry->register(GetActiveHorizonQuery::class, GetActiveHorizonHandler::class);
+        // Catálogo para activar cupos desde la app (franjas, unidades y ventanas por defecto).
+        $registry->register(GetActivationOptionsQuery::class, GetActivationOptionsHandler::class);
 
         // El generador del calendario de cupos NO se despacha por el bus (orquesta DefineCapacity, cada
         // uno en su transacción); se expone como comando de consola que invoca su handler directo.

@@ -6,6 +6,8 @@ namespace Logistics\Shipments\Application\Query;
 
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
+use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
+use Logistics\Shipments\Application\ReadModel\ShipmentOriginView;
 use Logistics\Shipments\Application\ReadModel\ShipmentProgressView;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 use Logistics\Shipments\Domain\ValueObject\DeliveryMode;
@@ -44,6 +46,27 @@ final class ShipmentListSupport
 
         return array_map(
             static fn (ShipmentView $view): ShipmentView => $view->withProgress($progress[$view->id] ?? ShipmentProgressView::unknown()),
+            $views,
+        );
+    }
+
+    /**
+     * Adjunta a cada vista su nodo de origen legible y sus departamentos de origen y destino, leídos en UN
+     * lote para toda la página (sin N+1).
+     *
+     * @param  list<ShipmentView> $views
+     * @return list<ShipmentView>
+     */
+    public static function withOrigin(array $views, ShipmentScopeReader $reader): array
+    {
+        if ($views === []) {
+            return [];
+        }
+
+        $origins = $reader->origins(array_map(static fn (ShipmentView $view): string => $view->id, $views));
+
+        return array_map(
+            static fn (ShipmentView $view): ShipmentView => $view->withOrigin($origins[$view->id] ?? new ShipmentOriginView),
             $views,
         );
     }

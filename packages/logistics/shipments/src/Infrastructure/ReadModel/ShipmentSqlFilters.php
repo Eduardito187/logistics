@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Logistics\Shipments\Infrastructure\ReadModel;
 
 use Illuminate\Database\Query\Builder;
+use Logistics\Shipments\Application\ReadModel\AddressPartsView;
+use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
 use Logistics\Shipments\Domain\ValueObject\DeliveryMode;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
@@ -15,6 +17,117 @@ use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
  */
 final class ShipmentSqlFilters
 {
+    /** Estados de una ruta que sigue vigente (armada o en curso). */
+    private const array ROUTE_OPEN = ['PLANNED', 'IN_PROGRESS'];
+
+    /**
+     * ALCANCE POR ROL: la regla única de qué envíos puede listar y operar un actor (ver ShipmentScopeActor).
+     * La usan el listado, los conteos, `can_process` de la consulta de pedidos y la guarda de escrituras.
+     *
+     * Las habilitaciones del actor se combinan con OR (alcanza con que una cubra el envío):
+     *  - ciudad (preparador): el departamento de ORIGEN o el de DESTINO es el suyo. Un envío que todavía no
+     *    tiene NINGUNO de los dos resueltos se muestra igual: no se esconde un pedido por un dato faltante;
+     *  - tienda: el envío SALE de su nodo o LLEGA a él;
+     *  - chofer: el envío tiene una parada en una ruta suya, o una entrega en el vehículo de una ruta suya
+     *    vigente. El chofer de una ruta es el grabado en ella o, si no lo tiene, el de la tripulación del
+     *    vehículo ese día (misma regla que los KPIs y el historial del chofer);
+     *  - transportista: el envío va en un viaje suyo.
+     * Un actor restringido sin ninguna habilitación no ve nada. Sin restricción no agrega ningún predicado.
+     *
+     * Los predicados de ciudad y tienda son igualdades sobre columnas indexadas; los de asignación son
+     * EXISTS correlacionados por `shipment_id` (indexado), sin una consulta por fila.
+     */
+    public static function scope(Builder $query, ShipmentScopeActor $actor, string $prefix = 'shipments.'): void
+    {
+        if ($actor->unrestricted) {
+            return;
+        }
+
+        if ($actor->seesNothing()) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where(static function (Builder $scope) use ($actor, $prefix): void {
+            if ($actor->department !== null) {
+                $department = $actor->department;
+                $scope->orWhere(static function (Builder $city) use ($department, $prefix): void {
+                    $city->where($prefix.'origin_department', $department)
+                        ->orWhere($prefix.'destination_department', $department)
+                        ->orWhere(static function (Builder $unresolved) use ($prefix): void {
+                            $unresolved->whereNull($prefix.'origin_department')->whereNull($prefix.'destination_department');
+                        });
+                });
+            }
+
+            if ($actor->storeNodeId !== null) {
+                $nodeId = $actor->storeNodeId;
+                $scope->orWhere(static function (Builder $store) use ($nodeId, $prefix): void {
+                    $store->where($prefix.'destination_node_id', $nodeId)->orWhere($prefix.'origin_node_id', $nodeId);
+                });
+            }
+
+            if ($actor->driverId !== null) {
+                self::orAssignedToDriver($scope, $actor->driverId, $prefix);
+            }
+
+            if ($actor->carrierId !== null) {
+                $carrierId = $actor->carrierId;
+                $scope->orWhereExists(static function (Builder $trip) use ($carrierId, $prefix): void {
+                    $trip->selectRaw('1')
+                        ->from('carrier_trip_shipments as sc_ts')
+                        ->join('carrier_trips as sc_t', 'sc_t.id', '=', 'sc_ts.trip_id')
+                        ->whereColumn('sc_ts.shipment_id', $prefix.'id')
+                        ->where('sc_t.carrier_id', $carrierId);
+                });
+            }
+        });
+    }
+
+    /**
+     * Envíos asignados a un chofer: parada en una ruta suya (cualquiera, también las ya cerradas: lo que
+     * repartió sigue siendo suyo y un escaneo sin conexión puede llegar tarde), o entrega en el vehículo de
+     * una ruta suya que sigue vigente.
+     */
+    private static function orAssignedToDriver(Builder $scope, string $driverId, string $prefix): void
+    {
+        $scope->orWhereExists(static function (Builder $stop) use ($driverId, $prefix): void {
+            $stop->selectRaw('1')
+                ->from('execution_driver_route_stops as sc_s')
+                ->join('execution_driver_routes as sc_r', 'sc_r.id', '=', 'sc_s.route_id')
+                ->whereColumn('sc_s.shipment_id', $prefix.'id');
+            self::routeOfDriver($stop, 'sc_r', $driverId);
+        })->orWhereExists(static function (Builder $delivery) use ($driverId, $prefix): void {
+            $delivery->selectRaw('1')
+                ->from('execution_deliveries as sc_d')
+                ->join('execution_driver_routes as sc_v', 'sc_v.vehicle_id', '=', 'sc_d.vehicle_id')
+                ->whereColumn('sc_d.shipment_id', $prefix.'id')
+                ->whereIn('sc_v.status', self::ROUTE_OPEN);
+            self::routeOfDriver($delivery, 'sc_v', $driverId);
+        });
+    }
+
+    /**
+     * La ruta (alias dado) es de ese chofer: el grabado en la ruta o, si la ruta no lo tiene, el de la
+     * tripulación del vehículo para ese día.
+     */
+    private static function routeOfDriver(Builder $query, string $route, string $driverId): void
+    {
+        $query->where(static function (Builder $where) use ($route, $driverId): void {
+            $where->where($route.'.driver_id', $driverId)
+                ->orWhere(static function (Builder $fallback) use ($route, $driverId): void {
+                    $fallback->whereNull($route.'.driver_id')->whereExists(static function (Builder $crew) use ($route, $driverId): void {
+                        $crew->selectRaw('1')
+                            ->from('fleet_crews as sc_c')
+                            ->where('sc_c.driver_id', $driverId)
+                            ->whereColumn('sc_c.vehicle_id', $route.'.vehicle_id')
+                            ->whereColumn('sc_c.assembled_for', $route.'.route_date');
+                    });
+                });
+        });
+    }
+
     /**
      * Filtro por modalidad de entrega DERIVADA (ver DeliveryMode), equivalente a ShipmentListSupport:
      *  - transfer      ⇔ fuente interna (OrderSource::Transfer) Y con nodo destino;
@@ -69,6 +182,52 @@ final class ShipmentSqlFilters
                 ->orWhereRaw('lower(order_reference) like ?', [$like])
                 ->orWhereRaw('lower(customer_name) like ?', [$like])
                 ->orWhereRaw('lower(customer_document_id) like ?', [$like]);
+        });
+    }
+
+    /**
+     * Ciudad: se filtra por la columna `city` (nombre canónico, indexada). El texto pedido se lleva a su
+     * nombre canónico cuando es una ciudad conocida («scz» → «Santa Cruz»). Para los envíos que todavía no
+     * tienen ciudad resuelta se conserva el respaldo: el texto dentro de la dirección. Los comodines del
+     * usuario se buscan como texto literal.
+     */
+    public static function city(Builder $query, string $city): void
+    {
+        $city = trim($city);
+        if ($city === '') {
+            return;
+        }
+
+        $canonical = AddressPartsView::canonicalCity($city) ?? $city;
+        $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($canonical)).'%';
+
+        $query->where(static function (Builder $where) use ($like): void {
+            $where->whereRaw('lower(city) like ?', [$like])
+                ->orWhere(static function (Builder $unresolved) use ($like): void {
+                    $unresolved->whereNull('city')->whereRaw('lower(address_text) like ?', [$like]);
+                });
+        });
+    }
+
+    /**
+     * Asignados a un vehículo: envíos con una entrega de ese camión o con una parada en una ruta suya. Lee
+     * ejecución en solo lectura con EXISTS correlacionados por `shipment_id`.
+     */
+    public static function assignedToVehicle(Builder $query, string $vehicleId, string $prefix = 'shipments.'): void
+    {
+        $query->where(static function (Builder $where) use ($vehicleId, $prefix): void {
+            $where->whereExists(static function (Builder $delivery) use ($vehicleId, $prefix): void {
+                $delivery->selectRaw('1')
+                    ->from('execution_deliveries as av_d')
+                    ->whereColumn('av_d.shipment_id', $prefix.'id')
+                    ->where('av_d.vehicle_id', $vehicleId);
+            })->orWhereExists(static function (Builder $stop) use ($vehicleId, $prefix): void {
+                $stop->selectRaw('1')
+                    ->from('execution_driver_route_stops as av_s')
+                    ->join('execution_driver_routes as av_r', 'av_r.id', '=', 'av_s.route_id')
+                    ->whereColumn('av_s.shipment_id', $prefix.'id')
+                    ->where('av_r.vehicle_id', $vehicleId);
+            });
         });
     }
 

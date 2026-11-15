@@ -158,6 +158,15 @@ if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_BACKFILL_ORDERS:-false
     echo "[entrypoint] → reproyectando tracking desde las entregas de execution..."
     php artisan logistics:tracking:reconcile-from-execution --force \
         || echo "[entrypoint] AVISO: el reconcile de tracking falló; el arranque sigue."
+    # Completa la ciudad de los envíos que no la tienen (filtro y reprogramación por ciudad). Idempotente.
+    php artisan logistics:shipments:backfill-city --force \
+        || echo "[entrypoint] AVISO: el relleno de ciudad de envíos falló; el arranque sigue."
+    # Alcance por ciudad: origen y departamentos de los envíos, y ciudad del personal que se puede deducir
+    # de su tienda o de su camión. Idempotentes; solo completan lo que está vacío.
+    php artisan logistics:shipments:backfill-scope --force \
+        || echo "[entrypoint] AVISO: el relleno de origen y departamento de envíos falló; el arranque sigue."
+    php artisan logistics:staff:backfill-city --force \
+        || echo "[entrypoint] AVISO: el relleno de ciudad del personal falló; el arranque sigue."
 fi
 
 # ------------------------------------------------------------

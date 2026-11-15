@@ -15,6 +15,7 @@ use Logistics\Fleet\Application\Query\GetVehicleFitness\GetVehicleFitness;
 use Logistics\Fleet\Application\Query\ListPreTripChecklists\ListPreTripChecklists;
 use Logistics\Fleet\Application\ReadModel\PreTripChecklistView;
 use Logistics\Fleet\Application\ReadModel\VehicleFitnessView;
+use Logistics\Fleet\Domain\Exception\RouteAlreadyInspected;
 use Logistics\Fleet\Presentation\Http\Concerns\RespondsWithEnvelope;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
@@ -110,6 +111,9 @@ final readonly class PreTripChecklistController
      *
      * Aditivo (#27): además del acuse devuelve `fit_to_dispatch` (el checklist no tiene fallas críticas Y
      * el vehículo está apto en esa fecha), los ítems críticos fallidos/faltantes y la aptitud del vehículo.
+     *
+     * Con `route_id` la inspección queda atada a esa salida, que admite una sola inspección válida: la
+     * segunda responde 409 `pre_trip_checklist_already_recorded`. Sin `route_id` no hay tope.
      */
     public function store(Request $request): JsonResponse
     {
@@ -126,14 +130,18 @@ final readonly class PreTripChecklistController
         /** @var array<string, bool> $items */
         $items = array_map(static fn ($checked): bool => (bool) $checked, $validated['items']);
 
-        $this->commandBus->dispatch(new ConductPreTripChecklist(
-            vehicleId: $validated['vehicle_id'],
-            driverId: $validated['driver_id'],
-            items: $items,
-            performedOn: $validated['performed_on'],
-            notes: $validated['notes'] ?? null,
-            routeId: $validated['route_id'] ?? null,
-        ));
+        try {
+            $this->commandBus->dispatch(new ConductPreTripChecklist(
+                vehicleId: $validated['vehicle_id'],
+                driverId: $validated['driver_id'],
+                items: $items,
+                performedOn: $validated['performed_on'],
+                notes: $validated['notes'] ?? null,
+                routeId: $validated['route_id'] ?? null,
+            ));
+        } catch (RouteAlreadyInspected $e) {
+            return $this->conflict($request, 'pre_trip_checklist_already_recorded', $e->getMessage());
+        }
 
         // La inspección recién creada es la de mayor id (UUID v7) del vehículo en esa fecha.
         $created = $this->queryBus->ask(new ListPreTripChecklists(
@@ -163,5 +171,22 @@ final readonly class PreTripChecklistController
             'missing_critical' => $inspection !== null ? $inspection->missingCritical : [],
             'vehicle_fitness' => $fitness?->toArray(),
         ]);
+    }
+
+    /**
+     * 409 en el body unificado de la API (RFC 7807): el motivo viaja en `detail` y en `error.message`, con
+     * un `code` propio del conflicto.
+     */
+    private function conflict(Request $request, string $code, string $message): JsonResponse
+    {
+        return new JsonResponse([
+            'type' => rtrim((string) config('api.problem_type_base_uri', '/problems'), '/').'/'.$code,
+            'title' => 'Conflict',
+            'status' => 409,
+            'code' => $code,
+            'detail' => $message,
+            'error' => ['code' => $code, 'message' => $message],
+            'instance' => $request->getRequestUri(),
+        ], 409, ['Content-Type' => 'application/problem+json']);
     }
 }

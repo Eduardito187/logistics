@@ -221,6 +221,15 @@ final readonly class AddressPartsView
     }
 
     /** Minúsculas, sin tildes, sin puntos finales y con espacios colapsados (para comparar). */
+    /**
+     * Nombre canónico de una ciudad conocida a partir de un texto («scz», «SANTA CRUZ DE LA SIERRA» →
+     * «Santa Cruz»), o null si no es una ciudad reconocida.
+     */
+    public static function canonicalCity(string $value): ?string
+    {
+        return self::CITIES[self::normalize($value)] ?? null;
+    }
+
     private static function normalize(string $value): string
     {
         $lower = mb_strtolower(trim($value));

@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Presentation\Http\Controller;
 
-use App\Enums\Role;
 use App\Http\Support\ApiPagination;
-use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,10 +15,12 @@ use Logistics\Shipments\Application\Query\ListShipments\ListShipments;
 use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByCursor;
 use Logistics\Shipments\Application\ReadModel\ShipmentPage;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
+use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
 use Logistics\Shipments\Domain\ValueObject\DeliveryMode;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 use Logistics\Shipments\Presentation\Http\Support\JsonEnvelope;
+use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
 
 /**
  * Puerta app: lista los pedidos recibidos, con filtros opcionales por estado (cualquier capitalización),
@@ -41,14 +41,17 @@ use Logistics\Shipments\Presentation\Http\Support\JsonEnvelope;
  * Lee vía QueryBus (ListShipments → list<ShipmentView>). La validación es inline por ser filtros
  * simples de query string.
  *
- * Alcance por tienda (server-side): si el usuario autenticado tiene rol Tienda, el listado se ACOTA a su
- * nodo asignado (`users.node_id`), ignorando cualquier `destination_node_id` que mande el cliente (no se
- * confía en la app). Una tienda sin nodo asignado recibe lista vacía (seguro: nunca ve envíos ajenos).
- * Los demás roles operan cross-nodo y pueden pasar el filtro opcional `destination_node_id` o ninguno.
- *
- * Nota: el nodo destino lo pobla el ingest/SAP; mientras sea null, una tienda no verá esos envíos (su
- * nodo nunca coincide con null), que es exactamente la garantía buscada: no filtrar envíos de otras
- * tiendas. Esta es la única puerta del controller (shipments.php lo registra solo en `app`).
+ * ALCANCE POR ROL (server-side; sale del usuario autenticado, nunca de un parámetro de la app). Aplica a la
+ * lista en sus tres modos de paginación y a `meta.count_by_status`:
+ *  - preparador → envíos cuyo departamento de ORIGEN o de DESTINO es su ciudad (`users.city`); los que
+ *    todavía no tienen ninguno de los dos resueltos se muestran. Sin ciudad asignada no queda restringido;
+ *  - tienda → envíos que SALEN de su nodo o LLEGAN a él (`users.node_id`). Se ignora el
+ *    `destination_node_id` que mande el cliente. Una tienda sin nodo asignado recibe lista vacía;
+ *  - chofer → envíos de sus rutas; transportista → envíos de sus viajes;
+ *  - supervisor / admin → sin restricción (pueden pasar el filtro opcional `destination_node_id`).
+ * Con varios roles alcanza con que uno habilite el envío. La regla vive en un solo lugar (ShipmentScopeReader
+ * / ShipmentSqlFilters::scope). Para CONSULTAR cualquier pedido está GET /orders/lookup, sin alcance.
+ * Esta es la única puerta del controller (shipments.php lo registra solo en `app`).
  */
 final class ListShipmentsController
 {
@@ -71,7 +74,7 @@ final class ListShipmentsController
         $isMultiStatus = $statusList !== null && count($statusList) > 1;
         $this->normalizeQuery($request, $statusList, $isMultiStatus);
 
-        /** @var array{source?: string|null, destination_node_id?: string|null, delivery_date_from?: string|null, delivery_date_to?: string|null, delivery_mode?: string|null, include?: string|null, pending_preparation?: bool|string|int|null, q?: string|null, ready_for_pickup?: bool|string|int|null} $filters */
+        /** @var array{source?: string|null, destination_node_id?: string|null, delivery_date_from?: string|null, delivery_date_to?: string|null, delivery_mode?: string|null, include?: string|null, pending_preparation?: bool|string|int|null, q?: string|null, ready_for_pickup?: bool|string|int|null, city?: string|null, vehicle_id?: string|null, delivery_date?: string|null} $filters */
         $filters = $request->validate([
             'status' => $isMultiStatus ? ['array', 'max:'.count($statuses)] : ['nullable', 'string', Rule::in($statuses)],
             'status.*' => ['string', Rule::in($statuses)],
@@ -87,19 +90,27 @@ final class ListShipmentsController
             'q' => ['nullable', 'string', 'max:120'],
             // Solo pedidos que ya están en la tienda listos para retirar.
             'ready_for_pickup' => ['nullable', 'boolean'],
+            // Ciudad (texto) y vehículo asignado.
+            'city' => ['nullable', 'string', 'max:80'],
+            'vehicle_id' => ['nullable', 'uuid'],
+            // Atajo de un solo día (equivale a delivery_date_from = delivery_date_to).
+            'delivery_date' => ['nullable', 'date_format:Y-m-d'],
         ]);
 
-        // Resuelve el filtro de nodo destino: para el rol Tienda se FUERZA su nodo asignado (server-side,
-        // ignorando lo que mande el cliente); el resto de roles puede pasar el filtro opcional.
-        $destinationNodeId = $this->destinationNodeId($request, $filters['destination_node_id'] ?? null);
+        // Alcance por rol, armado desde el usuario autenticado (no se confía en la app).
+        $scope = ScopeActorResolver::fromUser($request->user());
 
-        // Tienda sin nodo asignado: lista vacía (no puede ver envíos de ninguna tienda).
-        if ($destinationNodeId === false) {
+        // Restringido y sin ninguna habilitación (p. ej. tienda sin nodo asignado): lista vacía.
+        if ($scope->seesNothing()) {
             return $this->data([]);
         }
 
+        // El filtro opcional por nodo destino es de quien opera sin restricción; para una tienda manda su
+        // alcance (lo que sale de su nodo o llega a él) y se ignora el que envíe el cliente.
+        $destinationNodeId = $scope->storeNodeId !== null ? null : ($filters['destination_node_id'] ?? null);
+
         // Filtros del listado sin recorte; cada modo de paginación los copia a su propia consulta.
-        $criteria = $this->criteria($statusList, $isMultiStatus, $filters, $destinationNodeId);
+        $criteria = $this->criteria($statusList, $isMultiStatus, $filters, $destinationNodeId, $scope);
 
         $countByStatus = $this->wantsCountByStatus($filters['include'] ?? null)
             ? $this->countByStatus($criteria)
@@ -157,29 +168,14 @@ final class ListShipmentsController
     }
 
     /**
-     * Nodo destino efectivo: el rol Tienda queda acotado a su nodo asignado; el resto usa el filtro
-     * opcional del cliente. Devuelve false cuando es una Tienda sin nodo asignado (debe ver lista vacía).
-     */
-    private function destinationNodeId(Request $request, ?string $requested): string | false | null
-    {
-        $user = $request->user();
-        if (!$user instanceof User || !$user->hasRole(Role::Tienda)) {
-            return $requested;
-        }
-
-        $assignedNode = $user->node_id;
-
-        return is_string($assignedNode) && $assignedNode !== '' ? $assignedNode : false;
-    }
-
-    /**
      * Arma los filtros del listado (sin recorte). Un estado → filtro `status` (camino histórico); varios →
      * filtro `statuses` (IN).
      *
      * @param list<mixed>|null                    $statusList
      * @param array<string, bool|int|string|null> $filters
+     * @param ShipmentScopeActor                  $scope      alcance por rol de quien lista
      */
-    private function criteria(?array $statusList, bool $isMultiStatus, array $filters, ?string $destinationNodeId): ListShipments
+    private function criteria(?array $statusList, bool $isMultiStatus, array $filters, ?string $destinationNodeId, ShipmentScopeActor $scope): ListShipments
     {
         $validStatuses = array_values(array_filter($statusList ?? [], static fn (mixed $value): bool => is_string($value)));
 
@@ -187,13 +183,16 @@ final class ListShipmentsController
             status: $isMultiStatus ? null : ($validStatuses[0] ?? null),
             source: self::stringOrNull($filters['source'] ?? null),
             destinationNodeId: $destinationNodeId,
-            deliveryDateFrom: self::stringOrNull($filters['delivery_date_from'] ?? null),
-            deliveryDateTo: self::stringOrNull($filters['delivery_date_to'] ?? null),
+            deliveryDateFrom: self::stringOrNull($filters['delivery_date_from'] ?? $filters['delivery_date'] ?? null),
+            deliveryDateTo: self::stringOrNull($filters['delivery_date_to'] ?? $filters['delivery_date'] ?? null),
             statuses: $isMultiStatus ? $validStatuses : null,
             deliveryMode: self::stringOrNull($filters['delivery_mode'] ?? null),
             pendingPreparation: filter_var($filters['pending_preparation'] ?? false, FILTER_VALIDATE_BOOLEAN),
             search: self::stringOrNull($filters['q'] ?? null),
             readyForPickup: filter_var($filters['ready_for_pickup'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            city: self::stringOrNull($filters['city'] ?? null),
+            vehicleId: self::stringOrNull($filters['vehicle_id'] ?? null),
+            scope: $scope,
         );
     }
 
@@ -236,6 +235,9 @@ final class ListShipmentsController
             pendingPreparation: $criteria->pendingPreparation,
             search: $criteria->search,
             readyForPickup: $criteria->readyForPickup,
+            city: $criteria->city,
+            vehicleId: $criteria->vehicleId,
+            scope: $criteria->scope,
         ));
 
         $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
@@ -276,6 +278,11 @@ final class ListShipmentsController
             statuses: $criteria->statuses,
             deliveryMode: $criteria->deliveryMode,
             pendingPreparation: $criteria->pendingPreparation,
+            search: $criteria->search,
+            readyForPickup: $criteria->readyForPickup,
+            city: $criteria->city,
+            vehicleId: $criteria->vehicleId,
+            scope: $criteria->scope,
         ));
 
         $items = array_map(static fn (ShipmentView $view): array => $view->toArray(), $page->items);
@@ -351,6 +358,7 @@ final class ListShipmentsController
             deliveryDateFrom: $criteria->deliveryDateFrom,
             deliveryDateTo: $criteria->deliveryDateTo,
             deliveryMode: $criteria->deliveryMode,
+            scope: $criteria->scope,
         ));
 
         return $counts;

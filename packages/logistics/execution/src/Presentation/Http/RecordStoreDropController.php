@@ -6,7 +6,9 @@ namespace Logistics\Execution\Presentation\Http;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Logistics\Execution\Application\Command\RecordStoreDrop\RecordStoreDrop;
+use Logistics\Execution\Domain\ValueObject\MissingUnitReason;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipment;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
 
@@ -21,6 +23,10 @@ use Logistics\Shipments\Application\ReadModel\ShipmentView;
  *
  * Solo aplica a envíos cuyo destino es un nodo (`store_pickup` o `transfer`) y en ESE nodo: una entrega a
  * domicilio u otra tienda responde 422. Idempotente: repetirlo no duplica el aviso ni el hecho.
+ *
+ * Faltantes (opcional): `missing_units` lista los productos que el chofer NO pudo dejar, cada uno con su
+ * motivo (`not_arrived`, `damaged`, `wrong_store`, `other`). La tienda ya no concilia una recepción, así que
+ * el faltante se informa acá. Un producto que no es del pedido, o declarar el pedido entero, responde 422.
  */
 final class RecordStoreDropController extends ExecutionController
 {
@@ -28,7 +34,7 @@ final class RecordStoreDropController extends ExecutionController
 
     public function __invoke(Request $request, string $shipmentId): JsonResponse
     {
-        /** @var array{node_id?: string|null, photo_path?: string|null, occurred_at?: string|null} $data */
+        /** @var array{node_id?: string|null, photo_path?: string|null, occurred_at?: string|null, missing_units?: list<array{unit_id: string, reason: string}>|null} $data */
         $data = $request->validate([
             'node_id' => ['sometimes', 'nullable', 'uuid'],
             'photo_path' => ['sometimes', 'nullable', 'string', 'max:1024'],
@@ -36,6 +42,10 @@ final class RecordStoreDropController extends ExecutionController
             // La posición es informativa (la app la manda con el resto de los escaneos).
             'lat' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
             'lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            // Productos que NO pudo dejar (faltantes), con su motivo. Opcional: sin la lista, dejó el pedido completo.
+            'missing_units' => ['sometimes', 'nullable', 'array', 'max:500'],
+            'missing_units.*.unit_id' => ['required', 'string', 'max:128'],
+            'missing_units.*.reason' => ['required', 'string', Rule::in(MissingUnitReason::values())],
         ]);
 
         $shipment = $this->queryBus->ask(new FindShipment($shipmentId));
@@ -68,7 +78,12 @@ final class RecordStoreDropController extends ExecutionController
             ? trim((string) $data['photo_path'])
             : null;
 
-        $this->commandBus->dispatch(new RecordStoreDrop($shipmentId, $nodeId, $occurredAt, $photoPath));
+        $missingUnits = [];
+        foreach ($data['missing_units'] ?? [] as $missing) {
+            $missingUnits[] = ['unit_id' => (string) $missing['unit_id'], 'reason' => (string) $missing['reason']];
+        }
+
+        $this->commandBus->dispatch(new RecordStoreDrop($shipmentId, $nodeId, $occurredAt, $photoPath, $missingUnits));
 
         return $this->deliveryStateResponse($shipmentId);
     }

@@ -10,7 +10,7 @@ use Logistics\Labels\Application\Dto\OrderLineInput;
  * Un GRUPO de emisión por orden = un envío hermano listo para etiquetar (multishipping: uno por destino).
  *
  * Lleva su origen (CD resuelto), su destino (código de nodo o 'C' a domicilio), sus líneas, si está
- * AUTORIZADO (parada en plan publicado) y si YA tiene etiquetas vigentes. El handler de emisión por orden
+ * AUTORIZADO (ya tiene camión: plan publicado o asignación directa) y si YA tiene etiquetas vigentes. El handler de emisión por orden
  * emite solo los grupos autorizados y aún no emitidos: así reabrir la pantalla emite lo que falta sin
  * duplicar (idempotente/parcial).
  */
