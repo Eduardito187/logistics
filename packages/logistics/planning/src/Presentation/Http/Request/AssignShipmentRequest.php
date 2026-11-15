@@ -10,7 +10,8 @@ use Logistics\Planning\Application\Command\AssignShipmentToVehicle\AssignShipmen
 /**
  * Valida el ajuste manual que agrega (o mueve) un envío al plan/camión indicado.
  *
- * El id del plan viene en la ruta; el cuerpo trae el envío a asignar.
+ * El id del plan viene en la ruta; el cuerpo trae el envío a asignar. `latitude` / `longitude` son
+ * opcionales (van juntas): si no vienen, el caso de uso toma la ubicación del propio envío.
  */
 final class AssignShipmentRequest extends FormRequest
 {
@@ -26,6 +27,8 @@ final class AssignShipmentRequest extends FormRequest
     {
         return [
             'shipment_id' => ['required', 'string', 'uuid'],
+            'latitude' => ['nullable', 'required_with:longitude', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'required_with:latitude', 'numeric', 'between:-180,180'],
         ];
     }
 
@@ -34,9 +37,18 @@ final class AssignShipmentRequest extends FormRequest
      */
     public function toCommand(string $planId): AssignShipmentToVehicle
     {
-        /** @var array{shipment_id: string} $data */
+        /** @var array{shipment_id: string, latitude?: int|float|string|null, longitude?: int|float|string|null} $data */
         $data = $this->validated();
 
-        return new AssignShipmentToVehicle($planId, $data['shipment_id']);
+        $latitude = $data['latitude'] ?? null;
+        $longitude = $data['longitude'] ?? null;
+        $located = is_numeric($latitude) && is_numeric($longitude);
+
+        return new AssignShipmentToVehicle(
+            $planId,
+            $data['shipment_id'],
+            latitude: $located ? (float) $latitude : null,
+            longitude: $located ? (float) $longitude : null,
+        );
     }
 }

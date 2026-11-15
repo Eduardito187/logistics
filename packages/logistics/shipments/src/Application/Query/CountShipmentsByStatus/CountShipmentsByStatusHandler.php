@@ -38,6 +38,7 @@ final class CountShipmentsByStatusHandler implements QueryHandler
             deliveryDateTo: $query->deliveryDateTo,
             deliveryMode: ShipmentListSupport::deliveryMode($query->deliveryMode),
             scope: $query->scope,
+            city: $query->city,
         );
     }
 }

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Logistics\Shipments\Application\Query;
 
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
+use Logistics\Shipments\Application\Contract\ShipmentDeliveryEvidenceReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
+use Logistics\Shipments\Application\ReadModel\ShipmentDeliveryEvidenceView;
 use Logistics\Shipments\Application\ReadModel\ShipmentOriginView;
 use Logistics\Shipments\Application\ReadModel\ShipmentProgressView;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
@@ -16,7 +18,8 @@ use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 
 /**
  * Piezas compartidas por los listados de envíos (por offset y por cursor): normalización del filtro de
- * estado (uno o varios) y enriquecimiento de la página con el avance operativo y la modalidad de entrega.
+ * estado (uno o varios) y enriquecimiento de la página con el avance operativo, la modalidad de entrega y
+ * la evidencia de la entrega.
  */
 final class ShipmentListSupport
 {
@@ -67,6 +70,37 @@ final class ShipmentListSupport
 
         return array_map(
             static fn (ShipmentView $view): ShipmentView => $view->withOrigin($origins[$view->id] ?? new ShipmentOriginView),
+            $views,
+        );
+    }
+
+    /**
+     * Adjunta a cada vista la evidencia de su entrega (firma / foto / documento). Solo los envíos ENTREGADOS
+     * se consultan, en UN lote para toda la página (sin N+1); los demás quedan sin evidencia (null al
+     * serializar). Una página sin entregados no hace ninguna consulta.
+     *
+     * @param  list<ShipmentView> $views
+     * @return list<ShipmentView>
+     */
+    public static function withDeliveryEvidence(array $views, ShipmentDeliveryEvidenceReader $reader): array
+    {
+        $deliveredIds = [];
+        foreach ($views as $view) {
+            if (ShipmentStatus::tryFromLoose($view->status) === ShipmentStatus::Delivered) {
+                $deliveredIds[] = $view->id;
+            }
+        }
+
+        $evidence = $deliveredIds === [] ? [] : $reader->forDeliveredShipmentIds($deliveredIds);
+
+        return array_map(
+            static function (ShipmentView $view) use ($evidence, $deliveredIds): ShipmentView {
+                if (!in_array($view->id, $deliveredIds, true)) {
+                    return $view->withDeliveryEvidence(ShipmentDeliveryEvidenceView::notDelivered());
+                }
+
+                return $view->withDeliveryEvidence($evidence[$view->id] ?? ShipmentDeliveryEvidenceView::delivered());
+            },
             $views,
         );
     }

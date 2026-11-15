@@ -15,6 +15,17 @@ use Illuminate\Support\Facades\Broadcast;
 */
 
 /**
+ * Canal PERSONAL de cada usuario de la app (`private-user.{id}`): por acá llega `inbox.updated` con su
+ * no-leído cada vez que cambia su bandeja interna (ver App\Events\InboxUpdated).
+ *
+ * Solo el propio usuario: nadie escucha la bandeja de otro, sea del rol que sea. La app lo autoriza con su
+ * Bearer en POST /api/v1/app/broadcasting/auth; el admin web, con su sesión en /broadcasting/auth.
+ */
+Broadcast::channel('user.{id}', static function (User $user, string $id): bool {
+    return ctype_digit($id) && (int) $user->getAuthIdentifier() === (int) $id;
+});
+
+/**
  * Canal del PANEL de la torre de control: toda la flota en vivo.
  *
  * Gated igual que el acceso al admin (User::canAccessPanel): solo Admin/Supervisor. Los roles de campo

@@ -7,6 +7,7 @@ use Logistics\Execution\Presentation\Http\AssembleDailyRouteController;
 use Logistics\Execution\Presentation\Http\AssignOrderVehicleController;
 use Logistics\Execution\Presentation\Http\AssignShelfLocationController;
 use Logistics\Execution\Presentation\Http\CaptureDeliveryEvidenceController;
+use Logistics\Execution\Presentation\Http\CloseTransferWithShortageController;
 use Logistics\Execution\Presentation\Http\DriverRouteLifecycleController;
 use Logistics\Execution\Presentation\Http\GetDeliveryEvidenceController;
 use Logistics\Execution\Presentation\Http\GetDeliveryStateController;
@@ -145,6 +146,12 @@ return [
                 ->whereUuid('shipmentId')
                 ->middleware('order.scope')
                 ->name('store-drop');
+            // Cierre manual de OFICINA de un traspaso que quedó en curso con faltantes (la tienda nunca
+            // concilió): queda entregado con `with_shortage`. Solo admin y supervisor; motivo obligatorio.
+            Route::post('deliveries/{shipmentId}/close-transfer', CloseTransferWithShortageController::class)
+                ->whereUuid('shipmentId')
+                ->middleware(['role:supervisor,admin', 'order.scope'])
+                ->name('close-transfer');
             // Cierre de la entrega por envío (POD en lote: unit_ids, una sola firma/GPS). Mismo controller.
             Route::post('deliveries/{shipmentId}/complete', RecordProofOfDeliveryController::class)
                 ->middleware('order.scope')

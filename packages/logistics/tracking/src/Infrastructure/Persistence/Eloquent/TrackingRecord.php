@@ -32,6 +32,7 @@ use Logistics\Tracking\Database\Factories\TrackingRecordFactory;
  * @property string|null $last_lng
  * @property Carbon|null $last_position_at
  * @property Carbon|null $delivered_at
+ * @property Carbon|null $at_store_at
  * @property string|null $customer_email
  * @property Carbon|null $rating_requested_at
  */
@@ -45,6 +46,16 @@ final class TrackingRecord extends Model
     protected $table = 'tracking_shipments';
 
     protected $keyType = 'string';
+
+    /**
+     * Las fechas se escriben CON su desplazamiento horario. Sin él, Eloquent mandaba solo el reloj de pared
+     * y PostgreSQL lo interpretaba en la zona de SU sesión: una entrega informada en UTC quedaba corrida
+     * 4 horas cuando la sesión estaba en la zona de la app. Con el desplazamiento el instante es exacto en
+     * cualquier sesión (las columnas son `timestamptz`).
+     *
+     * @var string
+     */
+    protected $dateFormat = 'Y-m-d H:i:sP';
 
     /** @var list<string> */
     protected $fillable = [
@@ -61,6 +72,7 @@ final class TrackingRecord extends Model
         'last_lng',
         'last_position_at',
         'delivered_at',
+        'at_store_at',
         'customer_email',
         'rating_requested_at',
     ];
@@ -77,6 +89,7 @@ final class TrackingRecord extends Model
         'eta' => 'datetime',
         'last_position_at' => 'datetime',
         'delivered_at' => 'datetime',
+        'at_store_at' => 'datetime',
         'rating_requested_at' => 'datetime',
     ];
 

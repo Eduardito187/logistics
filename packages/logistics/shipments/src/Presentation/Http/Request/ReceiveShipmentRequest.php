@@ -54,6 +54,11 @@ final class ReceiveShipmentRequest extends FormRequest
             // (network_nodes.code). Ambos opcionales; sin ninguno (ni sufijo "#n:{uuid}") es a domicilio.
             'destination_node_id' => ['nullable', 'uuid'],
             'destination_node_code' => ['nullable', 'string', 'max:64'],
+            // Origen del pedido (de dónde sale): nodo por UUID o por código (network_nodes.code). Ambos
+            // opcionales; sin ninguno el origen se deriva. Que el nodo exista y que los dos coincidan lo
+            // valida el caso de uso (422 con el motivo en `detail`).
+            'origin_node_id' => ['nullable', 'uuid'],
+            'origin_node_code' => ['nullable', 'string', 'max:64'],
         ];
     }
 
@@ -62,7 +67,7 @@ final class ReceiveShipmentRequest extends FormRequest
      */
     public function toCommand(): ReceiveShipment
     {
-        /** @var array{source: string, external_id: string, customer_name: string, destination_node_id?: string|null, destination_node_code?: string|null, customer_document_id?: string|null, customer_phone?: string|null, customer_email?: string|null, address_text: string, address_reference?: string|null, lat?: float|int|string|null, lng?: float|int|string|null, lines: list<array{sku: string, product_name: string, quantity: int|string, image_url?: string|null, price?: float|int|string|null, currency?: string|null}>} $data */
+        /** @var array{source: string, external_id: string, customer_name: string, destination_node_id?: string|null, destination_node_code?: string|null, origin_node_id?: string|null, origin_node_code?: string|null, customer_document_id?: string|null, customer_phone?: string|null, customer_email?: string|null, address_text: string, address_reference?: string|null, lat?: float|int|string|null, lng?: float|int|string|null, lines: list<array{sku: string, product_name: string, quantity: int|string, image_url?: string|null, price?: float|int|string|null, currency?: string|null}>} $data */
         $data = $this->validated();
 
         $lines = [];
@@ -106,6 +111,12 @@ final class ReceiveShipmentRequest extends FormRequest
                 : null,
             destinationNodeCode: isset($data['destination_node_code']) && $data['destination_node_code'] !== ''
                 ? (string) $data['destination_node_code']
+                : null,
+            originNodeId: isset($data['origin_node_id']) && $data['origin_node_id'] !== ''
+                ? (string) $data['origin_node_id']
+                : null,
+            originNodeCode: isset($data['origin_node_code']) && $data['origin_node_code'] !== ''
+                ? (string) $data['origin_node_code']
                 : null,
         );
     }

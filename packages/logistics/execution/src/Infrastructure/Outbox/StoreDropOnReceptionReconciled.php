@@ -22,6 +22,11 @@ use Throwable;
  * el cierre de la parada del camión. Si el chofer se olvidó de cerrar su parada, el cliente igual se entera
  * y la ruta no queda con una parada colgada.
  *
+ * TRASPASO interno: la conciliación en su nodo destino es el acuse formal de la tienda, así que además deja la
+ * entrega como entregada (no hay cliente que firme), aunque el chofer hubiera declarado faltantes. Si la
+ * recepción fue COMPLETA se cierra sin faltantes; si tuvo diferencias se cierra CON FALTANTES (viajan en el
+ * hecho de entrega) y se siguen por el reporte de discrepancias, no manteniendo el envío abierto.
+ *
  * Idempotente (la entrega en tienda se registra una sola vez) y tolerante: si el nodo no es el destino del
  * envío, si no hay entrega ni ruta, o si la entrega ya está cerrada, no hace nada.
  */
@@ -56,11 +61,30 @@ final readonly class StoreDropOnReceptionReconciled implements MessageDispatcher
             return;
         }
 
+        // Recepción COMPLETA del envío en su destino: llegó cada producto esperado, sin faltantes ni sobrantes.
+        // Con un manifiesto vacío no hay nada verificado, así que no cuenta como completa. Un traspaso se cierra
+        // con cualquiera de las dos: completa, sin faltantes; con diferencias, con los faltantes que informó la
+        // tienda (o los del chofer, si la conciliación no listó ninguno).
+        $expected = is_numeric($payload['expected_count'] ?? null) ? (int) $payload['expected_count'] : 0;
+        $complete = ($payload['complete'] ?? false) === true && $expected > 0;
+
+        $missingUnitIds = [];
+        $reported = $payload['missing_unit_ids'] ?? null;
+        if (!$complete && is_array($reported)) {
+            foreach ($reported as $unitId) {
+                if (is_string($unitId) && trim($unitId) !== '') {
+                    $missingUnitIds[] = trim($unitId);
+                }
+            }
+        }
+
         try {
             $this->commandBus->dispatch(new RecordStoreDrop(
                 $shipmentId,
                 $nodeId,
                 $message->createdAt()->format(DATE_ATOM),
+                receptionComplete: $complete,
+                receptionMissingUnitIds: $missingUnitIds,
             ));
         } catch (ExecutionException) {
             // Sin entrega ni ruta, o entrega ya cerrada: no hay nada que registrar.

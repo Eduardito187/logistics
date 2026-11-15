@@ -14,14 +14,16 @@ use Logistics\Shipments\Domain\ValueObject\DepartmentCode;
  *
  * Cada rol aporta una habilitación, y alcanza con que UNA cubra el envío:
  *  - supervisor / admin → sin restricción;
- *  - preparador → `department`: envíos cuyo departamento de ORIGEN o de DESTINO es su ciudad;
+ *  - preparador / planificador → `department`: envíos cuyo departamento de ORIGEN o de DESTINO es su ciudad;
  *  - tienda → `storeNodeId`: envíos que SALEN de su nodo o LLEGAN a él;
  *  - chofer → `driverId`: envíos con parada en una ruta suya o en el vehículo de una ruta suya vigente;
  *  - transportista → `carrierId`: envíos de sus viajes.
  *
  * Decisiones deliberadas (para no dejar al personal existente sin pedidos el día del despliegue):
- *  - un preparador SIN ciudad asignada (`users.city` vacío) NO queda restringido por ciudad;
- *  - un chofer o transportista SIN vínculo tampoco queda restringido, salvo que se pida el modo estricto;
+ *  - un preparador o planificador SIN ciudad asignada (`users.city` vacío) NO queda restringido por ciudad, salvo que se
+ *    pida el modo estricto (`strictWithoutCity`): ahí no lista nada y no opera hasta que le asignen ciudad;
+ *  - un chofer o transportista SIN vínculo tampoco queda restringido, salvo que se pida el modo estricto
+ *    (`strictUnlinked`);
  *  - una cuenta sin ningún rol operativo no la acota este servicio (la autorización por rol es otra capa).
  * Una tienda sin nodo asignado no ve ni opera nada (regla previa, se conserva).
  */
@@ -33,13 +35,16 @@ final readonly class ShipmentScopeActor
 
     public const string ROLE_PICKER = 'preparador';
 
+    /** Planificador: acotado por ciudad igual que el preparador. */
+    public const string ROLE_PLANNER = 'planificador';
+
     public const string ROLE_STORE = 'tienda';
 
     public const string ROLE_DRIVER = 'chofer';
 
     public const string ROLE_CARRIER = 'transportista';
 
-    /** El envío no es de la ciudad del preparador. */
+    /** El envío no es de la ciudad del preparador / planificador. */
     public const string DENIED_CITY = 'out_of_scope_city';
 
     /** El envío no sale ni llega a la tienda del usuario. */
@@ -69,8 +74,9 @@ final readonly class ShipmentScopeActor
      * Arma el actor desde la identidad del usuario. Cada vínculo solo cuenta si el usuario tiene el rol que
      * lo usa; los ids que no tienen forma de UUID se descartan (nunca se comparan contra una columna uuid).
      *
-     * @param list<string> $roles          valores de rol del usuario (`admin`, `preparador`, …)
-     * @param bool         $strictUnlinked true = un chofer / transportista sin vínculo no ve ni opera nada
+     * @param list<string> $roles             valores de rol del usuario (`admin`, `preparador`, …)
+     * @param bool         $strictUnlinked    true = un chofer / transportista sin vínculo no ve ni opera nada
+     * @param bool         $strictWithoutCity true = un preparador / planificador sin ciudad no ve ni opera nada
      */
     public static function fromIdentity(
         array $roles,
@@ -79,6 +85,7 @@ final readonly class ShipmentScopeActor
         ?string $driverId = null,
         ?string $carrierId = null,
         bool $strictUnlinked = false,
+        bool $strictWithoutCity = false,
     ): self {
         $roles = array_map(static fn (string $role): string => strtolower(trim($role)), $roles);
         $has = static fn (string $role): bool => in_array($role, $roles, true);
@@ -87,9 +94,11 @@ final readonly class ShipmentScopeActor
             return self::unrestricted();
         }
 
-        // Preparador sin ciudad asignada: sin restricción de ciudad (decisión deliberada).
-        $department = $has(self::ROLE_PICKER) ? DepartmentCode::of($city) : null;
-        if ($has(self::ROLE_PICKER) && $department === null) {
+        // Preparador / planificador sin ciudad asignada: sin restricción de ciudad (decisión deliberada), salvo en modo
+        // estricto, donde sigue acotado SIN departamento: la ciudad no le habilita ningún envío.
+        $cityBound = $has(self::ROLE_PICKER) || $has(self::ROLE_PLANNER);
+        $department = $cityBound ? DepartmentCode::of($city) : null;
+        if ($cityBound && $department === null && !$strictWithoutCity) {
             return self::unrestricted();
         }
 
@@ -107,7 +116,7 @@ final readonly class ShipmentScopeActor
             driverId: $driver,
             carrierId: $carrier,
             denialCode: match (true) {
-                $has(self::ROLE_PICKER) => self::DENIED_CITY,
+                $cityBound => self::DENIED_CITY,
                 $has(self::ROLE_STORE) => self::DENIED_NODE,
                 default => self::DENIED_ASSIGNMENT,
             },
@@ -124,9 +133,20 @@ final readonly class ShipmentScopeActor
             && $this->carrierId === null;
     }
 
+    /** Acotado por ciudad (preparador, planificador) pero sin ciudad asignada: solo ocurre en modo estricto. */
+    public function lacksCity(): bool
+    {
+        return !$this->unrestricted && $this->denialCode === self::DENIED_CITY && $this->department === null;
+    }
+
     /** Motivo legible del rechazo (viaja en `detail` y en `error.message`). */
     public function denialMessage(): string
     {
+        // Rol acotado por ciudad que todavía no tiene ciudad (modo estricto): el motivo es ese, no el pedido.
+        if ($this->lacksCity()) {
+            return 'No tienes una ciudad asignada: pide a tu supervisor que te la asigne para poder operar pedidos.';
+        }
+
         return match ($this->denialCode) {
             self::DENIED_CITY => 'Este pedido no es de tu ciudad: puedes consultarlo, pero no operarlo.',
             self::DENIED_NODE => 'Este pedido no sale de tu tienda ni llega a ella: puedes consultarlo, pero no operarlo.',

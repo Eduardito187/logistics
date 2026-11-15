@@ -53,7 +53,9 @@ final class ViewVehicleRoute extends ViewRecord
             ->modalHeading(__('Report vehicle incident'))
             ->modalDescription(__('Report a breakdown or accident. Pending stops will be rescheduled automatically; delivered stops are not touched.'))
             ->modalSubmitActionLabel(__('Report incident'))
-            ->visible(static fn (VehicleRouteRecord $record): bool => self::hasPendingStops($record))
+            // Hecho de terreno: el planificador consulta la ruta, pero no reporta incidentes.
+            ->visible(static fn (VehicleRouteRecord $record): bool => VehicleRouteResource::canOperateField()
+                && self::hasPendingStops($record))
             ->schema([
                 Select::make('severity')
                     ->label(__('Severity'))

@@ -11,11 +11,15 @@ use Logistics\Shared\Application\Query\Query;
  *
  * `withOrigin` adjunta el nodo de origen legible y los departamentos de origen y destino (una lectura más):
  * lo pide la ficha del envío de la app; los demás consumidores no lo necesitan.
+ *
+ * `withDeliveryEvidence` adjunta la evidencia de la entrega (firma / foto / documento; null si el envío no
+ * está entregado): también lo pide solo la ficha de la app.
  */
 final readonly class FindShipment implements Query
 {
     public function __construct(
         public string $shipmentId,
         public bool $withOrigin = false,
+        public bool $withDeliveryEvidence = false,
     ) {}
 }

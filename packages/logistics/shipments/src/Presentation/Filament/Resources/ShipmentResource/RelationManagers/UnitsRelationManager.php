@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Model;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
+use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
 
 /**
  * Unidades físicas del pedido, embebidas en la vista/edición del envío.
@@ -40,6 +41,14 @@ final class UnitsRelationManager extends RelationManager
     public static function getModelLabel(): string
     {
         return __('package');
+    }
+
+    /**
+     * Solo lectura para quien no escribe como oficina (el planificador): sin alta, edición ni borrado.
+     */
+    public function isReadOnly(): bool
+    {
+        return parent::isReadOnly() || !ShipmentResource::canWriteAsOffice();
     }
 
     public function form(Schema $schema): Schema

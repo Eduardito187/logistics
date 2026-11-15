@@ -19,6 +19,7 @@ enum Role: string
     case Tienda = 'tienda';
     case Transportista = 'transportista';
     case Supervisor = 'supervisor';
+    case Planificador = 'planificador';
     case Admin = 'admin';
 
     /**
@@ -32,6 +33,7 @@ enum Role: string
             self::Tienda => 'Store',
             self::Transportista => 'Carrier',
             self::Supervisor => 'Supervisor',
+            self::Planificador => 'Planner',
             self::Admin => 'Administrator',
         };
     }
@@ -89,6 +91,23 @@ enum Role: string
                 Ability::CAPACITY_READ,
                 Ability::PROMISE_READ,
                 Ability::CARRIERS_READ,
+            ],
+            // Planificador: arma los planes y viajes del día (planificación en escritura), reprograma
+            // pedidos (envíos en escritura), maneja el calendario de entregas (cupos en escritura) y
+            // asigna pedidos a un camión (ejecución en escritura). Lee flota y red para decidir. No
+            // administra cuentas, configuración ni liquidaciones. Su alcance es por ciudad, igual que el
+            // preparador: con ciudad asignada opera lo de su ciudad; sin ciudad, sin restricción.
+            self::Planificador => [
+                Ability::SHIPMENTS_READ,
+                Ability::SHIPMENTS_WRITE,
+                Ability::PLANNING_READ,
+                Ability::PLANNING_WRITE,
+                Ability::FLEET_READ,
+                Ability::NETWORK_READ,
+                Ability::CAPACITY_READ,
+                Ability::CAPACITY_WRITE,
+                Ability::EXECUTION_READ,
+                Ability::EXECUTION_WRITE,
             ],
             // Admin: acceso total.
             self::Admin => [Ability::WILDCARD],

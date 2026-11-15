@@ -31,7 +31,9 @@ use Logistics\Shipments\Domain\Exception\ShipmentsException;
  * Orden de resolución del texto buscado (se detiene en el primero que encuentra algo):
  *  1. código de pedido EXACTO (código externo o referencia de orden; trae los envíos hermanos del pedido);
  *  2. identificador de una etiqueta escaneada → su pedido (contexto de etiquetas, por contrato);
- *  3. coincidencia parcial de texto, la misma búsqueda del listado de envíos (código, nombre o documento).
+ *  3. coincidencia parcial de texto: por código de pedido o referencia de orden para cualquiera; además por
+ *     nombre o documento del cliente solo si la consulta lo habilita (`searchCustomerData`: oficina y tienda).
+ *     Quien no lo tiene habilitado no recibe un rechazo: ese texto simplemente no coincide con datos del cliente.
  *
  * Después enriquece el puñado de envíos encontrados, en lote: avance operativo y modalidad (los mismos del
  * listado), hechos de ruta/seguimiento y nombre del nodo destino. Costo fijo, sin una consulta por envío.
@@ -88,12 +90,15 @@ final class LookupOrdersHandler implements QueryHandler
             }
         }
 
-        // 3) Coincidencia parcial de texto (misma búsqueda del listado de envíos), acotada al tope.
+        // 3) Coincidencia parcial de texto, acotada al tope. Los datos del cliente solo entran si se habilitó.
         if (mb_strlen($term) < self::MIN_SEARCH_LENGTH) {
             return new OrderLookupResult([], OrderLookupResult::MATCHED_BY_SEARCH);
         }
 
-        $views = $this->shipments->list(new ShipmentListFilter(search: $term), LookupOrders::MAX_RESULTS);
+        $views = $this->shipments->list(
+            new ShipmentListFilter(search: $term, searchCustomerData: $query->searchCustomerData),
+            LookupOrders::MAX_RESULTS,
+        );
 
         return $this->result($views, OrderLookupResult::MATCHED_BY_SEARCH, null, $query->actor);
     }

@@ -86,11 +86,7 @@ final class SendStaffBroadcastPush implements ShouldQueue
                     Http::withToken($token)->timeout($timeout)->connectTimeout(3)->post($endpoint, ['message' => [
                         'token' => $pushToken,
                         'notification' => ['title' => (string) $broadcast->title, 'body' => (string) $broadcast->body],
-                        'data' => [
-                            'type' => 'staff_broadcast',
-                            'broadcast_id' => $this->broadcastId,
-                            'link' => is_string($broadcast->link ?? null) ? $broadcast->link : '',
-                        ],
+                        'data' => $this->data(is_string($broadcast->link ?? null) ? $broadcast->link : ''),
                         'android' => ['priority' => 'high'],
                     ]]);
                 } catch (Throwable $e) {
@@ -103,5 +99,22 @@ final class SendStaffBroadcastPush implements ShouldQueue
                 ->where('user_id', $userId)
                 ->update(['pushed_at' => now(), 'updated_at' => now()]);
         }
+    }
+
+    /**
+     * Datos del push (FCM solo admite cadenas). Contrato con la app: `type` = "inbox" e `id` = el aviso,
+     * para abrir la bandeja en ese ítem. `broadcast_id` repite el id por compatibilidad con versiones de la
+     * app que todavía lo leen con ese nombre.
+     *
+     * @return array{type: string, id: string, broadcast_id: string, link: string}
+     */
+    public function data(string $link = ''): array
+    {
+        return [
+            'type' => 'inbox',
+            'id' => $this->broadcastId,
+            'broadcast_id' => $this->broadcastId,
+            'link' => $link,
+        ];
     }
 }

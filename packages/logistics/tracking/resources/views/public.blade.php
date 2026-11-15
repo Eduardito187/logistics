@@ -1,7 +1,7 @@
 {{-- Página pública de rastreo por token: la abre el cliente desde el enlace compartido. Copy en --}}
 {{-- español (cliente boliviano), sin PII. Mapa con Leaflet + OpenStreetMap (sin API key). --}}
 @php
-    /** @var array{status:string,remaining_stops:int,route_position:?int,eta:?string,last_position:?array{lat:float,lng:float,reported_at:string},position_is_live:?bool,stops_message:string} $tracking */
+    /** @var array{status:string,remaining_stops:int,route_position:?int,eta:?string,last_position:?array{lat:float,lng:float,reported_at:string},position_is_live:?bool,stops_message:string,at_store_at:?string,ready_for_pickup:bool} $tracking */
     /** @var list<array{label:string,status:string,status_message:string}> $units */
     /** @var string $publicToken */
     /** @var bool $canSurvey */
@@ -26,7 +26,10 @@
         'RETURNED' => 'Devuelto',
     ];
     $status = $tracking['status'];
-    $statusLabel = $statusLabels[$status] ?? $status;
+    // Pedido con retiro en tienda que ya llegó: la etiqueta dice lo que le importa al cliente (el estado
+    // del ciclo de vida no cambia). Tolerante a una foto vieja sin el campo.
+    $readyForPickup = ($tracking['ready_for_pickup'] ?? false) === true;
+    $statusLabel = $readyForPickup ? 'Listo para recoger' : ($statusLabels[$status] ?? $status);
     $position = $tracking['last_position'] ?? null;
     $isLive = $tracking['position_is_live'] ?? null;
 

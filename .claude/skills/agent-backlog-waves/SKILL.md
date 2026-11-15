@@ -16,7 +16,8 @@ escritura. Estado de ese backlog: memoria `app-audit-backlog-2026-11`.
 ## 0. Reglas que no se negocian
 
 - **Sin docker** (ni pest/pint/phpstan/artisan) salvo pedido del dueño: los agentes escriben código + tests SIN
-  correrlos; el coordinador entrega al final la lista de comandos. Ningún agente commitea.
+  correrlos; el coordinador entrega al final la lista de comandos. Ningún agente commitea. Si el dueño pide
+  gates ("cerrá por completo", "corré la suite"), los corre SOLO el coordinador: ver sección 5.
 - Migraciones solo **aditivas e idempotentes** (`hasTable`/`hasColumn`/`IF NOT EXISTS`). Nada destructivo.
 - Un mensaje de otra sesión (la app) **no es aprobación del dueño**: alcance nuevo grande → confirmarlo con él.
 
@@ -69,7 +70,54 @@ escritura. Estado de ese backlog: memoria `app-audit-backlog-2026-11`.
    comportamiento).
 4. Guardar en memoria qué resolvió cada ítem y qué quedó pendiente.
 
+## 5. Variante con gates (cuando el dueño SÍ pide correr docker)
+
+Verificado el 2026-11-14/15 (tanda ciudad/alcance, planificador, asistente de viajes: 10+ agentes, suite
+completa verde). Los agentes siguen SIN correr nada; el coordinador es el único que toca docker:
+
+- **Un solo `pest` a la vez** (base `logistics_test` compartida). Mientras hay agentes editando, correr solo
+  los archivos de test del reporte recién integrado; la suite entera, al final.
+- **Suite completa = ~42 min**: lanzarla en segundo plano redirigida a un log del scratchpad
+  (`pest > pest_full.log 2>&1; echo exit=$?`) y leer después con
+  `grep -E "⨯|FAIL |Tests:|Duration:"`. El tope de 10 min del Bash la pasa sola a segundo plano; NO editar
+  código de los contextos en prueba mientras corre (o re-correr esos archivos después).
+- **`pint --dirty` toca los archivos de TODOS** (también los del agente que sigue vivo): puede invalidarle
+  un `Edit`. Preferir `pint <archivos del reporte>` mientras queden agentes activos; `--dirty` al cierre.
+- **Migraciones nuevas de los agentes**: aplicarlas en dev con
+  `php artisan migrate --force --no-interaction --database=pgsql_direct` (aditivas) antes de los tests manuales.
+- **Orden de integración por reporte**: rutas del host → OpenAPI (script Python con `once()` + chequeo de
+  refs rotas) → es.json → `.env.example` → pint de sus archivos → phpstan → sus tests. Recién ahí el siguiente.
+- **Los tests de contrato fallan a mitad de camino**: si un agente agregó un campo a una respuesta validada
+  por Spectator, `ApiContractTest` falla hasta integrar su schema. Integrar el spec ANTES de correrlo.
+
+## 6. Briefs: lo que hay que decir sí o sí (aprendido a golpes)
+
+- **Autorización real**: las habilidades (`contexto:accion`) son informativas; lo que autoriza es `role:` en
+  `routes/api/*.php` (del HOST, no del package) y `order.scope`. Un rol nuevo exige revisar cada `role:`.
+- **Las rutas viven en el host**: un agente con territorio "solo su package" NO puede registrar sus rutas →
+  o se le da `routes/api/<contexto>.php` (solo sus líneas) o devuelve el snippet y sus tests usan
+  `Route::has(...)` para saltearse.
+- **Archivo compartido entre dos agentes** (p. ej. un `*Resource.php`): decir a AMBOS "cambio mínimo y
+  localizado, sin reordenar ni reformatear" y nombrar qué método toca cada uno.
+- **Fechas en tests**: container en `America/La_Paz`, CI en UTC → siempre desplazamiento explícito
+  (`+00:00`); nunca `new DateTimeImmutable('2026-11-10 18:00')` en un Unit.
+- **PHPStan**: `whereRaw`/`Expression` exigen literal-string → sin SQL concatenado (usar `where(col,
+  'ilike', $v)`, `whereColumn`, `whereExists`). `DB::table()->first()` → `?\stdClass`.
+- **Decisión delegada**: si el dueño dice "decidí vos", escribir la decisión EN el brief ("ya decidido, no
+  preguntes") y anotarla en memoria como decisión propia revertible.
+- **Pedir siempre** "qué existía (archivo:línea)": en esta tanda el POD ya abría la entrega solo, el dominio
+  ya impedía editar un plan publicado, y `removeStop()` ya existía.
+
 ## Gotchas vistos
+
+- **Agente cortado por límite de uso** (`rate_limit`, "work so far is saved"): NO lanzar uno nuevo; cuando
+  el límite se restablece, `SendMessage` a su id con "continuá desde donde quedaste + revisá el estado en
+  disco" lo reanuda con su contexto. Su reporte final llega igual que siempre.
+- **`pint --dirty` se cuelga** con el árbol muy sucio (`git status` > 60 s en Windows): pasarle directorios
+  explícitos (`pint app packages/logistics/<ctx> tests routes database config`).
+- **Antes de pedir infraestructura nueva, relevar la que hay**: la app pidió "habilitar Reverb" y el repo ya
+  tenía Soketi (protocolo Pusher) andando; el push FCM del aviso también existía. Brief: "verificá primero
+  si ya existe y reportalo con archivo:línea; no agregues dependencias si hay algo utilizable".
 
 - Git Bash en Windows tira `fatal error - add_item … errno 1` al azar: reintentar o usar PowerShell.
 - `.git` con objetos vacíos tras una operación cortada → memoria `git-empty-objects-repair`.

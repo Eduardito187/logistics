@@ -124,8 +124,16 @@ it('backfills delivered_at for already delivered rows idempotently', function ()
     expect($first['outbox_delivered'])->toBeGreaterThanOrEqual(1)
         ->and($first['updated_at'])->toBeGreaterThanOrEqual(1);
 
+    // El `created_at` del outbox lleva zona (instante exacto); el `updated_at` de la fila NO: guarda un
+    // reloj de pared que PostgreSQL lee en la zona de su sesión. Ese instante esperado se calcula igual,
+    // así el test no depende de si la sesión corre en UTC (CI) o en la zona de la app (containers locales).
+    $wall = static fn (string $clock): int => (int) DB::selectOne(
+        'select extract(epoch from ?::timestamp::timestamptz)::bigint as epoch',
+        [$clock],
+    )->epoch;
+
     expect(TrackingRecord::query()->findOrFail($fromOutbox->id)->delivered_at?->getTimestamp())->toBe(strtotime('2026-10-20T12:00:00+00:00'))
-        ->and(TrackingRecord::query()->findOrFail($fallback->id)->delivered_at?->getTimestamp())->toBe(strtotime('2026-10-21T08:00:00+00:00'))
+        ->and(TrackingRecord::query()->findOrFail($fallback->id)->delivered_at?->getTimestamp())->toBe($wall('2026-10-21 08:00:00'))
         ->and(TrackingRecord::query()->findOrFail($pending->id)->delivered_at)->toBeNull()
         ->and(TrackingRecord::query()->findOrFail($already->id)->delivered_at?->getTimestamp())->toBe(strtotime('2026-10-01T09:00:00+00:00'));
 

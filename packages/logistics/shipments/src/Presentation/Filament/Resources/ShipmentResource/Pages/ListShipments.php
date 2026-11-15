@@ -63,9 +63,13 @@ final class ListShipments extends ListRecords
      */
     protected function getHeaderActions(): array
     {
+        // Recibir e importar pedidos son escrituras de oficina (administrador y supervisor): el planificador
+        // solo consulta el listado.
+        $canWrite = ShipmentResource::canWriteAsOffice();
+
         return [
-            $this->receiveOrderAction(),
-            $this->importSpreadsheetAction(),
+            $this->receiveOrderAction()->visible($canWrite),
+            $this->importSpreadsheetAction()->visible($canWrite),
             ...$this->getSavedViewActions(),
         ];
     }
@@ -245,13 +249,14 @@ final class ListShipments extends ListRecords
     /**
      * Segmentos por estado del envío (recibido → planificado → en ejecución → entregado / fallido /
      * cancelado), con conteo. Hace que la lista se use como un CRM, por "dónde está" cada envío.
+     * Los conteos salen de la consulta del recurso: respetan el alcance por ciudad del usuario.
      *
      * @return array<string, Tab>
      */
     public function getTabs(): array
     {
         return [
-            'all' => Tab::make(__('All'))->badge(ShipmentRecord::query()->count()),
+            'all' => Tab::make(__('All'))->badge(ShipmentResource::getEloquentQuery()->count()),
             'received' => $this->statusTab('Received', ShipmentStatus::Received->value),
             'planned' => $this->statusTab('Planned', ShipmentStatus::Planned->value),
             'in_execution' => $this->statusTab('In execution', ShipmentStatus::InExecution->value),
@@ -264,7 +269,7 @@ final class ListShipments extends ListRecords
     private function statusTab(string $labelKey, string $status): Tab
     {
         return Tab::make(__($labelKey))
-            ->badge(ShipmentRecord::query()->where('status', $status)->count())
+            ->badge(ShipmentResource::getEloquentQuery()->toBase()->where('status', $status)->count())
             ->modifyQueryUsing(static function (Builder $query) use ($status): Builder {
                 /** @var Builder<ShipmentRecord> $query */
                 return $query->where('status', $status);

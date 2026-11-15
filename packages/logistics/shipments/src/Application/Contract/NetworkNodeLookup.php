@@ -14,4 +14,10 @@ namespace Logistics\Shipments\Application\Contract;
 interface NetworkNodeLookup
 {
     public function idForCode(string $code): ?string;
+
+    /**
+     * El id del nodo (en minúsculas) si EXISTE en la red; null si no existe, si el valor no tiene forma de
+     * UUID o si la red no está disponible. Lo usa el ingreso para validar el nodo de origen informado.
+     */
+    public function existingId(string $nodeId): ?string;
 }

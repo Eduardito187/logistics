@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Application\Command\RecordFailedDelivery;
 
 use DateTimeImmutable;
+use Logistics\Execution\Application\Service\RouteDeliveryOpener;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
@@ -31,6 +32,7 @@ final class RecordFailedDeliveryHandler implements CommandHandler
         private readonly DeliveryRepository $deliveries,
         private readonly VehicleRouteRepository $routes,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly RouteDeliveryOpener $opener,
     ) {}
 
     public function handle(Command $command): void
@@ -39,12 +41,14 @@ final class RecordFailedDeliveryHandler implements CommandHandler
             throw ExecutionException::because('RecordFailedDeliveryHandler solo maneja RecordFailedDelivery');
         }
 
-        $delivery = $this->deliveries->findByShipmentId($command->shipmentId);
+        $occurredAt = new DateTimeImmutable($command->occurredAt);
+
+        // Si el envío está en la ruta de un camión pero su entrega nunca se abrió (ruta armada desde el
+        // plan publicado), se abre con ese camión para poder registrar el intento. Sin ruta, error claro.
+        $delivery = $this->opener->forShipment($command->shipmentId, $occurredAt);
         if ($delivery === null) {
             throw ExecutionException::because("no hay entrega abierta para el envío {$command->shipmentId}");
         }
-
-        $occurredAt = new DateTimeImmutable($command->occurredAt);
 
         $delivery->recordFailed(
             FailureReason::from($command->reason),

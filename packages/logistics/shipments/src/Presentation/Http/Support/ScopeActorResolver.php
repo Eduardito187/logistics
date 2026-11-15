@@ -14,7 +14,8 @@ use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
  * parámetro que mande la app.
  *
  * `users.city` es el código de departamento del usuario (lo mantiene el contexto de identidad). Se lee de
- * forma tolerante: si el usuario no tiene ciudad, no queda restringido por ciudad.
+ * forma tolerante: si el usuario no tiene ciudad, no queda restringido por ciudad (salvo con el interruptor
+ * `logistics-shipments.scope.strict_without_city`).
  */
 final class ScopeActorResolver
 {
@@ -33,7 +34,27 @@ final class ScopeActorResolver
             driverId: self::text($user->driver_id),
             carrierId: self::text($user->carrier_id),
             strictUnlinked: (bool) config('logistics-shipments.scope.strict_unlinked', false),
+            strictWithoutCity: (bool) config('logistics-shipments.scope.strict_without_city', false),
         );
+    }
+
+    /**
+     * ¿Este usuario puede buscar pedidos por NOMBRE o DOCUMENTO del cliente en la consulta abierta? Solo
+     * oficina y tienda (admin, supervisor, tienda). El resto consulta por código de pedido o etiqueta.
+     */
+    public static function searchesCustomerData(mixed $user): bool
+    {
+        if (!$user instanceof User) {
+            return false;
+        }
+
+        foreach ($user->roles() as $role) {
+            if (in_array($role, [Role::Admin, Role::Supervisor, Role::Tienda], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function text(mixed $value): ?string

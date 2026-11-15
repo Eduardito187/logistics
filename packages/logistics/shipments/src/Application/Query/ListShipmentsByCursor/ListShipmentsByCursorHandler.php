@@ -7,6 +7,7 @@ namespace Logistics\Shipments\Application\Query\ListShipmentsByCursor;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
+use Logistics\Shipments\Application\Contract\ShipmentDeliveryEvidenceReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
@@ -29,6 +30,7 @@ final class ListShipmentsByCursorHandler implements QueryHandler
         private readonly ShipmentProgressReader $progress,
         private readonly DeliveryModeReader $deliveryModes,
         private readonly ShipmentScopeReader $scope,
+        private readonly ShipmentDeliveryEvidenceReader $deliveryEvidence,
     ) {}
 
     public function handle(Query $query): ShipmentPage
@@ -66,6 +68,8 @@ final class ListShipmentsByCursorHandler implements QueryHandler
         // Avance operativo de la página entera en lote (mismo enriquecimiento que el listado por offset).
         $items = ShipmentListSupport::withDeliveryMode(ShipmentListSupport::withProgress($page->items, $this->progress), $this->deliveryModes);
         $items = ShipmentListSupport::withOrigin($items, $this->scope);
+        // Evidencia de la entrega (firma / foto / documento) de los entregados de la página, en un lote.
+        $items = ShipmentListSupport::withDeliveryEvidence($items, $this->deliveryEvidence);
 
         return new ShipmentPage($items, $page->nextCursor);
     }

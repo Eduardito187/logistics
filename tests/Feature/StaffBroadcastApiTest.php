@@ -105,6 +105,36 @@ it('solo el admin envía, y un alcance vacío o sin nadie se rechaza', function 
     $this->postJson('/api/v1/app/broadcasts', ['audience' => ['node_id' => (string) Str::uuid7()], 'title' => 't', 'body' => 'b'])->assertStatus(422);
 });
 
+it('acepta user_ids vacío como "no aplica" cuando el aviso va por rol o por tienda', function (): void {
+    $admin = sbaUser(Role::Admin);
+    $driver = sbaUser(Role::Chofer);
+    $store = (string) Str::uuid7();
+    $clerk = sbaUser(Role::Tienda, $store);
+    Sanctum::actingAs($admin);
+
+    $byRole = $this->postJson('/api/v1/app/broadcasts', [
+        'audience' => ['role' => 'chofer', 'user_ids' => []],
+        'title' => 'Por rol',
+        'body' => 'b',
+    ])->assertStatus(201);
+    expect(DB::table('staff_broadcast_recipients')->where('broadcast_id', (string) $byRole->json('data.id'))->pluck('user_id')->all())
+        ->toContain($driver->id)
+        ->not->toContain($clerk->id);
+
+    $this->postJson('/api/v1/app/broadcasts', [
+        'audience' => ['node_id' => $store, 'user_ids' => []],
+        'title' => 'Por tienda',
+        'body' => 'b',
+    ])->assertStatus(201)->assertJsonPath('data.recipient_count', 1);
+
+    // Se sigue exigiendo una audiencia efectiva: user_ids vacío, solo, no alcanza.
+    $this->postJson('/api/v1/app/broadcasts', ['audience' => ['user_ids' => []], 'title' => 't', 'body' => 'b'])
+        ->assertStatus(422)
+        ->assertJsonPath('detail', 'Send at least one audience: role, node_id or user_ids.');
+    $this->postJson('/api/v1/app/broadcasts', ['audience' => ['role' => null, 'node_id' => null, 'user_ids' => []], 'title' => 't', 'body' => 'b'])
+        ->assertStatus(422);
+});
+
 it('sin FCM configurado el push no hace nada ni falla, y el aviso queda en la bandeja', function (): void {
     Http::fake();
     config(['logistics-notifications.fcm.project_id' => null]);

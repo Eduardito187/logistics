@@ -6,6 +6,7 @@ namespace App\Support\Cockpit;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Throwable;
 
 /**
@@ -17,9 +18,14 @@ use Throwable;
  * Marca "atrasada" cada tarjeta cuya ventana comprometida venció y sigue sin entregar. En la columna "en
  * ejecución" resuelve la placa del vehículo asignado (lote). NUNCA expone un UUID como texto: la tarjeta
  * lleva el id solo para armar el enlace al hub del envío.
+ *
+ * Alcance por ciudad: un usuario acotado (planificador con ciudad) cuenta y ve solo los envíos de su ciudad.
+ * Para administrador y supervisor las consultas quedan iguales.
  */
 final class ShipmentPipeline
 {
+    use ScopesToUserCity;
+
     /** Máximo de tarjetas por columna. */
     private const PER_COLUMN = 10;
 
@@ -86,8 +92,11 @@ final class ShipmentPipeline
     private function countsByStatus(): array
     {
         try {
+            $shipments = DB::table('shipments');
+            self::scopeShipmentsToUserCity($shipments);
+
             /** @var array<string, int> $counts */
-            $counts = DB::table('shipments')
+            $counts = $shipments
                 ->selectRaw('status, count(*) as c')
                 ->groupBy('status')
                 ->pluck('c', 'status')
@@ -108,7 +117,10 @@ final class ShipmentPipeline
     private function cards(string $status): array
     {
         try {
-            $rows = DB::table('shipments')
+            $shipments = DB::table('shipments');
+            self::scopeShipmentsToUserCity($shipments);
+
+            $rows = $shipments
                 ->where('status', $status)
                 ->orderByRaw('coalesce(delivery_date, created_at::date) desc')
                 ->orderByDesc('created_at')

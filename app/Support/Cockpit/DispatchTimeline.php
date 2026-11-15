@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Support\Cockpit;
 
 use App\Support\Cockpit\Concerns\ReadsCockpitAggregates;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Throwable;
 
 /**
@@ -17,10 +19,15 @@ use Throwable;
  * SOLO lectura y tolerante (cada consulta en su try/catch; tabla ausente → vacío). NUNCA expone UUIDs: el
  * carril se identifica por la PLACA del vehículo y el NOMBRE del conductor; la parada, por su referencia de
  * pedido / cliente. Los ids solo arman el enlace al hub.
+ *
+ * Alcance por ciudad: un usuario acotado (planificador con ciudad) solo ve las rutas de su ciudad (camión con
+ * base en ella, o con alguna parada que lleva un pedido suyo). Para administrador y supervisor las consultas
+ * quedan iguales.
  */
 final class DispatchTimeline
 {
     use ReadsCockpitAggregates;
+    use ScopesToUserCity;
 
     /** Ventana horaria por defecto cuando no hay ETAs (06:00–20:00). */
     private const int DEFAULT_START_HOUR = 6;
@@ -78,7 +85,7 @@ final class DispatchTimeline
         }
 
         try {
-            $latest = DB::table('execution_driver_routes')->max('route_date');
+            $latest = $this->scopedRoutes(DB::table('execution_driver_routes'), 'execution_driver_routes')->max('route_date');
             if (is_string($latest) && $latest !== '') {
                 return substr($latest, 0, 10);
             }
@@ -97,7 +104,7 @@ final class DispatchTimeline
     private function routesFor(string $day): array
     {
         try {
-            return array_values(DB::table('execution_driver_routes')
+            return array_values($this->scopedRoutes(DB::table('execution_driver_routes'), 'execution_driver_routes')
                 ->whereDate('route_date', $day)
                 ->orderBy('vehicle_id')
                 ->limit(self::MAX_LANES)
@@ -106,6 +113,17 @@ final class DispatchTimeline
         } catch (Throwable) {
             return [];
         }
+    }
+
+    /**
+     * Acota una consulta sobre las rutas del chofer (leídas como `$routes`: la tabla o su alias) a la ciudad
+     * del usuario. Sin usuario acotado devuelve la consulta tal cual.
+     */
+    private function scopedRoutes(Builder $query, string $routes): Builder
+    {
+        self::scopeTripsToUserCity($query, $routes.'.id', $routes.'.vehicle_id', 'execution_driver_route_stops', 'route_id');
+
+        return $query;
     }
 
     /**
@@ -177,16 +195,13 @@ final class DispatchTimeline
         ];
 
         try {
-            $min = DB::table('execution_driver_route_stops as s')
-                ->join('execution_driver_routes as r', 'r.id', '=', 's.route_id')
-                ->whereDate('r.route_date', $day)
-                ->whereNotNull('s.eta')
-                ->min('s.eta');
-            $max = DB::table('execution_driver_route_stops as s')
-                ->join('execution_driver_routes as r', 'r.id', '=', 's.route_id')
-                ->whereDate('r.route_date', $day)
-                ->whereNotNull('s.eta')
-                ->max('s.eta');
+            // Paradas con ETA de las rutas del día (las del alcance del usuario): una consulta nueva por agregado.
+            $etas = fn (): Builder => $this->scopedRoutes(
+                DB::table('execution_driver_route_stops as s')->join('execution_driver_routes as r', 'r.id', '=', 's.route_id'),
+                'r',
+            )->whereDate('r.route_date', $day)->whereNotNull('s.eta');
+            $min = $etas()->min('s.eta');
+            $max = $etas()->max('s.eta');
 
             $start = is_string($min) ? $this->parseEta($min)?->startOfHour() : null;
             $end = is_string($max) ? $this->parseEta($max)?->addHour()->startOfHour() : null;

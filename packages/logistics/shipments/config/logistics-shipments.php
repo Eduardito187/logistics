@@ -154,10 +154,19 @@ return [
 
     // Alcance por rol (ciudad / tienda / asignación) de los envíos en la puerta app.
     'scope' => [
+        // INTERRUPTORES DE MODO ESTRICTO. Los dos nacen apagados (abierto por defecto) para no dejar a nadie
+        // sin pedidos el día del despliegue; se encienden cuando los datos del personal ya están completos.
+        // Admin y supervisor nunca se ven afectados.
+        //
         // Cuentas de chofer o transportista SIN vínculo (users.driver_id / users.carrier_id vacío): por
-        // defecto NO quedan acotadas, igual que un usuario sin ciudad, para no dejar sin operar a las cuentas
-        // existentes el día del despliegue. En true quedan sin ningún envío hasta que se las vincule.
+        // defecto NO quedan acotadas. En true quedan sin ningún envío hasta que se las vincule
+        // (escrituras: 403 `out_of_scope_assignment`).
         'strict_unlinked' => (bool) env('SHIPMENTS_SCOPE_STRICT_UNLINKED', false),
+
+        // Rol acotado por ciudad (preparador) SIN ciudad asignada (users.city vacío): por defecto NO queda
+        // acotado. En true no lista ningún envío y sus escrituras responden 403 `out_of_scope_city` con el
+        // motivo «no tienes una ciudad asignada», hasta que el supervisor se la asigne.
+        'strict_without_city' => (bool) env('SHIPMENTS_SCOPE_STRICT_NO_CITY', false),
 
         // Origen del envío cuando la fuente no lo informa: misma regla y mismos valores que las etiquetas
         // (config `logistics-labels.origin`), replicados acá para no depender de ese contexto.

@@ -49,6 +49,13 @@ final class TrackingMapper
             $row['delivered_at'] = $deliveredAt->format(DateTimeImmutable::ATOM);
         }
 
+        // Mismo criterio para `at_store_at`: se fija una sola vez y el dominio nunca lo borra; omitirlo en
+        // null evita que un guardado concurrente con el agregado viejo pise la llegada a la tienda.
+        $atStoreAt = $tracking->atStoreAt();
+        if ($atStoreAt !== null) {
+            $row['at_store_at'] = $atStoreAt->format(DateTimeImmutable::ATOM);
+        }
+
         return $row;
     }
 
@@ -88,6 +95,7 @@ final class TrackingMapper
             $routePosition,
             $record->order_reference,
             $record->delivered_at?->toDateTimeImmutable(),
+            $record->at_store_at?->toDateTimeImmutable(),
         );
     }
 }

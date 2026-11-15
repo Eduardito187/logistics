@@ -8,6 +8,7 @@ use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shared\Application\ReadModel\Page;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
+use Logistics\Shipments\Application\Contract\ShipmentDeliveryEvidenceReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
@@ -38,6 +39,7 @@ final class ListShipmentsHandler implements QueryHandler
         private readonly ShipmentProgressReader $progress,
         private readonly DeliveryModeReader $deliveryModes,
         private readonly ShipmentScopeReader $scope,
+        private readonly ShipmentDeliveryEvidenceReader $deliveryEvidence,
     ) {}
 
     /**
@@ -82,6 +84,8 @@ final class ListShipmentsHandler implements QueryHandler
 
         $views = ShipmentListSupport::withDeliveryMode(ShipmentListSupport::withProgress($views, $this->progress), $this->deliveryModes);
         $views = ShipmentListSupport::withOrigin($views, $this->scope);
+        // Evidencia de la entrega (firma / foto / documento) de los entregados de la página, en un lote.
+        $views = ShipmentListSupport::withDeliveryEvidence($views, $this->deliveryEvidence);
 
         if ($query->limit === null) {
             return $views;

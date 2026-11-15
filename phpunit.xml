@@ -21,7 +21,11 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
+        <!-- Forzado: el container define APP_ENV=local como variable de proceso y, sin `force`, los tests
+             corrían en `local`. Filament solo llena formularios en test si `runningUnitTests()` es true,
+             así que las altas por formulario fallaban en local y pasaban en CI. -->
+        <server name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_ENV" value="testing" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

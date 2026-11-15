@@ -43,7 +43,11 @@ final class ShipmentMapper
         $deliverySlot = $shipment->deliverySlot();
         $ownership = $shipment->ownership()->toArray();
 
-        return [
+        // Origen informado por la fuente: solo se escribe cuando el agregado lo trae. Sin él la columna no se
+        // toca (la fila la completa con el origen derivado y un guardado posterior nunca la vacía).
+        $origin = $shipment->originNodeId() !== null ? ['origin_node_id' => $shipment->originNodeId()] : [];
+
+        return $origin + [
             'id' => $shipment->id()->toString(),
             'owner_party_id' => $ownership['owner_party_id'],
             'fulfillment_mode' => $ownership['mode'],
@@ -197,6 +201,7 @@ final class ShipmentMapper
             ),
             // Filas viejas sin order_reference caen a su external_id (backfill de la migración).
             is_string($record->order_reference) ? $record->order_reference : null,
+            is_string($record->origin_node_id) ? $record->origin_node_id : null,
         );
     }
 

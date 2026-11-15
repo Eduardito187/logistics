@@ -37,20 +37,18 @@ final readonly class DbRatingRequestStore implements RatingRequestStore
 
     public function awaitingRating(DateTimeImmutable $since, DateTimeImmutable $deliveredBefore, int $limit): array
     {
-        // `delivered_at` lo escribe Eloquent en hora de pared local (sin offset): se comparan los cortes en
-        // la misma zona de la app para no desalinearse con esa escritura (mismo criterio que la lectura
-        // incremental de telemetría). Bindear con offset (ATOM) caería en otro marco y dejaría pasar
-        // entregas demasiado recientes.
-        $tz = new DateTimeZone(date_default_timezone_get());
-
+        // `delivered_at` es timestamptz y se escribe con desplazamiento explícito (TrackingRecord::$dateFormat
+        // y el mapper en ATOM): guarda el instante real. Los cortes se bindean también con desplazamiento;
+        // un DateTime bindeado sin él se interpreta en la zona de la sesión de PostgreSQL y, si esta difiere
+        // de la zona de la app (CI en UTC), corre la ventana varias horas.
         $rows = $this->db()->table(self::TABLE.' as t')
             ->leftJoin('shipments as s', 's.id', '=', 't.shipment_id')
             ->where('t.status', VisibleStatus::Delivered->value)
             ->whereNotNull('t.shipment_id')
             ->whereNotNull('t.customer_email')
             ->whereNull('t.rating_requested_at')
-            ->where('t.delivered_at', '>=', $since->setTimezone($tz))
-            ->where('t.delivered_at', '<=', $deliveredBefore->setTimezone($tz))
+            ->where('t.delivered_at', '>=', $since->format(DateTimeImmutable::ATOM))
+            ->where('t.delivered_at', '<=', $deliveredBefore->format(DateTimeImmutable::ATOM))
             ->whereNotExists(static function (Builder $query): void {
                 $query->selectRaw('1')
                     ->from('tracking_satisfaction_surveys as r')
@@ -79,7 +77,7 @@ final readonly class DbRatingRequestStore implements RatingRequestStore
                     ?? self::str($row->external_id ?? null),
                 self::str($row->customer_name ?? null),
                 (string) $row->customer_email,
-                self::wallInstant((string) $row->delivered_at)->format(DateTimeImmutable::ATOM),
+                self::instant((string) $row->delivered_at)->format(DateTimeImmutable::ATOM),
                 (string) $row->token,
             );
         }
@@ -88,19 +86,12 @@ final readonly class DbRatingRequestStore implements RatingRequestStore
     }
 
     /**
-     * Reinterpreta la fecha leída de la base (escritura de Eloquent como hora de pared sin offset) como el
-     * mismo reloj de pared en la zona de la app. Se toma el reloj de pared tal como lo devuelve PostgreSQL
-     * (en la zona de su sesión, sea UTC o la de la app) sin convertirlo a UTC: así no depende de la zona de
-     * la sesión. Mismo criterio que los mappers de telemetría.
+     * Instante real leído de la base: PostgreSQL devuelve el timestamptz con su desplazamiento (el de la
+     * sesión), así que se respeta tal cual y se expresa en la zona de la app.
      */
-    private static function wallInstant(string $raw): DateTimeImmutable
+    private static function instant(string $raw): DateTimeImmutable
     {
-        $stored = new DateTimeImmutable($raw);
-
-        return new DateTimeImmutable(
-            $stored->format('Y-m-d H:i:s'),
-            new DateTimeZone(date_default_timezone_get()),
-        );
+        return (new DateTimeImmutable($raw))->setTimezone(new DateTimeZone(date_default_timezone_get()));
     }
 
     public function markRequested(string $shipmentId, DateTimeImmutable $requestedAt): bool

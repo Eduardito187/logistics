@@ -125,6 +125,13 @@ dc exec -T app php artisan logistics:staff:backfill-city --force \
     || echo "AVISO: el relleno de ciudad del personal falló; el deploy sigue. Revisar logistics:staff:backfill-city."
 endstep
 
+step "Seguimiento: llegada a la tienda y fechas de entrega corridas (idempotente, automático)"
+# Marca `at_store_at` en los pedidos que ya estaban en su tienda y corrige las `delivered_at` guardadas con
+# el corrimiento del desplazamiento horario. No emite eventos. NO bloquea el deploy si falla.
+dc exec -T app php artisan logistics:tracking:reconcile-dates --force \
+    || echo "AVISO: la puesta al día de fechas del seguimiento falló; el deploy sigue. Revisar logistics:tracking:reconcile-dates."
+endstep
+
 step "Smoke test HTTP"
 port="$(grep -E '^STAGING_HTTP_PORT=' "$env_file" | tail -1 | cut -d= -f2)"
 port="${port:-8110}"

@@ -17,7 +17,8 @@ use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
 /**
  * Puerta app: detalle de un pedido recibido por su id.
  *
- * Lee vía QueryBus (FindShipment → ?ShipmentView). Devuelve 404 si no existe.
+ * Lee vía QueryBus (FindShipment → ?ShipmentView). Devuelve 404 si no existe. Trae `delivery_evidence`
+ * (qué evidencia quedó de la entrega: firma / foto / documento; null si el envío no está entregado).
  *
  * Alcance por rol (server-side): es la ficha de OPERACIÓN del envío, así que un envío fuera del alcance del
  * usuario responde 403 con su `code` (`out_of_scope_city` / `out_of_scope_node` / `out_of_scope_assignment`).
@@ -34,7 +35,7 @@ final class ShowShipmentController
     public function __invoke(Request $request, string $shipment): JsonResponse
     {
         /** @var ShipmentView|null $view */
-        $view = $this->queryBus->ask(new FindShipment($shipment, withOrigin: true));
+        $view = $this->queryBus->ask(new FindShipment($shipment, withOrigin: true, withDeliveryEvidence: true));
 
         if ($view === null) {
             return $this->error("Shipment {$shipment} not found", 404);

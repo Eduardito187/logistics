@@ -134,13 +134,13 @@ final class DbShipmentListReader implements ShipmentListReader
         }
         // Búsqueda por código de pedido, nombre o documento del cliente.
         if ($filter->search !== null && trim($filter->search) !== '') {
-            ShipmentSqlFilters::search($query->getQuery(), $filter->search);
+            ShipmentSqlFilters::search($query->getQuery(), $filter->search, $filter->searchCustomerData);
         }
         // Solo los que ya están en la tienda listos para retirar.
         if ($filter->readyForPickup) {
             ShipmentSqlFilters::readyForPickup($query->getQuery());
         }
-        // Ciudad (texto en la dirección o en el nodo destino).
+        // Ciudad: código de departamento (destino) o texto libre contra la ciudad / dirección.
         if ($filter->city !== null && trim($filter->city) !== '') {
             ShipmentSqlFilters::city($query->getQuery(), $filter->city);
         }

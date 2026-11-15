@@ -10,6 +10,7 @@ use Logistics\Notifications\Domain\ValueObject\MessageType;
 use Logistics\Outbox\Application\Contract\MessageDispatcher;
 use Logistics\Outbox\Domain\OutboxMessage;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Application\Query\QueryBus;
 
 /**
  * Wiring por eventos de dominio (P1-NOT): cuando el relay del outbox procesa un hecho de otro contexto
@@ -23,9 +24,15 @@ use Logistics\Shared\Application\Command\CommandBus;
  * Solo atiende los eventos del mapa; cualquier otro lo ignora, para componerse con los dispatchers de
  * otros contextos sin pisarlos. El integrador enruta los prefijos `shipments.`, `execution.` y
  * `tracking.` a este dispatcher en la config del outbox (ver README del package).
+ *
+ * TRASPASO interno: no tiene cliente, así que para ese envío no se encola NINGÚN aviso (ver
+ * SkipsInternalTransfers). Cuesta una lectura del envío por hecho, y solo cuando el hecho está en el mapa y
+ * todavía no se avisó; si la lectura falla se comporta como siempre.
  */
 final readonly class DomainEventNotificationDispatcher implements MessageDispatcher
 {
+    use SkipsInternalTransfers;
+
     /**
      * Mapa evento de dominio → tipo de mensaje al cliente. Un evento sin entrada no genera notificación.
      *
@@ -44,6 +51,7 @@ final readonly class DomainEventNotificationDispatcher implements MessageDispatc
     public function __construct(
         private NotificationRepository $notifications,
         private CommandBus $commandBus,
+        private ?QueryBus $queryBus = null,
     ) {}
 
     public function dispatch(OutboxMessage $message): void
@@ -61,6 +69,11 @@ final readonly class DomainEventNotificationDispatcher implements MessageDispatc
 
         // Idempotencia: no re-encolar el mismo hito del mismo envío ante reentregas del outbox.
         if ($this->notifications->existsForShipmentAndType($shipmentId, $messageType)) {
+            return;
+        }
+
+        // Un traspaso interno no tiene cliente a quien avisarle.
+        if ($this->isInternalTransfer($this->queryBus, $shipmentId)) {
             return;
         }
 
