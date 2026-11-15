@@ -10,9 +10,11 @@ use App\Http\Support\ApiPagination;
 use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Logistics\Planning\Application\Command\DeletePlan\DeletePlan;
 use Logistics\Planning\Application\Command\PublishPlan\PublishPlan;
 use Logistics\Planning\Application\Command\RemoveStopFromPlan\RemoveStopFromPlan;
 use Logistics\Planning\Application\Query\GetPlan\GetPlan;
@@ -22,6 +24,7 @@ use Logistics\Planning\Application\ReadModel\PlannedStopView;
 use Logistics\Planning\Application\ReadModel\PlanView;
 use Logistics\Planning\Application\ReadModel\TripCandidatesView;
 use Logistics\Planning\Application\ReadModel\TripSequenceSuggestionView;
+use Logistics\Planning\Domain\Exception\PlanningException;
 use Logistics\Planning\Presentation\Http\Request\AssignShipmentRequest;
 use Logistics\Planning\Presentation\Http\Request\GeneratePlanProposalRequest;
 use Logistics\Planning\Presentation\Http\Request\ReorderStopsRequest;
@@ -40,10 +43,10 @@ use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
  * un comando se hace releyendo con la consulta GetPlan, para devolver siempre la forma de lectura.
  *
  * Armado de viajes (asistente fecha → camión → pedidos): candidatos por cercanía, orden sugerido, crear el
- * plan respetando el orden recibido y quitar una parada.
+ * plan respetando el orden recibido, quitar una parada y borrar el plan entero.
  *
- * Un plan PUBLICADO es de solo lectura: sumar, quitar o reordenar paradas (y volver a publicarlo) responde
- * 409 con el motivo; para cambiar una hoja de ruta ya publicada existe el flujo de ejecución.
+ * Un plan PUBLICADO es de solo lectura: sumar, quitar o reordenar paradas, borrarlo (y volver a publicarlo)
+ * responde 409 con el motivo; para cambiar una hoja de ruta ya publicada existe el flujo de ejecución.
  */
 final class PlanController extends PlanningController
 {
@@ -290,6 +293,30 @@ final class PlanController extends PlanningController
         $this->commandBus->dispatch(new RemoveStopFromPlan($planId, $stored));
 
         return $this->refreshed($planId);
+    }
+
+    /**
+     * DELETE /plans/{planId} — borra un plan SIN publicar con todas sus paradas; sus pedidos quedan libres
+     * para otro viaje. Responde 204 sin cuerpo.
+     *
+     * 404 si el plan no existe (también si ya se había borrado); 409 si el plan ya está publicado.
+     */
+    public function destroy(Request $request, string $planId): JsonResponse | Response
+    {
+        $rejection = $this->rejectIfNotEditable($request, $planId, 'borrar');
+        if ($rejection !== null) {
+            return $rejection;
+        }
+
+        try {
+            $this->commandBus->dispatch(new DeletePlan($planId));
+        } catch (PlanningException $exception) {
+            // Solo llega acá si el plan cambió entre la guarda y el comando (otro usuario lo publicó o lo
+            // borró en ese instante): el agregado lo rechaza y se informa como conflicto, con su motivo.
+            return ProblemDetails::fromCode(ErrorCode::Conflict, $exception->getMessage())->toResponse($request);
+        }
+
+        return new Response('', 204);
     }
 
     /**

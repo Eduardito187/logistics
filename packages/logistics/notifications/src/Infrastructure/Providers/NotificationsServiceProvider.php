@@ -27,6 +27,7 @@ use Logistics\Notifications\Application\Command\SuppressNotification\SuppressNot
 use Logistics\Notifications\Application\Command\UpsertMessageTemplate\UpsertMessageTemplate;
 use Logistics\Notifications\Application\Command\UpsertMessageTemplate\UpsertMessageTemplateHandler;
 use Logistics\Notifications\Application\Contract\CascadeRuleSettings;
+use Logistics\Notifications\Application\Contract\NotificationFeedSignal;
 use Logistics\Notifications\Application\Contract\NotificationInboxReader;
 use Logistics\Notifications\Application\Contract\NotificationRulesProvider;
 use Logistics\Notifications\Application\Query\CountUnreadNotifications\CountUnreadNotifications;
@@ -82,6 +83,7 @@ use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentNotifica
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\EloquentSmsBudgetRepository;
 use Logistics\Notifications\Infrastructure\Persistence\Eloquent\NotificationMapper;
 use Logistics\Notifications\Infrastructure\Product\LineItemProductImageResolver;
+use Logistics\Notifications\Infrastructure\Realtime\QueuedNotificationFeedSignal;
 use Logistics\Notifications\Infrastructure\Rules\SettingsNotificationRulesProvider;
 use Logistics\Notifications\Infrastructure\Settings\SettingsCascadeRuleGateway;
 use Logistics\Notifications\Infrastructure\Variable\ShipmentNotificationVariableProvider;
@@ -169,6 +171,10 @@ final class NotificationsServiceProvider extends ServiceProvider
                 $app->make(LoggerInterface::class),
             );
         });
+
+        // Señal de tiempo real de la bandeja (`notifications.updated` por el canal privado del usuario): los
+        // handlers la disparan por este puerto; el adaptador solo encola, tras el commit y con anti-ráfaga.
+        $this->app->bind(NotificationFeedSignal::class, QueuedNotificationFeedSignal::class);
 
         // Reglas de cascada: la FUENTE DE VERDAD es el contexto Configuración (versionado, con historial).
         // El puerto CascadeRuleSettings traduce a/desde esa configuración por los buses CQRS; se bindea como

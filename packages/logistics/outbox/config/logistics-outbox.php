@@ -32,6 +32,7 @@ use Logistics\Promise\Infrastructure\Dispatch\OrderPaidCupoConfirmDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\ShipmentStatusProgressionDispatcher;
 use Logistics\Telemetry\Infrastructure\Outbox\BindTripToRouteOnRouteStarted;
+use Logistics\Telemetry\Infrastructure\Outbox\BroadcastFleetRemovedOnVehicleRetired;
 use Logistics\Tracking\Infrastructure\Outbox\AtStoreOnStoreDrop;
 use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
 use Logistics\Tracking\Infrastructure\Outbox\CancelOnOrderCancelled;
@@ -131,6 +132,8 @@ return [
         // Alerta de documentos de flota por vencer / vencidos (P1-FLT-04): el barrido programado emite
         // este resumen y notificaciones avisa al supervisor con un correo consolidado.
         'fleet.documents_expiry_alerted' => FleetDocumentExpiryNotificationDispatcher::class,
+        // Baja de un vehículo en flota: telemetría limpia su estado caliente y difunde `fleet.removed`.
+        'fleet.vehicle_status_changed' => BroadcastFleetRemovedOnVehicleRetired::class,
 
         // Marketplace (ADR 017): la recepción de proveedores se vuelve stock con dueño. El evento
         // `inbound.goods_received` crea un lote de inventario por cada línea aceptada (propio o consignación).

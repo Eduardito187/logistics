@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Presentation\Broadcasting;
 
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -14,17 +13,18 @@ use Illuminate\Queue\SerializesModels;
 /**
  * Evento de BROADCAST: una posición de vehículo nueva para difundir en vivo a los espectadores.
  *
- * Implementa el contrato del framework `ShouldBroadcast` (ya disponible sin Reverb instalado). El
- * servidor de WebSockets (Laravel Reverb, self-host — ADR 016) lo empuja a los navegadores suscritos vía
- * Laravel Echo. Mientras no esté `BROADCAST_CONNECTION=reverb`, el evento se emite al conector `log`
- * (no rompe nada); el fan-out real lo habilita el orquestador al configurar Reverb/Echo.
+ * Implementa el contrato del framework `ShouldBroadcast` (ya disponible sin servidor de sockets). El
+ * servidor de WebSockets (Soketi, self-host, protocolo Pusher — ADR 016) lo empuja a los navegadores suscritos vía
+ * Laravel Echo. Mientras no esté `BROADCAST_CONNECTION=pusher`, el evento se emite al conector `log`
+ * (no rompe nada); el fan-out real lo habilita el orquestador al configurar Soketi/Echo.
  *
  * Payload PRIMITIVO (nunca objetos de dominio): vehicle_id, plate (placa legible), lat, lng, status y
  * occurred_at. La placa se resuelve en la ingesta (lectura cross-context read-only, en lote) para que el
  * cliente no tenga que cruzar contextos.
  *
  * Canales:
- *  - `fleet`           : canal GLOBAL del panel de la torre (gated a Admin/Supervisor en routes/channels.php).
+ *  - `fleet`           : canal GLOBAL del panel de la torre, PRIVADO (`private-fleet`; solo Admin/Supervisor,
+ *                        regla en routes/channels.php).
  *  - `fleet.node.{id}` : canal ACOTADO por el nodo base del vehículo — un nodo vive en un solo departamento,
  *                        coherente con la regla de ruta de un departamento; así un espectador de un nodo no
  *                        recibe el stream global completo. Solo se añade si el nodo base se pudo resolver.
@@ -52,12 +52,14 @@ final class VehiclePositionUpdated implements ShouldBroadcast
      * Canales a los que se difunde: el GLOBAL del panel (`fleet`), el ACOTADO por nodo base (`fleet.node.{id}`,
      * solo si se resolvió el nodo) y el privado del vehículo.
      *
-     * @return list<Channel>
+     * @return list<PrivateChannel>
      */
     public function broadcastOn(): array
     {
+        // Privado: el socket es alcanzable desde internet y este canal lleva la flota entera. Lo autoriza
+        // la regla `fleet` de routes/channels.php (Admin/Supervisor).
         $channels = [
-            new Channel('fleet'),
+            new PrivateChannel('fleet'),
         ];
 
         if ($this->homeBaseNodeId !== null && $this->homeBaseNodeId !== '') {

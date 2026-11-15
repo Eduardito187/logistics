@@ -20,6 +20,9 @@ use Logistics\Planning\Domain\ValueObject\PlannedStopId;
 use Logistics\Planning\Domain\ValueObject\RouteGeometry;
 use Logistics\Shared\Domain\Clock\Clock;
 
+/** Instante de salida (y hora del reloj fijo) de las reoptimizaciones de este archivo. */
+const REOPT_DEPART_AT = '2026-10-13T07:30:00+00:00';
+
 /**
  * Repositorio en memoria: guarda el último plan salvado para inspeccionarlo.
  */
@@ -37,6 +40,11 @@ function reoptPlanRepository(): PlanRepository
         public function save(DeliveryPlan $plan): void
         {
             $this->saved = $plan;
+        }
+
+        public function delete(DeliveryPlan $plan): void
+        {
+            // Vacío a propósito (doble de prueba): este test no borra planes.
         }
 
         public function findById(PlanId $id): ?DeliveryPlan
@@ -116,14 +124,17 @@ function reoptRecordEvents(): array
             return [];
         }
 
-        public function save(OutboxMessage $message): void {}
+        public function save(OutboxMessage $message): void
+        {
+            // Vacío a propósito (doble de prueba): este test no reintenta ni marca mensajes del outbox.
+        }
     };
 
     $clock = new class implements Clock
     {
         public function now(): DateTimeImmutable
         {
-            return new DateTimeImmutable('2026-10-13T07:30:00+00:00');
+            return new DateTimeImmutable(REOPT_DEPART_AT);
         }
     };
 
@@ -169,7 +180,7 @@ it('re-sequences the plan, attaches geometry, saves it and records the event', f
         $plan,
         GeoPoint::of(-16.5, 0.0),
         $coordinates,
-        new DateTimeImmutable('2026-10-13T07:30:00+00:00'),
+        new DateTimeImmutable(REOPT_DEPART_AT),
         'incident',
     );
 
@@ -205,7 +216,7 @@ it('leaves the geometry untouched when the provider degrades to null', function 
         $plan,
         GeoPoint::of(-16.5, 0.0),
         $coordinates,
-        new DateTimeImmutable('2026-10-13T07:30:00+00:00'),
+        new DateTimeImmutable(REOPT_DEPART_AT),
         'manual',
     );
 
@@ -235,7 +246,7 @@ it('rejects a reoptimization when a stop has no coordinate', function (): void {
         $plan,
         GeoPoint::of(-16.5, 0.0),
         $coordinates,
-        new DateTimeImmutable('2026-10-13T07:30:00+00:00'),
+        new DateTimeImmutable(REOPT_DEPART_AT),
         'manual',
     ))->toThrow(PlanningException::class, 'falta la coordenada');
 });
@@ -256,7 +267,7 @@ it('rejects re-optimizing a plan with no stops', function (): void {
         $plan,
         GeoPoint::of(-16.5, 0.0),
         [],
-        new DateTimeImmutable('2026-10-13T07:30:00+00:00'),
+        new DateTimeImmutable(REOPT_DEPART_AT),
         'manual',
     ))->toThrow(PlanningException::class, 'sin paradas');
 });

@@ -12,6 +12,8 @@ use Illuminate\Support\ServiceProvider;
 use Logistics\Coverage\Domain\Contract\MunicipalityLocator;
 use Logistics\Planning\Application\Command\AssignShipmentToVehicle\AssignShipmentToVehicle;
 use Logistics\Planning\Application\Command\AssignShipmentToVehicle\AssignShipmentToVehicleHandler;
+use Logistics\Planning\Application\Command\DeletePlan\DeletePlan;
+use Logistics\Planning\Application\Command\DeletePlan\DeletePlanHandler;
 use Logistics\Planning\Application\Command\GenerateDailyPlan\GenerateDailyPlan;
 use Logistics\Planning\Application\Command\GenerateDailyPlan\GenerateDailyPlanHandler;
 use Logistics\Planning\Application\Command\GeneratePlanProposal\GeneratePlanProposal;
@@ -92,6 +94,8 @@ use Logistics\Planning\Infrastructure\Adapter\FleetVehicleAvailabilityProvider;
 use Logistics\Planning\Infrastructure\Adapter\NetworkNodeOriginLocator;
 use Logistics\Planning\Infrastructure\Adapter\ShipmentLoadReader;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
+use Logistics\Planning\Infrastructure\Persistence\Eloquent\BroadcastingAutoPlanRunRepository;
+use Logistics\Planning\Infrastructure\Persistence\Eloquent\BroadcastingPlanRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\DbRoutingConstraintRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentAutoPlanRunRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentPlanRepository;
@@ -101,6 +105,8 @@ use Logistics\Planning\Infrastructure\ReadModel\DbPlanCrewLabels;
 use Logistics\Planning\Infrastructure\ReadModel\DbShipmentPlanningFactsReader;
 use Logistics\Planning\Infrastructure\ReadModel\DbTripCandidateReader;
 use Logistics\Planning\Infrastructure\ReadModel\DbTripVehicleReader;
+use Logistics\Planning\Infrastructure\Realtime\PlanCityReader;
+use Logistics\Planning\Infrastructure\Realtime\PlanningRealtimeBroadcaster;
 use Logistics\Planning\Infrastructure\Routing\BuiltinRouteOptimizer;
 use Logistics\Planning\Infrastructure\Routing\BuiltinRoutingBackend;
 use Logistics\Planning\Infrastructure\Routing\OsrmRoadMatrixProvider;
@@ -135,6 +141,7 @@ final class PlanningServiceProvider extends ServiceProvider
         ReassignShipmentToVehicle::class => ReassignShipmentToVehicleHandler::class,
         ReorderStops::class => ReorderStopsHandler::class,
         RemoveStopFromPlan::class => RemoveStopFromPlanHandler::class,
+        DeletePlan::class => DeletePlanHandler::class,
         ReoptimizeRoute::class => ReoptimizeRouteHandler::class,
         ScheduleReplan::class => ScheduleReplanHandler::class,
         PublishPlan::class => PublishPlanHandler::class,
@@ -155,9 +162,27 @@ final class PlanningServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-planning.php', 'logistics-planning');
 
-        $this->app->bind(PlanRepository::class, EloquentPlanRepository::class);
+        // Tiempo real: el emisor junta lo guardado en una misma transacción y avisa tras el commit. `scoped`
+        // (una instancia por request o trabajo) porque guarda lo pendiente en la instancia.
+        $this->app->scoped(PlanningRealtimeBroadcaster::class);
+
+        // Los repositorios de planes y de corridas van envueltos en un decorador que avisa cada guardado
+        // (`plans.updated` / `planning.run.updated`); sin transporte de tiempo real no hacen nada extra.
+        $this->app->bind(PlanRepository::class, static function ($app): PlanRepository {
+            return new BroadcastingPlanRepository(
+                $app->make(EloquentPlanRepository::class),
+                $app->make(PlanningRealtimeBroadcaster::class),
+                $app->make(PlanCityReader::class),
+            );
+        });
         $this->app->bind(ReplanBacklogRepository::class, EloquentReplanBacklogRepository::class);
-        $this->app->bind(AutoPlanRunRepository::class, EloquentAutoPlanRunRepository::class);
+        $this->app->bind(AutoPlanRunRepository::class, static function ($app): AutoPlanRunRepository {
+            return new BroadcastingAutoPlanRunRepository(
+                $app->make(EloquentAutoPlanRunRepository::class),
+                $app->make(PlanningRealtimeBroadcaster::class),
+                $app->make(PlanCityReader::class),
+            );
+        });
 
         // Escritor de las restricciones de ruteo (R-04): perfil por camión y requisitos por envío.
         $this->app->bind(RoutingConstraintRepository::class, DbRoutingConstraintRepository::class);

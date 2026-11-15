@@ -19,7 +19,8 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * COUNT(*) aparte; enriquece solo los ítems de la página con el id externo del envío, la fecha de
  * creación y el estado de lectura del usuario (consultas en lote, evita N+1).
  *
- * Con `unreadOnly` y usuario, el filtro de no leídas y su total también se resuelven en SQL.
+ * Con `unreadOnly` y usuario, el filtro de no leídas y su total también se resuelven en SQL. Con un
+ * alcance restringido, el filtro por envíos visibles también va en la consulta (página y total).
  *
  * @implements QueryHandler<ListNotifications, Page<NotificationView>>
  */
@@ -42,8 +43,11 @@ final class ListNotificationsHandler implements QueryHandler
         $userId = $query->userId !== null && trim($query->userId) !== '' ? trim($query->userId) : null;
 
         if ($query->unreadOnly && $userId !== null) {
-            $notifications = $this->inbox->unreadFor($userId, $query->limit, $query->offset);
-            $total = $this->inbox->countUnread($userId);
+            $notifications = $this->inbox->unreadFor($userId, $query->limit, $query->offset, $query->scope);
+            $total = $this->inbox->countUnread($userId, $query->scope);
+        } elseif ($query->scope !== null && !$query->scope->unrestricted) {
+            $notifications = $this->inbox->latestVisible($query->scope, $query->limit, $query->offset);
+            $total = $this->inbox->countVisible($query->scope);
         } else {
             $notifications = $this->notifications->latest($query->limit, $query->offset);
             $total = $this->notifications->count();

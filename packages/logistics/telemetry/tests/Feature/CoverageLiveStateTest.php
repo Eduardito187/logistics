@@ -10,7 +10,9 @@ use Logistics\Telemetry\Domain\ValueObject\PingSource;
 use Logistics\Telemetry\Domain\ValueObject\Speed;
 use Logistics\Telemetry\Infrastructure\LiveState\BroadcastingLivePositionBroadcaster;
 use Logistics\Telemetry\Infrastructure\LiveState\FleetPlateResolver;
+use Logistics\Telemetry\Infrastructure\LiveState\LiveFleetViewFactory;
 use Logistics\Telemetry\Infrastructure\LiveState\LiveVehicleState;
+use Logistics\Telemetry\Infrastructure\LiveState\TrailingFleetEmitter;
 
 /**
  * Cobertura del fan-out en vivo (ADR 016): el hot-state en cache y el adaptador broadcaster. Se usa el
@@ -76,7 +78,12 @@ it('aplica el throttle de difusión: deja pasar la primera y corta la siguiente'
 
 it('publica una posición en movimiento refrescando el hot-state', function (): void {
     $state = new LiveVehicleState;
-    $broadcaster = new BroadcastingLivePositionBroadcaster($state, new FleetPlateResolver);
+    $broadcaster = new BroadcastingLivePositionBroadcaster(
+        $state,
+        new FleetPlateResolver,
+        app(LiveFleetViewFactory::class),
+        new TrailingFleetEmitter($state, app(LiveFleetViewFactory::class)),
+    );
 
     $vehicleId = '0192aaaa-bbbb-7ccc-8ddd-0000000000dd';
     $broadcaster->publish(coverageLivePing($vehicleId, true), true);
@@ -90,7 +97,12 @@ it('publica una posición en movimiento refrescando el hot-state', function (): 
 
 it('publica una posición detenida con estado ralentí', function (): void {
     $state = new LiveVehicleState;
-    $broadcaster = new BroadcastingLivePositionBroadcaster($state, new FleetPlateResolver);
+    $broadcaster = new BroadcastingLivePositionBroadcaster(
+        $state,
+        new FleetPlateResolver,
+        app(LiveFleetViewFactory::class),
+        new TrailingFleetEmitter($state, app(LiveFleetViewFactory::class)),
+    );
 
     $vehicleId = '0192aaaa-bbbb-7ccc-8ddd-0000000000ee';
     // moving=false con encendido => "idle"; cubre la rama statusOf().

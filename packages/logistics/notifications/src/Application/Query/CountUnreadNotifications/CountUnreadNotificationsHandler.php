@@ -24,6 +24,6 @@ final class CountUnreadNotificationsHandler implements QueryHandler
             throw NotificationsException::because('CountUnreadNotificationsHandler solo maneja CountUnreadNotifications');
         }
 
-        return $this->inbox->countUnread($query->userId);
+        return $this->inbox->countUnread($query->userId, $query->scope);
     }
 }

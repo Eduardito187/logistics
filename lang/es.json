@@ -2074,5 +2074,11 @@
     "Close transfer": "Cerrar traspaso",
     "Explain why the transfer is closed without the store reconciliation.": "Explica por qué se cierra el traspaso sin la conciliación de la tienda.",
     "Transfer closed with shortage": "Traspaso cerrado con faltantes",
-    "Could not close the transfer": "No se pudo cerrar el traspaso"
+    "Could not close the transfer": "No se pudo cerrar el traspaso",
+    "Could not delete plan": "No se pudo eliminar el plan",
+    "Delete plan": "Eliminar plan",
+    "Delete this delivery plan": "Eliminar este plan de reparto",
+    "Plan deleted": "Plan eliminado",
+    "The plan and all its stops will be deleted. Its orders become available again to build another trip. This cannot be undone.": "Se eliminará el plan con sus paradas. Sus pedidos vuelven a estar disponibles para armar otro viaje. Esta acción no se puede deshacer.",
+    "The plan was deleted and its orders are available again.": "El plan se eliminó y sus pedidos vuelven a estar disponibles."
 }
