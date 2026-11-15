@@ -34,7 +34,8 @@ use Logistics\Shipments\Domain\ValueObject\SourceReference;
  * que abre el decorador transaccional del CommandBus (Infrastructure); por eso acá no hay framework.
  *
  * Idempotente: si ya existe un envío para la misma referencia de origen, no duplica; deja disponible
- * el id del existente en lastShipmentId() y no vuelve a grabar eventos.
+ * el id del existente en lastShipmentId() y no vuelve a grabar eventos. Un reenvío tampoco cambia el nodo
+ * de origen ya guardado.
  *
  * Foto de medidas (Roadmap 02, Fase 2.1): cada línea nace con su peso y volumen por unidad resueltos
  * UNA vez acá (producto → categoría → default global, una sola lectura al catálogo para el pedido entero)
@@ -62,6 +63,10 @@ final class ReceiveShipmentHandler implements CommandHandler
 
         $source = OrderSource::fromLoose($command->source);
         $sourceReference = SourceReference::of($source, $command->externalId);
+
+        // El origen informado se valida ANTES de la idempotencia: un payload con un nodo de origen que no
+        // existe se rechaza siempre igual, sea la primera vez o un reenvío. No escribe nada.
+        $originNodeId = $this->originNodeOf($command);
 
         // Idempotencia: el mismo pedido de la misma fuente entra una sola vez; si ya existe, no se
         // persiste ni se publican eventos al outbox, solo se deja disponible el id del existente.
@@ -124,6 +129,7 @@ final class ReceiveShipmentHandler implements CommandHandler
             $this->destinationNodeOf($command, $sourceReference),
             $ownership,
             $command->orderReference,
+            $originNodeId,
         );
 
         $this->shipments->save($shipment);
@@ -170,6 +176,51 @@ final class ReceiveShipmentHandler implements CommandHandler
         $code = $command->destinationNodeCode !== null ? trim($command->destinationNodeCode) : '';
 
         return $code !== '' ? $this->nodes->idForCode($code) : null;
+    }
+
+    /**
+     * REGLA del nodo de ORIGEN informado por la fuente (de dónde sale el pedido):
+     *
+     *  - sin `originNodeId` ni `originNodeCode` → null: el origen se deriva al guardar (centro de distribución
+     *    de la ciudad destino), como siempre;
+     *  - con alguno → el nodo debe EXISTIR en la red; si no, el ingreso se rechaza con el motivo;
+     *  - con los dos → deben nombrar el MISMO nodo; si no coinciden, se rechaza.
+     *
+     * A diferencia del nodo destino (tolerante), acá un dato equivocado se rechaza: el origen decide qué
+     * ciudad prepara el pedido, y guardarlo mal lo escondería a quien debe operarlo.
+     */
+    private function originNodeOf(ReceiveShipment $command): ?string
+    {
+        $id = $command->originNodeId !== null ? trim($command->originNodeId) : '';
+        $code = $command->originNodeCode !== null ? trim($command->originNodeCode) : '';
+        if ($id === '' && $code === '') {
+            return null;
+        }
+
+        $byId = null;
+        if ($id !== '') {
+            $byId = $this->nodes->existingId($id);
+            if ($byId === null) {
+                throw ShipmentsException::because("el nodo de origen informado no existe en la red (origin_node_id: {$id})");
+            }
+        }
+
+        if ($code === '') {
+            return $byId;
+        }
+
+        $byCode = $this->nodes->idForCode($code);
+        if ($byCode === null) {
+            throw ShipmentsException::because("el nodo de origen informado no existe en la red (origin_node_code: {$code})");
+        }
+
+        if ($byId !== null && strtolower($byId) !== strtolower($byCode)) {
+            throw ShipmentsException::because(
+                "el origen informado es ambiguo: origin_node_id ({$id}) y origin_node_code ({$code}) son nodos distintos",
+            );
+        }
+
+        return strtolower($byCode);
     }
 
     private function geoPointFrom(?float $lat, ?float $lng): ?GeoPoint

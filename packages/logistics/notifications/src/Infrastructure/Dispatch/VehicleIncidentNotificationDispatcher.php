@@ -10,13 +10,15 @@ use Logistics\Notifications\Domain\ValueObject\MessageType;
 use Logistics\Outbox\Application\Contract\MessageDispatcher;
 use Logistics\Outbox\Domain\OutboxMessage;
 use Logistics\Shared\Application\Command\CommandBus;
+use Logistics\Shared\Application\Query\QueryBus;
 
 /**
  * Reacción de NOTIFICACIONES ante un incidente de camión (execution.vehicle_incident_reported) que llega
  * por el outbox. Avisa, por el flujo normal de notificaciones (QueueNotification → cascada de canales):
  *
  * - A cada CLIENTE afectado (los envíos que seguían pendientes): "pedido reprogramado" si el incidente es
- *   MAYOR, o "en camino con retraso" si es MENOR.
+ *   MAYOR, o "en camino con retraso" si es MENOR. Un traspaso interno no tiene cliente: no se le avisa
+ *   (ver SkipsInternalTransfers); el aviso al supervisor sale igual.
  * - Al SUPERVISOR de operaciones: un aviso interno del incidente (anclado al primer envío afectado), con
  *   sus contactos de respaldo desde la config.
  *
@@ -26,11 +28,14 @@ use Logistics\Shared\Application\Command\CommandBus;
  */
 final readonly class VehicleIncidentNotificationDispatcher implements MessageDispatcher
 {
+    use SkipsInternalTransfers;
+
     public function __construct(
         private NotificationRepository $notifications,
         private CommandBus $commandBus,
         private ?string $supervisorEmail,
         private ?string $supervisorPhone,
+        private ?QueryBus $queryBus = null,
     ) {}
 
     public function dispatch(OutboxMessage $message): void
@@ -62,7 +67,13 @@ final readonly class VehicleIncidentNotificationDispatcher implements MessageDis
         // Aviso al cliente: reprogramado (MAYOR) o en camino con retraso (MENOR).
         $customerType = $isMajor ? MessageType::Rescheduled : MessageType::DelayedEnRoute;
         foreach ($shipmentIds as $shipmentId) {
-            $this->queueOnce($shipmentId, $customerType);
+            // Ya avisado: no hace falta leer el envío. Un traspaso interno no tiene cliente a quien avisarle.
+            if ($this->notifications->existsForShipmentAndType($shipmentId, $customerType)
+                || $this->isInternalTransfer($this->queryBus, $shipmentId)) {
+                continue;
+            }
+
+            $this->commandBus->dispatch(new QueueNotification($shipmentId, $customerType->value, null, null));
         }
 
         // Aviso interno al supervisor, anclado al primer envío afectado del incidente.

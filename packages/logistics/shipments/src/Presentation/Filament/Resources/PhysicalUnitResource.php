@@ -19,8 +19,9 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
+use Logistics\Shared\Presentation\Filament\Concerns\PlanningOffice;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource\Pages\CreatePhysicalUnit;
@@ -39,8 +40,9 @@ use Logistics\Shipments\Presentation\Filament\Resources\PhysicalUnitResource\Pag
  */
 final class PhysicalUnitResource extends Resource
 {
-    use OfficeOnly;
     use PlainNavigationLabel;
+    use PlanningOffice;
+    use ScopesToUserCity;
 
     protected static ?string $model = PhysicalUnitRecord::class;
 
@@ -70,11 +72,16 @@ final class PhysicalUnitResource extends Resource
     /**
      * Carga anticipada del pedido y la línea: la tabla muestra referencia y SKU humanos sin N+1.
      *
+     * Alcance por ciudad: un usuario acotado solo ve los productos de los pedidos de su ciudad.
+     *
      * @return Builder<PhysicalUnitRecord>
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['shipment', 'line']);
+        $query = parent::getEloquentQuery()->with(['shipment', 'line']);
+        self::scopeToUserCityByShipment($query, 'shipment_units.shipment_id');
+
+        return $query;
     }
 
     public static function getNavigationIcon(): string
@@ -170,7 +177,10 @@ final class PhysicalUnitResource extends Resource
             ->filters([
                 SelectFilter::make('shipment_id')
                     ->label(__('Order'))
-                    ->relationship('shipment', 'external_id')
+                    // Las opciones del filtro respetan el alcance por ciudad del usuario.
+                    ->relationship('shipment', 'external_id', static function (Builder $query): void {
+                        self::scopeShipmentsToUserCity($query);
+                    })
                     ->searchable()
                     ->preload()
                     ->native(false),
@@ -185,6 +195,29 @@ final class PhysicalUnitResource extends Resource
                     DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    /**
+     * El planificador solo CONSULTA este recurso: crear, editar y borrar son de administrador y supervisor.
+     */
+    public static function canCreate(): bool
+    {
+        return self::canWriteAsOffice() && parent::canCreate();
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return self::canWriteAsOffice() && parent::canEdit($record);
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return self::canWriteAsOffice() && parent::canDelete($record);
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return self::canWriteAsOffice() && parent::canDeleteAny();
     }
 
     /**

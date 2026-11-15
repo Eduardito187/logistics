@@ -7,6 +7,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\Role;
 use App\Models\Concerns\HasRoles;
+use App\Support\Staff\StaffCity;
 use Database\Factories\UserFactory;
 use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthentication;
 use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthenticationRecovery;
@@ -38,6 +39,26 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable;
+
+    /**
+     * Regla de consistencia de la ciudad: quien pertenece a un nodo es de la ciudad (departamento) de ese
+     * nodo. Se aplica al guardar el modelo, así vale también para el admin web (Filament), que asigna la
+     * tienda por Eloquent; la app lo hace por su propio endpoint con la misma regla. Al quitar el nodo, o
+     * si el nodo no tiene departamento, la ciudad se conserva.
+     */
+    protected static function booted(): void
+    {
+        static::saving(static function (self $user): void {
+            if (!$user->isDirty('node_id')) {
+                return;
+            }
+
+            $city = StaffCity::ofNode($user->node_id);
+            if ($city !== null) {
+                $user->city = $city;
+            }
+        });
+    }
 
     /**
      * Get the attributes that should be cast.
@@ -213,6 +234,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
      * Matriz rol → acceso (resumen; el detalle por sección está en cada Resource/Page):
      *   - Admin ........... el panel COMPLETO, incluida Administration (seguridad, config, infraestructura).
      *   - Supervisor ...... oficina: Operations, Fleet, Network, Commerce (NO Administration).
+     *   - Planificador .... planificación: planes, rutas, calendario de despacho y envíos (NO Administration).
      *   - Chofer .......... mínimo de campo: entregas, rutas, escaneos, seguimiento, tablero de última milla.
      *   - Preparador ...... mínimo de campo: escaneos de preparación.
      *   - Tienda .......... mínimo de campo: recepción en nodo y seguimiento de envíos.
@@ -223,6 +245,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
         return $this->hasAnyRole(
             Role::Admin,
             Role::Supervisor,
+            Role::Planificador,
             Role::Chofer,
             Role::Preparador,
             Role::Tienda,

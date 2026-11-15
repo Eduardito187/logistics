@@ -27,6 +27,13 @@ final class StaffDirectory
     public const DOCUMENTS_DISK = 'id_document';
 
     /**
+     * Caras admitidas de un documento de dos caras (carnet, licencia). null = documento de una sola cara.
+     *
+     * @var list<string>
+     */
+    public const DOCUMENT_SIDES = ['front', 'back'];
+
+    /**
      * Personal paginado, con búsqueda por nombre / email y filtros por rol, por tienda y por ciudad
      * (`$city` = código del departamento; `$withoutCity` = solo quienes no tienen ciudad asignada).
      *
@@ -120,6 +127,7 @@ final class StaffDirectory
                     'expires_on' => $this->date($doc->expires_on ?? null),
                     'expired' => $this->isExpired($doc->expires_on ?? null),
                     'note' => $this->str($doc->note ?? null),
+                    'side' => $this->side($doc->side ?? null),
                     'mime_type' => $this->str($doc->mime_type ?? null),
                     'url' => $this->fileUrl((string) $doc->file_disk, (string) $doc->file_path),
                     'created_at' => $this->iso($doc->created_at ?? null),
@@ -144,6 +152,8 @@ final class StaffDirectory
                         'expires_on' => $this->date($doc->expires_on ?? null),
                         'expired' => $this->isExpired($doc->expires_on ?? null),
                         'note' => $this->str($doc->note ?? null),
+                        // Los documentos de flota no distinguen cara.
+                        'side' => null,
                         'mime_type' => null,
                         'url' => $path !== null ? $this->fileUrl($fleetDisk, $path) : null,
                         'created_at' => $this->iso($doc->created_at ?? null),
@@ -198,8 +208,11 @@ final class StaffDirectory
     }
 
     /**
-     * Fotos de la persona: su foto de perfil, las imágenes de sus documentos y la evidencia que capturó
-     * (firmas / fotos de entrega), de lo más reciente a lo más viejo.
+     * Fotos de la persona: su foto de perfil (`profile`) y las imágenes de sus documentos (`document`, con
+     * su cara en `side` si la tiene).
+     *
+     * La evidencia de entregas que capturó (firma del cliente, foto de entrega, documento del cliente) NO va
+     * acá: es dato del cliente y pertenece al pedido, donde se consulta con su propio control de acceso.
      *
      * @return array{items: list<array<string, mixed>>, total: int}
      */
@@ -209,31 +222,20 @@ final class StaffDirectory
 
         $profile = $this->profilePhoto($userId);
         if ($profile !== null) {
-            $items[] = ['kind' => 'profile', 'url' => $profile, 'at' => null, 'label' => null];
+            $items[] = ['kind' => 'profile', 'url' => $profile, 'at' => null, 'label' => null, 'side' => null];
         }
 
         foreach ($this->documents($userId, 500, 0)['items'] as $doc) {
             $mime = is_string($doc['mime_type'] ?? null) ? $doc['mime_type'] : '';
             if (is_string($doc['url'] ?? null) && ($mime === '' || str_starts_with($mime, 'image/'))) {
-                $items[] = ['kind' => 'document', 'url' => $doc['url'], 'at' => $doc['created_at'], 'label' => $doc['document_type']];
+                $items[] = [
+                    'kind' => 'document',
+                    'url' => $doc['url'],
+                    'at' => $doc['created_at'],
+                    'label' => $doc['document_type'],
+                    'side' => $doc['side'] ?? null,
+                ];
             }
-        }
-
-        try {
-            $evidence = DB::table('execution_delivery_evidence')
-                ->where('captured_by_user', (string) $userId)
-                ->orderByDesc('captured_at')
-                ->limit(200)
-                ->get(['kind', 'storage_disk', 'storage_path', 'captured_at']);
-
-            foreach ($evidence as $row) {
-                $url = EvidenceFileUrl::forDisk((string) $row->storage_disk, (string) $row->storage_path);
-                if ($url !== null) {
-                    $items[] = ['kind' => 'evidence', 'url' => $url, 'at' => $this->iso($row->captured_at ?? null), 'label' => (string) $row->kind];
-                }
-            }
-        } catch (Throwable) {
-            // sin evidencia disponible.
         }
 
         return ['items' => array_slice($items, max(0, $offset), max(1, $limit)), 'total' => count($items)];
@@ -593,6 +595,14 @@ final class StaffDirectory
     private function str(mixed $value): ?string
     {
         return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
+    }
+
+    /** Cara del documento (`front` | `back`), o null si es de una sola cara o el valor no es reconocido. */
+    private function side(mixed $value): ?string
+    {
+        $side = is_string($value) ? strtolower(trim($value)) : '';
+
+        return in_array($side, self::DOCUMENT_SIDES, true) ? $side : null;
     }
 
     private function date(mixed $value): ?string

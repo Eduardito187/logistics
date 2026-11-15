@@ -31,7 +31,8 @@ interface ShipmentSummaryReader
     /**
      * Cantidad de envíos por estado (todos los estados, con 0) para los filtros dados (sin filtro de
      * estado: sirve para las pestañas del listado). `$scope` acota el conteo al alcance por rol de quien
-     * lista (null = sin alcance).
+     * lista (null = sin alcance). `$city` es la ciudad del listado (código de departamento o texto libre,
+     * mismo criterio que la lista; null = sin filtro).
      *
      * @return array<string, int>
      */
@@ -42,5 +43,6 @@ interface ShipmentSummaryReader
         ?string $deliveryDateTo,
         ?string $deliveryMode,
         ?ShipmentScopeActor $scope = null,
+        ?string $city = null,
     ): array;
 }

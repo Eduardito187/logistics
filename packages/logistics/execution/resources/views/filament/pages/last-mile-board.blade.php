@@ -80,7 +80,7 @@
 
                         {{-- Acciones de dominio inline: solo para entregas aún abiertas. Despachan Commands
                              por el CommandBus (ver LastMileBoard). El pedido viaja como argumento. --}}
-                        @if ($segment['actionable'])
+                        @if ($segment['actionable'] && $this::canOperateField())
                             <div class="flex shrink-0 flex-wrap items-center gap-2">
                                 {{ ($this->confirmDeliveryAction)(['shipment' => $row['shipment_id']]) }}
                                 {{ ($this->markFailedAction)(['shipment' => $row['shipment_id']]) }}

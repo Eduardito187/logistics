@@ -18,6 +18,8 @@ use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliv
 use Logistics\Execution\Application\Command\CaptureDeliveryEvidence\CaptureDeliveryEvidenceHandler;
 use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRoute;
 use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRouteHandler;
+use Logistics\Execution\Application\Command\CloseTransferWithShortage\CloseTransferWithShortage;
+use Logistics\Execution\Application\Command\CloseTransferWithShortage\CloseTransferWithShortageHandler;
 use Logistics\Execution\Application\Command\DetachShipmentFromRoute\DetachShipmentFromRoute;
 use Logistics\Execution\Application\Command\DetachShipmentFromRoute\DetachShipmentFromRouteHandler;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDeparted;
@@ -66,6 +68,7 @@ use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitIdsReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitProductReader;
 use Logistics\Execution\Application\Contract\StopEnrichmentReader;
+use Logistics\Execution\Application\Contract\TransferDestinationReader;
 use Logistics\Execution\Application\Contract\VehicleFitnessReader;
 use Logistics\Execution\Application\Query\GetDeliveryEvidence\GetDeliveryEvidence;
 use Logistics\Execution\Application\Query\GetDeliveryEvidence\GetDeliveryEvidenceHandler;
@@ -117,11 +120,13 @@ use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitProductReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbStopEnrichmentReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbVehicleFitnessReader;
 use Logistics\Execution\Infrastructure\ReadModel\EloquentDeliveryEvidenceReader;
+use Logistics\Execution\Infrastructure\ReadModel\QueryBusTransferDestinationReader;
 use Logistics\Execution\Infrastructure\Storage\FilesystemEvidenceStorage;
 use Logistics\Execution\Presentation\Http\ServeEvidenceFileController;
 use Logistics\Execution\Presentation\Support\EvidenceFileUrl;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\HandlerRegistry;
+use Logistics\Shared\Application\Query\QueryBus;
 
 /**
  * Registro del bounded context Ejecución.
@@ -145,6 +150,7 @@ final class ExecutionServiceProvider extends ServiceProvider
         RecordUnloadScan::class => RecordUnloadScanHandler::class,
         RecordProofOfDelivery::class => RecordProofOfDeliveryHandler::class,
         RecordStoreDrop::class => RecordStoreDropHandler::class,
+        CloseTransferWithShortage::class => CloseTransferWithShortageHandler::class,
         AttachDeliveryPhotos::class => AttachDeliveryPhotosHandler::class,
         RecordFailedDelivery::class => RecordFailedDeliveryHandler::class,
         RecordNodeReception::class => RecordNodeReceptionHandler::class,
@@ -249,6 +255,12 @@ final class ExecutionServiceProvider extends ServiceProvider
         // dropship vs. OWNED/FBD sin acoplar el dominio al contexto shipments.
         $this->app->bind(ShipmentFulfillmentReader::class, static function ($app): ShipmentFulfillmentReader {
             return new DbShipmentFulfillmentReader($app->make('db')->connection());
+        });
+
+        // ¿El envío es un traspaso interno y a qué nodo va? Lo responde envíos por su consulta pública; la
+        // entrega en tienda de un traspaso en su nodo destino cierra la entrega (no hay cliente que firme).
+        $this->app->bind(TransferDestinationReader::class, static function ($app): TransferDestinationReader {
+            return new QueryBusTransferDestinationReader($app->make(QueryBus::class));
         });
 
         // Producto de cada bulto (foto, nombre, SKU, N de M) para la recepción en nodo: lectura en lote de

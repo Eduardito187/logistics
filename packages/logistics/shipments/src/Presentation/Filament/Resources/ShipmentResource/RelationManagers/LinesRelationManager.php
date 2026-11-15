@@ -17,6 +17,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
+use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
 
 /**
  * Líneas de producto del pedido, embebidas en la vista/edición del envío.
@@ -36,6 +37,14 @@ final class LinesRelationManager extends RelationManager
     public static function getModelLabel(): string
     {
         return __('line');
+    }
+
+    /**
+     * Solo lectura para quien no escribe como oficina (el planificador): sin alta, edición ni borrado.
+     */
+    public function isReadOnly(): bool
+    {
+        return parent::isReadOnly() || !ShipmentResource::canWriteAsOffice();
     }
 
     public function form(Schema $schema): Schema

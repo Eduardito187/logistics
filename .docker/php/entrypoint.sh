@@ -167,6 +167,10 @@ if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_BACKFILL_ORDERS:-false
         || echo "[entrypoint] AVISO: el relleno de origen y departamento de envíos falló; el arranque sigue."
     php artisan logistics:staff:backfill-city --force \
         || echo "[entrypoint] AVISO: el relleno de ciudad del personal falló; el arranque sigue."
+    # Seguimiento: marca la llegada a la tienda de los pedidos que ya estaban ahí y corrige las fechas de
+    # entrega guardadas con el corrimiento del desplazamiento horario. Idempotente; no emite eventos.
+    php artisan logistics:tracking:reconcile-dates --force \
+        || echo "[entrypoint] AVISO: la puesta al día de fechas del seguimiento falló; el arranque sigue."
 fi
 
 # ------------------------------------------------------------

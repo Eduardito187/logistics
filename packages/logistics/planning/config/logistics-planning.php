@@ -88,6 +88,42 @@ return [
         ],
     ],
 
+    // ASISTENTE DE ARMADO DE VIAJES (app interna): candidatos por cercanía (GET /app/plans/candidates) y
+    // orden sugerido (POST /app/plans/suggest-sequence). Todos los valores tienen un default funcional: el
+    // asistente anda en un entorno nuevo sin ninguna variable de entorno ni servicio externo.
+    'trip_builder' => [
+        // Zona horaria del negocio: en ella se interpretan la hora de salida por defecto y la hora que
+        // eligió el cliente ('HH:MM' del envío).
+        'timezone' => env('PLANNING_TRIP_TIMEZONE', 'America/La_Paz'),
+
+        // Respaldo local del orden sugerido (cuando no hay ruteador): velocidad promedio del camión en
+        // ciudad y cuánto más largo es el camino real que la línea recta.
+        'average_speed_kmh' => (float) env('PLANNING_TRIP_AVG_SPEED_KMH', 25.0),
+        'detour_factor' => (float) env('PLANNING_TRIP_DETOUR_FACTOR', 1.3),
+
+        // Minutos que tarda una entrega antes de seguir viaje (suma a la ETA de las paradas siguientes).
+        'service_minutes' => (int) env('PLANNING_TRIP_SERVICE_MINUTES', 10),
+
+        // Radio (metros) dentro del cual un pedido que cabe se RECOMIENDA sumar: distancia a cualquier
+        // parada ya elegida o, si todavía no hay ninguna, a la base del camión.
+        'suggest_radius_meters' => (float) env('PLANNING_TRIP_SUGGEST_RADIUS_M', 1500),
+
+        // Por debajo de esta distancia (metros) el motivo de la recomendación es "misma cuadra".
+        'same_block_meters' => (float) env('PLANNING_TRIP_SAME_BLOCK_M', 120),
+
+        // Usar la matriz real por carretera (OSRM /table) para el orden sugerido. Si el ruteador no responde
+        // dentro del tope, se usa el respaldo local; false = siempre el respaldo local (sin HTTP).
+        'road_matrix' => (bool) env('PLANNING_TRIP_ROAD_MATRIX', true),
+
+        // Tope de espera (segundos) de la consulta al ruteador desde el asistente: corto, porque corre
+        // dentro del request del planificador.
+        'osrm_timeout' => (int) env('PLANNING_TRIP_OSRM_TIMEOUT', 2),
+
+        // Topes: pedidos por viaje en el orden sugerido y candidatos devueltos cuando no se pagina.
+        'max_stops' => (int) env('PLANNING_TRIP_MAX_STOPS', 150),
+        'max_candidates' => (int) env('PLANNING_TRIP_MAX_CANDIDATES', 200),
+    ],
+
     // AUTO-PUBLICACIÓN de los planes propuestos (Fase 3.2, comando logistics:planning:auto-publish, ver
     // routes/console.php). Corre después del auto-plan nocturno y publica los planes que pasan la
     // PublishGate; los retenidos quedan propuestos y se alerta al planificador (ADR 012: el auto-planner

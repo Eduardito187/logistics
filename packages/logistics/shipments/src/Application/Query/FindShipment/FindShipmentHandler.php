@@ -7,6 +7,7 @@ namespace Logistics\Shipments\Application\Query\FindShipment;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
+use Logistics\Shipments\Application\Contract\ShipmentDeliveryEvidenceReader;
 use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
 use Logistics\Shipments\Application\Query\ShipmentListSupport;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
@@ -23,6 +24,7 @@ final class FindShipmentHandler implements QueryHandler
         private readonly ShipmentRepository $shipments,
         private readonly DeliveryModeReader $deliveryModes,
         private readonly ShipmentScopeReader $scope,
+        private readonly ShipmentDeliveryEvidenceReader $deliveryEvidence,
     ) {}
 
     public function handle(Query $query): ?ShipmentView
@@ -43,6 +45,9 @@ final class FindShipmentHandler implements QueryHandler
         $enriched = ShipmentListSupport::withDeliveryMode([$view], $this->deliveryModes);
         if ($query->withOrigin) {
             $enriched = ShipmentListSupport::withOrigin($enriched, $this->scope);
+        }
+        if ($query->withDeliveryEvidence) {
+            $enriched = ShipmentListSupport::withDeliveryEvidence($enriched, $this->deliveryEvidence);
         }
         foreach ($enriched as $item) {
             return $item;

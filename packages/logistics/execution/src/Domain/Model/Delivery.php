@@ -46,6 +46,9 @@ use Logistics\Shared\Domain\ValueObject\FulfillmentMode;
  */
 final class Delivery extends AggregateRoot
 {
+    /** Valor de `confirmation` del hecho de entrega cuando un traspaso se cierra con su entrega en tienda. */
+    public const string STORE_DROP_CONFIRMATION = 'STORE_DROP';
+
     /**
      * @param list<ScanEvent> $scans
      */
@@ -76,11 +79,24 @@ final class Delivery extends AggregateRoot
      */
     private array $storeDropMissingUnits = [];
 
+    /** ¿El traspaso se cerró dejando faltantes documentados (conciliación con diferencias o cierre de oficina)? */
+    private bool $closedWithShortage = false;
+
+    /** Cuándo se cerró con faltantes; null si no aplica. */
+    private ?DateTimeImmutable $shortageClosedAt = null;
+
+    /** Motivo que dio la oficina al cerrar el traspaso a mano; null si lo cerró la conciliación de la tienda. */
+    private ?string $shortageCloseReason = null;
+
+    /** Quién de la oficina cerró el traspaso a mano (id de usuario); null si lo cerró la conciliación. */
+    private ?string $shortageClosedBy = null;
+
     /**
      * ENTREGA EN TIENDA: el chofer deja el pedido en la tienda donde el cliente lo va a retirar (o adonde va
-     * el traspaso). NO cierra la entrega: sigue abierta hasta la prueba de entrega del mostrador. Graba
-     * ShipmentDroppedAtStore una sola vez; repetirla solo completa la foto si faltaba. No aplica a una entrega
-     * ya cerrada (entregada o fallida).
+     * el traspaso). NO cierra la entrega: sigue abierta hasta la prueba de entrega del mostrador (un traspaso
+     * se cierra aparte, con {@see closeByStoreDrop()}). Graba ShipmentDroppedAtStore una sola vez; repetirla
+     * solo completa la foto si faltaba. No aplica a una entrega ya cerrada (entregada o fallida), salvo el
+     * traspaso que cerró su propia entrega en tienda: ahí repetirla no hace nada.
      *
      * `$missingUnits` son los productos que el chofer NO pudo dejar (faltantes), con su motivo: quedan en la
      * entrega y viajan en el hecho. Un producto se declara una sola vez.
@@ -93,11 +109,19 @@ final class Delivery extends AggregateRoot
         if ($nodeId === '') {
             throw ExecutionException::because('la entrega en tienda requiere la tienda');
         }
+
+        $photoPath = $photoPath !== null && trim($photoPath) !== '' ? trim($photoPath) : null;
+
+        // Traspaso ya cerrado por su propia entrega en tienda (entregado, sin prueba de entrega): repetirla es
+        // un no-op exitoso que solo completa la foto si faltaba. No reemite ningún hecho.
+        if ($this->isClosedByStoreDrop()) {
+            $this->storeDropPhotoPath ??= $photoPath;
+
+            return;
+        }
         if ($this->status === DeliveryStatus::Delivered || $this->status === DeliveryStatus::Failed) {
             throw ExecutionException::because('la entrega ya está cerrada: no se puede registrar la entrega en tienda');
         }
-
-        $photoPath = $photoPath !== null && trim($photoPath) !== '' ? trim($photoPath) : null;
 
         $declared = [];
         foreach ($missingUnits as $missing) {
@@ -127,6 +151,180 @@ final class Delivery extends AggregateRoot
             $occurredAt,
             array_map(static fn (MissingUnitDeclaration $missing): array => $missing->toArray(), $declared),
         ));
+    }
+
+    /**
+     * CIERRE DE UN TRASPASO: para un traspaso interno no hay cliente que firme, así que la entrega en tienda
+     * en SU nodo destino ES la entrega. Pasa a Delivered y graba el mismo hecho de entrega que el resto del
+     * sistema (ShipmentDelivered), sin prueba de entrega (ni foto ni firma obligatorias).
+     *
+     * Quién decide que el envío es un traspaso y que la tienda es su destino es la capa de aplicación: el
+     * agregado solo cuida sus invariantes. No cierra (devuelve false) si no hay entrega en tienda registrada,
+     * si la entrega ya está cerrada (entregada o fallida) o si el chofer declaró faltantes; en este último
+     * caso solo cierra cuando la tienda concilió la recepción (`$receptionReconciled`): la conciliación es el
+     * acuse formal de la tienda, sea completa o con diferencias.
+     *
+     * `$shortageUnitIds` son los productos que quedaron como faltantes al conciliar con diferencias: si hay
+     * alguno, el traspaso se cierra CON FALTANTES (el hecho lo dice y no los cuenta como entregados). Los
+     * faltantes se siguen por el reporte de discrepancias, no manteniendo el envío abierto.
+     *
+     * Idempotente: sobre una entrega ya cerrada no cambia nada ni reemite el hecho.
+     *
+     * @param list<string> $unitIds         productos del envío (informativo, viaja en el hecho)
+     * @param list<string> $shortageUnitIds productos que no llegaron (cierre con faltantes)
+     */
+    public function closeByStoreDrop(DateTimeImmutable $deliveredAt, array $unitIds = [], bool $receptionReconciled = false, array $shortageUnitIds = []): bool
+    {
+        if ($this->storeDroppedAt === null) {
+            return false;
+        }
+        if ($this->status === DeliveryStatus::Delivered || $this->status === DeliveryStatus::Failed) {
+            return false;
+        }
+        if ($this->storeDropMissingUnits !== [] && !$receptionReconciled) {
+            return false;
+        }
+
+        $this->deliverByStoreDrop($deliveredAt, $unitIds, $shortageUnitIds);
+
+        return true;
+    }
+
+    /**
+     * CIERRE MANUAL DE OFICINA de un traspaso con faltantes que la tienda nunca concilió: el traspaso quedó
+     * en su tienda con productos faltantes declarados por el chofer y nadie más lo va a cerrar. La oficina lo
+     * da por entregado con un motivo; los faltantes quedan documentados y viajan en el hecho de entrega.
+     *
+     * Quién decide que el envío es un traspaso y que la tienda es su destino es la capa de aplicación.
+     * Idempotente: sobre una entrega ya entregada devuelve false sin cambiar nada ni reemitir el hecho.
+     *
+     * @param list<string> $unitIds productos del envío (informativo, viaja en el hecho)
+     */
+    public function closeTransferWithShortage(DateTimeImmutable $closedAt, string $reason, string $closedBy, array $unitIds = []): bool
+    {
+        $reason = trim($reason);
+        if ($reason === '') {
+            throw ExecutionException::because('el cierre del traspaso con faltantes requiere el motivo');
+        }
+        if ($this->status === DeliveryStatus::Delivered) {
+            return false;
+        }
+        if ($this->status === DeliveryStatus::Failed) {
+            throw ExecutionException::because('la entrega está cerrada como fallida: no se puede cerrar el traspaso');
+        }
+        if ($this->storeDroppedAt === null) {
+            throw ExecutionException::because('el traspaso todavía no tiene la entrega en tienda registrada');
+        }
+        if ($this->storeDropMissingUnits === []) {
+            throw ExecutionException::because('el traspaso no tiene faltantes declarados: se cierra con la entrega en tienda, no con el cierre de oficina');
+        }
+
+        $closedBy = trim($closedBy);
+        $this->shortageCloseReason = $reason;
+        $this->shortageClosedBy = $closedBy !== '' ? $closedBy : null;
+
+        $this->deliverByStoreDrop(
+            $closedAt,
+            $unitIds,
+            array_map(static fn (MissingUnitDeclaration $missing): string => $missing->unitId, $this->storeDropMissingUnits),
+        );
+
+        return true;
+    }
+
+    /**
+     * Deja el traspaso entregado por su entrega en tienda y graba el hecho de entrega. Con faltantes, los
+     * marca en la entrega y en el hecho, y no los cuenta entre los productos entregados.
+     *
+     * @param list<string> $unitIds
+     * @param list<string> $shortageUnitIds
+     */
+    private function deliverByStoreDrop(DateTimeImmutable $deliveredAt, array $unitIds, array $shortageUnitIds): void
+    {
+        $shortage = self::distinctIds($shortageUnitIds);
+        $units = array_values(array_diff(self::distinctIds($unitIds), $shortage));
+
+        $this->status = DeliveryStatus::Delivered;
+        if ($shortage !== []) {
+            $this->closedWithShortage = true;
+            $this->shortageClosedAt = $deliveredAt;
+        }
+
+        $this->recordEvent(new ShipmentDelivered(
+            $this->id->toString(),
+            $this->shipmentId,
+            self::STORE_DROP_CONFIRMATION,
+            null,
+            $deliveredAt,
+            $units,
+            [],
+            $shortage !== [],
+            $shortage,
+        ));
+    }
+
+    /**
+     * Ids sin vacíos ni repetidos, en el orden recibido.
+     *
+     * @param  list<string> $ids
+     * @return list<string>
+     */
+    private static function distinctIds(array $ids): array
+    {
+        $distinct = [];
+        foreach ($ids as $id) {
+            $trimmed = trim($id);
+            if ($trimmed !== '' && !in_array($trimmed, $distinct, true)) {
+                $distinct[] = $trimmed;
+            }
+        }
+
+        return $distinct;
+    }
+
+    /**
+     * Repone el cierre con faltantes al reconstituir desde la persistencia (sin grabar eventos).
+     */
+    public function restoreShortageClosure(bool $closedWithShortage, ?DateTimeImmutable $closedAt, ?string $reason, ?string $closedBy): void
+    {
+        $this->closedWithShortage = $closedWithShortage;
+        $this->shortageClosedAt = $closedAt;
+        $this->shortageCloseReason = $reason;
+        $this->shortageClosedBy = $closedBy;
+    }
+
+    /** ¿El traspaso se cerró dejando faltantes documentados? */
+    public function isClosedWithShortage(): bool
+    {
+        return $this->closedWithShortage;
+    }
+
+    public function shortageClosedAt(): ?DateTimeImmutable
+    {
+        return $this->shortageClosedAt;
+    }
+
+    /** Motivo del cierre manual de oficina; null si no hubo (o lo cerró la conciliación de la tienda). */
+    public function shortageCloseReason(): ?string
+    {
+        return $this->shortageCloseReason;
+    }
+
+    /** Usuario de oficina que cerró el traspaso a mano; null si no aplica. */
+    public function shortageClosedBy(): ?string
+    {
+        return $this->shortageClosedBy;
+    }
+
+    /**
+     * ¿La entrega quedó entregada por su entrega en tienda, sin prueba de entrega? Solo le pasa a un traspaso:
+     * un pedido de cliente siempre se cierra con la prueba de entrega (domicilio o mostrador).
+     */
+    public function isClosedByStoreDrop(): bool
+    {
+        return $this->status === DeliveryStatus::Delivered
+            && $this->storeDroppedAt !== null
+            && $this->proofOfDelivery === null;
     }
 
     /**

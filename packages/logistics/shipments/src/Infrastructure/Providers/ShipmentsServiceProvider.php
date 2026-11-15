@@ -32,6 +32,7 @@ use Logistics\Shipments\Application\Contract\NetworkNodeLookup;
 use Logistics\Shipments\Application\Contract\OrderLookupReader;
 use Logistics\Shipments\Application\Contract\ReturnsWarehouseResolver;
 use Logistics\Shipments\Application\Contract\ScannedLabelResolver;
+use Logistics\Shipments\Application\Contract\ShipmentDeliveryEvidenceReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
 use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
@@ -80,6 +81,7 @@ use Logistics\Shipments\Infrastructure\ReadModel\DbDailyKpisReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbDeliveryModeReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbNetworkNodeLookup;
 use Logistics\Shipments\Infrastructure\ReadModel\DbOrderLookupReader;
+use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentDeliveryEvidenceReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentListReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentProgressReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentScopeReader;
@@ -137,6 +139,12 @@ final class ShipmentsServiceProvider extends ServiceProvider
         // de la app: lectura cruzada de solo lectura de ejecución/planificación/flota/etiquetas, en lote.
         $this->app->bind(ShipmentProgressReader::class, function ($app): ShipmentProgressReader {
             return new DbShipmentProgressReader($app->make(ConnectionInterface::class));
+        });
+
+        // Evidencia de la entrega (firma / foto / documento) de los envíos entregados: lectura cruzada de solo
+        // lectura de las tablas de ejecución, en lote por página.
+        $this->app->bind(ShipmentDeliveryEvidenceReader::class, function ($app): ShipmentDeliveryEvidenceReader {
+            return new DbShipmentDeliveryEvidenceReader($app->make(ConnectionInterface::class));
         });
 
         // Modalidad de entrega (domicilio / recojo en tienda) derivada del tipo del nodo destino: lectura de

@@ -15,6 +15,8 @@ use Throwable;
  */
 final readonly class DbNetworkNodeLookup implements NetworkNodeLookup
 {
+    private const string UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+
     public function __construct(
         private ConnectionInterface $connection,
     ) {}
@@ -35,5 +37,22 @@ final readonly class DbNetworkNodeLookup implements NetworkNodeLookup
         }
 
         return is_scalar($id) && (string) $id !== '' ? (string) $id : null;
+    }
+
+    public function existingId(string $nodeId): ?string
+    {
+        // Nunca se compara contra la columna uuid un valor que no tenga forma de UUID (PostgreSQL: 22P02).
+        $normalized = strtolower(trim($nodeId));
+        if (preg_match(self::UUID_PATTERN, $normalized) !== 1) {
+            return null;
+        }
+
+        try {
+            $exists = $this->connection->table('network_nodes')->where('id', $normalized)->exists();
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $exists ? $normalized : null;
     }
 }

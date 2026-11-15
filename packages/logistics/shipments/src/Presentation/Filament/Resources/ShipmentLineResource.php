@@ -18,8 +18,10 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Illuminate\Database\Eloquent\Model;
 use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
+use Logistics\Shared\Presentation\Filament\Concerns\PlanningOffice;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentLineResource\Pages\CreateShipmentLine;
@@ -38,8 +40,9 @@ use Logistics\Shipments\Presentation\Filament\Resources\ShipmentLineResource\Pag
  */
 final class ShipmentLineResource extends Resource
 {
-    use OfficeOnly;
     use PlainNavigationLabel;
+    use PlanningOffice;
+    use ScopesToUserCity;
 
     protected static ?string $model = ShipmentLineRecord::class;
 
@@ -81,11 +84,16 @@ final class ShipmentLineResource extends Resource
      * Carga anticipada del pedido relacionado: la tabla y los selects muestran la referencia humana
      * (shipment.external_id) sin disparar una consulta por fila (evita N+1).
      *
+     * Alcance por ciudad: un usuario acotado solo ve las líneas de los pedidos de su ciudad.
+     *
      * @return Builder<ShipmentLineRecord>
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with('shipment');
+        $query = parent::getEloquentQuery()->with('shipment');
+        self::scopeToUserCityByShipment($query, 'shipment_lines.shipment_id');
+
+        return $query;
     }
 
     public static function form(Schema $schema): Schema
@@ -168,7 +176,10 @@ final class ShipmentLineResource extends Resource
             ->filters([
                 SelectFilter::make('shipment_id')
                     ->label(__('Order'))
-                    ->relationship('shipment', 'external_id')
+                    // Las opciones del filtro respetan el alcance por ciudad del usuario.
+                    ->relationship('shipment', 'external_id', static function (Builder $query): void {
+                        self::scopeShipmentsToUserCity($query);
+                    })
                     ->searchable()
                     ->preload()
                     ->native(false),
@@ -184,6 +195,29 @@ final class ShipmentLineResource extends Resource
                 ]),
             ])
             ->defaultSort('sku');
+    }
+
+    /**
+     * El planificador solo CONSULTA este recurso: crear, editar y borrar son de administrador y supervisor.
+     */
+    public static function canCreate(): bool
+    {
+        return self::canWriteAsOffice() && parent::canCreate();
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return self::canWriteAsOffice() && parent::canEdit($record);
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return self::canWriteAsOffice() && parent::canDelete($record);
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return self::canWriteAsOffice() && parent::canDeleteAny();
     }
 
     /**

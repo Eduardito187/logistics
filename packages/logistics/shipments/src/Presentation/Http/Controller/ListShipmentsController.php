@@ -34,6 +34,11 @@ use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
  *  - `include=count_by_status` agrega `meta.count_by_status` (conteo por estado con los mismos filtros
  *    salvo el de estado, para las pestañas), con agregado SQL y caché corta;
  *  - cada ítem trae `delivery_mode`, `address_parts` y `short_address`;
+ *  - cada ítem trae `delivery_evidence` ({signature, photo, document}; null si el envío no está entregado),
+ *    resuelto en lote por página;
+ *  - `city` acepta un código de departamento (`la_paz`, `santa_cruz`, …): filtra por el departamento de
+ *    DESTINO; cualquier otro texto se compara contra la ciudad / dirección como siempre. Aplica también a
+ *    `meta.count_by_status`;
  *  - `pending_preparation=true` (#1b) deja solo los envíos asignados (PLANNED / IN_EXECUTION) sin escaneo
  *    de preparación (incluye los que ya tienen etiquetas emitidas). `false` o ausente = sin filtro. No
  *    entra en `count_by_status` (ese conteo usa los filtros SIN el de estado, y este filtro fija estados).
@@ -90,7 +95,7 @@ final class ListShipmentsController
             'q' => ['nullable', 'string', 'max:120'],
             // Solo pedidos que ya están en la tienda listos para retirar.
             'ready_for_pickup' => ['nullable', 'boolean'],
-            // Ciudad (texto) y vehículo asignado.
+            // Ciudad (código de departamento `la_paz`, `santa_cruz`, … o texto libre) y vehículo asignado.
             'city' => ['nullable', 'string', 'max:80'],
             'vehicle_id' => ['nullable', 'uuid'],
             // Atajo de un solo día (equivale a delivery_date_from = delivery_date_to).
@@ -359,6 +364,7 @@ final class ListShipmentsController
             deliveryDateTo: $criteria->deliveryDateTo,
             deliveryMode: $criteria->deliveryMode,
             scope: $criteria->scope,
+            city: $criteria->city,
         ));
 
         return $counts;

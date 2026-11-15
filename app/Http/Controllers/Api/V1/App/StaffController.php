@@ -25,9 +25,9 @@ use Illuminate\Validation\Rules\File;
  *  - GET  /app/staff                       personal paginado (búsqueda, rol, tienda, ciudad)
  *  - GET  /app/staff/{userId}              ficha: cuenta, roles, tienda, datos de chofer, vehículo, dispositivos
  *  - GET  /app/staff/{userId}/documents    documentos (paginado)
- *  - POST /app/staff/{userId}/documents    sube un documento (multipart)
+ *  - POST /app/staff/{userId}/documents    sube un documento (multipart; `side` = front | back si tiene dos caras)
  *  - GET  /app/staff/{userId}/activity     actividad según su rol (paginado, filtro por tipo y fechas)
- *  - GET  /app/staff/{userId}/photos       fotos (perfil, documentos, evidencia que capturó)
+ *  - GET  /app/staff/{userId}/photos       fotos de la persona (perfil y documentos; nunca evidencia de entregas)
  *  - PUT  /app/staff/{userId}/node         asigna (o quita) la tienda / nodo de la persona
  *  - PUT  /app/staff/{userId}/profile      guarda sus datos personales (teléfono, documento, dirección…)
  *  - POST /app/staff/{userId}/photo        sube su foto de perfil
@@ -95,13 +95,22 @@ final class StaffController
             return $this->notFound($request);
         }
 
-        /** @var array{document_type: string, reference?: string|null, issued_on?: string|null, expires_on?: string|null, note?: string|null} $data */
+        // La cara se valida sin distinguir mayúsculas ni espacios; vacío equivale a no mandarla.
+        $rawSide = $request->input('side');
+        if (is_string($rawSide)) {
+            $normalizedSide = strtolower(trim($rawSide));
+            $request->merge(['side' => $normalizedSide !== '' ? $normalizedSide : null]);
+        }
+
+        /** @var array{document_type: string, reference?: string|null, issued_on?: string|null, expires_on?: string|null, note?: string|null, side?: string|null} $data */
         $data = $request->validate([
             'document_type' => ['required', 'string', 'max:60'],
             'reference' => ['sometimes', 'nullable', 'string', 'max:255'],
             'issued_on' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'expires_on' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            // Cara del documento de dos caras (carnet, licencia): front | back. Sin el campo = una sola cara.
+            'side' => ['sometimes', 'nullable', 'string', Rule::in(StaffDirectory::DOCUMENT_SIDES)],
             'file' => ['required', File::types(['pdf', 'jpg', 'jpeg', 'png', 'webp'])->max(10 * 1024)],
         ]);
 
@@ -115,8 +124,11 @@ final class StaffController
             return ProblemDetails::fromCode(ErrorCode::BusinessRuleViolation, 'The document could not be stored.')->toResponse($request);
         }
 
+        // La cara solo se escribe cuando viene: quien no la manda inserta exactamente lo mismo que antes.
+        $side = is_string($data['side'] ?? null) ? ['side' => $data['side']] : [];
+
         $id = (string) Str::uuid7();
-        DB::table('staff_documents')->insert([
+        DB::table('staff_documents')->insert($side + [
             'id' => $id,
             'user_id' => $userId,
             'document_type' => trim($data['document_type']),

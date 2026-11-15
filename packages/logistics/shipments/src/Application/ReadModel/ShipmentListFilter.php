@@ -45,7 +45,8 @@ final readonly class ShipmentListFilter
         public ?string $search = null,
         // Aditivo: solo pedidos que YA están en su tienda listos para que el cliente los retire.
         public bool $readyForPickup = false,
-        // Aditivo: ciudad (texto) — coincide con la dirección del envío o con el departamento/nombre de su nodo destino.
+        // Aditivo: ciudad — un código de departamento (`la_paz`, `santa_cruz`, …) filtra por el departamento
+        // de DESTINO; cualquier otro texto coincide con la ciudad o la dirección del envío.
         public ?string $city = null,
         // Aditivo: solo envíos asignados a ese vehículo (entrega abierta o parada en su ruta).
         public ?string $vehicleId = null,
@@ -55,5 +56,8 @@ final readonly class ShipmentListFilter
         // Alcance por rol de quien lista (ciudad / tienda / asignación). Null = sin alcance (procesos internos
         // y la consulta abierta de pedidos).
         public ?ShipmentScopeActor $scope = null,
+        // ¿`search` también mira el nombre y el documento del cliente? True en el listado (comportamiento de
+        // siempre); la consulta abierta de pedidos lo apaga para los roles que solo buscan por código.
+        public bool $searchCustomerData = true,
     ) {}
 }

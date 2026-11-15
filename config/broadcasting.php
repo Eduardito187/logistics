@@ -39,14 +39,20 @@ return [
 
         // Protocolo Pusher contra Soketi (self-host, open-source). Host/puerto apuntan al
         // servicio `soketi`; en el cliente, VITE_PUSHER_* del cliente web.
+        //
+        // Los defaults son LOS MISMOS que trae el servicio `soketi` de docker-compose.yml
+        // (SOKETI_DEFAULT_APP_ID/KEY/SECRET) y el host es el nombre del servicio en la red docker: en un
+        // docker nuevo basta BROADCAST_CONNECTION=pusher, sin más variables. En staging/producción se
+        // DEBEN fijar PUSHER_APP_KEY y PUSHER_APP_SECRET propios (el secreto firma el acceso a los canales
+        // privados, p. ej. `private-user.{id}` de la app).
         'pusher' => [
             'driver' => 'pusher',
-            'key' => env('PUSHER_APP_KEY'),
-            'secret' => env('PUSHER_APP_SECRET'),
-            'app_id' => env('PUSHER_APP_ID'),
+            'key' => env('PUSHER_APP_KEY', 'dismaclocalkey'),
+            'secret' => env('PUSHER_APP_SECRET', 'dismaclocalsecret'),
+            'app_id' => env('PUSHER_APP_ID', 'dismac'),
             'options' => [
                 'cluster' => env('PUSHER_APP_CLUSTER', 'mt1'),
-                'host' => env('PUSHER_HOST', '127.0.0.1'),
+                'host' => env('PUSHER_HOST', 'soketi'),
                 'port' => (int) env('PUSHER_PORT', 6001),
                 'scheme' => env('PUSHER_SCHEME', 'http'),
                 'encrypted' => env('PUSHER_SCHEME', 'http') === 'https',
