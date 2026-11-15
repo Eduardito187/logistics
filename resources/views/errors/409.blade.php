@@ -8,5 +8,5 @@
 @section('message', 'Estos datos se actualizaron hace un momento. Vuelve a cargar la página e intenta otra vez.')
 
 @section('extra-actions')
-    <a class="btn" href="{{ request()->url() }}">Recargar</a>
+    <a class="btn" href="{{ ($static ?? false) ? '' : request()->url() }}">Recargar</a>
 @endsection

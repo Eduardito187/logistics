@@ -30,6 +30,13 @@ port="${STAGING_HTTP_PORT:-8110}"
 [[ "$port" =~ ^[0-9]+$ ]] || fail "STAGING_HTTP_PORT debe ser numérico (vino '$port')."
 app_url="${APP_URL:-http://localhost:${port}}"
 
+# Credenciales del servidor de sockets (Soketi): propias del entorno y ESTABLES entre deploys, derivadas
+# de APP_KEY (sin secrets nuevos que cargar). La clave es pública (viaja a los clientes); el secreto firma
+# el acceso a los canales privados y nunca sale del backend. STAGING_ENV_EXTRA puede pisar ambos.
+command -v sha256sum >/dev/null 2>&1 || fail "Falta sha256sum en el runner (deriva las credenciales del tiempo real)."
+pusher_key="$(printf 'pusher-key:%s' "$APP_KEY" | sha256sum | cut -c1-20)"
+pusher_secret="$(printf 'pusher-secret:%s' "$APP_KEY" | sha256sum | cut -c1-40)"
+
 umask 077
 mkdir -p "$(dirname "$out")"
 
@@ -38,7 +45,8 @@ extra="$(mktemp)"
 trap 'rm -f "$base" "$extra"' EXIT
 
 # Base de staging: perfil "producción" (caches en el arranque, sin debug), pero con integraciones
-# externas en modo seguro por defecto (mail a log, broadcasting a log, disco local).
+# externas en modo seguro por defecto (mail a log, disco local). El tiempo real va contra el servicio
+# `soketi` del propio stack.
 cat > "$base" <<EOF
 APP_NAME=Logistics Staging
 APP_ENV=staging
@@ -75,7 +83,14 @@ QUEUE_CONNECTION=redis
 CACHE_STORE=redis
 SESSION_DRIVER=redis
 
-BROADCAST_CONNECTION=log
+BROADCAST_CONNECTION=pusher
+PUSHER_APP_ID=distrack-staging
+PUSHER_APP_KEY=${pusher_key}
+PUSHER_APP_SECRET=${pusher_secret}
+PUSHER_APP_CLUSTER=mt1
+PUSHER_HOST=soketi
+PUSHER_PORT=6001
+PUSHER_SCHEME=http
 FILESYSTEM_DISK=local
 MAIL_MAILER=log
 EOF

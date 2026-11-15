@@ -97,6 +97,29 @@ it('el canal user.{id} autoriza solo al dueño, con el Bearer de la app', functi
     $this->withToken($token)->postJson(SIR_AUTH_URL, ['socket_id' => SIR_SOCKET_ID, 'channel_name' => 'user.'.$user->id])->assertStatus(422);
 });
 
+it('la app recibe la clave pública y la ruta del tiempo real de su entorno, nunca el secreto', function (): void {
+    [$token] = sirBearer();
+
+    // Sin servidor de sockets: apagado y sin clave.
+    $this->withToken($token)->getJson('/api/v1/app/broadcasting/config')
+        ->assertOk()
+        ->assertExactJson(['enabled' => false, 'key' => null, 'cluster' => null, 'path' => '/app']);
+
+    sirEnableSockets();
+
+    $response = $this->withToken($token)->getJson('/api/v1/app/broadcasting/config')
+        ->assertOk()
+        ->assertJsonPath('enabled', true)
+        ->assertJsonPath('key', 'test-key')
+        ->assertJsonPath('path', '/app');
+
+    expect((string) $response->getContent())->not->toContain('test-secret');
+});
+
+it('sin Bearer no se entrega la configuración del tiempo real', function (): void {
+    $this->getJson('/api/v1/app/broadcasting/config')->assertUnauthorized();
+});
+
 it('sin Bearer no se firma ningún canal', function (): void {
     sirEnableSockets();
     $user = User::factory()->create();

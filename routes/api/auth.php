@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\App\AuthController;
 use App\Http\Controllers\Api\V1\App\BroadcastAuthController;
+use App\Http\Controllers\Api\V1\App\BroadcastConfigController;
 use App\Http\Controllers\Api\V1\App\DeviceController;
 use App\Http\Controllers\Api\V1\App\PasswordResetController;
 use App\Http\Controllers\Api\V1\App\StaffBroadcastController;
@@ -76,6 +77,8 @@ Route::prefix('v1/app')->name('api.v1.app.')->group(function (): void {
         // donde llega `inbox.updated`). Mismo Bearer de la puerta app; quién entra a cada canal lo decide
         // routes/channels.php.
         Route::post('broadcasting/auth', BroadcastAuthController::class)->name('broadcasting.auth');
+        // Clave pública y ruta del servidor de sockets de ESTE entorno (la app no las lleva fijas).
+        Route::get('broadcasting/config', BroadcastConfigController::class)->name('broadcasting.config');
 
         // Avisos INTERNOS al personal: enviar es solo de admin; ver los enviados, admin y supervisor.
         Route::post('broadcasts', [StaffBroadcastController::class, 'send'])

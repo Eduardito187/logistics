@@ -12382,6 +12382,22 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
+  /app/broadcasting/config:
+    get:
+      tags:
+      - staff
+      operationId: getBroadcastConfig
+      summary: Real-time connection settings of this environment (Pusher protocol)
+      description: 'El servidor de sockets se publica por el MISMO host y puerto que la API: la app conecta a `ws(s)://<host de la API>/app/<key>` (wss cuando la API es https) y firma los canales privados en `POST /app/broadcasting/auth`. Con `enabled: false` el entorno no tiene tiempo real y la app sigue con su refresco normal.'
+      responses:
+        '200':
+          description: Connection settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BroadcastConfig'
+      security:
+      - appBearer: []
   /app/broadcasting/auth:
     post:
       tags:
@@ -13758,6 +13774,25 @@ components:
                 session_bucket: { type: string, nullable: true }
                 last_seen_at: { type: string, format: date-time, nullable: true }
                 revoked: { type: boolean }
+    BroadcastConfig:
+      type: object
+      required:
+      - enabled
+      - key
+      - cluster
+      - path
+      properties:
+        enabled: { type: boolean, description: 'false = entorno sin tiempo real' }
+        key:
+          type:
+          - string
+          - 'null'
+          description: 'Clave PÚBLICA de la app de sockets; null si enabled es false.'
+        cluster:
+          type:
+          - string
+          - 'null'
+        path: { type: string, description: 'Ruta base del WebSocket en el host de la API, p. ej. /app' }
     BroadcastAuthRequest:
       type: object
       required:
