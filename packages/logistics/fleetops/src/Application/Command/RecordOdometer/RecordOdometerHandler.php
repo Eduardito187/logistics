@@ -6,6 +6,7 @@ namespace Logistics\FleetOps\Application\Command\RecordOdometer;
 
 use DateTimeImmutable;
 use Logistics\FleetOps\Domain\Contract\OdometerRepository;
+use Logistics\FleetOps\Domain\Exception\DepartureAlreadyRecorded;
 use Logistics\FleetOps\Domain\Exception\RouteAlreadyClosed;
 use Logistics\FleetOps\Domain\Model\OdometerReading;
 use Logistics\FleetOps\Domain\ValueObject\Odometer;
@@ -37,6 +38,13 @@ final readonly class RecordOdometerHandler implements CommandHandler
         if ($routeId !== null && $source === OdometerSource::Arrival
             && $this->readings->existsForRouteAndSource($routeId, OdometerSource::Arrival)) {
             throw RouteAlreadyClosed::forRoute($routeId);
+        }
+
+        // Simétrico para la salida: cada salida (ruta) registra UN solo odómetro de salida. Sin ruta no hay
+        // tope (lecturas históricas y las del registro de salidas de flota no llevan ruta).
+        if ($routeId !== null && $source === OdometerSource::Departure
+            && $this->readings->existsForRouteAndSource($routeId, OdometerSource::Departure)) {
+            throw DepartureAlreadyRecorded::forRoute($routeId);
         }
 
         $reading = OdometerReading::record(

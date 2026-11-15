@@ -64,6 +64,11 @@ final class EloquentVehicleRouteRepository implements VehicleRouteRepository
             ->with('stops')
             ->where('vehicle_id', $vehicleId)
             ->where('route_date', $date->toString())
+            // Un camión puede tener VARIAS rutas el mismo día (una por salida). Manda la que está abierta;
+            // si no hay ninguna abierta, la más reciente.
+            ->orderByRaw("CASE WHEN status IN ('PLANNED', 'IN_PROGRESS', 'SUSPENDED') THEN 0 ELSE 1 END")
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->first();
 
         return $record === null ? null : $this->mapper->toDomain($record);

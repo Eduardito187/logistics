@@ -20,9 +20,9 @@ use Throwable;
  * (`execution.shipment_dropped_at_store`), le avisa al cliente que su pedido llegó y puede pasar a recogerlo
  * (tipo de mensaje «listo para recojo»). Decisión del dueño: el aviso lo dispara la entrega del chofer.
  *
- * De respaldo también escucha la conciliación de la recepción en la tienda
- * (`execution.node_reception_reconciled`): si el chofer no registró su paso, el cliente igual se entera. No
- * se duplica: el aviso es uno por pedido.
+ * Es el ÚNICO disparador. Si el chofer no registró su paso y la tienda concilia la recepción, execution
+ * registra la entrega en tienda por él (StoreDropOnReceptionReconciled) y emite este mismo hecho: el cliente
+ * igual se entera, por el mismo camino.
  *
  * Solo aplica a un pedido de cliente con retiro en tienda (`delivery_mode = store_pickup`) en SU tienda
  * destino: un traspaso interno o un nodo de paso no avisan. Un aviso por pedido:
@@ -31,7 +31,7 @@ use Throwable;
  */
 final readonly class ReadyForPickupNotificationDispatcher implements MessageDispatcher
 {
-    private const EVENTS = ['execution.shipment_dropped_at_store', 'execution.node_reception_reconciled'];
+    private const EVENT = 'execution.shipment_dropped_at_store';
 
     private const STORE_PICKUP = 'store_pickup';
 
@@ -43,7 +43,7 @@ final readonly class ReadyForPickupNotificationDispatcher implements MessageDisp
 
     public function dispatch(OutboxMessage $message): void
     {
-        if (!in_array($message->eventName(), self::EVENTS, true)) {
+        if ($message->eventName() !== self::EVENT) {
             return;
         }
 

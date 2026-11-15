@@ -6,6 +6,7 @@ namespace Database\Seeders;
 
 use App\Enums\Role;
 use App\Models\User;
+use App\Support\Staff\StaffCity;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
@@ -34,6 +35,7 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Labels\Application\Command\EmitShipmentLabels\EmitShipmentLabels;
 use Logistics\Labels\Application\Dto\OrderLineInput;
 use Logistics\Labels\Infrastructure\Persistence\Eloquent\EmittedLabelRecord;
+use Logistics\Network\Domain\ValueObject\Department;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Planning\Domain\Contract\PlanRepository;
 use Logistics\Planning\Domain\Contract\RouteGeometryProvider;
@@ -264,7 +266,7 @@ final class TodayScenarioSeeder extends Seeder
 
     /**
      * Garantiza las cuentas de prueba por rol. Si ya existen, asegura rol, contraseña conocida y vínculos
-     * (chofer → conductor de flota habilitado para el camión; tienda → nodo T-SCZ-01).
+     * (chofer → conductor de flota habilitado para el camión; tienda → nodo T-SCZ-01) y la ciudad de cada una.
      *
      * @return array<string, User>
      */
@@ -273,6 +275,8 @@ final class TodayScenarioSeeder extends Seeder
         $accounts = [
             'chofer' => ['Chofer Santa Cruz', Role::Chofer],
             'preparador' => ['Preparador CD Santa Cruz', Role::Preparador],
+            // Segundo preparador, de OTRA ciudad: sirve para probar que cada uno solo prepara lo de la suya.
+            'preparador.lp' => ['Preparador CD La Paz', Role::Preparador],
             'tienda' => ['Tienda Santa Cruz Norte', Role::Tienda],
             'transportista' => ['Transportista Externo', Role::Transportista],
             'supervisor' => ['Supervisor Santa Cruz', Role::Supervisor],
@@ -315,7 +319,39 @@ final class TodayScenarioSeeder extends Seeder
             $tienda->save();
         }
 
+        $this->ensureCities($users, $storeNodeId, $vehicleId);
+
         return $users;
+    }
+
+    /**
+     * Ciudad (departamento) de cada cuenta de prueba, coherente con su nodo o su vehículo: la tienda toma la
+     * de su nodo, el chofer la de la base de su camión y el resto la del CD del escenario (Santa Cruz),
+     * salvo el segundo preparador, que es de La Paz. Solo escribe si el valor cambia.
+     *
+     * @param array<string, User> $users
+     */
+    private function ensureCities(array $users, string $storeNodeId, string $vehicleId): void
+    {
+        $scenarioCity = Department::SantaCruz->value;
+        $baseNodeId = VehicleModel::query()->where('id', $vehicleId)->value('home_base_node_id');
+
+        $cities = [
+            'chofer' => StaffCity::ofNode(is_string($baseNodeId) ? $baseNodeId : null) ?? $scenarioCity,
+            'preparador' => $scenarioCity,
+            'preparador.lp' => Department::LaPaz->value,
+            'tienda' => StaffCity::ofNode($storeNodeId) ?? $scenarioCity,
+            'transportista' => $scenarioCity,
+            'supervisor' => $scenarioCity,
+        ];
+
+        foreach ($cities as $key => $city) {
+            $user = $users[$key] ?? null;
+            if ($user !== null && $user->city !== $city) {
+                $user->city = $city;
+                $user->save();
+            }
+        }
     }
 
     // ---------------------------------------------------------------------------------------------

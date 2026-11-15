@@ -44,6 +44,9 @@ final readonly class ShipmentView
         // lado de lectura (ver DeliveryMode). Null = no enriquecida: toArray() la infiere solo cuando no
         // hay nodo destino (domicilio seguro); con nodo y sin enriquecer se serializa null.
         public ?string $deliveryMode = null,
+        // Origen y departamentos (alcance por ciudad): enriquecimiento del lado de lectura. Null = no
+        // enriquecido (no se serializa), igual que `progress`.
+        public ?ShipmentOriginView $origin = null,
     ) {}
 
     /**
@@ -51,7 +54,7 @@ final readonly class ShipmentView
      */
     public function withProgress(ShipmentProgressView $progress): self
     {
-        return $this->copy($progress, $this->deliveryMode);
+        return $this->copy($progress, $this->deliveryMode, $this->origin);
     }
 
     /**
@@ -59,10 +62,18 @@ final readonly class ShipmentView
      */
     public function withDeliveryMode(DeliveryMode $deliveryMode): self
     {
-        return $this->copy($this->progress, $deliveryMode->value);
+        return $this->copy($this->progress, $deliveryMode->value, $this->origin);
     }
 
-    private function copy(?ShipmentProgressView $progress, ?string $deliveryMode): self
+    /**
+     * Copia de la vista con su origen y sus departamentos adjuntos (la vista es inmutable).
+     */
+    public function withOrigin(ShipmentOriginView $origin): self
+    {
+        return $this->copy($this->progress, $this->deliveryMode, $origin);
+    }
+
+    private function copy(?ShipmentProgressView $progress, ?string $deliveryMode, ?ShipmentOriginView $origin): self
     {
         return new self(
             $this->id,
@@ -86,6 +97,7 @@ final readonly class ShipmentView
             $this->lines,
             $progress,
             $deliveryMode,
+            $origin,
         );
     }
 
@@ -253,6 +265,11 @@ final readonly class ShipmentView
         // respuestas que comparten esta vista.
         if ($this->progress !== null) {
             $data['progress'] = $this->progress->toArray();
+        }
+
+        // Aditivo: nodo de origen legible y departamentos de origen y destino, cuando la consulta los adjuntó.
+        if ($this->origin !== null) {
+            $data = [...$data, ...$this->origin->toArray()];
         }
 
         return $data;

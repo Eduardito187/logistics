@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\App\TwoFactorController;
 use App\Models\Device;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
+use App\Support\Staff\StaffCity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 
@@ -127,6 +128,9 @@ trait IssuesDeviceTokens
      */
     protected function profile(User $user): array
     {
+        $city = $user->getAttribute('city');
+        $city = is_string($city) ? $city : null;
+
         return [
             'id' => $user->getKey(),
             'name' => $user->name,
@@ -134,6 +138,10 @@ trait IssuesDeviceTokens
             'roles' => array_map(static fn ($role): string => $role->value, $user->roles()),
             // Nodo de tienda al que pertenece la cuenta (o null para roles sin tienda).
             'node' => $user->assignedNode(),
+            // Ciudad (departamento) de la persona: código del catálogo y su nombre legible; null si no
+            // tiene ciudad asignada. Es lo que acota qué pedidos lista y opera su rol.
+            'city' => StaffCity::code($city),
+            'city_name' => StaffCity::name($city),
             // Transportista al que pertenece la cuenta (identidad server-side del rol transportista;
             // null para el resto de roles). La app lo lee de aquí y deja de elegir "quién soy".
             'carrier' => $user->assignedCarrier(),

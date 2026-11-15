@@ -96,6 +96,10 @@ final class DbShipmentListReader implements ShipmentListReader
     {
         $query = ShipmentRecord::query();
 
+        // Conjunto cerrado de envíos (consulta de pedidos): whereIn sobre la PK.
+        if ($filter->shipmentIds !== null) {
+            $query->whereIn('id', $filter->shipmentIds);
+        }
         if ($filter->status !== null) {
             $query->where('status', $filter->status);
         }
@@ -135,6 +139,19 @@ final class DbShipmentListReader implements ShipmentListReader
         // Solo los que ya están en la tienda listos para retirar.
         if ($filter->readyForPickup) {
             ShipmentSqlFilters::readyForPickup($query->getQuery());
+        }
+        // Ciudad (texto en la dirección o en el nodo destino).
+        if ($filter->city !== null && trim($filter->city) !== '') {
+            ShipmentSqlFilters::city($query->getQuery(), $filter->city);
+        }
+        // Asignados a un vehículo.
+        if ($filter->vehicleId !== null && $filter->vehicleId !== '') {
+            ShipmentSqlFilters::assignedToVehicle($query->getQuery(), $filter->vehicleId);
+        }
+
+        // Alcance por rol de quien lista (regla única: ShipmentSqlFilters::scope).
+        if ($filter->scope !== null) {
+            ShipmentSqlFilters::scope($query->getQuery(), $filter->scope);
         }
 
         return $query;

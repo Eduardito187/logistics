@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Logistics\Network\Presentation\Http\Controller\DeactivateNodeController;
 use Logistics\Network\Presentation\Http\Controller\DefineLegController;
+use Logistics\Network\Presentation\Http\Controller\IndexCityController;
 use Logistics\Network\Presentation\Http\Controller\IndexLegController;
 use Logistics\Network\Presentation\Http\Controller\IndexNodeController;
 use Logistics\Network\Presentation\Http\Controller\IndexOperationalCorridorController;
@@ -28,6 +29,8 @@ return [
         Route::get('network/legs', IndexLegController::class)->name('network.legs.index');
         Route::get('network/legs/{leg}', ShowLegController::class)->name('network.legs.show');
         Route::get('network/corridors', IndexOperationalCorridorController::class)->name('network.corridors.index');
+        // Catálogo de ciudades (los nueve departamentos y su almacén central): cualquier rol de la app.
+        Route::get('network/cities', IndexCityController::class)->name('network.cities.index');
     },
 
     // Puerta integrations — datos maestros desde SAP (credenciales de servicio).

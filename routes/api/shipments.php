@@ -8,7 +8,9 @@ use Logistics\Shipments\Presentation\Http\Controller\GeocodeShipmentAddressContr
 use Logistics\Shipments\Presentation\Http\Controller\ImportShipmentsController;
 use Logistics\Shipments\Presentation\Http\Controller\ListLowConfidenceAddressesController;
 use Logistics\Shipments\Presentation\Http\Controller\ListShipmentsController;
+use Logistics\Shipments\Presentation\Http\Controller\LookupOrdersController;
 use Logistics\Shipments\Presentation\Http\Controller\ReceiveShipmentController;
+use Logistics\Shipments\Presentation\Http\Controller\RescheduleShipmentsController;
 use Logistics\Shipments\Presentation\Http\Controller\ShipmentSummaryController;
 use Logistics\Shipments\Presentation\Http\Controller\ShowShipmentController;
 
@@ -39,9 +41,27 @@ return [
             Route::get('shipments/summary', ShipmentSummaryController::class)->name('summary');
             Route::get('shipments/low-confidence-addresses', ListLowConfidenceAddressesController::class)
                 ->name('low-confidence-addresses');
+            // Reprogramación (uno, varios, por camión o por ciudad). La vista previa la ven admin y
+            // supervisor; APLICAR es solo de admin. Antes de {shipment} para que no se tome como id.
+            Route::post('shipments/reschedule/preview', [RescheduleShipmentsController::class, 'preview'])
+                ->middleware('role:supervisor,admin')
+                ->name('reschedule.preview');
+            Route::post('shipments/reschedule', [RescheduleShipmentsController::class, 'apply'])
+                ->middleware('role:admin')
+                ->name('reschedule.apply');
             Route::get('shipments/{shipment}', ShowShipmentController::class)->name('show');
-            Route::post('shipments/{shipment}/geocode', GeocodeShipmentAddressController::class)->name('geocode');
+            Route::post('shipments/{shipment}/geocode', GeocodeShipmentAddressController::class)
+                ->middleware('order.scope')
+                ->name('geocode');
         });
+
+        // Consulta ABIERTA de pedidos por código o etiqueta: solo lectura, cualquier rol autenticado de la
+        // app y SIN alcance por rol (a propósito no lleva middleware `role:`).
+        Route::get('orders/lookup', LookupOrdersController::class)->name('orders.lookup');
+
+        // Las escrituras de operación de un pedido o un envío (acá, en etiquetas y en ejecución) llevan el
+        // middleware `order.scope`: 403 con `code` propio si no es del alcance del usuario (su ciudad, su
+        // tienda o su asignación). Las lecturas de consulta de arriba quedan abiertas a propósito.
 
         // KPIs operativos del día (chofer / supervisor / tienda), alcance por rol server-side.
         Route::get('kpis/daily', DailyKpisController::class)->name('kpis.daily');

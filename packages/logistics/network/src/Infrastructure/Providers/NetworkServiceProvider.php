@@ -16,10 +16,13 @@ use Logistics\Network\Application\Command\RegisterReceivingDock\RegisterReceivin
 use Logistics\Network\Application\Command\RegisterReceivingDock\RegisterReceivingDockHandler;
 use Logistics\Network\Application\Command\RemoveLeg\RemoveLegCommand;
 use Logistics\Network\Application\Command\RemoveLeg\RemoveLegHandler;
+use Logistics\Network\Application\Contract\CityCatalogReader;
 use Logistics\Network\Application\Query\FindLeg\FindLegHandler;
 use Logistics\Network\Application\Query\FindLeg\FindLegQuery;
 use Logistics\Network\Application\Query\FindNode\FindNodeHandler;
 use Logistics\Network\Application\Query\FindNode\FindNodeQuery;
+use Logistics\Network\Application\Query\ListCities\ListCitiesHandler;
+use Logistics\Network\Application\Query\ListCities\ListCitiesQuery;
 use Logistics\Network\Application\Query\ListLegs\ListLegsHandler;
 use Logistics\Network\Application\Query\ListLegs\ListLegsQuery;
 use Logistics\Network\Application\Query\ListNodes\ListNodesHandler;
@@ -36,6 +39,7 @@ use Logistics\Network\Infrastructure\Cache\CachingNodeRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentLegRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentNodeRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentReceivingDockRepository;
+use Logistics\Network\Infrastructure\ReadModel\DbCityCatalogReader;
 use Logistics\Shared\Application\HandlerRegistry;
 
 /**
@@ -65,6 +69,9 @@ final class NetworkServiceProvider extends ServiceProvider
             );
         });
         $this->app->bind(ReceivingDockRepository::class, EloquentReceivingDockRepository::class);
+
+        // Catálogo de ciudades (departamentos + almacén central): lectura directa por query builder.
+        $this->app->bind(CityCatalogReader::class, DbCityCatalogReader::class);
     }
 
     public function boot(): void
@@ -94,5 +101,8 @@ final class NetworkServiceProvider extends ServiceProvider
         // Andenes de recepción de almacenes centrales (marketplace/inbound).
         $registry->register(RegisterReceivingDockCommand::class, RegisterReceivingDockHandler::class);
         $registry->register(ListReceivingDocksQuery::class, ListReceivingDocksHandler::class);
+
+        // Catálogo de ciudades para la app (elegir la ciudad de una persona, saber cuáles tienen almacén central).
+        $registry->register(ListCitiesQuery::class, ListCitiesHandler::class);
     }
 }

@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use Logistics\Execution\Application\Command\RecordProofOfDelivery\RecordProofOfDelivery;
 use Logistics\Execution\Application\Command\RecordStoreDrop\RecordStoreDrop;
 use Logistics\Execution\Application\Query\ListDeliveriesByVehicle\ListDeliveriesByVehicle;
+use Logistics\Execution\Infrastructure\Outbox\StoreDropOnReceptionReconciled;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\DeliveryRecord;
 use Logistics\Notifications\Infrastructure\Dispatch\ReadyForPickupNotificationDispatcher;
 use Logistics\Outbox\Domain\OutboxMessage;
@@ -142,4 +143,35 @@ it('después la tienda lo entrega en el mostrador y recién ahí queda entregado
 
     expect($delivery->status)->toBe('DELIVERED')
         ->and($delivery->getAttribute('store_dropped_at'))->not->toBeNull();
+});
+
+it('si el chofer no cerró su parada, la conciliación de la tienda registra la entrega en tienda', function (): void {
+    [$shipmentId, $storeId] = sdtPickupOnTruck();
+    $reactor = app(StoreDropOnReceptionReconciled::class);
+
+    $reconciled = static fn (string $nodeId): OutboxMessage => OutboxMessage::restore(
+        OutboxMessageId::generate(),
+        Uuid::generate(),
+        'execution.node_reception',
+        (string) Str::uuid7(),
+        'execution.node_reception_reconciled',
+        ['shipment_id' => $shipmentId, 'destination_node_id' => $nodeId, 'complete' => true],
+        OutboxStatus::Pending,
+        0,
+        new DateTimeImmutable,
+        new DateTimeImmutable,
+        null,
+        null,
+    );
+
+    // Recepción en un nodo de paso: no es la llegada a su tienda.
+    $reactor->dispatch($reconciled((string) Str::uuid7()));
+    expect(DeliveryRecord::query()->where('shipment_id', $shipmentId)->firstOrFail()->getAttribute('store_dropped_at'))->toBeNull();
+
+    // En su tienda destino: queda registrada una sola vez, aunque el outbox reentregue.
+    $reactor->dispatch($reconciled($storeId));
+    $reactor->dispatch($reconciled($storeId));
+
+    expect(DeliveryRecord::query()->where('shipment_id', $shipmentId)->firstOrFail()->getAttribute('store_drop_node_id'))->toBe($storeId)
+        ->and(DB::table('outbox_messages')->where('event_name', 'execution.shipment_dropped_at_store')->where('payload->shipment_id', $shipmentId)->count())->toBe(1);
 });
