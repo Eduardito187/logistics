@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Http\Controllers\Api\V1\App\AuthController;
 use App\Http\Controllers\Api\V1\App\DeviceController;
 use App\Http\Controllers\Api\V1\App\PasswordResetController;
+use App\Http\Controllers\Api\V1\App\StaffBroadcastController;
+use App\Http\Controllers\Api\V1\App\StaffController;
 use App\Http\Controllers\Api\V1\App\TwoFactorController;
 use App\Http\Middleware\AuthenticateChannel;
 use App\Http\Middleware\AuthenticateServiceClient;
@@ -68,6 +70,30 @@ Route::prefix('v1/app')->name('api.v1.app.')->group(function (): void {
         Route::put('devices/current/push-token', [DeviceController::class, 'updatePushToken'])
             ->name('devices.push-token.update');
         Route::delete('devices/{uuid}', [DeviceController::class, 'revoke'])->name('devices.revoke');
+
+        // Avisos INTERNOS al personal: enviar es solo de admin; ver los enviados, admin y supervisor.
+        Route::post('broadcasts', [StaffBroadcastController::class, 'send'])
+            ->middleware('role:admin')->name('broadcasts.send');
+        Route::get('broadcasts', [StaffBroadcastController::class, 'sent'])
+            ->middleware('role:supervisor,admin')->name('broadcasts.sent');
+        // Bandeja propia de avisos internos (cualquier rol).
+        Route::get('inbox', [StaffBroadcastController::class, 'inbox'])->name('inbox.index');
+        Route::post('inbox/read-all', [StaffBroadcastController::class, 'readAll'])->name('inbox.read-all');
+        Route::post('inbox/{broadcastId}/read', [StaffBroadcastController::class, 'read'])
+            ->whereUuid('broadcastId')->name('inbox.read');
+
+        // Ficha del PERSONAL (cualquier rol, una sola vista): solo admin y supervisor.
+        Route::prefix('staff')->name('staff.')->middleware('role:supervisor,admin')->group(function (): void {
+            Route::get('/', [StaffController::class, 'index'])->name('index');
+            Route::get('{userId}', [StaffController::class, 'show'])->whereNumber('userId')->name('show');
+            Route::get('{userId}/documents', [StaffController::class, 'documents'])->whereNumber('userId')->name('documents.index');
+            Route::post('{userId}/documents', [StaffController::class, 'storeDocument'])->whereNumber('userId')->name('documents.store');
+            Route::get('{userId}/activity', [StaffController::class, 'activity'])->whereNumber('userId')->name('activity');
+            Route::get('{userId}/photos', [StaffController::class, 'photos'])->whereNumber('userId')->name('photos');
+            Route::put('{userId}/node', [StaffController::class, 'assignNode'])->whereNumber('userId')->name('node.assign');
+            Route::put('{userId}/profile', [StaffController::class, 'updateProfile'])->whereNumber('userId')->name('profile.update');
+            Route::post('{userId}/photo', [StaffController::class, 'uploadPhoto'])->whereNumber('userId')->name('photo.upload');
+        });
     });
 });
 

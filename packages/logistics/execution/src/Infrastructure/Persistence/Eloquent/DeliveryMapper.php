@@ -12,6 +12,8 @@ use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
 use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
+use Logistics\Execution\Domain\ValueObject\MissingUnitDeclaration;
+use Logistics\Execution\Domain\ValueObject\MissingUnitReason;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
 use Logistics\Execution\Domain\ValueObject\ScanEventId;
 use Logistics\Execution\Domain\ValueObject\ScanType;
@@ -30,7 +32,7 @@ final class DeliveryMapper
     {
         $proof = $delivery->proofOfDelivery();
 
-        return [
+        $row = [
             'id' => $delivery->id()->toString(),
             'shipment_id' => $delivery->shipmentId(),
             // Entrega de mostrador (retiro en tienda): sin vehículo se guarda NULL.
@@ -52,6 +54,18 @@ final class DeliveryMapper
             'store_drop_node_id' => $delivery->storeDropNodeId(),
             'store_drop_photo_path' => $delivery->storeDropPhotoPath(),
         ];
+
+        // Faltantes de la entrega en tienda: la columna solo se escribe cuando el chofer declaró alguno, así
+        // el guardado de siempre no depende de ella.
+        $missing = $delivery->storeDropMissingUnits();
+        if ($missing !== []) {
+            $row['store_drop_missing_units'] = array_map(
+                static fn (MissingUnitDeclaration $declaration): array => $declaration->toArray(),
+                $missing,
+            );
+        }
+
+        return $row;
     }
 
     /**
@@ -125,6 +139,7 @@ final class DeliveryMapper
             is_string($droppedAt) && $droppedAt !== '' ? new DateTimeImmutable($droppedAt) : null,
             is_string($dropNode) && $dropNode !== '' ? $dropNode : null,
             is_string($dropPhoto) && $dropPhoto !== '' ? $dropPhoto : null,
+            self::missingUnits($record->getAttribute('store_drop_missing_units')),
         );
 
         return $delivery;
@@ -145,5 +160,32 @@ final class DeliveryMapper
             $record->accuracy_m !== null ? (float) $record->accuracy_m : null,
             $record->location_captured_at !== null ? new DateTimeImmutable($record->location_captured_at) : null,
         );
+    }
+
+    /**
+     * Faltantes de la entrega en tienda desde su columna JSON. Tolerante: ignora lo que no tenga forma válida
+     * (y la columna ausente, si la migración todavía no corrió).
+     *
+     * @return list<MissingUnitDeclaration>
+     */
+    private static function missingUnits(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true);
+        }
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $declared = [];
+        foreach ($raw as $item) {
+            $unitId = is_array($item) ? ($item['unit_id'] ?? null) : null;
+            $reason = is_array($item) && is_string($item['reason'] ?? null) ? MissingUnitReason::tryFrom($item['reason']) : null;
+            if (is_string($unitId) && trim($unitId) !== '' && $reason !== null) {
+                $declared[] = MissingUnitDeclaration::of($unitId, $reason);
+            }
+        }
+
+        return $declared;
     }
 }

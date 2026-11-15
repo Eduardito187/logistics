@@ -55,6 +55,7 @@ final class DeliveryRecord extends Model
     protected $casts = [
         'pod_photo_paths' => 'array',
         'pod_evidence_ids' => 'array',
+        'store_drop_missing_units' => 'array',
     ];
 
     /**

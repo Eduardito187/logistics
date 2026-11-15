@@ -124,7 +124,7 @@ it('rechaza con 403 a una tienda sobre un envío de otro nodo', function (): voi
 
     test()->postJson('/api/v1/app/deliveries/proof-of-delivery', podScopeBody($shipment, $unit))
         ->assertStatus(403)
-        ->assertJsonPath('code', 'forbidden');
+        ->assertJsonPath('code', 'out_of_scope_node');
 });
 
 it('rechaza con 403 a una tienda sobre un envío sin nodo destino', function (): void {
@@ -138,5 +138,5 @@ it('rechaza con 403 a una tienda sobre un envío sin nodo destino', function ():
 
     test()->postJson('/api/v1/app/deliveries/proof-of-delivery', podScopeBody($shipment, $unit))
         ->assertStatus(403)
-        ->assertJsonPath('code', 'forbidden');
+        ->assertJsonPath('code', 'out_of_scope_node');
 });

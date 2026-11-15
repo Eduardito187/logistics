@@ -9,6 +9,7 @@ use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
+use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
 use Logistics\Shipments\Application\Query\ShipmentListSupport;
 use Logistics\Shipments\Application\ReadModel\ShipmentListFilter;
 use Logistics\Shipments\Application\ReadModel\ShipmentPage;
@@ -27,6 +28,7 @@ final class ListShipmentsByCursorHandler implements QueryHandler
         private readonly ShipmentListReader $reader,
         private readonly ShipmentProgressReader $progress,
         private readonly DeliveryModeReader $deliveryModes,
+        private readonly ShipmentScopeReader $scope,
     ) {}
 
     public function handle(Query $query): ShipmentPage
@@ -55,11 +57,15 @@ final class ListShipmentsByCursorHandler implements QueryHandler
                 pendingPreparation: $query->pendingPreparation,
                 search: $query->search,
                 readyForPickup: $query->readyForPickup,
+                city: $query->city,
+                vehicleId: $query->vehicleId,
+                scope: $query->scope,
             ),
         );
 
         // Avance operativo de la página entera en lote (mismo enriquecimiento que el listado por offset).
         $items = ShipmentListSupport::withDeliveryMode(ShipmentListSupport::withProgress($page->items, $this->progress), $this->deliveryModes);
+        $items = ShipmentListSupport::withOrigin($items, $this->scope);
 
         return new ShipmentPage($items, $page->nextCursor);
     }

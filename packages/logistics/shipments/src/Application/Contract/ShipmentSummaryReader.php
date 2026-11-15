@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Shipments\Application\Contract;
 
 use Logistics\Shipments\Application\ReadModel\ShipmentSummaryView;
+use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
 
 /**
  * Lado de LECTURA agregado de envíos (CQRS): resumen de tablero y conteos por estado, con agregados SQL
@@ -29,7 +30,8 @@ interface ShipmentSummaryReader
 
     /**
      * Cantidad de envíos por estado (todos los estados, con 0) para los filtros dados (sin filtro de
-     * estado: sirve para las pestañas del listado).
+     * estado: sirve para las pestañas del listado). `$scope` acota el conteo al alcance por rol de quien
+     * lista (null = sin alcance).
      *
      * @return array<string, int>
      */
@@ -39,5 +41,6 @@ interface ShipmentSummaryReader
         ?string $deliveryDateFrom,
         ?string $deliveryDateTo,
         ?string $deliveryMode,
+        ?ShipmentScopeActor $scope = null,
     ): array;
 }

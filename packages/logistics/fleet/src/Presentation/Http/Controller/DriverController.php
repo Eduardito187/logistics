@@ -35,6 +35,8 @@ final readonly class DriverController
     {
         $validated = $request->validate([
             'only_active' => ['sometimes', 'boolean'],
+            // Búsqueda por nombre, licencia, documento o teléfono.
+            'q' => ['sometimes', 'nullable', 'string', 'max:60'],
         ]);
 
         $onlyActive = array_key_exists('only_active', $validated)
@@ -44,10 +46,11 @@ final readonly class DriverController
         /** @var list<DriverView> $drivers */
         $drivers = $this->queryBus->ask(new ListDrivers($onlyActive));
 
-        return $this->respondCollection(array_map(
-            static fn (DriverView $view): array => $view->toArray(),
-            $drivers,
-        ));
+        return $this->respondSearchable(
+            $request,
+            array_map(static fn (DriverView $view): array => $view->toArray(), $drivers),
+            ['name', 'license_number', 'national_id', 'phone_primary'],
+        );
     }
 
     /**

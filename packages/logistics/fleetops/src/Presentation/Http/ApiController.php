@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\FleetOps\Presentation\Http;
 
 use Illuminate\Http\JsonResponse;
+use Logistics\FleetOps\Domain\Exception\DepartureAlreadyRecorded;
 use Logistics\FleetOps\Domain\Exception\RouteAlreadyClosed;
 use Logistics\Shared\Domain\Exception\DomainException;
 use Throwable;
@@ -70,7 +71,7 @@ abstract class ApiController
 
     /**
      * Ejecuta la acción y traduce las excepciones de dominio a 422 (regla de negocio violada); cerrar dos
-     * veces la misma ruta responde 409.
+     * veces la misma ruta, o registrar dos veces su odómetro de salida, responde 409.
      *
      * @param callable(): JsonResponse $action
      */
@@ -81,6 +82,9 @@ abstract class ApiController
         } catch (RouteAlreadyClosed $e) {
             // Conflicto con el estado actual (la ruta ya se cerró), no un dato inválido.
             return $this->error('route_already_closed', $e->getMessage(), 409);
+        } catch (DepartureAlreadyRecorded $e) {
+            // Simétrico: la salida (ruta) ya registró su odómetro de salida.
+            return $this->error('departure_already_recorded', $e->getMessage(), 409);
         } catch (DomainException $e) {
             return $this->error('domain_rule_violation', $e->getMessage(), 422);
         } catch (Throwable $e) {

@@ -151,4 +151,29 @@ return [
         'ttl' => (int) env('SHIPMENTS_READ_CACHE_TTL', 45),
         'store' => env('SHIPMENTS_READ_CACHE_STORE'),
     ],
+
+    // Alcance por rol (ciudad / tienda / asignación) de los envíos en la puerta app.
+    'scope' => [
+        // Cuentas de chofer o transportista SIN vínculo (users.driver_id / users.carrier_id vacío): por
+        // defecto NO quedan acotadas, igual que un usuario sin ciudad, para no dejar sin operar a las cuentas
+        // existentes el día del despliegue. En true quedan sin ningún envío hasta que se las vincule.
+        'strict_unlinked' => (bool) env('SHIPMENTS_SCOPE_STRICT_UNLINKED', false),
+
+        // Origen del envío cuando la fuente no lo informa: misma regla y mismos valores que las etiquetas
+        // (config `logistics-labels.origin`), replicados acá para no depender de ese contexto.
+        'origin' => [
+            // Tipos de nodo desde los que se prepara un pedido.
+            'node_types' => ['distribution_center', 'central_warehouse'],
+            // Centro de distribución por defecto cuando nada más resuelve.
+            'default_node_code' => env('LABELS_DEFAULT_ORIGIN_NODE_CODE', 'CD-SCZ-01'),
+            // Prefijo de la referencia del pedido → departamento. El prefijo más largo gana.
+            'reference_prefixes' => [
+                'SCZ' => 'santa_cruz',
+                'LPZ' => 'la_paz',
+                'LP' => 'la_paz',
+                'CBBA' => 'cochabamba',
+                'CBB' => 'cochabamba',
+            ],
+        ],
+    ],
 ];

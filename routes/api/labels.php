@@ -28,7 +28,7 @@ return [
         // ZPL para Zebra. Las etiquetas son PERMANENTES: no se revocan ni se re-emiten con id nuevo.
         Route::prefix('orders/{orderNumber}/labels')->name('orders.labels.')->group(function (): void {
             Route::get('/', [LabelController::class, 'index'])->name('index');
-            Route::post('/', [LabelController::class, 'store'])->name('store');
+            Route::post('/', [LabelController::class, 'store'])->middleware('order.scope')->name('store');
             Route::get('zpl', [LabelController::class, 'zpl'])->name('zpl');
         });
 

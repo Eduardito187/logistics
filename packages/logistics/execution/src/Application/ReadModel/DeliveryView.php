@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Application\ReadModel;
 
 use Logistics\Execution\Domain\Model\Delivery;
+use Logistics\Execution\Domain\ValueObject\MissingUnitDeclaration;
 use Logistics\Execution\Domain\ValueObject\ScanType;
 
 /**
@@ -45,6 +46,8 @@ final readonly class DeliveryView
         // Entrega en tienda del chofer: cuándo y en qué tienda quedó el pedido (null si no aplica).
         public ?string $storeDroppedAt = null,
         public ?string $storeDropNodeId = null,
+        /** @var list<array{unit_id: string, reason: string}> productos que el chofer no pudo dejar en la tienda */
+        public array $storeDropMissingUnits = [],
     ) {}
 
     /**
@@ -80,6 +83,10 @@ final readonly class DeliveryView
             $proof !== null ? $proof->photoPaths : [],
             $delivery->storeDroppedAt()?->format(DATE_ATOM),
             $delivery->storeDropNodeId(),
+            array_map(
+                static fn (MissingUnitDeclaration $missing): array => $missing->toArray(),
+                $delivery->storeDropMissingUnits(),
+            ),
         );
     }
 
@@ -161,6 +168,8 @@ final readonly class DeliveryView
             // Entrega en tienda del chofer: el pedido quedó en la tienda, listo para que el cliente lo retire.
             'store_dropped_at' => $this->storeDroppedAt,
             'store_drop_node_id' => $this->storeDropNodeId,
+            // Productos que el chofer declaró que NO pudo dejar en la tienda, con su motivo (vacío = completo).
+            'store_drop_missing_units' => $this->storeDropMissingUnits,
             'failure_reason' => $this->failureReason,
             'scans' => array_map(static fn (ScanEventView $scan): array => $scan->toArray(), $this->scans),
         ];

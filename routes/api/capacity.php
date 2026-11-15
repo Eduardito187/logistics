@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Logistics\Capacity\Presentation\Http\Controller\ConsumeCapacityController;
 use Logistics\Capacity\Presentation\Http\Controller\DefineCapacityController;
+use Logistics\Capacity\Presentation\Http\Controller\DeliveryCalendarController;
 use Logistics\Capacity\Presentation\Http\Controller\GetAvailableCapacityController;
 use Logistics\Capacity\Presentation\Http\Controller\GetEffectiveCapacityController;
 use Logistics\Capacity\Presentation\Http\Controller\ListCapacityCalendarController;
@@ -30,6 +31,19 @@ return [
             Route::get('available', GetAvailableCapacityController::class)->name('available');
             Route::get('effective', GetEffectiveCapacityController::class)->name('effective');
             Route::get('calendar', ListCapacityCalendarController::class)->name('calendar');
+        });
+
+        // Calendario de despacho para el admin de la app: fechas de envío, bloqueos y apertura de cupos
+        // (lo mismo que la página «Dispatch calendar» del admin web). Solo admin y supervisor.
+        Route::prefix('delivery-calendar')->name('delivery-calendar.')->middleware('role:supervisor,admin')->group(function (): void {
+            Route::get('/', [DeliveryCalendarController::class, 'index'])->name('index');
+            Route::post('blocked', [DeliveryCalendarController::class, 'block'])->name('block');
+            Route::delete('blocked', [DeliveryCalendarController::class, 'unblock'])->name('unblock');
+            Route::post('open', [DeliveryCalendarController::class, 'open'])->name('open');
+            // Catálogos para armar la activación (municipios, franjas, unidades, ventanas por defecto).
+            Route::get('options', [DeliveryCalendarController::class, 'options'])->name('options');
+            // Habilita una fecha o rango con los cupos por defecto de las reglas (asíncrono).
+            Route::post('open-default', [DeliveryCalendarController::class, 'openDefault'])->name('open-default');
         });
     },
 

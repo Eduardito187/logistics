@@ -30,12 +30,17 @@ final readonly class VehicleLiveView
         public ?string $driverId = null,
         public ?string $driverName = null,
         public ?string $updatedAt = null,
+        // Sede del vehículo: nodo base, su nombre y el departamento (la "ciudad" del camión).
+        public ?string $baseNodeId = null,
+        public ?string $baseNodeName = null,
+        public ?string $city = null,
     ) {}
 
     /**
      * @param array{vehicle_id: string, lat: float, lng: float, speed_kph: float|null, heading: int|null, ignition: bool|null, moving: bool, route_id: string|null, recorded_at: DateTimeImmutable, driver_id?: string|null, updated_at?: DateTimeImmutable|null} $row
+     * @param array{node_id: string, node_name: string|null, department: string|null}|null                                                                                                                                                                        $base sede del vehículo
      */
-    public static function fromRow(array $row, ?string $plate = null, ?string $driverId = null, ?string $driverName = null): self
+    public static function fromRow(array $row, ?string $plate = null, ?string $driverId = null, ?string $driverName = null, ?array $base = null): self
     {
         $updatedAt = $row['updated_at'] ?? null;
 
@@ -53,11 +58,14 @@ final readonly class VehicleLiveView
             $driverId ?? ($row['driver_id'] ?? null),
             $driverName,
             $updatedAt?->format(DATE_ATOM),
+            $base['node_id'] ?? null,
+            $base['node_name'] ?? null,
+            $base['department'] ?? null,
         );
     }
 
     /**
-     * @return array{vehicle_id: string, lat: float, lng: float, speed_kph: float|null, heading: int|null, ignition: bool|null, moving: bool, route_id: string|null, recorded_at: string, plate: string|null, driver_id: string|null, driver_name: string|null, updated_at: string|null}
+     * @return array{vehicle_id: string, lat: float, lng: float, speed_kph: float|null, heading: int|null, ignition: bool|null, moving: bool, route_id: string|null, recorded_at: string, plate: string|null, driver_id: string|null, driver_name: string|null, updated_at: string|null, base_node_id: string|null, base_node_name: string|null, city: string|null}
      */
     public function toArray(): array
     {
@@ -73,6 +81,9 @@ final readonly class VehicleLiveView
             'recorded_at' => $this->recordedAt,
             'plate' => $this->plate,
             'driver_id' => $this->driverId,
+            'base_node_id' => $this->baseNodeId,
+            'base_node_name' => $this->baseNodeName,
+            'city' => $this->city,
             'driver_name' => $this->driverName,
             'updated_at' => $this->updatedAt,
         ];

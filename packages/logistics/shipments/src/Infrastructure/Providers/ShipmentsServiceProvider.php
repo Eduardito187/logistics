@@ -8,8 +8,10 @@ use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\Factory as HttpClient;
+use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Shared\Application\HandlerRegistry;
+use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shipments\Application\Command\AdvanceShipmentStatus\AdvanceShipmentStatus;
 use Logistics\Shipments\Application\Command\AdvanceShipmentStatus\AdvanceShipmentStatusHandler;
 use Logistics\Shipments\Application\Command\CancelShipment\CancelShipment;
@@ -27,12 +29,17 @@ use Logistics\Shipments\Application\Contract\DailyKpisReader;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
 use Logistics\Shipments\Application\Contract\MagentoOrderReader;
 use Logistics\Shipments\Application\Contract\NetworkNodeLookup;
+use Logistics\Shipments\Application\Contract\OrderLookupReader;
 use Logistics\Shipments\Application\Contract\ReturnsWarehouseResolver;
+use Logistics\Shipments\Application\Contract\ScannedLabelResolver;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
+use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
 use Logistics\Shipments\Application\Contract\ShipmentSpreadsheetParser;
 use Logistics\Shipments\Application\Contract\ShipmentSummaryReader;
 use Logistics\Shipments\Application\Measurement\LineMeasureResolver;
+use Logistics\Shipments\Application\Query\CheckShipmentScope\CheckShipmentScope;
+use Logistics\Shipments\Application\Query\CheckShipmentScope\CheckShipmentScopeHandler;
 use Logistics\Shipments\Application\Query\CountShipmentsByStatus\CountShipmentsByStatus;
 use Logistics\Shipments\Application\Query\CountShipmentsByStatus\CountShipmentsByStatusHandler;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipment;
@@ -49,10 +56,14 @@ use Logistics\Shipments\Application\Query\ListShipments\ListShipments;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipmentsHandler;
 use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByCursor;
 use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByCursorHandler;
+use Logistics\Shipments\Application\Query\LookupOrders\LookupOrders;
+use Logistics\Shipments\Application\Query\LookupOrders\LookupOrdersHandler;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
 use Logistics\Shipments\Domain\Contract\Geocoder;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
+use Logistics\Shipments\Infrastructure\Console\BackfillShipmentCityCommand;
 use Logistics\Shipments\Infrastructure\Console\BackfillShipmentLineMeasurementsCommand;
+use Logistics\Shipments\Infrastructure\Console\BackfillShipmentScopeCommand;
 use Logistics\Shipments\Infrastructure\Console\SyncShipmentStatusCommand;
 use Logistics\Shipments\Infrastructure\Geocoding\CachingGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\GeocodeScoring;
@@ -68,13 +79,17 @@ use Logistics\Shipments\Infrastructure\ReadModel\CatalogTablesMeasurementsReader
 use Logistics\Shipments\Infrastructure\ReadModel\DbDailyKpisReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbDeliveryModeReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbNetworkNodeLookup;
+use Logistics\Shipments\Infrastructure\ReadModel\DbOrderLookupReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentListReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentProgressReader;
+use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentScopeReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentSummaryReader;
 use Logistics\Shipments\Infrastructure\ReadModel\NetworkReturnsWarehouseResolver;
+use Logistics\Shipments\Infrastructure\ReadModel\QueryBusScannedLabelResolver;
 use Logistics\Shipments\Infrastructure\ReadModel\ShortReadCache;
 use Logistics\Shipments\Presentation\Console\PullMagentoOrdersCommand;
 use Logistics\Shipments\Presentation\Console\ReceiveManualShipmentCommand;
+use Logistics\Shipments\Presentation\Http\Middleware\EnsureOrderScope;
 
 /**
  * Registro del bounded context Recepción de envíos.
@@ -104,6 +119,8 @@ final class ShipmentsServiceProvider extends ServiceProvider
         GetShipmentSummary::class => GetShipmentSummaryHandler::class,
         CountShipmentsByStatus::class => CountShipmentsByStatusHandler::class,
         GetDailyKpis::class => GetDailyKpisHandler::class,
+        LookupOrders::class => LookupOrdersHandler::class,
+        CheckShipmentScope::class => CheckShipmentScopeHandler::class,
     ];
 
     public function register(): void
@@ -126,6 +143,21 @@ final class ShipmentsServiceProvider extends ServiceProvider
         // la red en solo lectura, en lote por página.
         $this->app->bind(DeliveryModeReader::class, function ($app): DeliveryModeReader {
             return new DbDeliveryModeReader($app->make(ConnectionInterface::class));
+        });
+
+        // Consulta abierta de pedidos (GET /app/orders/lookup): lectura puntual de envíos, seguimiento, rutas
+        // y red; la etiqueta escaneada se resuelve preguntándole al contexto de etiquetas por su QueryBus.
+        $this->app->bind(OrderLookupReader::class, function ($app): OrderLookupReader {
+            return new DbOrderLookupReader($app->make(ConnectionInterface::class));
+        });
+        $this->app->bind(ScannedLabelResolver::class, function ($app): ScannedLabelResolver {
+            return new QueryBusScannedLabelResolver($app->make(QueryBus::class));
+        });
+
+        // Alcance por rol (ciudad / tienda / asignación): regla única que usan el listado, `can_process` de
+        // la consulta de pedidos y la guarda de escrituras (middleware `order.scope`).
+        $this->app->bind(ShipmentScopeReader::class, function ($app): ShipmentScopeReader {
+            return new DbShipmentScopeReader($app->make(ConnectionInterface::class));
         });
 
         // Lecturas agregadas de tablero (resumen de envíos, conteo por estado, KPIs del día): SQL de solo
@@ -305,6 +337,12 @@ final class ShipmentsServiceProvider extends ServiceProvider
         // Vistas del contexto (parciales Blade del admin: mapa de entrega y pedidos del cliente).
         $this->loadViewsFrom(__DIR__.'/../../../resources/views', 'logistics-shipments');
 
+        // Guarda de alcance de las escrituras de operación: 403 con `code` propio si el pedido o el envío no
+        // es del alcance del usuario. La usan también las rutas de etiquetas y de ejecución.
+        /** @var Router $router */
+        $router = $this->app->make(Router::class);
+        $router->aliasMiddleware('order.scope', EnsureOrderScope::class);
+
         /** @var HandlerRegistry $registry */
         $registry = $this->app->make(HandlerRegistry::class);
         foreach (self::HANDLERS as $message => $handler) {
@@ -316,6 +354,8 @@ final class ShipmentsServiceProvider extends ServiceProvider
                 ReceiveManualShipmentCommand::class,
                 PullMagentoOrdersCommand::class,
                 BackfillShipmentLineMeasurementsCommand::class,
+                BackfillShipmentCityCommand::class,
+                BackfillShipmentScopeCommand::class,
                 SyncShipmentStatusCommand::class,
             ]);
         }

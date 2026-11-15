@@ -35,6 +35,11 @@ enum ErrorCode: string
     case Forbidden = 'forbidden';
     case InsufficientRole = 'insufficient_role';
     case InsufficientScope = 'insufficient_scope';
+    // Alcance de operación: el pedido se puede consultar, pero no operar (otra ciudad, otra tienda o sin
+    // esa asignación). La consulta abierta de pedidos nunca responde estos códigos.
+    case OutOfScopeCity = 'out_of_scope_city';
+    case OutOfScopeNode = 'out_of_scope_node';
+    case OutOfScopeAssignment = 'out_of_scope_assignment';
 
     // 404 / 405 — ruteo.
     case NotFound = 'not_found';
@@ -73,7 +78,8 @@ enum ErrorCode: string
         return match ($this) {
             self::BadRequest, self::InvalidIdempotencyKey => 400,
             self::Unauthenticated, self::MissingCredentials, self::InvalidCredentials, self::DeviceRevoked, self::SessionSuperseded => 401,
-            self::Forbidden, self::InsufficientRole, self::InsufficientScope => 403,
+            self::Forbidden, self::InsufficientRole, self::InsufficientScope,
+            self::OutOfScopeCity, self::OutOfScopeNode, self::OutOfScopeAssignment => 403,
             self::NotFound => 404,
             self::MethodNotAllowed => 405,
             self::Conflict, self::IdempotencyKeyInProgress, self::IdempotencyKeyReused => 409,
@@ -103,6 +109,9 @@ enum ErrorCode: string
             self::Forbidden => 'Forbidden',
             self::InsufficientRole => 'Insufficient role',
             self::InsufficientScope => 'Insufficient scope',
+            self::OutOfScopeCity => 'Out of scope city',
+            self::OutOfScopeNode => 'Out of scope node',
+            self::OutOfScopeAssignment => 'Out of scope assignment',
             self::NotFound => 'Resource not found',
             self::MethodNotAllowed => 'Method not allowed',
             self::Conflict => 'Conflict',
