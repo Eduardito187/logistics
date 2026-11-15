@@ -11,6 +11,7 @@ use Logistics\Compensation\Infrastructure\Outbox\DamageEvidenceCompensationReact
 use Logistics\Compensation\Infrastructure\Outbox\DeliveryFailedCompensationReactor;
 use Logistics\Compensation\Infrastructure\Outbox\LowRatingCompensationReactor;
 use Logistics\Execution\Infrastructure\Outbox\AssembleRouteOnPlanPublished;
+use Logistics\Execution\Infrastructure\Outbox\StoreDropOnReceptionReconciled;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
 use Logistics\FleetOps\Infrastructure\Outbox\CloseDepartureOnRouteClosed;
 use Logistics\FleetOps\Infrastructure\Outbox\OpenDepartureOnRouteStarted;
@@ -332,7 +333,9 @@ return [
         // puede pasar a recogerlo (un aviso por pedido).
         'execution.node_reception_reconciled' => [
             DomainEventNotificationDispatcher::class,
-            ReadyForPickupNotificationDispatcher::class,
+            // Si el chofer no registró su entrega en tienda, la registra el sistema: de ese único hecho
+            // (`execution.shipment_dropped_at_store`) salen el «listo para retirar» y el aviso al cliente.
+            StoreDropOnReceptionReconciled::class,
         ],
         'execution.driver_route_assembled' => [
             DomainEventNotificationDispatcher::class,

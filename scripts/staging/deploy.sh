@@ -109,6 +109,22 @@ dc exec -T app php artisan logistics:tracking:reconcile-from-execution --force \
     || echo "AVISO: el reconcile de tracking falló; el deploy sigue. Revisar logistics:tracking:reconcile-from-execution."
 endstep
 
+step "Completar la ciudad de los envíos que no la tienen (idempotente, automático)"
+# Los envíos anteriores a la columna `city` no tienen ciudad; el filtro y la reprogramación por ciudad la
+# usan. Solo toca filas con la ciudad vacía. NO bloquea el deploy si falla.
+dc exec -T app php artisan logistics:shipments:backfill-city --force \
+    || echo "AVISO: el relleno de ciudad falló; el deploy sigue. Revisar logistics:shipments:backfill-city."
+endstep
+
+step "Alcance por ciudad: origen y departamento de los envíos, ciudad del personal (idempotente, automático)"
+# El alcance por rol usa el origen y los departamentos del envío y la ciudad de cada persona. Solo completan
+# lo que está vacío. NO bloquean el deploy si fallan.
+dc exec -T app php artisan logistics:shipments:backfill-scope --force \
+    || echo "AVISO: el relleno de origen y departamento falló; el deploy sigue. Revisar logistics:shipments:backfill-scope."
+dc exec -T app php artisan logistics:staff:backfill-city --force \
+    || echo "AVISO: el relleno de ciudad del personal falló; el deploy sigue. Revisar logistics:staff:backfill-city."
+endstep
+
 step "Smoke test HTTP"
 port="$(grep -E '^STAGING_HTTP_PORT=' "$env_file" | tail -1 | cut -d= -f2)"
 port="${port:-8110}"

@@ -207,6 +207,50 @@ final readonly class CapacityRuleset
     }
 
     /**
+     * Franjas que las reglas ofrecen en algún día: las por defecto más las de los overrides por día de la
+     * semana, sin repetir y ordenadas. Es el catálogo de franjas que se le muestra a quien activa cupos.
+     *
+     * @return list<TimeSlot>
+     */
+    public function offeredWindows(): array
+    {
+        $bySlot = [];
+        foreach ([$this->defaultWindows, ...array_values($this->windowsByWeekday)] as $windows) {
+            foreach ($windows as $window) {
+                $bySlot[$window->toString()] = $window;
+            }
+        }
+        ksort($bySlot);
+
+        return array_values($bySlot);
+    }
+
+    /**
+     * Ventanas de activación por defecto: cada franja por defecto combinada con cada unidad que tiene
+     * regla de cupo, con el total que le corresponde (afinamiento por franja o total de la unidad). Es lo
+     * que se activa cuando el operador habilita una fecha "con los cupos por defecto". Las combinaciones
+     * sin cupo (sin regla o con total cero) se omiten: no abren capacidad. Lista vacía = las reglas no
+     * definen ventanas por defecto.
+     *
+     * @return list<ActivationWindow>
+     */
+    public function defaultActivationWindows(): array
+    {
+        $windows = [];
+        foreach ($this->defaultWindows as $slot) {
+            foreach ($this->units() as $unit) {
+                $total = $this->totalFor($unit, $slot);
+                if ($total === null || $total->value() <= 0.0) {
+                    continue;
+                }
+                $windows[] = ActivationWindow::of($slot, $unit, $total);
+            }
+        }
+
+        return $windows;
+    }
+
+    /**
      * @return list<int>
      */
     public function serviceDays(): array

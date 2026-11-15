@@ -74,6 +74,7 @@ return [
             // Asignar el pedido a un camión de reparto real y atarlo a la ruta de ese vehículo (andén):
             // aparece en «Mi ruta de hoy» del chofer. 422 si el vehículo no existe/no está operativo.
             Route::post('orders/{orderNumber}/vehicle', AssignOrderVehicleController::class)
+                ->middleware('order.scope')
                 ->name('orders.vehicle.assign');
 
             // Estado actual de la entrega de un envío (con sus escaneos).
@@ -82,10 +83,13 @@ return [
 
             // Escaneos de terreno (idempotentes, offline-first).
             Route::post('deliveries/scans/preparation', RecordPreparationScanController::class)
+                ->middleware('order.scope')
                 ->name('scans.preparation');
             Route::post('deliveries/scans/load', RecordLoadScanController::class)
+                ->middleware('order.scope')
                 ->name('scans.load');
             Route::post('deliveries/scans/unload', RecordUnloadScanController::class)
+                ->middleware('order.scope')
                 ->name('scans.unload');
             // Lote de escaneos de la cola offline → 207 con resultado por ítem (accepted|duplicate|rejected).
             Route::post('deliveries/scans/batch', RecordScanBatchController::class)
@@ -130,25 +134,31 @@ return [
 
             // Desenlace de la entrega.
             Route::post('deliveries/proof-of-delivery', RecordProofOfDeliveryController::class)
+                ->middleware('order.scope')
                 ->name('proof-of-delivery');
             Route::post('deliveries/failed', RecordFailedDeliveryController::class)
+                ->middleware('order.scope')
                 ->name('failed');
             // Entrega EN TIENDA del chofer: deja en la tienda un pedido que el cliente retira ahí (o un
             // traspaso). Cierra su parada; el pedido queda «listo para retirar», no entregado.
             Route::post('deliveries/{shipmentId}/store-drop', RecordStoreDropController::class)
                 ->whereUuid('shipmentId')
+                ->middleware('order.scope')
                 ->name('store-drop');
             // Cierre de la entrega por envío (POD en lote: unit_ids, una sola firma/GPS). Mismo controller.
             Route::post('deliveries/{shipmentId}/complete', RecordProofOfDeliveryController::class)
+                ->middleware('order.scope')
                 ->name('complete');
             // Llegada a la parada (geocerca o manual): persiste arrived_at (la primera gana).
             Route::post('deliveries/{shipmentId}/arrived', MarkStopArrivedController::class)
+                ->middleware('order.scope')
                 ->name('arrived');
 
             // Inconveniente de una entrega EN CURSO (no la cierra): retraso, acceso, pedido del cliente,
             // dirección poco clara u otro. Idempotente por Idempotency-Key. Deja constancia y avisa por
             // el outbox. Distinto de la entrega fallida y del incidente del camión.
             Route::post('deliveries/{shipmentId}/issues', ReportDeliveryIssueController::class)
+                ->middleware('order.scope')
                 ->name('issues.report');
 
             // Subida de fotos de evidencia (devuelve la URL para el POD). Idempotente por Idempotency-Key en

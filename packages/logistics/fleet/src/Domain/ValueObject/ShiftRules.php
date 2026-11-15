@@ -85,6 +85,11 @@ final readonly class ShiftRules
      * Valida que el turno candidato no se solape con ningún turno ya asignado a la persona y que respete
      * el descanso mínimo con todos ellos.
      *
+     * Un chofer puede salir VARIAS veces en la misma jornada (con el mismo camión o con otro): dos turnos
+     * que, juntos, caben en una sola jornada máxima son tramos de la misma jornada y no se les exige el
+     * descanso entre jornadas. Si el conjunto excede la jornada máxima, son jornadas distintas y rige el
+     * descanso mínimo.
+     *
      * @param list<WorkShift> $existing
      */
     public function ensureRestRespected(WorkShift $candidate, array $existing): void
@@ -93,10 +98,26 @@ final readonly class ShiftRules
             if ($candidate->overlaps($shift)) {
                 throw FleetException::because('El turno se solapa con otro turno de la misma persona.');
             }
+            if ($this->sameWorkday($candidate, $shift)) {
+                continue;
+            }
             if ($candidate->restMinutesTo($shift) < $this->minRestMinutes) {
                 throw FleetException::because('No se respeta el descanso mínimo entre turnos de la misma persona.');
             }
         }
+    }
+
+    /**
+     * ¿Los dos turnos son tramos de la MISMA jornada? Lo son cuando el lapso completo, desde el primer
+     * inicio hasta el último fin (con el tiempo muerto entre salidas contado como trabajo), no supera la
+     * jornada máxima. Es una comparación de instantes: no depende de la zona horaria ni del día calendario.
+     */
+    private function sameWorkday(WorkShift $a, WorkShift $b): bool
+    {
+        $start = min($a->startsAt->getTimestamp(), $b->startsAt->getTimestamp());
+        $end = max($a->endsAt->getTimestamp(), $b->endsAt->getTimestamp());
+
+        return intdiv($end - $start, 60) <= $this->maxDailyMinutes;
     }
 
     /**

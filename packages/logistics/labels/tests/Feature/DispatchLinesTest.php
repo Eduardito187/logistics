@@ -50,6 +50,7 @@ it('arma el envelope con producto, destino a domicilio, pending y no autorizado 
         ->and($line['shipment_reference'])->toBe('ORD-DL-1')
         ->and($line['authorized'])->toBeFalse()
         ->and($line['authorized_reason'])->toBe('sin plan publicado')
+        ->and($line['authorized_reason_code'])->toBe('not_assigned')
         ->and($line['label_status'])->toBe('pending')
         ->and($line['origin'])->toBe(['code' => '', 'name' => null]);
 })->skip(fn (): bool => env('DB_CONNECTION') !== 'pgsql', 'requiere PostgreSQL');

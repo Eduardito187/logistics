@@ -7,8 +7,9 @@ namespace Logistics\Labels\Application\ReadModel;
 /**
  * Una LÍNEA DE DESPACHO de una orden para la pantalla de etiquetado por producto: producto (nombre +
  * imagen servible), cantidad y bultos por unidad, origen y destino humanos (cero uuid), el envío al que
- * pertenece (shipment_id opaco para agrupar + shipment_reference legible), si está AUTORIZADA (plan
- * publicado) y el estado de su etiqueta.
+ * pertenece (shipment_id opaco para agrupar + shipment_reference legible), si está AUTORIZADA (el envío ya
+ * tiene camión: plan publicado o asignación directa) y el estado de su etiqueta. Cuando no lo está lleva el
+ * motivo legible y un código estable (`not_assigned` | `vehicle_unfit`) para que la app elija la acción.
  */
 final readonly class DispatchLineView
 {
@@ -29,6 +30,7 @@ final readonly class DispatchLineView
         public bool $authorized,
         public ?string $authorizedReason,
         public string $labelStatus,
+        public ?string $authorizedReasonCode = null,
     ) {}
 
     /**
@@ -38,7 +40,8 @@ final readonly class DispatchLineView
      *   origin: array{code: string, name: string|null},
      *   destination: array{type: string|null, name: string|null, address: string|null},
      *   shipment_id: string|null, shipment_reference: string|null,
-     *   authorized: bool, authorized_reason: string|null, label_status: string
+     *   authorized: bool, authorized_reason: string|null, authorized_reason_code: string|null,
+     *   label_status: string
      * }
      */
     public function toArray(): array
@@ -63,6 +66,7 @@ final readonly class DispatchLineView
             'shipment_reference' => $this->shipmentReference,
             'authorized' => $this->authorized,
             'authorized_reason' => $this->authorizedReason,
+            'authorized_reason_code' => $this->authorizedReasonCode,
             'label_status' => $this->labelStatus,
         ];
     }

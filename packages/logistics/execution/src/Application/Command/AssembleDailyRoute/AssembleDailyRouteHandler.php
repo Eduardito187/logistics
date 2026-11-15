@@ -12,6 +12,7 @@ use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\Model\RouteStop;
 use Logistics\Execution\Domain\Model\VehicleRoute;
 use Logistics\Execution\Domain\ValueObject\RouteDate;
+use Logistics\Execution\Domain\ValueObject\RouteStatus;
 use Logistics\Execution\Domain\ValueObject\RouteStopId;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
@@ -46,8 +47,11 @@ final class AssembleDailyRouteHandler implements CommandHandler
 
         $date = RouteDate::fromString($command->routeDate);
 
-        if ($this->routes->findByVehicleAndDate($command->vehicleId, $date) !== null) {
-            throw ExecutionException::because("ya existe una ruta para el vehículo {$command->vehicleId} el {$command->routeDate}");
+        // Una sola ruta ABIERTA por camión y día. Si la del día ya se completó, el camión puede volver a salir:
+        // se arma una ruta NUEVA (otro id), que es la segunda salida del día.
+        $existing = $this->routes->findByVehicleAndDate($command->vehicleId, $date);
+        if ($existing !== null && $existing->status() !== RouteStatus::Completed) {
+            throw ExecutionException::because("ya existe una ruta abierta para el vehículo {$command->vehicleId} el {$command->routeDate}");
         }
 
         // Contrato con la app: si el cliente NO manda paradas, el backend las ENSAMBLA desde el plan

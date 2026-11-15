@@ -46,6 +46,7 @@ final readonly class GetLiveFleetPositionsHandler implements QueryHandler
 
         $vehicleIds = array_map(static fn (array $row): string => $row['vehicle_id'], $rows);
         $plates = $this->fleet->plates($vehicleIds);
+        $bases = $this->fleet->homeBases($vehicleIds);
 
         // Chofer: el de la última lectura; si no vino, el asignado a la ruta del día del vehículo.
         $withoutDriver = array_values(array_filter(
@@ -65,7 +66,7 @@ final readonly class GetLiveFleetPositionsHandler implements QueryHandler
         $names = $this->fleet->driverNames(array_values(array_unique(array_filter($driverIds, static fn (?string $id): bool => $id !== null))));
 
         return array_map(
-            static function (array $row) use ($plates, $driverIds, $names): VehicleLiveView {
+            static function (array $row) use ($plates, $driverIds, $names, $bases): VehicleLiveView {
                 $driverId = $driverIds[$row['vehicle_id']] ?? null;
 
                 return VehicleLiveView::fromRow(
@@ -73,6 +74,7 @@ final readonly class GetLiveFleetPositionsHandler implements QueryHandler
                     $plates[$row['vehicle_id']] ?? null,
                     $driverId,
                     $driverId !== null ? ($names[$driverId] ?? null) : null,
+                    $bases[$row['vehicle_id']] ?? null,
                 );
             },
             $rows,

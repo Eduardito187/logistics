@@ -76,7 +76,7 @@ function splReconciledMessage(string $shipmentId, string $nodeId): OutboxMessage
         Uuid::generate(),
         'execution.node_reception',
         (string) Str::uuid7(),
-        'execution.node_reception_reconciled',
+        'execution.shipment_dropped_at_store',
         ['shipment_id' => $shipmentId, 'destination_node_id' => $nodeId, 'complete' => true],
         OutboxStatus::Pending,
         0,
@@ -138,4 +138,28 @@ it('avisa al cliente una sola vez cuando su pedido de retiro queda conciliado en
 
     expect($rows)->toHaveCount(1)
         ->and($rows[0]->message_type)->toBe('READY_FOR_PICKUP');
+});
+
+it('filtra por ciudad (dirección o nodo destino) y por vehículo asignado', function (): void {
+    $store = splStore();
+    DB::table('network_nodes')->where('id', $store)->update(['department' => 'Cochabamba']);
+
+    $byNode = ShipmentRecord::factory()->create(['external_id' => 'PED-SPL-CBBA', 'destination_node_id' => $store, 'address_text' => 'Av. Principal 100']);
+    $byAddress = ShipmentRecord::factory()->create(['external_id' => 'PED-SPL-SCZ', 'destination_node_id' => null, 'address_text' => 'Calle 5, Santa Cruz de la Sierra']);
+
+    $vehicleId = (string) Str::uuid7();
+    DB::table('execution_deliveries')->insert([
+        'id' => (string) Str::uuid7(),
+        'shipment_id' => $byAddress->id,
+        'vehicle_id' => $vehicleId,
+        'status' => 'LOADED',
+    ]);
+
+    $ids = static fn (array $views): array => array_map(static fn ($view): string => $view->externalId, $views);
+    $bus = app(QueryBus::class);
+
+    expect($ids($bus->ask(new ListShipments(search: 'PED-SPL-', city: 'cochabamba'))))->toBe(['PED-SPL-CBBA'])
+        ->and($ids($bus->ask(new ListShipments(search: 'PED-SPL-', city: 'santa cruz'))))->toBe(['PED-SPL-SCZ'])
+        ->and($ids($bus->ask(new ListShipments(vehicleId: $vehicleId))))->toBe(['PED-SPL-SCZ'])
+        ->and($bus->ask(new ListShipments(vehicleId: (string) Str::uuid7())))->toBe([]);
 });

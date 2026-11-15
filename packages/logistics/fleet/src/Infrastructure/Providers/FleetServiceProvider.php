@@ -17,6 +17,8 @@ use Logistics\Fleet\Application\Command\ConductPreTripChecklist\ConductPreTripCh
 use Logistics\Fleet\Application\Command\ConductPreTripChecklist\ConductPreTripChecklistHandler;
 use Logistics\Fleet\Application\Command\DefineChecklistTemplate\DefineChecklistTemplate;
 use Logistics\Fleet\Application\Command\DefineChecklistTemplate\DefineChecklistTemplateHandler;
+use Logistics\Fleet\Application\Command\DisbandCrew\DisbandCrew;
+use Logistics\Fleet\Application\Command\DisbandCrew\DisbandCrewHandler;
 use Logistics\Fleet\Application\Command\RegisterDocument\RegisterDocument;
 use Logistics\Fleet\Application\Command\RegisterDocument\RegisterDocumentHandler;
 use Logistics\Fleet\Application\Command\RegisterDriver\RegisterDriver;
@@ -33,6 +35,8 @@ use Logistics\Fleet\Application\Command\UpdateHelperProfile\UpdateHelperProfile;
 use Logistics\Fleet\Application\Command\UpdateHelperProfile\UpdateHelperProfileHandler;
 use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfile;
 use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfileHandler;
+use Logistics\Fleet\Application\Contract\CrewDirectory;
+use Logistics\Fleet\Application\Contract\DepartureRouteReader;
 use Logistics\Fleet\Application\Query\GetChecklistTemplate\GetChecklistTemplate;
 use Logistics\Fleet\Application\Query\GetChecklistTemplate\GetChecklistTemplateHandler;
 use Logistics\Fleet\Application\Query\GetDriverHistory\GetDriverHistory;
@@ -43,6 +47,8 @@ use Logistics\Fleet\Application\Query\GetMyCrew\GetMyCrew;
 use Logistics\Fleet\Application\Query\GetMyCrew\GetMyCrewHandler;
 use Logistics\Fleet\Application\Query\GetVehicleFitness\GetVehicleFitness;
 use Logistics\Fleet\Application\Query\GetVehicleFitness\GetVehicleFitnessHandler;
+use Logistics\Fleet\Application\Query\ListCrews\ListCrews;
+use Logistics\Fleet\Application\Query\ListCrews\ListCrewsHandler;
 use Logistics\Fleet\Application\Query\ListDocuments\ListDocuments;
 use Logistics\Fleet\Application\Query\ListDocuments\ListDocumentsHandler;
 use Logistics\Fleet\Application\Query\ListDrivers\ListDrivers;
@@ -77,6 +83,8 @@ use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentHelpe
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentPreTripInspectionRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentVehicleFitnessLog;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentVehicleRepository;
+use Logistics\Fleet\Infrastructure\ReadModel\DbCrewDirectory;
+use Logistics\Fleet\Infrastructure\ReadModel\DbDepartureRouteReader;
 use Logistics\Fleet\Infrastructure\Settings\SettingsDocumentExpiryPolicy;
 use Logistics\Fleet\Infrastructure\Settings\SettingsShiftRulesPolicy;
 use Logistics\Fleet\Presentation\Console\AlertExpiringDocumentsCommand;
@@ -109,6 +117,8 @@ final class FleetServiceProvider extends ServiceProvider
         UpdateHelperProfile::class => UpdateHelperProfileHandler::class,
         UpdateVehicleProfile::class => UpdateVehicleProfileHandler::class,
         AssembleCrew::class => AssembleCrewHandler::class,
+        DisbandCrew::class => DisbandCrewHandler::class,
+        ListCrews::class => ListCrewsHandler::class,
         ConductPreTripChecklist::class => ConductPreTripChecklistHandler::class,
         RegisterDocument::class => RegisterDocumentHandler::class,
         ListVehicles::class => ListVehiclesHandler::class,
@@ -136,6 +146,10 @@ final class FleetServiceProvider extends ServiceProvider
         $this->app->bind(DriverRepository::class, EloquentDriverRepository::class);
         $this->app->bind(HelperRepository::class, EloquentHelperRepository::class);
         $this->app->bind(CrewRepository::class, EloquentCrewRepository::class);
+        // Lado lectura de tripulaciones (listado con nombres y placa) + baja de la asignación.
+        $this->app->bind(CrewDirectory::class, static fn ($app): DbCrewDirectory => new DbCrewDirectory($app['db']));
+        // Salidas (rutas de reparto) del día: lectura cross-context para la tripulación vigente del chofer.
+        $this->app->bind(DepartureRouteReader::class, static fn ($app): DbDepartureRouteReader => new DbDepartureRouteReader($app['db']));
         $this->app->bind(PreTripInspectionRepository::class, EloquentPreTripInspectionRepository::class);
         $this->app->bind(FleetLabelReader::class, EloquentFleetLabelReader::class);
         $this->app->bind(DocumentRepository::class, EloquentDocumentRepository::class);

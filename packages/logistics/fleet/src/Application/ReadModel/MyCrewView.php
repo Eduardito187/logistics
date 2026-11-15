@@ -16,6 +16,10 @@ use Logistics\Fleet\Domain\Model\Vehicle;
  * El vehículo, el chofer y cada ayudante se resuelven por su id contra sus repositorios para mostrar
  * datos legibles (placa, nombre). Si alguno no se encuentra (dato maestro faltante), se deja en null:
  * la tripulación sigue siendo la que armó el admin.
+ *
+ * `routeId` / `routeStatus` identifican la SALIDA vigente (la ruta de reparto de ese camión en la fecha):
+ * el chofer puede salir varias veces el mismo día y la inspección y el odómetro van ligados a cada
+ * salida. Null cuando el camión todavía no tiene ruta armada.
  */
 final readonly class MyCrewView
 {
@@ -32,6 +36,8 @@ final readonly class MyCrewView
         public array $driver,
         public array $helpers,
         public ?array $shift,
+        public ?string $routeId = null,
+        public ?string $routeStatus = null,
     ) {}
 
     /**
@@ -44,6 +50,8 @@ final readonly class MyCrewView
         ?Vehicle $vehicle,
         ?Driver $driver,
         array $helpersById,
+        ?string $routeId = null,
+        ?string $routeStatus = null,
     ): self {
         $helpers = [];
         foreach ($crew->helperIds() as $helperId) {
@@ -77,6 +85,8 @@ final readonly class MyCrewView
             ],
             $helpers,
             $crew->shift()?->toArray(),
+            $routeId,
+            $routeId !== null ? $routeStatus : null,
         );
     }
 
@@ -86,7 +96,8 @@ final readonly class MyCrewView
      *     vehicle: array{id: string, plate: string|null, capacity_kg: int|null, capacity_m3: float|null, status: string|null}|null,
      *     driver: array{id: string, name: string|null, license_number: string|null},
      *     helpers: list<array{id: string, name: string|null}>,
-     *     shift: array{starts_at: string, ends_at: string}|null
+     *     shift: array{starts_at: string, ends_at: string}|null,
+     *     route_id: string|null, route_status: string|null
      * }
      */
     public function toArray(): array
@@ -98,6 +109,8 @@ final readonly class MyCrewView
             'driver' => $this->driver,
             'helpers' => $this->helpers,
             'shift' => $this->shift,
+            'route_id' => $this->routeId,
+            'route_status' => $this->routeStatus,
         ];
     }
 }
