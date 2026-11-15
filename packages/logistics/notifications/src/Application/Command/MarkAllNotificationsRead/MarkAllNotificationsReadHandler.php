@@ -6,6 +6,7 @@ namespace Logistics\Notifications\Application\Command\MarkAllNotificationsRead;
 
 use DateTimeImmutable;
 use Exception;
+use Logistics\Notifications\Application\Contract\NotificationFeedSignal;
 use Logistics\Notifications\Domain\Contract\NotificationReadStateRepository;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Shared\Application\Command\Command;
@@ -25,6 +26,7 @@ final class MarkAllNotificationsReadHandler implements CommandHandler
     public function __construct(
         private readonly NotificationReadStateRepository $readStates,
         private readonly Clock $clock,
+        private readonly NotificationFeedSignal $feedSignal,
     ) {}
 
     public function handle(Command $command): void
@@ -52,5 +54,8 @@ final class MarkAllNotificationsReadHandler implements CommandHandler
         }
 
         $this->readStates->markAllRead($userId, $upTo, $now);
+
+        // Señal de tiempo real solo para este usuario (sus otros dispositivos se ponen al día).
+        $this->feedSignal->readStateChanged($userId);
     }
 }

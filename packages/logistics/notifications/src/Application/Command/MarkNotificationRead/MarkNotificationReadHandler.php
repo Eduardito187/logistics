@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Application\Command\MarkNotificationRead;
 
+use Logistics\Notifications\Application\Contract\NotificationFeedSignal;
+use Logistics\Notifications\Application\Service\NotificationVisibility;
 use Logistics\Notifications\Domain\Contract\NotificationReadStateRepository;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
@@ -24,6 +26,8 @@ final class MarkNotificationReadHandler implements CommandHandler
         private readonly NotificationRepository $notifications,
         private readonly NotificationReadStateRepository $readStates,
         private readonly Clock $clock,
+        private readonly NotificationFeedSignal $feedSignal,
+        private readonly NotificationVisibility $visibility,
     ) {}
 
     public function handle(Command $command): void
@@ -38,10 +42,16 @@ final class MarkNotificationReadHandler implements CommandHandler
         }
 
         $id = NotificationId::fromString($command->notificationId);
-        if ($this->notifications->findById($id) === null) {
+        $notification = $this->notifications->findById($id);
+
+        // Fuera del alcance del usuario se responde igual que si no existiera (no se revela).
+        if ($notification === null || !$this->visibility->canSeeShipment($command->scope, $notification->shipmentId())) {
             throw NotificationsException::because("no existe la notificación {$command->notificationId}");
         }
 
         $this->readStates->markRead($id, $userId, $this->clock->now());
+
+        // Señal de tiempo real solo para este usuario (sus otros dispositivos se ponen al día).
+        $this->feedSignal->readStateChanged($userId);
     }
 }

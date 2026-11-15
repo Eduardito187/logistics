@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Notifications\Application\Query\ListNotificationsByShipment;
 
 use Logistics\Notifications\Application\ReadModel\NotificationView;
+use Logistics\Notifications\Application\Service\NotificationVisibility;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Notifications\Domain\Model\Notification;
@@ -19,6 +20,7 @@ final class ListNotificationsByShipmentHandler implements QueryHandler
 {
     public function __construct(
         private readonly NotificationRepository $notifications,
+        private readonly NotificationVisibility $visibility,
     ) {}
 
     /**
@@ -28,6 +30,11 @@ final class ListNotificationsByShipmentHandler implements QueryHandler
     {
         if (!$query instanceof ListNotificationsByShipment) {
             throw NotificationsException::because('ListNotificationsByShipmentHandler solo maneja ListNotificationsByShipment');
+        }
+
+        // Envío fuera del alcance de quien consulta: no se lista nada (ni se revela si tiene avisos).
+        if (!$this->visibility->canSeeShipment($query->scope, $query->shipmentId)) {
+            return [];
         }
 
         // Todas las notificaciones son del mismo envío: resolvemos su referencia externa una sola vez.

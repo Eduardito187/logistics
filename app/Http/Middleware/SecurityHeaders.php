@@ -63,7 +63,7 @@ final class SecurityHeaders
         $headers = $response->headers;
 
         if (!$headers->has('Content-Security-Policy')) {
-            $headers->set('Content-Security-Policy', $this->contentSecurityPolicy());
+            $headers->set('Content-Security-Policy', $this->contentSecurityPolicy($request));
         }
 
         $headers->set('X-Frame-Options', 'SAMEORIGIN');
@@ -81,7 +81,7 @@ final class SecurityHeaders
     /**
      * Arma la cabecera CSP a partir del mapa de directivas.
      */
-    private function contentSecurityPolicy(): string
+    private function contentSecurityPolicy(Request $request): string
     {
         $policy = self::CONTENT_SECURITY_POLICY;
 
@@ -93,8 +93,9 @@ final class SecurityHeaders
         }
 
         // Si el broadcasting en vivo está activo (Soketi vía protocolo Pusher), permite el WebSocket del
-        // cliente en connect-src. Solo se agrega cuando está habilitado, para no relajar la CSP de más.
-        foreach ($this->broadcastConnectOrigins() as $origin) {
+        // cliente en connect-src: el del mismo origen de la petición (y el override, si lo hay). Solo se
+        // agrega cuando está habilitado, para no relajar la CSP de más.
+        foreach ($this->broadcastConnectOrigins($request) as $origin) {
             if (!in_array($origin, $policy['connect-src'], true)) {
                 $policy['connect-src'][] = $origin;
             }
@@ -110,30 +111,46 @@ final class SecurityHeaders
 
     /**
      * Orígenes a permitir en connect-src para el WebSocket del cliente (Soketi), SOLO si el broadcasting
-     * en vivo está activo (BROADCAST_CONNECTION=pusher). Devuelve el origen ws(s):// y el http(s)://
-     * equivalentes (pusher-js usa el WebSocket y, según el entorno, una verificación HTTP). Vacío si el
-     * broadcasting está apagado.
+     * en vivo está activo (BROADCAST_CONNECTION=pusher). Vacío si está apagado.
+     *
+     * Por defecto el servidor de sockets se publica por el MISMO host y puerto que la web (nginx desvía
+     * `/app/<clave>`), así que se permite el ws(s):// del origen de la petición actual: `'self'` no cubre
+     * ws/wss en todos los navegadores. No se agrega ningún host fijo (nada de localhost:6001).
+     *
+     * Solo si `broadcasting.client_ws` trae un override explícito (VITE_PUSHER_HOST/PORT) se suma además
+     * ese origen, en ws(s):// y http(s):// (pusher-js usa el WebSocket y, según el entorno, una
+     * verificación HTTP).
      *
      * @return list<string>
      */
-    private function broadcastConnectOrigins(): array
+    private function broadcastConnectOrigins(Request $request): array
     {
         if (config('broadcasting.default') !== 'pusher') {
             return [];
         }
 
-        $host = config('broadcasting.client_ws.host');
-        $port = config('broadcasting.client_ws.port');
+        // Mismo origen de la petición. getHttpHost() e isSecure() ya respetan los proxies de confianza
+        // (X-Forwarded-Host/Port/Proto) y omiten el puerto cuando es el estándar del esquema.
+        $origins = [($request->isSecure() ? 'wss' : 'ws').'://'.$request->getHttpHost()];
+
+        // Override explícito: Soketi publicado aparte (p. ej. desarrollo con el 6001 directo).
+        $configuredHost = config('broadcasting.client_ws.host');
+        $configuredPort = config('broadcasting.client_ws.port');
         $scheme = config('broadcasting.client_ws.scheme');
-        if (!is_string($host) || $host === '' || !is_int($port)) {
-            return [];
+        $host = is_string($configuredHost) && $configuredHost !== '' ? $configuredHost : null;
+        $port = is_int($configuredPort) && $configuredPort > 0 ? $configuredPort : null;
+        if ($host === null && $port === null) {
+            return $origins;
         }
 
-        $wsScheme = $scheme === 'https' ? 'wss' : 'ws';
-        $httpScheme = $scheme === 'https' ? 'https' : 'http';
-        $authority = $host.':'.$port;
+        // Host sin fijar + puerto fijado = el host de la página en ese puerto (igual que echo.js).
+        $secure = is_string($scheme) && $scheme !== '' ? $scheme === 'https' : $request->isSecure();
+        $authority = ($host ?? $request->getHost()).($port !== null ? ':'.$port : '');
 
-        return [$wsScheme.'://'.$authority, $httpScheme.'://'.$authority];
+        $origins[] = ($secure ? 'wss' : 'ws').'://'.$authority;
+        $origins[] = ($secure ? 'https' : 'http').'://'.$authority;
+
+        return $origins;
     }
 
     /**

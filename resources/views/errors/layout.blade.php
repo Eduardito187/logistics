@@ -28,6 +28,9 @@
     $ref  = strtoupper(substr(base_convert((string) now()->timestamp, 10, 36), -6));
     $when = now()->format('d/m/Y H:i');
     $path = '/' . ltrim(request()->path(), '/');
+    // Modo estático: la página se hornea una sola vez para que la sirva el servidor web cuando la
+    // aplicación no puede responder (ver App\Support\Http\StaticErrorPages). Sin sesión, hora ni ruta.
+    $static = (bool) ($static ?? false);
 @endphp
 <!DOCTYPE html>
 <html lang="es">
@@ -350,11 +353,15 @@
 
         <div class="actions">
             {{-- CTA consciente de sesión: autenticado -> panel; invitado -> login. --}}
-            @auth
-                <a class="btn primary" href="/admin">Ir al panel</a>
+            @if ($static)
+                <a class="btn primary" href="/admin">Ir al inicio</a>
             @else
-                <a class="btn primary" href="/admin/login">Iniciar sesión</a>
-            @endauth
+                @auth
+                    <a class="btn primary" href="/admin">Ir al panel</a>
+                @else
+                    <a class="btn primary" href="/admin/login">Iniciar sesión</a>
+                @endauth
+            @endif
 
             @yield('extra-actions')
         </div>
@@ -363,9 +370,13 @@
 
 <footer>
     {{-- Referencia de soporte: solo código, hora y ruta. Sin stack ni detalles internos. --}}
-    <span>Código de referencia (para soporte): ERR-@yield('code')-{{ $ref }}</span>
-    <span>{{ $when }}</span>
-    <span>{{ $path }}</span>
+    @if ($static)
+        <span>Código de referencia (para soporte): ERR-@yield('code')</span>
+    @else
+        <span>Código de referencia (para soporte): ERR-@yield('code')-{{ $ref }}</span>
+        <span>{{ $when }}</span>
+        <span>{{ $path }}</span>
+    @endif
     <span style="color: var(--red); margin-left: auto;">DisTrack · De andén a puerta.</span>
 </footer>
 </body>

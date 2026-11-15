@@ -1,0 +1,1 @@
+{"type":"/problems/method_not_allowed","title":"Method not allowed","status":405,"code":"method_not_allowed","detail":"This method is not allowed for the requested resource.","error":{"code":"method_not_allowed","message":"This method is not allowed for the requested resource."}}

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Domain\Model;
 
+use Logistics\Planning\Domain\Event\PlanDeleted;
 use Logistics\Planning\Domain\Event\PlanProposed;
 use Logistics\Planning\Domain\Event\PlanPublished;
 use Logistics\Planning\Domain\Event\RouteReoptimized;
@@ -314,6 +315,26 @@ final class DeliveryPlan extends AggregateRoot
             $this->date->toString(),
             $this->vehicleId,
             count($this->stops),
+        ));
+    }
+
+    /**
+     * Marca el plan como BORRADO: valida que se pueda y graba PlanDeleted con los envíos que quedan
+     * liberados. Solo un plan sin publicar (borrador o propuesta) se puede borrar; un plan publicado es de
+     * solo lectura, porque la ejecución ya lo tomó.
+     *
+     * No vacía las paradas del agregado: quien lo borra de la persistencia es el repositorio, que recibe
+     * este mismo agregado (y todavía necesita su día y su camión).
+     */
+    public function delete(): void
+    {
+        $this->guardNotPublished('borrar el plan');
+
+        $this->recordEvent(new PlanDeleted(
+            $this->id->toString(),
+            $this->date->toString(),
+            $this->vehicleId,
+            array_map(static fn (PlannedStop $stop): string => $stop->shipmentId(), $this->stops),
         ));
     }
 

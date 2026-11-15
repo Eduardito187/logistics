@@ -48,6 +48,38 @@ Flutter (chofer) ──batch HTTP──► [API 202] ──encola──► Valke
 - **Canales y auth**: `fleet` (supervisores, gated por rol), `vehicle.{id}` (operación), `shipment.{id}`
   (cliente, con token de corta vida del tracking público — sin PII, coherente con el guard de PublicTracking).
 
+### Canales de flota (estado actual)
+
+> Actualización 2026-11-15. Reemplaza, solo para los canales de flota, lo que dicen el diagrama y el punto
+> anterior. El **transporte real es Soketi** (servidor self-host que habla el **protocolo Pusher**), no
+> Reverb: donde este ADR dice "Reverb" para el fan-out de flota, léase Soketi. El cliente sigue siendo
+> compatible con Echo / pusher-js.
+
+Todos los canales de flota son **privados** (se firman en el endpoint de auth de broadcasting; el socket es
+alcanzable desde internet y lleva la posición de toda la flota):
+
+| Canal (sin el prefijo `private-`) | Quién lo escucha | Eventos |
+| --- | --- | --- |
+| `fleet` | Panel de la torre de control (admin, supervisor) | `vehicle.position` (carga reducida) |
+| `fleet.all` | App: quien ve todas las ciudades (admin, supervisor; planificador sin ciudad) | `fleet.position`, `fleet.removed` |
+| `fleet.city.<departamento>` | App: planificador de esa ciudad (`santa_cruz`, `la_paz`, …) | `fleet.position`, `fleet.removed` |
+
+- La ciudad de un camión es el **departamento de su nodo base** (sede). Un hecho de un camión se emite a
+  `fleet.all` y al canal de su ciudad; sin sede conocida, solo a `fleet.all`. Los nombres salen de un único
+  contrato compartido (`RealtimeChannels`) y la app los recibe de `GET /api/v1/app/broadcasting/config`:
+  nunca los arma.
+- **`fleet.position`**: lleva el mismo objeto que un elemento de `GET /api/v1/app/telemetry/fleet/live`; la
+  app lo aplica por `vehicle_id`. Como mucho uno por vehículo cada 5 s (throttle propio). La última lectura
+  que la ventana descartó no se pierde: se emite al cerrar la ventana si no salió otra más nueva (emisión
+  final), para que un camión que se detiene no quede con una posición vieja.
+- **`fleet.removed`**: carga `{vehicle_id}`. Se emite cuando el vehículo se **da de baja en flota** (estado
+  `inactive`), como reacción al evento de dominio `fleet.vehicle_status_changed` vía outbox; la app lo quita
+  de su lista. Un camión **no** se quita por tiempo sin reportar: su última posición conocida sigue siendo
+  útil.
+- **Mismo alcance en la consulta y en el socket**: `fleet/live` aplica la misma regla por rol y ciudad que la
+  autorización de estos canales (admin y supervisor, todas las ciudades; planificador, su ciudad) y excluye
+  los vehículos dados de baja. El polling de `fleet/live` (ETag / `?since=`) queda como respaldo.
+
 ## Escala y sostenibilidad
 
 - **Horizontal**: API y workers stateless se replican; **Reverb multi-nodo con Valkey pub/sub**; nginx

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Telemetry\Application\Query\GetLiveFleetPositions;
 
+use DateTimeImmutable;
 use DateTimeZone;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
@@ -18,6 +19,9 @@ use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
  * Enriquecimiento EN LOTE (sin N+1): una query de placas, una de choferes asignados a la ruta del día (solo
  * para los vehículos cuya última lectura no trae chofer) y una de nombres. Con `since`, solo las posiciones
  * que cambiaron después de ese instante.
+ *
+ * Respeta el alcance de quien consulta (`FleetLiveScope`: todas las ciudades, una, o ninguna) y deja fuera
+ * los vehículos dados de baja en flota; ambos filtros se resuelven en la consulta de posiciones.
  *
  * @implements QueryHandler<GetLiveFleetPositions, list<VehicleLiveView>>
  */
@@ -36,9 +40,7 @@ final readonly class GetLiveFleetPositionsHandler implements QueryHandler
     {
         assert($query instanceof GetLiveFleetPositions);
 
-        $rows = $query->since !== null
-            ? $this->positions->changedSince($query->since)
-            : $this->positions->all();
+        $rows = $this->visibleRows($query);
 
         if (!$query->enrich || $rows === []) {
             return array_map(static fn (array $row): VehicleLiveView => VehicleLiveView::fromRow($row), $rows);
@@ -79,5 +81,32 @@ final readonly class GetLiveFleetPositionsHandler implements QueryHandler
             },
             $rows,
         );
+    }
+
+    /**
+     * Filas de la flota que entran en el alcance de la consulta. El filtro viaja a la CONSULTA de posiciones
+     * (ids permitidos / excluidos), no se aplica después en memoria:
+     *  - alcance por ciudad: solo los vehículos con sede en ese departamento;
+     *  - siempre: fuera los vehículos dados de baja en flota.
+     *
+     * @return list<array{vehicle_id: string, lat: float, lng: float, speed_kph: float|null, heading: int|null, ignition: bool|null, moving: bool, route_id: string|null, recorded_at: DateTimeImmutable, driver_id?: string|null, updated_at?: DateTimeImmutable|null}>
+     */
+    private function visibleRows(GetLiveFleetPositions $query): array
+    {
+        $scope = $query->scope;
+        if ($scope->seesNothing()) {
+            return [];
+        }
+
+        $retired = $this->fleet->retiredVehicleIds();
+
+        $city = $scope->city();
+        if ($city === null) {
+            return $this->positions->visible($query->since, null, $retired);
+        }
+
+        $only = array_values(array_diff($this->fleet->vehicleIdsInDepartment($city), $retired));
+
+        return $this->positions->visible($query->since, $only);
     }
 }

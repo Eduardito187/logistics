@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Application\Command\QueueNotification;
 
+use Logistics\Notifications\Application\Contract\NotificationFeedSignal;
 use Logistics\Notifications\Application\Contract\NotificationRulesProvider;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
@@ -31,6 +32,7 @@ final class QueueNotificationHandler implements CommandHandler
         private readonly NotificationRepository $notifications,
         private readonly NotificationRulesProvider $rules,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly NotificationFeedSignal $feedSignal,
     ) {}
 
     public function handle(Command $command): void
@@ -60,6 +62,9 @@ final class QueueNotificationHandler implements CommandHandler
         $this->lastNotificationId = $notification->id();
 
         $this->recordEvents->record($notification->releaseEvents(), 'notifications.notification');
+
+        // Señal de tiempo real: hay una notificación nueva en el log (se emite tras el commit, por la cola).
+        $this->feedSignal->feedChanged();
     }
 
     /**

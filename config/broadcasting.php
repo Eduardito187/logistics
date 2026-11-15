@@ -25,20 +25,26 @@ return [
     |--------------------------------------------------------------------------
     | Origen del WebSocket del CLIENTE (navegador → Soketi expuesto)
     |--------------------------------------------------------------------------
-    | El navegador conecta a este host:puerto (p. ej. localhost:6001), distinto del host de red docker
-    | que usa el app (`soketi`). Se usa para agregar el origen a la CSP connect-src del admin
-    | (SecurityHeaders), sin relajar la política más de lo necesario. Coincide con VITE_PUSHER_*.
+    | Por defecto es el MISMO origen de la página: nginx desvía a Soketi las conexiones WebSocket de
+    | `/app/<clave>`, así que el navegador conecta a `ws(s)://<host de la web>[:puerto]` sin configurar
+    | nada. Con host y puerto en null (default) el admin (resources/js/echo.js) usa el origen de la página
+    | y la CSP (SecurityHeaders) permite el ws(s) del request actual.
+    |
+    | OVERRIDE opcional: solo si Soketi se publica aparte (p. ej. desarrollo con el 6001 directo) se fijan
+    | VITE_PUSHER_HOST / VITE_PUSHER_PORT / VITE_PUSHER_SCHEME. Esas variables las lee el build de Vite
+    | (echo.js) y, acá, la CSP agrega ese origen a connect-src. Host null + puerto fijado = mismo host de
+    | la página en ese puerto. Scheme null = el del request.
     */
     'client_ws' => [
-        'host' => env('VITE_PUSHER_HOST', 'localhost'),
-        'port' => (int) env('VITE_PUSHER_PORT', 6001),
-        'scheme' => env('VITE_PUSHER_SCHEME', 'http'),
+        'host' => env('VITE_PUSHER_HOST'),
+        'port' => env('VITE_PUSHER_PORT') === null ? null : (int) env('VITE_PUSHER_PORT'),
+        'scheme' => env('VITE_PUSHER_SCHEME'),
     ],
 
     'connections' => [
 
         // Protocolo Pusher contra Soketi (self-host, open-source). Host/puerto apuntan al
-        // servicio `soketi`; en el cliente, VITE_PUSHER_* del cliente web.
+        // servicio `soketi` (backend → Soketi); el navegador conecta por el mismo origen de la web.
         //
         // Los defaults son LOS MISMOS que trae el servicio `soketi` de docker-compose.yml
         // (SOKETI_DEFAULT_APP_ID/KEY/SECRET) y el host es el nombre del servicio en la red docker: en un

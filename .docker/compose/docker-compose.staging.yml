@@ -15,7 +15,7 @@
 #
 # Fuera de staging a propósito (se suman cuando haga falta, ver docs/deploy-staging.md):
 #   osrm/vroom/nominatim/tileserver (datos geo pesados; la app degrada sola), minio (disco local),
-#   soketi (BROADCAST_CONNECTION=log), pg-backup y el contenedor de Vite.
+#   pg-backup y el contenedor de Vite.
 # ============================================================
 
 name: logistics-staging
@@ -208,6 +208,23 @@ services:
         depends_on:
             app:
                 condition: service_healthy
+
+    # -------------------- Tiempo real (Soketi, protocolo Pusher) --------------------
+    # Servidor de sockets de los avisos en vivo (bandeja interna de la app, mapa de flota). Sin puerto
+    # publicado: el nginx de `web` le pasa las conexiones WebSocket de `/app/<clave>` por el mismo puerto
+    # de la web. Clave y secreto PROPIOS del entorno: los deriva render-env.sh de APP_KEY (el secreto firma
+    # el acceso a los canales privados).
+    soketi:
+        image: quay.io/soketi/soketi:1.6-16-debian
+        restart: unless-stopped
+        environment:
+            SOKETI_DEFAULT_APP_ID: ${PUSHER_APP_ID:?Falta PUSHER_APP_ID (lo genera scripts/staging/render-env.sh)}
+            SOKETI_DEFAULT_APP_KEY: ${PUSHER_APP_KEY:?Falta PUSHER_APP_KEY (lo genera scripts/staging/render-env.sh)}
+            SOKETI_DEFAULT_APP_SECRET: ${PUSHER_APP_SECRET:?Falta PUSHER_APP_SECRET (lo genera scripts/staging/render-env.sh)}
+            SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: 'false'
+        networks:
+            - staging
+        logging: *default-logging
 
     # -------------------- Web (Nginx con public/ horneado) --------------------
     # ÚNICO puerto publicado del stack. Abrirlo aparte en la Security List de Oracle Cloud.

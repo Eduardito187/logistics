@@ -8,5 +8,5 @@
 @section('message', 'Tuvimos un problema de nuestro lado. Ya estamos al tanto; intenta de nuevo en unos minutos.')
 
 @section('extra-actions')
-    <a class="btn" href="{{ request()->url() }}">Reintentar</a>
+    <a class="btn" href="{{ ($static ?? false) ? '' : request()->url() }}">Reintentar</a>
 @endsection

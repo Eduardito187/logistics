@@ -95,12 +95,20 @@ services:
     nginx:
         image: nginx:1.27-alpine
         container_name: dismac_lg_nginx
+        # Carga el módulo njs (ya viene en la imagen) para reemplazar la cabecera `Server`.
+        command: ["nginx", "-g", "load_module modules/ngx_http_js_module.so; daemon off;"]
         restart: unless-stopped
         ports:
             - "${DOCKER_APP_PORT:-8110}:80"
         volumes:
             - .:/var/www/html:cached
             - ./.docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+            # Páginas de error propias (nginx nunca muestra la suya): snippet + archivos estáticos.
+            - ./.docker/nginx/snippets/error-pages.conf:/etc/nginx/snippets/error-pages.conf:ro
+            - ./.docker/nginx/errors:/etc/nginx/errors:ro
+            # Cabecera `Server` propia: filtro njs + snippet que cada location incluye.
+            - ./.docker/nginx/njs:/etc/nginx/njs:ro
+            - ./.docker/nginx/snippets/server-header.conf:/etc/nginx/snippets/server-header.conf:ro
         depends_on:
             app:
                 condition: service_healthy

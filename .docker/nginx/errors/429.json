@@ -1,0 +1,1 @@
+{"type":"/problems/rate_limited","title":"Too many requests","status":429,"code":"rate_limited","detail":"Too many requests. Try again in a moment.","error":{"code":"rate_limited","message":"Too many requests. Try again in a moment."}}

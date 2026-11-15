@@ -21,6 +21,12 @@ interface PlanRepository
 
     public function save(DeliveryPlan $plan): void;
 
+    /**
+     * Borra el plan y todas sus paradas. No valida la regla de negocio (eso lo hace el agregado con
+     * `delete()`); borrar un plan que ya no está guardado no hace nada.
+     */
+    public function delete(DeliveryPlan $plan): void;
+
     public function findById(PlanId $id): ?DeliveryPlan;
 
     /**

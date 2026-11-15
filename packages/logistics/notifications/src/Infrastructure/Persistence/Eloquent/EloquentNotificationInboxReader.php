@@ -9,6 +9,9 @@ use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Logistics\Notifications\Application\Contract\NotificationInboxReader;
+use Logistics\Notifications\Domain\Model\Notification;
+use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
+use Logistics\Shipments\Infrastructure\ReadModel\ShipmentSqlFilters;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
@@ -19,6 +22,12 @@ use Throwable;
  * cae dentro de la marca de agua de «leer todas» (notification_read_marks.read_up_to). El filtro de no
  * leídas es: created_at > read_up_to AND NOT EXISTS (fila de lectura) — ambos con índice (created_at y
  * la PK compuesta), recortado en SQL con LIMIT/OFFSET.
+ *
+ * Alcance por rol: con un actor restringido se agrega un EXISTS correlacionado contra `shipments` (por su
+ * PK) con el predicado único de Envíos ({@see ShipmentSqlFilters::scope()}), no una copia de la regla. Se
+ * resuelve en la consulta, así la página y los totales cuentan solo lo visible. Lectura de Envíos en solo
+ * lectura, sin acoplar su dominio. Una notificación cuyo envío ya no existe no pasa el EXISTS: queda solo
+ * para quien no tiene restricción.
  */
 final class EloquentNotificationInboxReader implements NotificationInboxReader
 {
@@ -28,34 +37,24 @@ final class EloquentNotificationInboxReader implements NotificationInboxReader
         private readonly ?LoggerInterface $logger = null,
     ) {}
 
-    public function unreadFor(string $userId, int $limit, int $offset): array
+    public function unreadFor(string $userId, int $limit, int $offset, ?ShipmentScopeActor $scope = null): array
     {
-        $records = $this->unreadQuery($userId)
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->offset(max(0, $offset))
-            ->limit(max(1, $limit))
-            ->get();
-
-        $notifications = [];
-        foreach ($records as $record) {
-            try {
-                $notifications[] = $this->mapper->toDomain($record);
-            } catch (Throwable $e) {
-                // Misma tolerancia que el log global: una fila irreconstruible se omite con log.
-                $this->logger?->warning('Notificación omitida de la bandeja: fila no reconstruible', [
-                    'notification_id' => $record->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return $notifications;
+        return $this->page($this->unreadQuery($userId, $scope), $limit, $offset);
     }
 
-    public function countUnread(string $userId): int
+    public function countUnread(string $userId, ?ShipmentScopeActor $scope = null): int
     {
-        return $this->unreadQuery($userId)->count();
+        return $this->unreadQuery($userId, $scope)->count();
+    }
+
+    public function latestVisible(ShipmentScopeActor $scope, int $limit, int $offset): array
+    {
+        return $this->page($this->visibleQuery($scope), $limit, $offset);
+    }
+
+    public function countVisible(ShipmentScopeActor $scope): int
+    {
+        return $this->visibleQuery($scope)->count();
     }
 
     public function readStates(?string $userId, array $notificationIds): array
@@ -105,18 +104,74 @@ final class EloquentNotificationInboxReader implements NotificationInboxReader
     }
 
     /**
-     * Consulta base de no leídas por el usuario (sin orden ni recorte).
+     * Página de la consulta, de la más reciente a la más antigua, mapeada al dominio.
+     *
+     * @param  Builder<NotificationRecord> $query
+     * @return list<Notification>
+     */
+    private function page(Builder $query, int $limit, int $offset): array
+    {
+        $records = $query
+            ->orderByDesc('notifications.created_at')
+            ->orderByDesc('notifications.id')
+            ->offset(max(0, $offset))
+            ->limit(max(1, $limit))
+            ->get();
+
+        $notifications = [];
+        foreach ($records as $record) {
+            try {
+                $notifications[] = $this->mapper->toDomain($record);
+            } catch (Throwable $e) {
+                // Misma tolerancia que el log global: una fila irreconstruible se omite con log.
+                $this->logger?->warning('Notificación omitida de la bandeja: fila no reconstruible', [
+                    'notification_id' => $record->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $notifications;
+    }
+
+    /**
+     * Consulta base del log acotada al alcance del actor (sin orden ni recorte).
      *
      * @return Builder<NotificationRecord>
      */
-    private function unreadQuery(string $userId): Builder
+    private function visibleQuery(?ShipmentScopeActor $scope): Builder
+    {
+        $query = NotificationRecord::query();
+
+        if ($scope === null || $scope->unrestricted) {
+            return $query;
+        }
+
+        // Semi-join por la PK de `shipments`; adentro, la regla única de alcance de Envíos.
+        $query->whereExists(static function (QueryBuilder $shipment) use ($scope): void {
+            $shipment->selectRaw('1')
+                ->from('shipments')
+                ->whereColumn('shipments.id', 'notifications.shipment_id');
+
+            ShipmentSqlFilters::scope($shipment, $scope);
+        });
+
+        return $query;
+    }
+
+    /**
+     * Consulta base de no leídas por el usuario dentro de su alcance (sin orden ni recorte).
+     *
+     * @return Builder<NotificationRecord>
+     */
+    private function unreadQuery(string $userId, ?ShipmentScopeActor $scope = null): Builder
     {
         $mark = $this->watermark($userId);
 
-        $query = NotificationRecord::query();
+        $query = $this->visibleQuery($scope);
 
         if ($mark !== null) {
-            $query->where('created_at', '>', NotificationTimestamps::toColumn($mark['up_to']));
+            $query->where($query->qualifyColumn('created_at'), '>', NotificationTimestamps::toColumn($mark['up_to']));
         }
 
         $query->whereNotExists(static function (QueryBuilder $reads) use ($userId): void {

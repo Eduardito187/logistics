@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Logistics\Planning\Domain\Event\PlanDeleted;
 use Logistics\Planning\Domain\Event\PlanProposed;
 use Logistics\Planning\Domain\Event\PlanPublished;
 use Logistics\Planning\Domain\Exception\PlanningException;
@@ -211,6 +212,52 @@ it('rejects assigning to a published plan', function (): void {
 
     expect(fn () => $plan->assignShipment(PlannedStopId::generate(), 'ship-b'))
         ->toThrow(PlanningException::class, 'ya publicado');
+});
+
+it('deletes an unpublished plan recording PlanDeleted with the released shipments', function (): void {
+    $plan = startDraftPlan();
+    assignShipments($plan, ['ship-a', 'ship-b']);
+    $plan->proposeRoute(['ship-b', 'ship-a'], ['ship-a' => etaAfter(40), 'ship-b' => etaAfter(20)]);
+    $plan->releaseEvents();
+
+    $plan->delete();
+
+    $events = $plan->releaseEvents();
+    expect($events)->toHaveCount(1)
+        ->and($events[0])->toBeInstanceOf(PlanDeleted::class);
+
+    /** @var PlanDeleted $event */
+    $event = $events[0];
+    expect($event->eventName())->toBe('planning.plan_deleted')
+        ->and($event->payload())->toBe([
+            'plan_id' => $plan->id()->toString(),
+            'plan_date' => '2026-10-13',
+            'vehicle_id' => 'veh-001',
+            'shipment_ids' => ['ship-b', 'ship-a'],
+            'stop_count' => 2,
+        ]);
+});
+
+it('deletes a draft plan without stops', function (): void {
+    $plan = startDraftPlan();
+
+    $plan->delete();
+
+    /** @var PlanDeleted $event */
+    $event = $plan->releaseEvents()[0];
+    expect($event->shipmentIds)->toBe([]);
+});
+
+it('rejects deleting a published plan', function (): void {
+    $plan = startDraftPlan();
+    assignShipments($plan, ['ship-a']);
+    $plan->proposeRoute(['ship-a'], ['ship-a' => etaAfter(20)]);
+    $plan->publish();
+    $plan->releaseEvents();
+
+    expect(fn () => $plan->delete())
+        ->toThrow(PlanningException::class, 'ya publicado')
+        ->and($plan->releaseEvents())->toBe([]);
 });
 
 it('reconstitutes without recording events', function (): void {
