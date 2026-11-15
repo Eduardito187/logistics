@@ -7,10 +7,12 @@ namespace Logistics\Execution\Application\Command\RecordStoreDrop;
 use DateTimeImmutable;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitIdsReader;
+use Logistics\Execution\Application\Contract\TransferDestinationReader;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\Model\Delivery;
+use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\MissingUnitDeclaration;
 use Logistics\Execution\Domain\ValueObject\MissingUnitReason;
 use Logistics\Outbox\Application\RecordDomainEvents;
@@ -27,8 +29,17 @@ use Logistics\Shared\Application\Command\CommandHandler;
  * Faltantes: el chofer puede declarar los productos que NO pudo dejar, con su motivo. Deben ser productos de
  * ESE pedido y no pueden ser todos (si no dejó ninguno no es una entrega en tienda: es una entrega fallida).
  *
- * Idempotente: repetirla no vuelve a grabar el hecho ni a avisar. Si la entrega nunca se abrió, se abre con
- * el camión de la ruta (igual que la prueba de entrega); sin entrega ni ruta no hay contexto y se rechaza.
+ * TRASPASO interno (excepción a lo anterior): no hay cliente que firme una prueba de entrega, así que la
+ * entrega en tienda en SU nodo destino ES la entrega. Sin faltantes, la entrega pasa a entregada y se graba
+ * el mismo hecho de entrega que usa el resto del sistema (`execution.shipment_delivered`), sin foto ni firma
+ * obligatorias; el hecho de la entrega en tienda se graba igual. Con faltantes queda en curso hasta que la
+ * tienda concilie la recepción del envío (completa o con diferencias: en ese caso se cierra CON FALTANTES) o
+ * la oficina lo cierre a mano (CloseTransferWithShortage). El retiro en tienda y el reparto a domicilio no
+ * cambian.
+ *
+ * Idempotente: repetirla no vuelve a grabar el hecho ni a avisar (ni a entregar un traspaso ya cerrado). Si
+ * la entrega nunca se abrió, se abre con el camión de la ruta (igual que la prueba de entrega); sin entrega
+ * ni ruta no hay contexto y se rechaza.
  *
  * @implements CommandHandler<RecordStoreDrop>
  */
@@ -40,6 +51,7 @@ final class RecordStoreDropHandler implements CommandHandler
         private readonly ShipmentFulfillmentReader $fulfillment,
         private readonly RecordDomainEvents $recordEvents,
         private readonly ?ShipmentUnitIdsReader $units = null,
+        private readonly ?TransferDestinationReader $transfers = null,
     ) {}
 
     public function handle(Command $command): void
@@ -69,6 +81,7 @@ final class RecordStoreDropHandler implements CommandHandler
         }
 
         $delivery->dropAtStore($command->nodeId, $occurredAt, $command->photoPath, $missingUnits);
+        $this->closeTransferAtDestination($delivery, $command, $occurredAt);
 
         $this->deliveries->save($delivery);
         $this->recordEvents->record($delivery->releaseEvents(), 'execution.delivery');
@@ -79,6 +92,55 @@ final class RecordStoreDropHandler implements CommandHandler
             $this->routes->save($route);
             $this->recordEvents->record($route->releaseEvents(), 'execution.route');
         }
+    }
+
+    /**
+     * Cierra la entrega de un TRASPASO cuando quedó en su nodo destino: no hay cliente que firme, así que la
+     * entrega en tienda es la entrega. No hace nada si el envío no es un traspaso, si la tienda no es su
+     * destino, si la entrega ya está cerrada o si el chofer declaró faltantes y la tienda todavía no concilió.
+     *
+     * La conciliación de la tienda lo cierra SIEMPRE (es su acuse formal): completa, sin faltantes; con
+     * diferencias, CON FALTANTES (los que informó la conciliación o, si no informó ninguno, los que había
+     * declarado el chofer). Los faltantes se siguen por el reporte de discrepancias.
+     *
+     * La fecha del hecho es la de la llegada a la tienda (o la de la conciliación, si es la que lo cierra).
+     */
+    private function closeTransferAtDestination(Delivery $delivery, RecordStoreDrop $command, DateTimeImmutable $occurredAt): void
+    {
+        $droppedAt = $delivery->storeDroppedAt();
+        if ($this->transfers === null || $droppedAt === null) {
+            return;
+        }
+        if ($delivery->status() === DeliveryStatus::Delivered || $delivery->status() === DeliveryStatus::Failed) {
+            return;
+        }
+
+        $destination = $this->transfers->transferDestinationNodeId($command->shipmentId);
+        if ($destination === null || strtolower((string) $delivery->storeDropNodeId()) !== strtolower($destination)) {
+            return;
+        }
+
+        $reconciled = $command->receptionComplete !== null;
+        if ($delivery->storeDropMissingUnits() !== [] && !$reconciled) {
+            return;
+        }
+
+        $shortage = [];
+        if ($command->receptionComplete === false) {
+            $shortage = $command->receptionMissingUnitIds !== []
+                ? $command->receptionMissingUnitIds
+                : array_map(
+                    static fn (MissingUnitDeclaration $missing): string => $missing->unitId,
+                    $delivery->storeDropMissingUnits(),
+                );
+        }
+
+        $delivery->closeByStoreDrop(
+            $reconciled ? $occurredAt : $droppedAt,
+            $this->units?->forShipmentIds([$command->shipmentId])[$command->shipmentId] ?? [],
+            $reconciled,
+            $shortage,
+        );
     }
 
     /**

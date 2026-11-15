@@ -123,6 +123,19 @@ estrellas + comentario opcional + motivo opcional si la nota es baja).
   `tracking.status_changed` a DELIVERED → `updated_at` como aproximación; `--without-updated-at` omite el
   último recurso). Se corre una vez tras migrar; no va al scheduler.
 
+### `at_store_at` y `ready_for_pickup` (retiro en tienda)
+
+- Un pedido con retiro en tienda que el chofer dejó en SU tienda destino
+  (`execution.shipment_dropped_at_store`) queda marcado con `tracking_shipments.at_store_at`. NO es un
+  estado nuevo de `VisibleStatus`: el estado sigue su ciclo y la llegada lo acompaña.
+- Lo fija el reactor `AtStoreOnStoreDrop` → comando `MarkShipmentAtStore`, con la misma condición que el
+  aviso «listo para recojo» de notificaciones (`delivery_mode = store_pickup` y nodo = tienda destino).
+  Idempotente (solo la primera vez), no aplica a entregado/anulado/devuelto y no abre un seguimiento nuevo.
+- Las vistas (`PublicTrackingView`, `ShipmentTrackingView`) exponen `at_store_at` (ISO 8601 o null) y
+  `ready_for_pickup` (llegó y no está entregado/anulado/devuelto). Con `ready_for_pickup = true` el
+  `stops_message` público pasa a «Tu pedido ya está en la tienda. Puedes pasar a recogerlo.».
+- El guardado invalida la foto del caché público; una foto previa sin los campos se lee como «no llegó».
+
 ## Integración (pendiente)
 
 Los handlers de escritura liberan los eventos del agregado con `releaseEvents()` y hoy quedan marcados

@@ -44,6 +44,7 @@ final class ShipmentTracking extends AggregateRoot
         private ?RoutePosition $routePosition,
         private readonly ?string $orderReference = null,
         private ?DateTimeImmutable $deliveredAt = null,
+        private ?DateTimeImmutable $atStoreAt = null,
     ) {}
 
     /**
@@ -104,6 +105,7 @@ final class ShipmentTracking extends AggregateRoot
         ?RoutePosition $routePosition = null,
         ?string $orderReference = null,
         ?DateTimeImmutable $deliveredAt = null,
+        ?DateTimeImmutable $atStoreAt = null,
     ): self {
         return new self(
             $id,
@@ -117,6 +119,7 @@ final class ShipmentTracking extends AggregateRoot
             $routePosition,
             $orderReference,
             $deliveredAt,
+            $atStoreAt,
         );
     }
 
@@ -249,6 +252,30 @@ final class ShipmentTracking extends AggregateRoot
     public function markReturned(): void
     {
         $this->applyStatus(VisibleStatus::Returned);
+    }
+
+    /**
+     * El pedido con retiro en tienda YA LLEGÓ a su tienda destino (el chofer lo dejó ahí en `$at`). NO es
+     * un estado nuevo del ciclo de vida ni cambia `status`: es un dato que acompaña al estado y habilita el
+     * «listo para recoger» ({@see isReadyForPickup()}).
+     *
+     * Idempotente: solo fija la primera vez (un reenvío del outbox no mueve la fecha). No aplica si el
+     * pedido ya se entregó ni si está en un estado terminal (anulado/devuelto): ahí ya no hay nada que
+     * retirar. No graba evento de dominio: el hecho ya existe en execution y esto es su proyección.
+     * Devuelve true si se fijó, false si no hubo cambio.
+     */
+    public function markAtStore(DateTimeImmutable $at): bool
+    {
+        if ($this->atStoreAt !== null
+            || $this->status === VisibleStatus::Delivered
+            || $this->status->isTerminal()
+        ) {
+            return false;
+        }
+
+        $this->atStoreAt = $at;
+
+        return true;
     }
 
     /**
@@ -445,6 +472,23 @@ final class ShipmentTracking extends AggregateRoot
     public function deliveredAt(): ?DateTimeImmutable
     {
         return $this->deliveredAt;
+    }
+
+    /** Momento en que el pedido llegó a su tienda de retiro; null si no llegó (o no es retiro en tienda). */
+    public function atStoreAt(): ?DateTimeImmutable
+    {
+        return $this->atStoreAt;
+    }
+
+    /**
+     * ¿El cliente ya puede pasar a recoger su pedido? Sí cuando llegó a la tienda y todavía no se entregó,
+     * anuló ni devolvió. Es lo que las vistas exponen como `ready_for_pickup`.
+     */
+    public function isReadyForPickup(): bool
+    {
+        return $this->atStoreAt !== null
+            && $this->status !== VisibleStatus::Delivered
+            && !$this->status->isTerminal();
     }
 
     /**

@@ -90,7 +90,9 @@ final class ViewShipment extends ViewRecord
             ->label(__('Return products'))
             ->icon('heroicon-o-arrow-uturn-left')
             ->color('warning')
-            ->visible(fn (): bool => strtoupper((string) $this->getRecord()->getAttribute('status')) === 'DELIVERED'
+            // Escritura de oficina (administrador y supervisor): el planificador no registra devoluciones.
+            ->visible(fn (): bool => ShipmentResource::canWriteAsOffice()
+                && strtoupper((string) $this->getRecord()->getAttribute('status')) === 'DELIVERED'
                 && $this->returnableBySku() !== [])
             ->modalHeading(__('Return products'))
             ->modalDescription(__('Choose which products of this delivered order are returned. The rest stay delivered.'))

@@ -47,6 +47,9 @@ final readonly class ShipmentView
         // Origen y departamentos (alcance por ciudad): enriquecimiento del lado de lectura. Null = no
         // enriquecido (no se serializa), igual que `progress`.
         public ?ShipmentOriginView $origin = null,
+        // Evidencia de la entrega (firma / foto / documento): enriquecimiento del lado de lectura. Null = no
+        // enriquecido (no se serializa); enriquecido y sin entregar se serializa `delivery_evidence: null`.
+        public ?ShipmentDeliveryEvidenceView $deliveryEvidence = null,
     ) {}
 
     /**
@@ -54,7 +57,7 @@ final readonly class ShipmentView
      */
     public function withProgress(ShipmentProgressView $progress): self
     {
-        return $this->copy($progress, $this->deliveryMode, $this->origin);
+        return $this->copy($progress, $this->deliveryMode, $this->origin, $this->deliveryEvidence);
     }
 
     /**
@@ -62,7 +65,7 @@ final readonly class ShipmentView
      */
     public function withDeliveryMode(DeliveryMode $deliveryMode): self
     {
-        return $this->copy($this->progress, $deliveryMode->value, $this->origin);
+        return $this->copy($this->progress, $deliveryMode->value, $this->origin, $this->deliveryEvidence);
     }
 
     /**
@@ -70,11 +73,23 @@ final readonly class ShipmentView
      */
     public function withOrigin(ShipmentOriginView $origin): self
     {
-        return $this->copy($this->progress, $this->deliveryMode, $origin);
+        return $this->copy($this->progress, $this->deliveryMode, $origin, $this->deliveryEvidence);
     }
 
-    private function copy(?ShipmentProgressView $progress, ?string $deliveryMode, ?ShipmentOriginView $origin): self
+    /**
+     * Copia de la vista con la evidencia de su entrega adjunta (la vista es inmutable).
+     */
+    public function withDeliveryEvidence(ShipmentDeliveryEvidenceView $deliveryEvidence): self
     {
+        return $this->copy($this->progress, $this->deliveryMode, $this->origin, $deliveryEvidence);
+    }
+
+    private function copy(
+        ?ShipmentProgressView $progress,
+        ?string $deliveryMode,
+        ?ShipmentOriginView $origin,
+        ?ShipmentDeliveryEvidenceView $deliveryEvidence,
+    ): self {
         return new self(
             $this->id,
             $this->source,
@@ -98,6 +113,7 @@ final readonly class ShipmentView
             $progress,
             $deliveryMode,
             $origin,
+            $deliveryEvidence,
         );
     }
 
@@ -270,6 +286,12 @@ final readonly class ShipmentView
         // Aditivo: nodo de origen legible y departamentos de origen y destino, cuando la consulta los adjuntó.
         if ($this->origin !== null) {
             $data = [...$data, ...$this->origin->toArray()];
+        }
+
+        // Aditivo: evidencia de la entrega, cuando la consulta la adjuntó (lista y ficha de la app). Null si
+        // el envío todavía no está entregado.
+        if ($this->deliveryEvidence !== null) {
+            $data['delivery_evidence'] = $this->deliveryEvidence->toArray();
         }
 
         return $data;

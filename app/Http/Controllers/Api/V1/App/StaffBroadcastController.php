@@ -10,18 +10,13 @@ use App\Http\Problem\ProblemDetails;
 use App\Http\Support\ApiPagination;
 use App\Jobs\SendStaffBroadcastPush;
 use App\Models\User;
+use App\Support\Staff\StaffInbox;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Logistics\Fleet\Application\Query\ListExpiringDocuments\ListExpiringDocuments;
-use Logistics\Fleet\Application\ReadModel\ExpiringDocumentView;
-use Logistics\Fleet\Domain\Contract\DocumentExpiryPolicy;
-use Logistics\Shared\Application\Query\QueryBus;
-use Logistics\Telemetry\Application\Query\ListAlerts\ListAlerts;
-use Logistics\Telemetry\Application\ReadModel\AlertView;
 use stdClass;
 use Throwable;
 
@@ -36,25 +31,29 @@ use Throwable;
  *  - POST /app/inbox/read-all             marca todos como leídos
  *
  * El aviso queda en la bandeja de cada destinatario en el momento; el push sale después por la cola (ver
- * {@see SendStaffBroadcastPush}). La bandeja `/app/notifications` existente es otra cosa: los avisos al
- * CLIENTE por pedido.
+ * {@see SendStaffBroadcastPush}). Cada vez que cambia el no-leído de alguien (aviso nuevo, marcar leído, leer
+ * todos) se avisa en tiempo real por su canal privado con `inbox.updated` (ver {@see StaffInbox::changed()}),
+ * también por la cola. La bandeja `/app/notifications` existente es otra cosa: los avisos al CLIENTE por pedido.
  */
 final class StaffBroadcastController
 {
     /** Tope de destinatarios por aviso (protege de un envío masivo por error). */
     private const MAX_RECIPIENTS = 5000;
 
-    /** Cuántos ítems recientes de cada fuente entran en la bandeja unificada. */
-    private const INBOX_WINDOW = 300;
+    public function __construct(
+        private readonly StaffInbox $staffInbox,
+    ) {}
 
     public function send(Request $request): JsonResponse
     {
-        /** @var array{audience: array{role?: string|null, node_id?: string|null, user_ids?: list<int>}, title: string, body: string, link?: string|null} $data */
+        /** @var array{audience: array{role?: string|null, node_id?: string|null, user_ids?: list<int>|null}, title: string, body: string, link?: string|null} $data */
         $data = $request->validate([
             'audience' => ['required', 'array'],
             'audience.role' => ['sometimes', 'nullable', 'string', Rule::in(array_map(static fn (Role $r): string => $r->value, Role::cases()))],
             'audience.node_id' => ['sometimes', 'nullable', 'uuid'],
-            'audience.user_ids' => ['sometimes', 'array', 'min:1', 'max:500'],
+            // Lista vacía (o null) = "no aplica": el aviso va por rol o por tienda. Igual se exige, más abajo,
+            // al menos una audiencia efectiva (rol, tienda o user_ids con alguien).
+            'audience.user_ids' => ['sometimes', 'nullable', 'array', 'max:500'],
             'audience.user_ids.*' => ['required', 'integer', 'min:1'],
             'title' => ['required', 'string', 'max:120'],
             'body' => ['required', 'string', 'max:1000'],
@@ -63,6 +62,10 @@ final class StaffBroadcastController
 
         // Solo las claves conocidas del alcance (un alcance con claves ajenas queda vacío y se rechaza).
         $audience = array_intersect_key((array) ($data['audience'] ?? []), ['role' => true, 'node_id' => true, 'user_ids' => true]);
+        // `user_ids` vacío o null es "no aplica": no forma parte del alcance (ni se guarda con el aviso).
+        if (($audience['user_ids'] ?? []) === []) {
+            unset($audience['user_ids']);
+        }
         $recipients = $this->recipients($audience);
         if ($recipients === null) {
             return ProblemDetails::fromCode(ErrorCode::ValidationFailed, 'Send at least one audience: role, node_id or user_ids.')->toResponse($request);
@@ -108,6 +111,9 @@ final class StaffBroadcastController
         } catch (Throwable $e) {
             report($e);
         }
+
+        // Tiempo real: a cada destinatario le cambió el no-leído. Solo encola (el conteo corre en la cola).
+        $this->staffInbox->changed($recipients);
 
         return new JsonResponse(['data' => ['id' => $id, 'recipient_count' => count($recipients)]], 201);
     }
@@ -165,7 +171,7 @@ final class StaffBroadcastController
         }
 
         $rows = $query->orderByDesc('b.created_at')->orderByDesc('b.id')
-            ->limit(self::INBOX_WINDOW)
+            ->limit(StaffInbox::WINDOW)
             ->get(['b.id', 'b.title', 'b.body', 'b.link', 'b.created_at', 'r.read_at'])->all();
 
         $items = array_values(array_map(fn (stdClass $row): array => ['kind' => 'notice'] + $this->present($row) + [
@@ -174,7 +180,7 @@ final class StaffBroadcastController
             'severity' => null,
         ], $rows));
 
-        $operational = $this->isOffice($request) ? $this->operationalItems() : [];
+        $operational = $this->isOffice($request) ? $this->staffInbox->operationalItems() : [];
         $items = [...$items, ...$operational];
         usort($items, static fn (array $x, array $y): int => strcmp((string) ($y['sent_at'] ?? ''), (string) ($x['sent_at'] ?? '')));
 
@@ -184,60 +190,6 @@ final class StaffBroadcastController
         $envelope['meta']['unread'] = $unread;
 
         return new JsonResponse($envelope);
-    }
-
-    /**
-     * Pendientes operativos de la oficina, con la misma forma que un aviso: alertas de flota sin reconocer y
-     * documentos de flota por vencer / vencidos. Se piden por el QueryBus; cada fuente es tolerante.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function operationalItems(): array
-    {
-        $items = [];
-
-        try {
-            /** @var list<AlertView> $alerts */
-            $alerts = app(QueryBus::class)->ask(new ListAlerts(acknowledged: false));
-            foreach (array_slice($alerts, 0, self::INBOX_WINDOW) as $alert) {
-                $items[] = [
-                    'kind' => 'alert',
-                    'id' => $alert->id,
-                    'title' => $alert->type,
-                    'body' => $alert->vehicleId,
-                    'link' => null,
-                    'sent_at' => $this->iso($alert->occurredAt),
-                    'read' => false,
-                    'read_at' => null,
-                    'severity' => $alert->severity,
-                ];
-            }
-        } catch (Throwable) {
-            // telemetría no disponible: la bandeja sigue con el resto.
-        }
-
-        try {
-            $days = app(DocumentExpiryPolicy::class)->alertWindowDays();
-            /** @var list<ExpiringDocumentView> $documents */
-            $documents = app(QueryBus::class)->ask(new ListExpiringDocuments($days));
-            foreach (array_slice($documents, 0, self::INBOX_WINDOW) as $document) {
-                $items[] = [
-                    'kind' => 'document',
-                    'id' => $document->ownerType.':'.$document->ownerId.':'.$document->documentType,
-                    'title' => $document->documentType,
-                    'body' => $document->ownerLabel,
-                    'link' => null,
-                    'sent_at' => $this->iso($document->expiresOn),
-                    'read' => false,
-                    'read_at' => null,
-                    'severity' => $document->expired ? 'expired' : 'expiring',
-                ];
-            }
-        } catch (Throwable) {
-            // flota no disponible: la bandeja sigue con el resto.
-        }
-
-        return $items;
     }
 
     private function isOffice(Request $request): bool
@@ -255,6 +207,11 @@ final class StaffBroadcastController
             ->whereNull('read_at')
             ->update(['read_at' => now(), 'updated_at' => now()]);
 
+        // Solo si de verdad cambió algo: sus otros dispositivos actualizan el badge.
+        if ($updated > 0) {
+            $this->staffInbox->changed([$this->userId($request)]);
+        }
+
         $exists = $updated > 0 || DB::table('staff_broadcast_recipients')
             ->where('broadcast_id', $broadcastId)->where('user_id', $this->userId($request))->exists();
 
@@ -270,6 +227,10 @@ final class StaffBroadcastController
             ->whereNull('read_at')
             ->update(['read_at' => now(), 'updated_at' => now()]);
 
+        if ($updated > 0) {
+            $this->staffInbox->changed([$this->userId($request)]);
+        }
+
         return new JsonResponse(['data' => ['marked' => $updated]]);
     }
 
@@ -277,7 +238,7 @@ final class StaffBroadcastController
      * Ids de usuario que cumplen el alcance (rol Y tienda si vienen los dos; `user_ids` se suma). Null si no
      * vino ningún criterio.
      *
-     * @param  array{role?: string|null, node_id?: string|null, user_ids?: list<int>} $audience
+     * @param  array{role?: string|null, node_id?: string|null, user_ids?: list<int>|null} $audience
      * @return list<int>|null
      */
     private function recipients(array $audience): ?array

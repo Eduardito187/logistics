@@ -34,8 +34,8 @@ return [
         });
 
         // Calendario de despacho para el admin de la app: fechas de envío, bloqueos y apertura de cupos
-        // (lo mismo que la página «Dispatch calendar» del admin web). Solo admin y supervisor.
-        Route::prefix('delivery-calendar')->name('delivery-calendar.')->middleware('role:supervisor,admin')->group(function (): void {
+        // (lo mismo que la página «Dispatch calendar» del admin web). Admin, supervisor y planificador.
+        Route::prefix('delivery-calendar')->name('delivery-calendar.')->middleware('role:supervisor,planificador,admin')->group(function (): void {
             Route::get('/', [DeliveryCalendarController::class, 'index'])->name('index');
             Route::post('blocked', [DeliveryCalendarController::class, 'block'])->name('block');
             Route::delete('blocked', [DeliveryCalendarController::class, 'unblock'])->name('unblock');

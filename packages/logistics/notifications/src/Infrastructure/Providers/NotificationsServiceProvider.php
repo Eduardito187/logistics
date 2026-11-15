@@ -87,6 +87,7 @@ use Logistics\Notifications\Infrastructure\Settings\SettingsCascadeRuleGateway;
 use Logistics\Notifications\Infrastructure\Variable\ShipmentNotificationVariableProvider;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\HandlerRegistry;
+use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Domain\Clock\Clock;
 use Psr\Log\LoggerInterface;
 
@@ -352,6 +353,8 @@ final class NotificationsServiceProvider extends ServiceProvider
                 $app->make(CommandBus::class),
                 is_string($email) && trim($email) !== '' ? $email : null,
                 is_string($phone) && trim($phone) !== '' ? $phone : null,
+                // Para no avisarle a un «cliente» que no existe cuando el envío afectado es un traspaso interno.
+                $app->make(QueryBus::class),
             );
         });
 

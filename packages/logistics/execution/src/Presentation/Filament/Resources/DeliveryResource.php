@@ -14,6 +14,7 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -30,6 +31,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Logistics\Execution\Application\Command\CloseTransferWithShortage\CloseTransferWithShortage;
 use Logistics\Execution\Application\Command\RecordFailedDelivery\RecordFailedDelivery;
 use Logistics\Execution\Application\Command\RecordLoadScan\RecordLoadScan;
 use Logistics\Execution\Application\Command\RecordNodeReception\RecordNodeReception;
@@ -49,6 +51,7 @@ use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
@@ -70,14 +73,24 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 final class DeliveryResource extends Resource
 {
     use ResolvesUserRoles;
+    use ScopesToUserCity;
 
     /**
-     * Entregas de última milla: las gestiona la oficina (admin/supervisor) y las ejecuta el chofer
-     * desde su ruta. Los demás roles no ven esta sección.
+     * Entregas de última milla: las gestiona la oficina (admin/supervisor), las ejecuta el chofer desde su
+     * ruta y el planificador las CONSULTA (sin acciones de terreno). Los demás roles no ven esta sección.
      *
      * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
      */
     public static function canAccess(): bool
+    {
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'planificador', 'chofer');
+    }
+
+    /**
+     * ¿La cuenta autenticada registra hechos de TERRENO (escaneos, prueba de entrega, entrega fallida,
+     * incidentes)? Oficina y chofer. El planificador entra a consultar, pero no pasa esta puerta.
+     */
+    public static function canOperateField(): bool
     {
         return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer');
     }
@@ -142,11 +155,16 @@ final class DeliveryResource extends Resource
     /**
      * Eager-load del pedido y el vehículo para resolver las etiquetas legibles sin N+1.
      *
+     * Alcance por ciudad: un usuario acotado (planificador) solo ve las entregas de los pedidos de su ciudad.
+     *
      * @return Builder<DeliveryRecord>
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['shipment', 'vehicle']);
+        $query = parent::getEloquentQuery()->with(['shipment', 'vehicle']);
+        self::scopeToUserCityByShipment($query, 'execution_deliveries.shipment_id');
+
+        return $query;
     }
 
     public static function table(Table $table): Table
@@ -206,7 +224,10 @@ final class DeliveryResource extends Resource
                 ])
                     ->label(__('Record scan'))
                     ->icon('heroicon-o-qr-code')
-                    ->button(),
+                    ->button()
+                    // Escaneos, prueba de entrega y fallida son hechos de terreno: el planificador no los ve.
+                    ->visible(static fn (): bool => self::canOperateField()),
+                self::closeTransferWithShortageAction(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
@@ -304,6 +325,7 @@ final class DeliveryResource extends Resource
         return Action::make('recordPreparationScan')
             ->label(__('Record preparation scan'))
             ->icon('heroicon-o-qr-code')
+            ->visible(static fn (): bool => self::canOperateField())
             ->modalHeading(__('Record preparation scan'))
             ->modalDescription(__('Scan a unit at preparation. Opens the delivery for the order if it does not exist yet.'))
             ->modalSubmitActionLabel(__('Record scan'))
@@ -513,6 +535,81 @@ final class DeliveryResource extends Resource
                     idempotencyKey: (string) Str::uuid(),
                 ), __('Failed delivery recorded'));
             });
+    }
+
+    /**
+     * Cierre manual de OFICINA de un traspaso con faltantes: el chofer lo dejó en su tienda declarando
+     * productos faltantes y la tienda nunca concilió la recepción, así que quedó en curso. Solo admin y
+     * supervisor, con confirmación y motivo obligatorio. Row action. Despacha CloseTransferWithShortage, que
+     * vuelve a validar todo (traspaso, tienda destino, faltantes).
+     */
+    private static function closeTransferWithShortageAction(): Action
+    {
+        return Action::make('closeTransferWithShortage')
+            ->label(__('Close transfer with shortage'))
+            ->icon('heroicon-o-archive-box-x-mark')
+            ->color('warning')
+            ->visible(static fn (DeliveryRecord $record): bool => self::canCloseTransferWithShortage($record))
+            ->requiresConfirmation()
+            ->modalHeading(__('Close transfer with shortage'))
+            ->modalDescription(__('The store never reconciled this transfer. Closing it marks the transfer as delivered and keeps the missing units documented for the discrepancy report. This cannot be undone.'))
+            ->modalSubmitActionLabel(__('Close transfer'))
+            ->schema([
+                Textarea::make('reason')
+                    ->label(__('Reason'))
+                    ->helperText(__('Explain why the transfer is closed without the store reconciliation.'))
+                    ->required()
+                    ->minLength(5)
+                    ->maxLength(500)
+                    ->rows(3),
+            ])
+            ->action(function (array $data, DeliveryRecord $record): void {
+                try {
+                    /** @var CommandBus $bus */
+                    $bus = app(CommandBus::class);
+                    $bus->dispatch(new CloseTransferWithShortage(
+                        shipmentId: $record->shipment_id,
+                        reason: trim((string) $data['reason']),
+                        closedBy: (string) (auth()->user()?->getAuthIdentifier() ?? 'admin'),
+                        occurredAt: now()->toIso8601String(),
+                    ));
+
+                    Notification::make()
+                        ->title(__('Transfer closed with shortage'))
+                        ->success()
+                        ->send();
+                } catch (\Throwable $e) {
+                    Notification::make()
+                        ->title(__('Could not close the transfer'))
+                        ->body($e->getMessage())
+                        ->danger()
+                        ->send();
+                }
+            });
+    }
+
+    /**
+     * ¿Se ofrece el cierre con faltantes en esta fila? Solo a la oficina (admin y supervisor) y solo sobre un
+     * traspaso interno en curso que ya tiene su entrega en tienda registrada con faltantes declarados. Es un
+     * filtro de pantalla con los datos ya cargados de la fila; la regla la decide el comando.
+     */
+    private static function canCloseTransferWithShortage(DeliveryRecord $record): bool
+    {
+        if (!self::authUserHasAnyRoleValue('admin', 'supervisor')) {
+            return false;
+        }
+
+        $status = strtoupper($record->status);
+        if ($status === DeliveryStatus::Delivered->value || $status === DeliveryStatus::Failed->value) {
+            return false;
+        }
+
+        $missing = $record->getAttribute('store_drop_missing_units');
+        if ($record->getAttribute('store_dropped_at') === null || !is_array($missing) || $missing === []) {
+            return false;
+        }
+
+        return strtoupper((string) ($record->shipment->source ?? '')) === 'TRANSFER';
     }
 
     // ---------------------------------------------------------------------------------------------

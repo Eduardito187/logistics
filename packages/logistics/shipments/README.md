@@ -76,3 +76,37 @@ Para reparar envíos históricos atascados: `php artisan shipments:sync-status [
 
 Sin ninguno, el envío es a domicilio (null) y la tienda no lo ve en «Recepción de mercadería» ni en
 «Recojo en tienda». `shipments:sync-status --only=nodes` completa el nodo de las filas viejas con sufijo.
+
+## Nodo de origen (de dónde sale el pedido)
+
+`origin_node_id` (y de ahí `origin_department`) decide qué ciudad prepara el pedido:
+
+- `POST /integrations/shipments` acepta el origen opcional, por `origin_node_id` (UUID) o por
+  `origin_node_code` (`network_nodes.code`, sin distinguir mayúsculas). Si viene, el nodo debe existir; si
+  vienen los dos, deben ser el mismo nodo. Si no, responde 422 (`business_rule_violation`) con el motivo
+  en `detail`. Un origen informado nunca se reemplaza por el derivado.
+- Sin origen informado se deriva al guardar (centro de distribución de la ciudad destino;
+  `ShipmentScopeFieldsResolver`).
+- Las demás puertas (comercio, Magento, planilla, alta manual, demo) no informan origen: derivan.
+- Un reenvío del mismo pedido (idempotencia) no cambia el origen guardado ni vuelve a publicar eventos.
+
+## Alcance por ciudad y por rol
+
+Regla única en `ShipmentSqlFilters::scope()` (listado, conteos, `can_process` y guarda `order.scope`):
+preparador → su ciudad (origen o destino); tienda → su nodo; chofer / transportista → lo asignado;
+admin y supervisor → sin restricción.
+
+Interruptores de modo estricto (`config/logistics-shipments.php`, clave `scope`). Los dos nacen apagados
+para no dejar a nadie sin pedidos el día del despliegue; admin y supervisor nunca se ven afectados:
+
+| Variable de entorno               | Clave                       | En `true`                                                                                                   |
+|-----------------------------------|-----------------------------|-------------------------------------------------------------------------------------------------------------|
+| `SHIPMENTS_SCOPE_STRICT_UNLINKED` | `scope.strict_unlinked`     | Chofer / transportista sin vínculo (`driver_id` / `carrier_id`): no lista nada; escrituras 403 `out_of_scope_assignment`. |
+| `SHIPMENTS_SCOPE_STRICT_NO_CITY`  | `scope.strict_without_city` | Preparador sin ciudad (`users.city`): no lista nada; escrituras 403 `out_of_scope_city` («no tienes una ciudad asignada»). |
+
+### Consulta abierta (`GET /app/orders/lookup`)
+
+Cualquier rol consulta cualquier pedido por código de pedido, referencia de orden o etiqueta escaneada.
+Buscar por **nombre o documento del cliente** queda para admin, supervisor y tienda; para los demás roles
+ese texto no coincide con datos del cliente (responde 404 «no se encontró», nunca 403). La ficha devuelta
+es la misma para cada rol.

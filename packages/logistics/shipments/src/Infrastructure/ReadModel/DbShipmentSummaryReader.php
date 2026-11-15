@@ -73,14 +73,20 @@ final readonly class DbShipmentSummaryReader implements ShipmentSummaryReader
         ?string $deliveryDateTo,
         ?string $deliveryMode,
         ?ShipmentScopeActor $scope = null,
+        ?string $city = null,
     ): array {
+        $city = $city !== null && trim($city) !== '' ? trim($city) : null;
+
         // El alcance entra en la clave (forma primitiva): dos usuarios con distinto alcance no comparten conteo.
-        $key = compact('source', 'destinationNodeId', 'deliveryDateFrom', 'deliveryDateTo', 'deliveryMode')
+        $key = compact('source', 'destinationNodeId', 'deliveryDateFrom', 'deliveryDateTo', 'deliveryMode', 'city')
             + ['scope' => $scope?->toArray()];
 
         $data = $this->cache->remember('count-by-status', $key, fn (): array => $this->statusCounts(
-            static function (Builder $query) use ($source, $destinationNodeId, $deliveryDateFrom, $deliveryDateTo, $deliveryMode, $scope): void {
+            static function (Builder $query) use ($source, $destinationNodeId, $deliveryDateFrom, $deliveryDateTo, $deliveryMode, $scope, $city): void {
                 self::applyShipmentFilters($query, 'sh.', $source, $destinationNodeId, $deliveryDateFrom, $deliveryDateTo, $deliveryMode);
+                if ($city !== null) {
+                    ShipmentSqlFilters::city($query, $city, 'sh.');
+                }
                 if ($scope !== null) {
                     ShipmentSqlFilters::scope($query, $scope, 'sh.');
                 }

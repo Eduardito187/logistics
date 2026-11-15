@@ -21,6 +21,10 @@ use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
  * (una tienda encuentra pedidos de otra tienda; un preparador, los de otra ciudad). El usuario solo se usa
  * para calcular `can_process` de cada envío con la regla de alcance (false = «solo consulta»).
  *
+ * Buscar por NOMBRE o DOCUMENTO del cliente queda para oficina y tienda (admin, supervisor, tienda: el
+ * cliente pregunta en la tienda). Los demás roles consultan cualquier pedido igual, pero solo por código de
+ * pedido, referencia o etiqueta escaneada: para ellos el texto no coincide con datos del cliente (no es 403).
+ *
  * Respuesta: lista corta (hasta 10) con la forma del envío del listado (incluye `progress`), más
  * `order_reference`, `destination_node`, `origin_node`, `origin_department`, `destination_department`,
  * `tracking` y `can_process`. Sin coincidencias → 404.
@@ -43,7 +47,11 @@ final class LookupOrdersController
         $term = trim($input['q']);
 
         /** @var OrderLookupResult $result */
-        $result = $this->queryBus->ask(new LookupOrders($term, ScopeActorResolver::fromUser($request->user())));
+        $result = $this->queryBus->ask(new LookupOrders(
+            $term,
+            ScopeActorResolver::fromUser($request->user()),
+            ScopeActorResolver::searchesCustomerData($request->user()),
+        ));
 
         if ($result->isEmpty()) {
             return $this->error("No se encontró ningún pedido para «{$term}».", 404);

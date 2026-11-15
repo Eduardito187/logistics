@@ -40,7 +40,8 @@ final class ListShipmentTrackings extends ListRecords
 
     /**
      * Segmentos por estado visible del seguimiento: en curso (todo lo que avanza hacia la entrega),
-     * entregados y fallidos, con conteo.
+     * entregados y fallidos, con conteo. Los conteos salen de la consulta del recurso: respetan el alcance
+     * por ciudad del usuario.
      *
      * @return array<string, Tab>
      */
@@ -56,9 +57,9 @@ final class ListShipmentTrackings extends ListRecords
         ];
 
         return [
-            'all' => Tab::make(__('All'))->badge(TrackingRecord::query()->count()),
+            'all' => Tab::make(__('All'))->badge(ShipmentTrackingResource::getEloquentQuery()->count()),
             'in_progress' => Tab::make(__('In progress'))
-                ->badge(TrackingRecord::query()->whereIn('status', $inProgress)->count())
+                ->badge(ShipmentTrackingResource::getEloquentQuery()->whereIn('status', $inProgress)->count())
                 ->modifyQueryUsing(static function (Builder $query) use ($inProgress): Builder {
                     /** @var Builder<TrackingRecord> $query */
                     return $query->whereIn('status', $inProgress);
@@ -71,7 +72,7 @@ final class ListShipmentTrackings extends ListRecords
     private function statusTab(string $labelKey, string $status): Tab
     {
         return Tab::make(__($labelKey))
-            ->badge(TrackingRecord::query()->where('status', $status)->count())
+            ->badge(ShipmentTrackingResource::getEloquentQuery()->where('status', $status)->count())
             ->modifyQueryUsing(static function (Builder $query) use ($status): Builder {
                 /** @var Builder<TrackingRecord> $query */
                 return $query->where('status', $status);

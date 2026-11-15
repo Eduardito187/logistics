@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Shipments\Presentation\Http\Controller;
 
+use App\Enums\Role;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Logistics\Access\Application\Command\RecordAuditEntry\RecordAuditEntry;
@@ -14,16 +16,26 @@ use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Application\ReadModel\Page;
 use Logistics\Shipments\Application\Command\RescheduleShipmentDelivery\RescheduleShipmentDelivery;
+use Logistics\Shipments\Application\Query\CheckShipmentScope\CheckShipmentScope;
 use Logistics\Shipments\Application\Query\FindShipment\FindShipment;
 use Logistics\Shipments\Application\Query\ListShipments\ListShipments;
+use Logistics\Shipments\Application\ReadModel\ShipmentScopeDecision;
 use Logistics\Shipments\Application\ReadModel\ShipmentView;
+use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
 use Throwable;
 
 /**
  * Reprogramación de pedidos desde la app: uno, varios, todos los de un camión o todos los de una ciudad.
  *
  *  - POST /app/shipments/reschedule/preview   muestra a qué pedidos alcanza, SIN cambiar nada
- *  - POST /app/shipments/reschedule           aplica (solo admin)
+ *  - POST /app/shipments/reschedule           aplica (admin; el planificador solo pedidos puntuales)
+ *
+ * QUIÉN puede qué (mismo criterio en la vista previa y al aplicar):
+ *  - pedidos puntuales (`shipment_ids`): admin y planificador (y el supervisor en la vista previa). Cada
+ *    envío debe estar dentro del alcance por rol del usuario (regla única de `CheckShipmentScope`): con un
+ *    envío de otra ciudad responde 403 `out_of_scope_city` y no se reprograma ninguno;
+ *  - masivo (`vehicle_id` o `city`): APLICAR es solo de admin; la vista previa, de admin y supervisor. El
+ *    planificador recibe 403 `insufficient_role` en las dos.
  *
  * Mismo body en los dos. El alcance (`scope`) es UNO de: `shipment_ids`, `vehicle_id`, o `city` (con
  * `route_date` opcional para acotar al día comprometido actual). Los pedidos cerrados (entregados, fallidos,
@@ -49,7 +61,7 @@ final readonly class RescheduleShipmentsController
     public function preview(Request $request): JsonResponse
     {
         $data = $this->validated($request);
-        $problem = $this->problemFor($data);
+        $problem = $this->problemFor($request, $data, applying: false);
         if ($problem !== null) {
             return $problem;
         }
@@ -65,7 +77,7 @@ final readonly class RescheduleShipmentsController
     public function apply(Request $request): JsonResponse
     {
         $data = $this->validated($request);
-        $problem = $this->problemFor($data);
+        $problem = $this->problemFor($request, $data, applying: true);
         if ($problem !== null) {
             return $problem;
         }
@@ -128,11 +140,12 @@ final readonly class RescheduleShipmentsController
     }
 
     /**
-     * Rechazos previos a tocar nada: alcance ambiguo o vacío, o fecha bloqueada en el calendario.
+     * Rechazos previos a tocar nada: alcance ambiguo o vacío, alcance que el rol no puede usar, o fecha
+     * bloqueada en el calendario.
      *
      * @param array{scope: array<string, mixed>, new_date: string} $data
      */
-    private function problemFor(array $data): ?JsonResponse
+    private function problemFor(Request $request, array $data, bool $applying): ?JsonResponse
     {
         $scope = $data['scope'];
         $given = 0;
@@ -142,6 +155,11 @@ final readonly class RescheduleShipmentsController
 
         if ($given !== 1) {
             return $this->problem('invalid_scope', 'Send exactly one scope: shipment_ids, vehicle_id or city.', 422);
+        }
+
+        $denied = $this->accessProblem($request, $scope, $applying);
+        if ($denied !== null) {
+            return $denied;
         }
 
         try {
@@ -161,6 +179,45 @@ final readonly class RescheduleShipmentsController
         }
 
         return null;
+    }
+
+    /**
+     * Autorización por alcance. Masivo (camión / ciudad): solo admin al aplicar; admin y supervisor en la
+     * vista previa. Pedidos puntuales: cada envío que exista debe estar dentro del alcance por rol del
+     * usuario (su ciudad para el planificador); admin y supervisor no tienen restricción.
+     *
+     * @param array<string, mixed> $scope
+     */
+    private function accessProblem(Request $request, array $scope, bool $applying): ?JsonResponse
+    {
+        $user = $request->user();
+        $shipmentIds = [];
+        foreach (is_array($scope['shipment_ids'] ?? null) ? $scope['shipment_ids'] : [] as $id) {
+            if (is_string($id) && $id !== '') {
+                $shipmentIds[] = $id;
+            }
+        }
+
+        if ($shipmentIds === []) {
+            $allowed = $applying ? [Role::Admin] : [Role::Admin, Role::Supervisor];
+            if ($user instanceof User && $user->hasAnyRole(...$allowed)) {
+                return null;
+            }
+
+            return $this->problem(
+                'insufficient_role',
+                'Rescheduling by vehicle or by city is reserved for administrators. Send the orders one by one or as a list (shipment_ids).',
+                403,
+            );
+        }
+
+        /** @var ShipmentScopeDecision $decision */
+        $decision = $this->queryBus->ask(new CheckShipmentScope(ScopeActorResolver::fromUser($user), shipmentIds: $shipmentIds));
+        if ($decision->allowed) {
+            return null;
+        }
+
+        return $this->problem($decision->code ?? 'forbidden', (string) $decision->message, 403);
     }
 
     /**

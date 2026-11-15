@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Tracking\Application\ReadModel;
 
+use DateTimeImmutable;
 use Logistics\Tracking\Domain\Model\ShipmentTracking;
 use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
 
@@ -12,13 +13,16 @@ use Logistics\Tracking\Domain\ValueObject\VisibleStatus;
  *
  * NO expone datos personales ni claves internas: nada de id de seguimiento, id de envío, token,
  * nombre o dirección del cliente. Solo lo que puede ver cualquiera con el enlace: estado, paradas
- * restantes, posición del envío en la ruta, ETA, última posición del camión y un mensaje legible
- * ("Tu pedido está a N paradas"). Si se cachea, se cachea su toArray() (regla 7).
+ * restantes, posición del envío en la ruta, ETA, última posición del camión, si ya llegó a la tienda de
+ * retiro y un mensaje legible ("Tu pedido está a N paradas"). Si se cachea, se cachea su toArray() (regla 7).
  *
  * El mensaje va en ESPAÑOL a propósito: es copy orientado al cliente boliviano, no texto de admin.
  */
 final readonly class PublicTrackingView
 {
+    /** Mensaje al cliente cuando su pedido con retiro en tienda ya llegó (reemplaza al del estado). */
+    public const string READY_FOR_PICKUP_MESSAGE = 'Tu pedido ya está en la tienda. Puedes pasar a recogerlo.';
+
     /**
      * @param array{lat: float, lng: float, reported_at: string}|null $lastPosition
      */
@@ -32,18 +36,30 @@ final readonly class PublicTrackingView
         // ¿La última posición es "en vivo" (fresca dentro de la ventana) o solo la última conocida?
         // Null cuando no hay posición. Lo decide el QueryHandler con el Clock de la app.
         public ?bool $positionIsLive = null,
+        // Momento (ISO 8601) en que el pedido llegó a su tienda de retiro; null si no llegó o no aplica.
+        public ?string $atStoreAt = null,
+        // ¿El cliente ya puede pasar a recogerlo? (llegó a la tienda y no está entregado/anulado/devuelto).
+        public bool $readyForPickup = false,
     ) {}
 
     public static function fromTracking(ShipmentTracking $tracking, ?bool $positionIsLive = null): self
     {
+        $readyForPickup = $tracking->isReadyForPickup();
+
         return new self(
             $tracking->status()->value,
             $tracking->remainingStops(),
             $tracking->routePosition()?->value,
             $tracking->eta()?->toIso8601(),
             $tracking->lastPosition()?->toArray(),
-            self::buildStopsMessage($tracking->status(), $tracking->remainingStops()),
+            // Con el pedido ya en la tienda, el mensaje del estado (cargado, en camino…) deja de servirle
+            // al cliente: manda el de retiro.
+            $readyForPickup
+                ? self::READY_FOR_PICKUP_MESSAGE
+                : self::buildStopsMessage($tracking->status(), $tracking->remainingStops()),
             $tracking->lastPosition() === null ? null : $positionIsLive,
+            $tracking->atStoreAt()?->format(DateTimeImmutable::ATOM),
+            $readyForPickup,
         );
     }
 
@@ -67,6 +83,10 @@ final readonly class PublicTrackingView
         $routePosition = $data['route_position'] ?? null;
         $eta = $data['eta'] ?? null;
         $positionIsLive = $data['position_is_live'] ?? null;
+        // Campos agregados después: una foto cacheada previa no los trae y se lee como «no llegó a la
+        // tienda» (el guardado que marca la llegada invalida esa foto).
+        $atStoreAt = $data['at_store_at'] ?? null;
+        $readyForPickup = $data['ready_for_pickup'] ?? null;
 
         return new self(
             $status,
@@ -76,6 +96,8 @@ final readonly class PublicTrackingView
             self::positionFromArray($data['last_position'] ?? null),
             $stopsMessage,
             is_bool($positionIsLive) ? $positionIsLive : null,
+            is_string($atStoreAt) && $atStoreAt !== '' ? $atStoreAt : null,
+            $readyForPickup === true,
         );
     }
 
@@ -133,7 +155,7 @@ final readonly class PublicTrackingView
     }
 
     /**
-     * @return array{status: string, remaining_stops: int, route_position: int|null, eta: string|null, last_position: array{lat: float, lng: float, reported_at: string}|null, position_is_live: bool|null, stops_message: string}
+     * @return array{status: string, remaining_stops: int, route_position: int|null, eta: string|null, last_position: array{lat: float, lng: float, reported_at: string}|null, position_is_live: bool|null, stops_message: string, at_store_at: string|null, ready_for_pickup: bool}
      */
     public function toArray(): array
     {
@@ -145,6 +167,8 @@ final readonly class PublicTrackingView
             'last_position' => $this->lastPosition,
             'position_is_live' => $this->positionIsLive,
             'stops_message' => $this->stopsMessage,
+            'at_store_at' => $this->atStoreAt,
+            'ready_for_pickup' => $this->readyForPickup,
         ];
     }
 }

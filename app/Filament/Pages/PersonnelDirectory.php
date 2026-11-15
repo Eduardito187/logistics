@@ -287,6 +287,7 @@ final class PersonnelDirectory extends Page
         return match (strtolower($role)) {
             'admin', 'administrator' => 'Administrador',
             'supervisor' => 'Supervisor',
+            'planificador', 'planner' => 'Planificador',
             'chofer', 'driver' => 'Chofer',
             'preparador', 'picker' => 'Preparador',
             'tienda', 'store' => 'Tienda',

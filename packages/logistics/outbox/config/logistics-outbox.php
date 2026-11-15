@@ -32,6 +32,7 @@ use Logistics\Promise\Infrastructure\Dispatch\OrderPaidCupoConfirmDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\ShipmentStatusProgressionDispatcher;
 use Logistics\Telemetry\Infrastructure\Outbox\BindTripToRouteOnRouteStarted;
+use Logistics\Tracking\Infrastructure\Outbox\AtStoreOnStoreDrop;
 use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
 use Logistics\Tracking\Infrastructure\Outbox\CancelOnOrderCancelled;
 use Logistics\Tracking\Infrastructure\Outbox\InProgressOnLabelsEmitted;
@@ -177,8 +178,9 @@ return [
         // Recepción conciliada en un nodo: aviso (preserva el ruteo por prefijo) + «listo para retirar» al
         // cliente cuando es SU tienda de retiro.
         'execution.node_reception_reconciled' => FanOutMessageDispatcher::class,
-        // Entrega en tienda del chofer: avisa al cliente que su pedido llegó (un reactor; nombre exacto).
-        'execution.shipment_dropped_at_store' => ReadyForPickupNotificationDispatcher::class,
+        // Entrega en tienda del chofer: ABANICO — aviso al cliente de que su pedido llegó + el seguimiento
+        // refleja la llegada a la tienda (nombre exacto gana al prefijo 'execution.').
+        'execution.shipment_dropped_at_store' => FanOutMessageDispatcher::class,
         'execution.driver_route_assembled' => FanOutMessageDispatcher::class,
         // Asignar vehículo abre la entrega = preparar: solo avanza el estado del envío a IN_EXECUTION (un
         // reactor; no necesita abanico ni notificación). El nombre exacto gana al prefijo 'execution.'.
@@ -336,6 +338,12 @@ return [
             // Si el chofer no registró su entrega en tienda, la registra el sistema: de ese único hecho
             // (`execution.shipment_dropped_at_store`) salen el «listo para retirar» y el aviso al cliente.
             StoreDropOnReceptionReconciled::class,
+        ],
+        // El chofer dejó el pedido en la tienda: aviso «listo para recojo» PRIMERO; después el seguimiento
+        // marca la llegada (at_store_at). Ambos idempotentes: si el seguimiento falla al guardar, el reintento no repite el aviso.
+        'execution.shipment_dropped_at_store' => [
+            ReadyForPickupNotificationDispatcher::class,
+            AtStoreOnStoreDrop::class,
         ],
         'execution.driver_route_assembled' => [
             DomainEventNotificationDispatcher::class,

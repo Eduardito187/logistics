@@ -44,7 +44,8 @@ use Logistics\Planning\Infrastructure\Persistence\Eloquent\PlanRecord;
 use Logistics\Planning\Presentation\Filament\PlanResource\Pages;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
-use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlanningOffice;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 /**
@@ -66,7 +67,8 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  */
 final class PlanResource extends Resource
 {
-    use OfficeOnly;
+    use PlanningOffice;
+    use ScopesToUserCity;
 
     protected static ?string $model = PlanRecord::class;
 
@@ -115,11 +117,17 @@ final class PlanResource extends Resource
     /**
      * Eager-load del camión y de las paradas con su envío para evitar N+1 al pintar placas y referencias.
      *
+     * Alcance por ciudad: un usuario acotado solo ve los planes de su ciudad (camión con base en ella, o
+     * con alguna parada que lleva un pedido suyo).
+     *
      * @return Builder<PlanRecord>
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['vehicle', 'stops.shipment']);
+        $query = parent::getEloquentQuery()->with(['vehicle', 'stops.shipment']);
+        self::scopeTripsToUserCity($query, 'planning_plans.id', 'planning_plans.vehicle_id', 'planning_plan_stops', 'plan_id');
+
+        return $query;
     }
 
     public static function table(Table $table): Table
@@ -574,19 +582,25 @@ final class PlanResource extends Resource
             ->required()
             ->native(false)
             ->searchable()
-            ->getSearchResultsUsing(static fn (string $search): array => ShipmentRecord::query()
-                ->where(static function (Builder $query) use ($search): void {
-                    $query->where('external_id', 'like', "%{$search}%")
-                        ->orWhere('customer_name', 'like', "%{$search}%");
-                })
-                ->orderBy('external_id')
-                ->limit(50)
-                ->get()
-                ->mapWithKeys(static fn (ShipmentRecord $record): array => [
-                    // Valor = UUID (lo que persiste el comando); etiqueta = referencia humana, nunca el UUID.
-                    $record->id => self::shipmentLabel($record) ?? $record->external_id,
-                ])
-                ->all())
+            ->getSearchResultsUsing(static function (string $search): array {
+                $shipments = ShipmentRecord::query()
+                    ->where(static function (Builder $query) use ($search): void {
+                        $query->where('external_id', 'like', "%{$search}%")
+                            ->orWhere('customer_name', 'like', "%{$search}%");
+                    });
+                // Un usuario acotado por ciudad solo puede elegir pedidos de su ciudad.
+                self::scopeShipmentsToUserCity($shipments);
+
+                return $shipments
+                    ->orderBy('external_id')
+                    ->limit(50)
+                    ->get()
+                    ->mapWithKeys(static fn (ShipmentRecord $record): array => [
+                        // Valor = UUID (lo que persiste el comando); etiqueta = referencia humana, nunca el UUID.
+                        $record->id => self::shipmentLabel($record) ?? $record->external_id,
+                    ])
+                    ->all();
+            })
             ->getOptionLabelUsing(static function (string $value): ?string {
                 $record = ShipmentRecord::query()->find($value);
 

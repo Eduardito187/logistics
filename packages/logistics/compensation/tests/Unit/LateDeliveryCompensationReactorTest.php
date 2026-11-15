@@ -112,8 +112,8 @@ it('ignora un evento que no es shipment_delivered', function (): void {
     $reactor = new LateDeliveryCompensationReactor(
         $bus,
         lateReactorPolicy(),
-        lateReactorWindow(new DateTimeImmutable('2026-11-10 10:00')),
-        lateReactorClock(new DateTimeImmutable('2026-11-10 10:00')),
+        lateReactorWindow(new DateTimeImmutable('2026-11-10 10:00 +00:00')),
+        lateReactorClock(new DateTimeImmutable('2026-11-10 10:00 +00:00')),
     );
 
     $reactor->dispatch(lateMessage('execution.something_else', ['shipment_id' => 'ship-1']));
@@ -126,8 +126,8 @@ it('abre un caso cuando la entrega supera la ventana más la tolerancia', functi
     $reactor = new LateDeliveryCompensationReactor(
         $bus,
         lateReactorPolicy(60),
-        lateReactorWindow(new DateTimeImmutable('2026-11-10 18:00')),
-        lateReactorClock(new DateTimeImmutable('2026-11-10 20:00')),
+        lateReactorWindow(new DateTimeImmutable('2026-11-10 18:00 +00:00')),
+        lateReactorClock(new DateTimeImmutable('2026-11-10 20:00 +00:00')),
     );
 
     // Entregado 20:30, ventana 18:00 + 60 min = deadline 19:00 → tardío.
@@ -150,8 +150,8 @@ it('no abre caso si la entrega cae dentro del plazo', function (): void {
     $reactor = new LateDeliveryCompensationReactor(
         $bus,
         lateReactorPolicy(60),
-        lateReactorWindow(new DateTimeImmutable('2026-11-10 18:00')),
-        lateReactorClock(new DateTimeImmutable('2026-11-10 18:30')),
+        lateReactorWindow(new DateTimeImmutable('2026-11-10 18:00 +00:00')),
+        lateReactorClock(new DateTimeImmutable('2026-11-10 18:30 +00:00')),
     );
 
     $reactor->dispatch(lateMessage('execution.shipment_delivered', [
@@ -167,8 +167,8 @@ it('no abre caso si fue reprogramado por el cliente', function (): void {
     $reactor = new LateDeliveryCompensationReactor(
         $bus,
         lateReactorPolicy(60),
-        lateReactorWindow(new DateTimeImmutable('2026-11-10 18:00'), rescheduled: true),
-        lateReactorClock(new DateTimeImmutable('2026-11-10 23:00')),
+        lateReactorWindow(new DateTimeImmutable('2026-11-10 18:00 +00:00'), rescheduled: true),
+        lateReactorClock(new DateTimeImmutable('2026-11-10 23:00 +00:00')),
     );
 
     $reactor->dispatch(lateMessage('execution.shipment_delivered', [
@@ -185,7 +185,7 @@ it('no abre caso si no hay ventana prometida', function (): void {
         $bus,
         lateReactorPolicy(60),
         lateReactorWindow(null),
-        lateReactorClock(new DateTimeImmutable('2026-11-10 23:00')),
+        lateReactorClock(new DateTimeImmutable('2026-11-10 23:00 +00:00')),
     );
 
     $reactor->dispatch(lateMessage('execution.shipment_delivered', ['shipment_id' => 'ship-1']));
@@ -198,8 +198,8 @@ it('cae al reloj si occurred_at es inválido y usa el aggregateId si falta shipm
     $reactor = new LateDeliveryCompensationReactor(
         $bus,
         lateReactorPolicy(60),
-        lateReactorWindow(new DateTimeImmutable('2026-11-10 18:00')),
-        lateReactorClock(new DateTimeImmutable('2026-11-10 22:00')),
+        lateReactorWindow(new DateTimeImmutable('2026-11-10 18:00 +00:00')),
+        lateReactorClock(new DateTimeImmutable('2026-11-10 22:00 +00:00')),
     );
 
     // Sin shipment_id en payload (toma el aggregateId) y occurred_at corrupto (cae al reloj → tardío).

@@ -89,3 +89,34 @@ Piezas clave:
 
 Config/env: `OSRM_HOST`, `OSRM_TIMEOUT`, `PLANNING_ROUTING_BACKEND`, `VROOM_URL`,
 `OSRM_TABLE_MAX_COORDINATES`, `PLANNING_MATRIX_CACHE_TTL`, `PLANNING_FALLBACK_SPEED_KMH`.
+
+## Armado de viajes (asistente de la app) y plan sin identificadores
+
+Pedido de la app del 2026-11-15 (secciones 1 y 2). Todas las lecturas van en lote y por contrato de
+Application con adaptador de solo lectura en Infrastructure (`ShipmentPlanningFactsReader`,
+`TripVehicleReader`, `TripCandidateReader`).
+
+- **Plan legible**: `PlannedStop` y `StopEta` suman `order_reference`, `customer_name`, `short_address`
+  (la regla de Envíos, `AddressPartsView`), `delivery_mode`, `units_total` y `time_window {from, to}`; `Plan`
+  suma `origin_node {id, name}` (la base del camión) y `distance_km` / `duration_minutes` (los totales de la
+  geometría guardada; null si el plan todavía no la tiene).
+- **Candidatos** (`GET /app/plans/candidates`, consulta `ListTripCandidates`): pedidos planificables ese día
+  (misma regla de fecha del auto-planificador), sin camión ni plan, del departamento de la base del camión y
+  dentro del alcance del usuario (el predicado es el de Envíos, `ShipmentSqlFilters::scope`). Orden por
+  haversine en SQL al último elegido o a la base; `fits` por peso, volumen y hora elegida; `suggested` si
+  cabe y está dentro del radio configurado de una parada ya elegida (o de la base).
+- **Orden sugerido** (`POST /app/plans/suggest-sequence`, consulta `SuggestTripSequence`): no guarda. Matriz
+  real por carretera (`OsrmRoadMatrixProvider`, con tope de espera corto propio) y, si no responde, respaldo
+  local determinista (`StraightLineMatrixBuilder`). El orden lo resuelve `TripSequenceSuggester` (vecino más
+  cercano + inserción de las paradas con ventana + 2-opt), con espera de ventana y tiempo de servicio. Avisos:
+  `window_missed`, `over_capacity`, `out_of_department`, `missing_location`. VROOM no interviene: resuelve
+  el VRP completo del auto-planificador, no el orden de un camión suelto.
+- **Crear y editar**: en `POST /app/plans` las coordenadas son opcionales (se toman del envío; sin ubicación,
+  422) y se respeta el orden recibido (`optimize: true` reordena, como antes). `DELETE
+  /app/plans/{planId}/stops/{shipmentId}` quita una parada. Un plan publicado es de solo lectura (409), y un
+  camión tiene un plan por día (409 con el `plan_id` existente).
+
+Config/env (todas con default funcional, bajo `trip_builder`): `PLANNING_TRIP_TIMEZONE`,
+`PLANNING_TRIP_AVG_SPEED_KMH`, `PLANNING_TRIP_DETOUR_FACTOR`, `PLANNING_TRIP_SERVICE_MINUTES`,
+`PLANNING_TRIP_SUGGEST_RADIUS_M`, `PLANNING_TRIP_SAME_BLOCK_M`, `PLANNING_TRIP_ROAD_MATRIX`,
+`PLANNING_TRIP_OSRM_TIMEOUT`, `PLANNING_TRIP_MAX_STOPS`, `PLANNING_TRIP_MAX_CANDIDATES`.

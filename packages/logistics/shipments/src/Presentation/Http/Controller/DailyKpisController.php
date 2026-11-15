@@ -22,11 +22,12 @@ use Logistics\Shipments\Presentation\Http\Support\ReadsOperationalDates;
  * Reemplaza calcular en el teléfono bajando todas las entregas: agregados SQL de solo lectura con caché
  * corta (ver DailyKpisView para las definiciones de cada indicador).
  *
- * Query: `date` (YYYY-MM-DD o fecha-hora ISO; por defecto HOY en America/La_Paz) y, solo para supervisor
- * y admin, `node_id`, `vehicle_id` y `driver_id` opcionales.
+ * Query: `date` (YYYY-MM-DD o fecha-hora ISO; por defecto HOY en America/La_Paz) y, solo para supervisor,
+ * planificador y admin, `node_id`, `vehicle_id` y `driver_id` opcionales.
  *
  * Alcance por rol (server-side, no se confía en la app):
- *  - supervisor / admin → toda la flota (`fleet`) o el nodo pedido (`node`), con los filtros dados;
+ *  - supervisor / planificador / admin → toda la flota (`fleet`) o el nodo pedido (`node`), con los filtros
+ *    dados. Los KPIs no se acotan por ciudad: el planificador ve los mismos agregados que el supervisor;
  *  - chofer → solo lo suyo (`driver`, por `users.driver_id`), ignora los filtros;
  *  - tienda → su nodo asignado (`node`, por `users.node_id`), ignora los filtros;
  *  - otros roles → 403.
@@ -80,7 +81,8 @@ final class DailyKpisController
             return null;
         }
 
-        if ($user->hasRole(Role::Admin) || $user->hasRole(Role::Supervisor)) {
+        // El planificador recibe los KPIs de oficina igual que el supervisor (toda la flota o el nodo pedido).
+        if ($user->hasAnyRole(Role::Admin, Role::Supervisor, Role::Planificador)) {
             $nodeId = $filters['node_id'] ?? null;
 
             return new GetDailyKpis(

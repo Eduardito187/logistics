@@ -31,6 +31,14 @@ return [
             // GET /plans/auto?date=YYYY-MM-DD&strategy=optimization|slots → estado/resultado.
             Route::get('/auto', [AutoPlanController::class, 'show'])->name('auto.show');
 
+            // Asistente de viajes: candidatos por cercanía y orden sugerido (no guarda).
+            Route::get('/candidates', [PlanController::class, 'candidates'])->name('candidates');
+            Route::post('/suggest-sequence', [PlanController::class, 'suggestSequence'])->name('suggest-sequence');
+
+            // Quitar una parada de un plan sin publicar.
+            Route::delete('/{planId}/stops/{shipmentId}', [PlanController::class, 'removeStop'])
+                ->name('stops.remove')->whereUuid(['planId', 'shipmentId']);
+
             // Ver un plan con su secuencia, ETA y plan de carga.
             Route::get('/{planId}', [PlanController::class, 'show'])->name('show')->whereUuid('planId');
 

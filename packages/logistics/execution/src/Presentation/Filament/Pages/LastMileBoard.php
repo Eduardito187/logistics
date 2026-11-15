@@ -25,6 +25,7 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\DeliveryRecord;
 use Logistics\Shared\Application\Command\Command;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 
@@ -46,13 +47,24 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\PhysicalUnitRecord;
 final class LastMileBoard extends Page
 {
     use ResolvesUserRoles;
+    use ScopesToUserCity;
 
     /**
-     * Tablero de última milla: la oficina despacha y el chofer trabaja su cola de entregas del día.
+     * Tablero de última milla: la oficina despacha, el chofer trabaja su cola de entregas del día y el
+     * planificador lo CONSULTA (sin confirmar entregas ni marcar fallidas).
      *
      * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
      */
     public static function canAccess(): bool
+    {
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'planificador', 'chofer');
+    }
+
+    /**
+     * ¿La cuenta autenticada registra hechos de TERRENO (escaneos, prueba de entrega, entrega fallida,
+     * incidentes)? Oficina y chofer. El planificador entra a consultar, pero no pasa esta puerta.
+     */
+    public static function canOperateField(): bool
     {
         return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer');
     }
@@ -170,8 +182,12 @@ final class LastMileBoard extends Page
         $closed = [DeliveryStatus::Delivered->value, DeliveryStatus::Failed->value];
 
         try {
-            $records = DeliveryRecord::query()
-                ->with(['shipment', 'vehicle'])
+            $deliveries = DeliveryRecord::query()->with(['shipment', 'vehicle']);
+            // Alcance por ciudad: un usuario acotado (planificador) solo ve las entregas de los pedidos de
+            // su ciudad. Para la oficina no agrega nada.
+            self::scopeToUserCityByShipment($deliveries, 'execution_deliveries.shipment_id');
+
+            $records = $deliveries
                 // Activas (no cerradas) o cerradas/abiertas hoy: la cola viva del supervisor.
                 ->where(function (Builder $query) use ($closed, $startOfToday): void {
                     // `created_at` es columna de timestamps (no está en el docblock del modelo): se
@@ -242,6 +258,8 @@ final class LastMileBoard extends Page
             ->label(__('Confirm delivery (POD)'))
             ->icon('heroicon-o-check-badge')
             ->color('success')
+            // Hecho de terreno: oculta (y no ejecutable) para el planificador.
+            ->visible(static fn (): bool => self::canOperateField())
             ->modalHeading(__('Record proof of delivery'))
             ->modalDescription(__('Confirm the delivery with the customer confirmation (QR or signature) and an optional photo.'))
             ->modalSubmitActionLabel(__('Confirm delivery'))
@@ -287,6 +305,8 @@ final class LastMileBoard extends Page
             ->label(__('Mark failed'))
             ->icon('heroicon-o-x-circle')
             ->color('danger')
+            // Hecho de terreno: oculta (y no ejecutable) para el planificador.
+            ->visible(static fn (): bool => self::canOperateField())
             ->requiresConfirmation()
             ->modalHeading(__('Record failed delivery'))
             ->modalDescription(__('Close the delivery as failed with a typified reason.'))
