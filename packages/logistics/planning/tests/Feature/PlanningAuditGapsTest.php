@@ -144,6 +144,7 @@ it('sin tripulación el chofer queda null y la placa se resuelve igual, en lote 
     expect($views)->toHaveCount(5)
         ->and(array_filter($views, static fn (PlanView $view): bool => $view->plate === null))->toBe([])
         ->and(array_filter($views, static fn (PlanView $view): bool => $view->driverName !== null))->toBe([])
-        // Una lectura de placas y una de tripulaciones para los 5 planes (no una por plan).
-        ->and(count($fleetReads))->toBeLessThanOrEqual(2);
+        // Una lectura de placas, una de tripulaciones y una de la base de salida (origin_node) para los 5
+        // planes: tres en total, no una por plan.
+        ->and(count($fleetReads))->toBeLessThanOrEqual(3);
 });

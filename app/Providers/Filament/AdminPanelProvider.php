@@ -143,8 +143,9 @@ final class AdminPanelProvider extends PanelProvider
                 fn (): string => view('filament.distrack-head')->render(),
             )
             // Tiempo real (Fase 6): Laravel Echo + Pusher contra Soketi self-host, para el push en vivo de
-            // posiciones de flota a la Torre de Control. Solo oficina (quien ve el mapa). Env-gated en el
-            // cliente: si no hay VITE_PUSHER_APP_KEY, no conecta y queda el polling como fallback.
+            // posiciones de flota a la Torre de Control. Solo oficina (quien ve el mapa). La config llega en
+            // RUNTIME: la vista emite <meta> con la clave pública solo si BROADCAST_CONNECTION=pusher (sin
+            // variables VITE_PUSHER_* de build); con el tiempo real apagado no emite nada y queda el polling.
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): string => self::hasOfficeScope() ? view('filament.realtime-echo')->render() : '',

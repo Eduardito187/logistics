@@ -17,6 +17,8 @@ use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentTo
 use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentToTrackingHandler;
 use Logistics\Tracking\Application\Command\MarkRatingRequested\MarkRatingRequested;
 use Logistics\Tracking\Application\Command\MarkRatingRequested\MarkRatingRequestedHandler;
+use Logistics\Tracking\Application\Command\MarkShipmentAtStore\MarkShipmentAtStore;
+use Logistics\Tracking\Application\Command\MarkShipmentAtStore\MarkShipmentAtStoreHandler;
 use Logistics\Tracking\Application\Command\OpenTracking\OpenTracking;
 use Logistics\Tracking\Application\Command\OpenTracking\OpenTrackingHandler;
 use Logistics\Tracking\Application\Command\PlaceShipmentOnRoute\PlaceShipmentOnRoute;
@@ -40,6 +42,7 @@ use Logistics\Tracking\Application\Contract\RatingRequestStore;
 use Logistics\Tracking\Application\Contract\ReturnCoverageReader;
 use Logistics\Tracking\Application\Contract\RouteStopsReader;
 use Logistics\Tracking\Application\Contract\ShipmentOrderReferenceReader;
+use Logistics\Tracking\Application\Contract\TrackingDatesReconciler;
 use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkState;
 use Logistics\Tracking\Application\Query\GetPublicLinkState\GetPublicLinkStateHandler;
 use Logistics\Tracking\Application\Query\GetPublicSurveyState\GetPublicSurveyState;
@@ -64,6 +67,7 @@ use Logistics\Tracking\Domain\Contract\TrackingRepository;
 use Logistics\Tracking\Domain\Contract\UnitTrackingRepository;
 use Logistics\Tracking\Infrastructure\Persistence\Backfill\SqlCustomerEmailBackfill;
 use Logistics\Tracking\Infrastructure\Persistence\Backfill\SqlDeliveredAtBackfill;
+use Logistics\Tracking\Infrastructure\Persistence\Backfill\SqlTrackingDatesReconciler;
 use Logistics\Tracking\Infrastructure\Persistence\CacheInvalidatingTrackingRepository;
 use Logistics\Tracking\Infrastructure\Persistence\DbRatingRequestStore;
 use Logistics\Tracking\Infrastructure\Persistence\Eloquent\EloquentSatisfactionSurveyRepository;
@@ -78,6 +82,7 @@ use Logistics\Tracking\Infrastructure\ReadSide\PublicTrackingCache;
 use Logistics\Tracking\Infrastructure\Settings\SettingsPublicLinkTtl;
 use Logistics\Tracking\Presentation\Console\BackfillCustomerEmailCommand;
 use Logistics\Tracking\Presentation\Console\BackfillDeliveredAtCommand;
+use Logistics\Tracking\Presentation\Console\ReconcileTrackingDatesCommand;
 use Logistics\Tracking\Presentation\Console\ReconcileTrackingFromExecutionCommand;
 use Logistics\Tracking\Presentation\Console\SendSurveyInvitationsCommand;
 use Logistics\Tracking\Presentation\Http\Controller\PublicTrackingPageController;
@@ -110,6 +115,15 @@ final class TrackingServiceProvider extends ServiceProvider
             assert($connections instanceof ConnectionResolverInterface);
 
             return new SqlDeliveredAtBackfill($connections);
+        });
+
+        // Puesta al día de at_store_at y de las delivered_at corridas (logistics:tracking:reconcile-dates).
+        $this->app->bind(TrackingDatesReconciler::class, static function ($app): SqlTrackingDatesReconciler {
+            $connections = $app['db'];
+            assert($connections instanceof ConnectionResolverInterface);
+            $timezone = config('app.timezone');
+
+            return new SqlTrackingDatesReconciler($connections, is_string($timezone) && $timezone !== '' ? $timezone : 'UTC');
         });
 
         // Prerrequisito de la calificación: contacto del cliente desde el lado lectura de shipments y store
@@ -224,6 +238,7 @@ final class TrackingServiceProvider extends ServiceProvider
                 BackfillCustomerEmailCommand::class,
                 SendSurveyInvitationsCommand::class,
                 ReconcileTrackingFromExecutionCommand::class,
+                ReconcileTrackingDatesCommand::class,
             ]);
         }
 
@@ -240,6 +255,7 @@ final class TrackingServiceProvider extends ServiceProvider
         $registry->register(UpdateTruckPosition::class, UpdateTruckPositionHandler::class);
         $registry->register(RecordSatisfactionSurvey::class, RecordSatisfactionSurveyHandler::class);
         $registry->register(MarkRatingRequested::class, MarkRatingRequestedHandler::class);
+        $registry->register(MarkShipmentAtStore::class, MarkShipmentAtStoreHandler::class);
         $registry->register(GetPublicTracking::class, GetPublicTrackingHandler::class);
         $registry->register(GetPublicTrackingSnapshot::class, GetPublicTrackingSnapshotHandler::class);
         $registry->register(GetShipmentTracking::class, GetShipmentTrackingHandler::class);

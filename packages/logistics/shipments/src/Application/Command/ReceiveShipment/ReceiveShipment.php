@@ -44,5 +44,11 @@ final readonly class ReceiveShipment implements Command
         // Código del nodo de retiro / destino (network_nodes.code) cuando la fuente manda el código de la
         // tienda en vez del UUID. Solo se usa si no hay `destinationNodeId` ni sufijo "#n:{uuid}".
         public ?string $destinationNodeCode = null,
+        // Nodo de ORIGEN informado por la fuente (de dónde sale el pedido: lo manda SAP o un traspaso), por
+        // UUID o por código (`network_nodes.code`). Opcionales: sin ninguno, el origen se deriva (centro de
+        // distribución de la ciudad destino). Si viene, el nodo debe existir; si vienen los dos, deben ser
+        // el mismo nodo. Solo lo exponen las puertas de integración.
+        public ?string $originNodeId = null,
+        public ?string $originNodeCode = null,
     ) {}
 }

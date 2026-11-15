@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Planning\Application\Command\AssignShipmentToVehicle\AssignShipmentToVehicle;
+use Logistics\Planning\Application\Command\DeletePlan\DeletePlan;
 use Logistics\Planning\Application\Command\GenerateDailyPlan\GenerateDailyPlan;
 use Logistics\Planning\Application\Command\GeneratePlanProposal\GeneratePlanProposal;
 use Logistics\Planning\Application\Command\GeneratePlanProposal\ProposalStopInput;
@@ -44,7 +45,8 @@ use Logistics\Planning\Infrastructure\Persistence\Eloquent\PlanRecord;
 use Logistics\Planning\Presentation\Filament\PlanResource\Pages;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
-use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlanningOffice;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 /**
@@ -54,7 +56,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * propone secuencia y ETA, un humano reordena y finalmente lo publica. Por eso este resource NO expone
  * CRUD (crear/editar/borrar está deshabilitado) sino los CASOS DE USO del contexto como acciones que
  * despachan el comando real al CommandBus (dominio + outbox transaccional): generar la propuesta,
- * asignar un envío, reordenar paradas y publicar. Nunca se escribe el Record a mano para operaciones de
+ * asignar un envío, reordenar paradas, publicar y borrar un plan sin publicar. Nunca se escribe el Record a mano para operaciones de
  * negocio.
  *
  * La tabla y la vista muestran datos humanos (día del plan, placa del camión, referencia del pedido) en
@@ -66,7 +68,8 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  */
 final class PlanResource extends Resource
 {
-    use OfficeOnly;
+    use PlanningOffice;
+    use ScopesToUserCity;
 
     protected static ?string $model = PlanRecord::class;
 
@@ -115,11 +118,17 @@ final class PlanResource extends Resource
     /**
      * Eager-load del camión y de las paradas con su envío para evitar N+1 al pintar placas y referencias.
      *
+     * Alcance por ciudad: un usuario acotado solo ve los planes de su ciudad (camión con base en ella, o
+     * con alguna parada que lleva un pedido suyo).
+     *
      * @return Builder<PlanRecord>
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['vehicle', 'stops.shipment']);
+        $query = parent::getEloquentQuery()->with(['vehicle', 'stops.shipment']);
+        self::scopeTripsToUserCity($query, 'planning_plans.id', 'planning_plans.vehicle_id', 'planning_plan_stops', 'plan_id');
+
+        return $query;
     }
 
     public static function table(Table $table): Table
@@ -283,6 +292,32 @@ final class PlanResource extends Resource
                         }
 
                         self::success(__('Plan published'), __('The plan is now available for execution.'));
+                    }),
+                // Flujo: borrar el plan entero (comando DeletePlan). Solo un plan sin publicar, y solo quien
+                // escribe como oficina (administrador o supervisor); el planificador no ve la acción. Los
+                // pedidos de sus paradas quedan libres para armar otro viaje.
+                Action::make('deletePlan')
+                    ->label(__('Delete plan'))
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading(__('Delete this delivery plan'))
+                    ->modalDescription(__('The plan and all its stops will be deleted. Its orders become available again to build another trip. This cannot be undone.'))
+                    ->modalSubmitActionLabel(__('Delete plan'))
+                    ->visible(static fn (PlanRecord $record): bool => self::canWriteAsOffice()
+                        && $record->status !== PlanStatus::Published->value)
+                    ->action(static function (PlanRecord $record, CommandBus $commandBus): void {
+                        try {
+                            $commandBus->dispatch(new DeletePlan(
+                                planId: (string) $record->getKey(),
+                            ));
+                        } catch (PlanningException $exception) {
+                            self::failure(__('Could not delete plan'), $exception);
+
+                            return;
+                        }
+
+                        self::success(__('Plan deleted'), __('The plan was deleted and its orders are available again.'));
                     }),
             ])
             ->defaultSort('plan_date', 'desc');
@@ -574,19 +609,25 @@ final class PlanResource extends Resource
             ->required()
             ->native(false)
             ->searchable()
-            ->getSearchResultsUsing(static fn (string $search): array => ShipmentRecord::query()
-                ->where(static function (Builder $query) use ($search): void {
-                    $query->where('external_id', 'like', "%{$search}%")
-                        ->orWhere('customer_name', 'like', "%{$search}%");
-                })
-                ->orderBy('external_id')
-                ->limit(50)
-                ->get()
-                ->mapWithKeys(static fn (ShipmentRecord $record): array => [
-                    // Valor = UUID (lo que persiste el comando); etiqueta = referencia humana, nunca el UUID.
-                    $record->id => self::shipmentLabel($record) ?? $record->external_id,
-                ])
-                ->all())
+            ->getSearchResultsUsing(static function (string $search): array {
+                $shipments = ShipmentRecord::query()
+                    ->where(static function (Builder $query) use ($search): void {
+                        $query->where('external_id', 'like', "%{$search}%")
+                            ->orWhere('customer_name', 'like', "%{$search}%");
+                    });
+                // Un usuario acotado por ciudad solo puede elegir pedidos de su ciudad.
+                self::scopeShipmentsToUserCity($shipments);
+
+                return $shipments
+                    ->orderBy('external_id')
+                    ->limit(50)
+                    ->get()
+                    ->mapWithKeys(static fn (ShipmentRecord $record): array => [
+                        // Valor = UUID (lo que persiste el comando); etiqueta = referencia humana, nunca el UUID.
+                        $record->id => self::shipmentLabel($record) ?? $record->external_id,
+                    ])
+                    ->all();
+            })
             ->getOptionLabelUsing(static function (string $value): ?string {
                 $record = ShipmentRecord::query()->find($value);
 

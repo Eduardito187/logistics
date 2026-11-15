@@ -45,7 +45,7 @@ use Logistics\Settings\Application\Command\SetSetting\SetSettingCommand;
 use Logistics\Settings\Application\Query\GetSetting\GetSettingHistoryQuery;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
-use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlanningOffice;
 
 /**
  * Calendario de despacho del admin, pensado en grande: eje por MUNICIPIO y vista de los SIETE días de la
@@ -68,7 +68,7 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class DispatchCalendar extends Page
 {
-    use OfficeOnly;
+    use PlanningOffice;
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-calendar-days';
 

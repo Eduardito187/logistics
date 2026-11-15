@@ -71,11 +71,16 @@ it('lista roles como vistas', function (): void {
     /** @var QueryBus $queries */
     $queries = $this->queries;
 
+    // El catálogo ya puede traer roles de sistema sembrados por migración (p. ej. «planificador»):
+    // se cuenta relativo a lo que había.
+    /** @var list<RoleView> $existing */
+    $existing = $queries->ask(new ListRoles);
+
     RoleFactory::new()->count(2)->create();
 
     /** @var list<RoleView> $roles */
     $roles = $queries->ask(new ListRoles);
-    expect($roles)->toHaveCount(2)
+    expect($roles)->toHaveCount(count($existing) + 2)
         ->and($roles[0])->toBeInstanceOf(RoleView::class);
 })->skip(env('DB_CONNECTION') !== 'pgsql', 'Requiere PostgreSQL (base logistics_test).');
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Application\Command\MarkNotificationSent;
 
+use Logistics\Notifications\Application\Contract\NotificationFeedSignal;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Notifications\Domain\ValueObject\Channel;
@@ -23,6 +24,7 @@ final class MarkNotificationSentHandler implements CommandHandler
     public function __construct(
         private readonly NotificationRepository $notifications,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly NotificationFeedSignal $feedSignal,
     ) {}
 
     public function handle(Command $command): void
@@ -41,5 +43,8 @@ final class MarkNotificationSentHandler implements CommandHandler
         $this->notifications->save($notification);
 
         $this->recordEvents->record($notification->releaseEvents(), 'notifications.notification');
+
+        // Señal de tiempo real: cambió el estado visible de la notificación (enviada).
+        $this->feedSignal->feedChanged();
     }
 }

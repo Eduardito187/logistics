@@ -65,6 +65,14 @@ final class DeliveryMapper
             );
         }
 
+        // Cierre con faltantes de un traspaso: igual criterio, las columnas solo se escriben cuando ocurrió.
+        if ($delivery->isClosedWithShortage()) {
+            $row['closed_with_shortage'] = true;
+            $row['shortage_closed_at'] = $delivery->shortageClosedAt()?->format(DATE_ATOM);
+            $row['shortage_close_reason'] = $delivery->shortageCloseReason();
+            $row['shortage_closed_by'] = $delivery->shortageClosedBy();
+        }
+
         return $row;
     }
 
@@ -140,6 +148,17 @@ final class DeliveryMapper
             is_string($dropNode) && $dropNode !== '' ? $dropNode : null,
             is_string($dropPhoto) && $dropPhoto !== '' ? $dropPhoto : null,
             self::missingUnits($record->getAttribute('store_drop_missing_units')),
+        );
+
+        // Cierre con faltantes (columnas ausentes si la migración todavía no corrió: queda en «no»).
+        $shortageAt = $record->getAttribute('shortage_closed_at');
+        $shortageReason = $record->getAttribute('shortage_close_reason');
+        $shortageBy = $record->getAttribute('shortage_closed_by');
+        $delivery->restoreShortageClosure(
+            in_array($record->getAttribute('closed_with_shortage'), [true, 1, '1', 't', 'true'], true),
+            is_string($shortageAt) && $shortageAt !== '' ? new DateTimeImmutable($shortageAt) : null,
+            is_string($shortageReason) && $shortageReason !== '' ? $shortageReason : null,
+            is_string($shortageBy) && $shortageBy !== '' ? $shortageBy : null,
         );
 
         return $delivery;

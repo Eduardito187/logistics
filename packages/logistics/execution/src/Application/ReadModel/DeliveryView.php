@@ -48,6 +48,11 @@ final readonly class DeliveryView
         public ?string $storeDropNodeId = null,
         /** @var list<array{unit_id: string, reason: string}> productos que el chofer no pudo dejar en la tienda */
         public array $storeDropMissingUnits = [],
+        // Traspaso cerrado CON FALTANTES (conciliación con diferencias o cierre manual de oficina). El motivo
+        // solo viene en el cierre manual.
+        public bool $withShortage = false,
+        public ?string $shortageClosedAt = null,
+        public ?string $shortageCloseReason = null,
     ) {}
 
     /**
@@ -87,6 +92,9 @@ final readonly class DeliveryView
                 static fn (MissingUnitDeclaration $missing): array => $missing->toArray(),
                 $delivery->storeDropMissingUnits(),
             ),
+            $delivery->isClosedWithShortage(),
+            $delivery->shortageClosedAt()?->format(DATE_ATOM),
+            $delivery->shortageCloseReason(),
         );
     }
 
@@ -170,6 +178,10 @@ final readonly class DeliveryView
             'store_drop_node_id' => $this->storeDropNodeId,
             // Productos que el chofer declaró que NO pudo dejar en la tienda, con su motivo (vacío = completo).
             'store_drop_missing_units' => $this->storeDropMissingUnits,
+            // Traspaso cerrado con faltantes: entregado aunque no llegaron todos los productos.
+            'with_shortage' => $this->withShortage,
+            'shortage_closed_at' => $this->shortageClosedAt,
+            'shortage_close_reason' => $this->shortageCloseReason,
             'failure_reason' => $this->failureReason,
             'scans' => array_map(static fn (ScanEventView $scan): array => $scan->toArray(), $this->scans),
         ];

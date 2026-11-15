@@ -17,7 +17,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\PlannedStopRecord;
 use Logistics\Planning\Presentation\Filament\PlannedStopResource\Pages;
-use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Presentation\Filament\Concerns\PlanningOffice;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 
 /**
  * Admin de solo lectura de las paradas del plan (la asignación de un envío a una posición de reparto).
@@ -35,7 +36,8 @@ use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
  */
 final class PlannedStopResource extends Resource
 {
-    use OfficeOnly;
+    use PlanningOffice;
+    use ScopesToUserCity;
 
     protected static ?string $model = PlannedStopRecord::class;
 
@@ -87,11 +89,16 @@ final class PlannedStopResource extends Resource
     /**
      * Eager-load del envío y del plan (con su camión) para evitar N+1 al pintar referencias y placas.
      *
+     * Alcance por ciudad: un usuario acotado solo ve las paradas cuyo pedido es de su ciudad.
+     *
      * @return Builder<PlannedStopRecord>
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['shipment', 'plan.vehicle']);
+        $query = parent::getEloquentQuery()->with(['shipment', 'plan.vehicle']);
+        self::scopeToUserCityByShipment($query, 'planning_plan_stops.shipment_id');
+
+        return $query;
     }
 
     public static function table(Table $table): Table

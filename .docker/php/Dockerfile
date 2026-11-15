@@ -232,6 +232,10 @@ RUN --mount=type=cache,target=/home/logistics/.composer/cache,uid=1000,gid=1000 
 COPY --chown=${UID}:${GID} --from=assets /app/public/build /var/www/html/public/build
 RUN php artisan filament:assets
 
+# Páginas de error estáticas del servidor web, horneadas desde las vistas `errors.*` de ESTE commit (el
+# stage `web` las copia de acá): nginx nunca muestra su página cruda ni una versión vieja de las nuestras.
+RUN php artisan logistics:error-pages:build
+
 # OJO: el `config:cache` NO se hace acá. En build el env de producción todavía no
 # existe y quedaría cacheado con los defaults, un bug clásico de contenedores. Las
 # caches de arranque las genera el entrypoint cuando OPTIMIZE_ON_BOOT=true, ya con
@@ -274,6 +278,12 @@ FROM nginxinc/nginx-unprivileged:1.27-alpine AS web
 USER root
 
 COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+# Páginas de error propias: nginx nunca muestra su página cruda (ver snippets/error-pages.conf).
+COPY .docker/nginx/snippets/error-pages.conf /etc/nginx/snippets/error-pages.conf
+# Cabecera `Server` propia (filtro njs; el módulo se carga en el CMD de abajo).
+COPY .docker/nginx/snippets/server-header.conf /etc/nginx/snippets/server-header.conf
+COPY .docker/nginx/njs /etc/nginx/njs
+COPY --from=prod /var/www/html/.docker/nginx/errors /etc/nginx/errors
 COPY --from=prod /var/www/html/public /var/www/html/public
 
 # Puerto no privilegiado + `/storage/...` público (archivos subidos al disco `public`): el volumen de
@@ -284,7 +294,9 @@ RUN sed -i -e 's/listen 80 default_server;/listen 8080 default_server;/' \
            /etc/nginx/conf.d/default.conf \
     && grep -q 'listen 8080 default_server;' /etc/nginx/conf.d/default.conf \
     && chown root:root /etc/nginx/conf.d/default.conf && chmod 644 /etc/nginx/conf.d/default.conf \
-    && chown -R root:root /var/www/html/public \
+    && chown -R root:root /var/www/html/public /etc/nginx/snippets /etc/nginx/errors /etc/nginx/njs \
+    && chmod 755 /etc/nginx/snippets /etc/nginx/errors /etc/nginx/njs \
+    && chmod 644 /etc/nginx/snippets/*.conf /etc/nginx/errors/* /etc/nginx/njs/* \
     && find /var/www/html/public -type d -exec chmod 755 {} + \
     && find /var/www/html/public -type f -exec chmod 644 {} + \
     && ln -sfn /var/www/html/storage/app/public /var/www/html/public/storage
@@ -292,6 +304,9 @@ RUN sed -i -e 's/listen 80 default_server;/listen 8080 default_server;/' \
 USER 101
 
 EXPOSE 8080
+
+# Arranca con el módulo njs cargado (reemplaza la cabecera `Server`; ver snippets/server-header.conf).
+CMD ["nginx", "-g", "load_module modules/ngx_http_js_module.so; daemon off;"]
 
 # Liveness de punta a punta: nginx → FPM → Laravel (`/up`). Si FPM no responde, el web queda unhealthy.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \

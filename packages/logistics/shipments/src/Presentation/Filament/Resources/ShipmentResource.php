@@ -26,13 +26,18 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Logistics\Shared\Application\Command\CommandBus;
-use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
+use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shared\Presentation\Filament\Concerns\PlanningOffice;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Logistics\Shared\Presentation\Filament\ImageFallback;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddress;
 use Logistics\Shipments\Application\Command\RescheduleShipmentDelivery\RescheduleShipmentDelivery;
+use Logistics\Shipments\Application\Query\CheckShipmentScope\CheckShipmentScope;
+use Logistics\Shipments\Application\ReadModel\ShipmentScopeDecision;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentLineRecord;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
@@ -41,6 +46,7 @@ use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource\Pages\L
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource\Pages\ViewShipment;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource\RelationManagers\LinesRelationManager;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource\RelationManagers\UnitsRelationManager;
+use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
 
 /**
  * Admin de pedidos recibidos: ver/editar los datos administrables y re-geocodificar la dirección.
@@ -49,14 +55,34 @@ use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource\Relatio
  * framework. Las ESCRITURAS de negocio (re-geocodificar) se despachan por el CommandBus para
  * respetar el flujo Presentation → Application (transacción + outbox); la edición directa se limita
  * a campos administrativos. Cada texto visible va en inglés (regla CLAUDE.md #5).
+ *
+ * Roles: administrador y supervisor operan el recurso completo. El planificador lo ve en SOLO LECTURA (no
+ * edita, no re-geocodifica, no recibe ni importa pedidos); su única escritura es reprogramar la entrega de
+ * un pedido puntual, y solo si el pedido está dentro de su alcance por ciudad (regla de CheckShipmentScope).
  */
 final class ShipmentResource extends Resource
 {
-    use OfficeOnly;
+    use PlanningOffice;
+    use ScopesToUserCity;
 
     protected static ?string $model = ShipmentRecord::class;
 
     protected static ?int $navigationSort = 10;
+
+    /**
+     * Alcance por ciudad: el planificador (y el preparador) solo ven los pedidos de su ciudad, en la lista,
+     * en la ficha, en la búsqueda global y por enlace directo (uno de otra ciudad responde 404). Para
+     * administrador y supervisor la consulta queda igual.
+     *
+     * @return Builder<Model>
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        self::scopeShipmentsToUserCity($query);
+
+        return $query;
+    }
 
     public static function getNavigationLabel(): string
     {
@@ -395,14 +421,18 @@ final class ShipmentResource extends Resource
     /**
      * Otros pedidos del mismo cliente (mismo customer_name), excluyendo el actual, para armar el
      * historial enlazado en la vista de detalle. Se limita y ordena por fecha de recepción descendente.
+     * Respeta el alcance por ciudad: un usuario acotado solo ve los de su ciudad.
      *
      * @return Collection<int, ShipmentRecord>
      */
     public static function otherOrdersFor(ShipmentRecord $record): Collection
     {
-        return ShipmentRecord::query()
+        $query = ShipmentRecord::query()
             ->where('customer_name', $record->customer_name)
-            ->whereKeyNot($record->getKey())
+            ->whereKeyNot($record->getKey());
+        self::scopeShipmentsToUserCity($query);
+
+        return $query
             ->orderByDesc('created_at')
             ->limit(50)
             ->get();
@@ -486,10 +516,12 @@ final class ShipmentResource extends Resource
     /**
      * Un pedido ENTREGADO queda bloqueado: no se edita (Filament oculta «Editar» y niega la página de
      * edición). La misma regla vive en el dominio y en la fila; acá solo se quita la opción de la vista.
+     * Editar es de administrador y supervisor: el planificador solo consulta.
      */
     public static function canEdit(Model $record): bool
     {
-        return parent::canEdit($record)
+        return self::canWriteAsOffice()
+            && parent::canEdit($record)
             && strtoupper((string) $record->getAttribute('status')) !== ShipmentStatus::Delivered->value;
     }
 
@@ -505,8 +537,9 @@ final class ShipmentResource extends Resource
             ->requiresConfirmation()
             ->modalHeading(__('Re-geocode address'))
             ->modalDescription(__('Recalculate the address confidence for this order.'))
-            // Un pedido entregado ya no cambia su dirección.
-            ->visible(static fn (ShipmentRecord $record): bool => (string) $record->status !== ShipmentStatus::Delivered->value)
+            // Un pedido entregado ya no cambia su dirección. Escritura de oficina: el planificador no la ve.
+            ->visible(static fn (ShipmentRecord $record): bool => self::canWriteAsOffice()
+                && (string) $record->status !== ShipmentStatus::Delivered->value)
             ->action(function (ShipmentRecord $record): void {
                 /** @var CommandBus $commandBus */
                 $commandBus = app(CommandBus::class);
@@ -523,6 +556,9 @@ final class ShipmentResource extends Resource
      * Acción de REPROGRAMACIÓN de la entrega: cambia la fecha/ventana del envío (tras el pago, antes de
      * entregar). Despacha RescheduleShipmentDelivery por el CommandBus; el seguimiento del cliente pasa a
      * «reprogramada» y se dispara el aviso. Oculta en envíos cerrados (entregados/fallidos/cancelados).
+     *
+     * Es la única escritura que también hace el planificador, y solo sobre pedidos de su alcance por ciudad:
+     * fuera de alcance la acción avisa y no cambia nada (misma regla que POST /app/shipments/reschedule).
      */
     private static function rescheduleAction(): Action
     {
@@ -555,6 +591,23 @@ final class ShipmentResource extends Resource
                     ->maxLength(500),
             ])
             ->action(function (array $data, ShipmentRecord $record): void {
+                /** @var QueryBus $queryBus */
+                $queryBus = app(QueryBus::class);
+                /** @var ShipmentScopeDecision $scope */
+                $scope = $queryBus->ask(new CheckShipmentScope(
+                    ScopeActorResolver::fromUser(auth()->user()),
+                    shipmentIds: [(string) $record->getKey()],
+                ));
+                if (!$scope->allowed) {
+                    Notification::make()
+                        ->title(__('This order is outside your city'))
+                        ->body(__('You can view it, but only orders of your city can be rescheduled.'))
+                        ->danger()
+                        ->send();
+
+                    return;
+                }
+
                 /** @var CommandBus $commandBus */
                 $commandBus = app(CommandBus::class);
                 $commandBus->dispatch(new RescheduleShipmentDelivery(

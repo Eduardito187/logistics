@@ -53,6 +53,7 @@ final class Shipment extends AggregateRoot
         private ?DeliverySlot $deliverySlot = null,
         private ?string $destinationNodeId = null,
         private ?string $orderReference = null,
+        private readonly ?string $originNodeId = null,
     ) {
         // En el flujo de un solo destino la orden ES la referencia de origen; multishipping la fija
         // explícita para agrupar hermanos (ver migración add_order_reference_to_shipments_table).
@@ -75,6 +76,7 @@ final class Shipment extends AggregateRoot
         ?string $destinationNodeId = null,
         ?Ownership $ownership = null,
         ?string $orderReference = null,
+        ?string $originNodeId = null,
     ): self {
         if ($sourceReference->source !== $source) {
             throw ShipmentsException::because('la fuente del envío no coincide con la de su referencia de origen');
@@ -109,6 +111,7 @@ final class Shipment extends AggregateRoot
             null,
             $destinationNodeId,
             $orderReference,
+            self::nodeIdOrNull($originNodeId),
         );
 
         $load = self::loadOf($shipment->lines);
@@ -180,6 +183,7 @@ final class Shipment extends AggregateRoot
         ?string $destinationNodeId = null,
         ?Ownership $ownership = null,
         ?string $orderReference = null,
+        ?string $originNodeId = null,
     ): self {
         return new self(
             $id,
@@ -195,6 +199,7 @@ final class Shipment extends AggregateRoot
             $deliverySlot,
             $destinationNodeId,
             $orderReference,
+            self::nodeIdOrNull($originNodeId),
         );
     }
 
@@ -421,6 +426,16 @@ final class Shipment extends AggregateRoot
     }
 
     /**
+     * Nodo de ORIGEN del envío (UUID de un nodo de red) cuando la fuente lo informó (SAP, un traspaso), o
+     * null si no vino. Sin origen informado, la persistencia lo deriva con la regla de alcance (centro de
+     * distribución de la ciudad destino); un origen informado nunca se reemplaza por el derivado.
+     */
+    public function originNodeId(): ?string
+    {
+        return $this->originNodeId;
+    }
+
+    /**
      * Referencia de la ORDEN que originó el envío. Agrupa los envíos hermanos de una orden multishipping
      * (cada uno a su destino). En un solo destino coincide con la referencia de origen (external_id).
      */
@@ -497,6 +512,14 @@ final class Shipment extends AggregateRoot
     public function physicalUnits(): array
     {
         return $this->units;
+    }
+
+    /** Id de nodo normalizado (sin espacios, en minúsculas), o null si viene vacío. */
+    private static function nodeIdOrNull(?string $nodeId): ?string
+    {
+        $trimmed = $nodeId !== null ? strtolower(trim($nodeId)) : '';
+
+        return $trimmed === '' ? null : $trimmed;
     }
 
     /**

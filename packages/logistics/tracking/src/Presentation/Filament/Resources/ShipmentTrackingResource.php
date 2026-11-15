@@ -29,6 +29,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentToTracking;
 use Logistics\Tracking\Application\Command\PlaceShipmentOnRoute\PlaceShipmentOnRoute;
@@ -65,16 +66,18 @@ use Logistics\Tracking\Presentation\Filament\Resources\ShipmentTrackingResource\
 final class ShipmentTrackingResource extends Resource
 {
     use ResolvesUserRoles;
+    use ScopesToUserCity;
 
     /**
-     * Seguimiento de envíos: visibilidad amplia (tracking:read). Además de la oficina lo ven los roles
-     * con seguimiento en campo: chofer, tienda y transportista. El preparador no hace seguimiento.
+     * Seguimiento de envíos: visibilidad amplia (tracking:read). Además de la oficina lo ven el
+     * planificador y los roles con seguimiento en campo: chofer, tienda y transportista. El preparador no
+     * hace seguimiento.
      *
      * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
      */
     public static function canAccess(): bool
     {
-        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer', 'tienda', 'transportista');
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'planificador', 'chofer', 'tienda', 'transportista');
     }
 
     protected static ?string $model = TrackingRecord::class;
@@ -128,10 +131,16 @@ final class ShipmentTrackingResource extends Resource
 
     /**
      * Eager-load del envío para que las columnas shipment.* no disparen N+1 en el listado.
+     *
+     * Alcance por ciudad: un usuario acotado (planificador) solo ve el seguimiento de los pedidos de su
+     * ciudad; si el seguimiento todavía no tiene envío ligado, se decide por los envíos de su orden.
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with('shipment');
+        $query = parent::getEloquentQuery()->with('shipment');
+        self::scopeToUserCityByShipmentOrOrder($query, 'tracking_shipments.shipment_id', 'tracking_shipments.order_reference');
+
+        return $query;
     }
 
     /**
@@ -186,6 +195,12 @@ final class ShipmentTrackingResource extends Resource
                         ->label(__('ETA'))
                         ->dateTime()
                         ->placeholder(__('Not available')),
+                    // Llegada a la tienda de retiro (solo pedidos que el cliente recoge en tienda).
+                    TextEntry::make('at_store_at')
+                        ->label(__('At store since'))
+                        ->dateTime()
+                        ->placeholder(__('Not at the store'))
+                        ->helperText(__('When a store pickup order arrived at its pickup store.')),
                 ])
                 ->columns(3),
             // Última posición GPS reportada por el camión.

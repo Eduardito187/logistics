@@ -85,6 +85,7 @@ use Logistics\Telemetry\Infrastructure\LiveState\BroadcastingLivePositionBroadca
 use Logistics\Telemetry\Infrastructure\LiveState\FleetPlateResolver;
 use Logistics\Telemetry\Infrastructure\LiveState\LiveVehicleState;
 use Logistics\Telemetry\Infrastructure\Outbox\BindTripToRouteOnRouteStarted;
+use Logistics\Telemetry\Infrastructure\Outbox\BroadcastFleetRemovedOnVehicleRetired;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentAlertRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentGeofenceRepository;
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentPingRepository;
@@ -162,7 +163,8 @@ final class TelemetryServiceProvider extends ServiceProvider
         $this->app->bind(ActiveRouteReader::class, DbActiveRouteReader::class);
 
         // Fan-out en vivo: adaptador que difunde por WebSockets + mantiene el hot-state en Valkey.
-        // El resolver de placas es singleton para memoizar id→placa (cross-context read-only) y evitar N+1.
+        // El resolver de placas y el hot-state no guardan nada en el proceso (su estado vive en el store de
+        // caché), así que son seguros con workers persistentes; singleton solo evita reinstanciarlos.
         $this->app->singleton(FleetPlateResolver::class);
         $this->app->singleton(LiveVehicleState::class);
         $this->app->bind(LivePositionBroadcaster::class, BroadcastingLivePositionBroadcaster::class);
@@ -177,6 +179,11 @@ final class TelemetryServiceProvider extends ServiceProvider
         // la ruta. El relay lo compone por eventName (ver routing del outbox); se bindea para resolverlo con
         // su dependencia (bus de comandos).
         $this->app->bind(BindTripToRouteOnRouteStarted::class);
+
+        // Reactor del outbox: al darse de baja un vehículo en flota (`fleet.vehicle_status_changed` →
+        // `inactive`), limpia su estado caliente y difunde `fleet.removed`. Se rutea por eventName en la
+        // config del outbox.
+        $this->app->bind(BroadcastFleetRemovedOnVehicleRetired::class);
     }
 
     public function boot(): void

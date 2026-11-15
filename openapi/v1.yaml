@@ -784,6 +784,8 @@ paths:
         ENTREGA EN TIENDA del chofer. El camión deja en la tienda un pedido que el cliente retira ahí (o un traspaso): el chofer escanea los productos y saca una foto, sin firma ni documento. Este POST cierra la parada del chofer. El pedido NO queda entregado: queda «listo para retirar» (progress.ready_for_pickup_at = hora de esta entrega, y aparece en ready_for_pickup=true de esa tienda). Si es un pedido de cliente (store_pickup) se le avisa una sola vez que ya puede pasar a recogerlo; un traspaso no avisa. La entrega al cliente la registra después la tienda con la prueba de entrega de mostrador.
 
         Idempotente: repetirlo no duplica el hecho ni el aviso (si la primera vez no llevaba foto, una repetición la liga).
+
+        Traspaso interno (`delivery_mode = transfer`): no hay cliente que retire, así que registrar la entrega en tienda en su nodo destino SIN `missing_units` deja la entrega ENTREGADA (`status: DELIVERED`) y emite `execution.shipment_delivered` (`confirmation: STORE_DROP`), sin foto ni firma obligatorias. Con `missing_units` queda en curso hasta que la tienda concilie la recepción (con diferencias se cierra con `with_shortage: true`) o la oficina lo cierre con `POST /app/deliveries/{shipmentId}/close-transfer`. Para `store_pickup` no cambia: queda «listo para retirar» y lo cierra el mostrador con la prueba de entrega.
       parameters:
       - name: shipmentId
         in: path
@@ -844,6 +846,55 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '403':
           $ref: '#/components/responses/OrderScopeForbidden'
+      security:
+      - appBearer: []
+  /app/deliveries/{shipmentId}/close-transfer:
+    post:
+      tags:
+      - execution
+      operationId: closeTransferWithShortage
+      summary: Office closes an internal transfer that stayed open with a shortage
+      description: |
+        CIERRE MANUAL DE OFICINA de un traspaso con faltantes. El chofer dejó el traspaso en su tienda destino declarando productos faltantes y la tienda nunca concilió la recepción: quedó en curso. Admin o supervisor lo dan por entregado con un motivo obligatorio. La entrega queda `status: DELIVERED` con `with_shortage: true` y se emite `execution.shipment_delivered` (`confirmation: STORE_DROP`, `with_shortage: true`, `missing_unit_ids`). Los faltantes se siguen por el reporte de discrepancias.
+
+        Solo aplica a `delivery_mode = transfer`. Idempotente: repetirlo sobre un traspaso ya entregado devuelve su estado sin cambios.
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseTransferWithShortageRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '403':
+          description: Solo admin y supervisor (code insufficient_role), o envío fuera del alcance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: El envío no existe (code shipment_not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: >-
+            No aplica: el envío no es un traspaso (code not_a_transfer), falta el motivo, o regla de negocio
+            (code business_rule_violation, motivo en detail): todavía no hay entrega en tienda registrada, no
+            se declararon faltantes, o la entrega está cerrada como fallida.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/deliveries/photos:
@@ -3678,6 +3729,7 @@ paths:
       summary: List a shipment's notifications (internal app)
       description: |
         Returns the notification log of a shipment, newest first. App gate (operations/support visibility). The shipment id is passed as a query parameter.
+        Alcance por rol: solo se ven las notificaciones de envíos que el usuario puede ver (misma regla que los pedidos: admin/supervisor sin restricción; preparador/planificador por ciudad de origen o destino; tienda por su nodo; chofer/transportista por asignación). Los totales y el no-leído cuentan solo lo visible; una notificación fuera de alcance responde 404 y un envío fuera de alcance devuelve lista vacía.
       operationId: appListShipmentNotifications
       parameters:
       - name: shipment_id
@@ -3704,6 +3756,7 @@ paths:
       summary: List the global notification log (internal app)
       description: |
         Returns the latest notifications across the whole operation, newest first. App gate.
+        Alcance por rol: solo se ven las notificaciones de envíos que el usuario puede ver (misma regla que los pedidos: admin/supervisor sin restricción; preparador/planificador por ciudad de origen o destino; tienda por su nodo; chofer/transportista por asignación). Los totales y el no-leído cuentan solo lo visible; una notificación fuera de alcance responde 404 y un envío fuera de alcance devuelve lista vacía.
       operationId: appListNotifications
       parameters:
       - $ref: '#/components/parameters/PageNumber'
@@ -4237,7 +4290,11 @@ paths:
       tags:
       - planning
       operationId: generatePlanProposal
-      summary: Generate the automatic order-to-truck proposal for a day
+      summary: Create the trip of a truck for a day (stops keep the received order)
+      description: >-
+        One plan per truck per day. Stops keep the received order unless optimize=true. Stop coordinates are
+        optional (the shipment location is used). A shipment without location, or a trip mixing departments,
+        is rejected with 422 (business_rule_violation, reason in detail).
       requestBody:
         required: true
         content:
@@ -4251,8 +4308,112 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlanEnvelope'
+        '409':
+          description: >-
+            The truck already has a plan for that day (RFC 7807 conflict). The existing plan id travels in the
+            plan_id extension member; add stops to it with POST /app/plans/{planId}/stops.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '422':
           $ref: '#/components/responses/PlanningValidationError'
+      security:
+      - appBearer: []
+  /app/plans/candidates:
+    get:
+      tags:
+      - planning
+      operationId: listTripCandidates
+      summary: Shipments that can be added to a truck trip, nearest first
+      description: >-
+        Plannable shipments for the day with no truck or plan, in the department of the truck home base and
+        within the caller scope. Sorted by distance to the last selected shipment, or to the truck home base
+        when nothing is selected. Without pagination params the nearest 200 are returned.
+      parameters:
+      - name: date
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: vehicle_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: selected
+        in: query
+        required: false
+        description: Shipments already chosen for the trip, in order. The last one is the distance anchor.
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - name: q
+        in: query
+        required: false
+        description: Search by order code or customer name.
+        schema:
+          type: string
+          maxLength: 120
+      - name: depart_at
+        in: query
+        required: false
+        description: Departure time (ISO-8601). Defaults to the configured departure time of the day.
+        schema:
+          type: string
+          format: date-time
+      - $ref: '#/components/parameters/PageNumber'
+      - $ref: '#/components/parameters/PerPage'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Trip candidates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripCandidateList'
+        '422':
+          description: Invalid input, or the vehicle does not exist (RFC 7807 validation_failed)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/plans/suggest-sequence:
+    post:
+      tags:
+      - planning
+      operationId: suggestTripSequence
+      summary: Suggested delivery order for a trip (shortest path honouring customer time windows)
+      description: Read-only. Nothing is stored; the planner accepts the order or not.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuggestTripSequenceRequest'
+      responses:
+        '200':
+          description: Suggested order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripSequenceSuggestionEnvelope'
+        '422':
+          description: >-
+            Invalid input or unknown vehicle (validation_failed); unknown shipment or too many shipments
+            (business_rule_violation).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/plans/auto:
@@ -4337,6 +4498,31 @@ paths:
           $ref: '#/components/responses/PlanningNotFound'
       security:
       - appBearer: []
+    delete:
+      tags:
+      - planning
+      operationId: deletePlan
+      summary: Delete an unpublished plan with all its stops
+      description: 'Borra un plan SIN publicar (borrador o propuesta) y sus paradas; sus pedidos quedan libres para armar otro viaje. Emite `plans.updated` con `deleted: true`.'
+      parameters:
+      - $ref: '#/components/parameters/PlanId'
+      responses:
+        '204':
+          description: Plan deleted (no body)
+        '404':
+          description: Plan not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The plan is already published and is read-only
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
   /app/plans/{planId}/eta:
     get:
       tags:
@@ -4378,6 +4564,12 @@ paths:
                 $ref: '#/components/schemas/PlanEnvelope'
         '404':
           $ref: '#/components/responses/PlanningNotFound'
+        '409':
+          description: The plan is already published and is read-only (RFC 7807 conflict)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/plans/{planId}/sequence:
@@ -4412,6 +4604,12 @@ paths:
                 $ref: '#/components/schemas/PlanEnvelope'
         '404':
           $ref: '#/components/responses/PlanningNotFound'
+        '409':
+          description: The plan is already published and is read-only (RFC 7807 conflict)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '422':
           $ref: '#/components/responses/PlanningValidationError'
       security:
@@ -4429,13 +4627,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-              - shipment_id
-              properties:
-                shipment_id:
-                  type: string
-                  format: uuid
+              $ref: '#/components/schemas/AssignShipmentToPlanRequest'
       responses:
         '200':
           description: Updated plan
@@ -4445,8 +4637,49 @@ paths:
                 $ref: '#/components/schemas/PlanEnvelope'
         '404':
           $ref: '#/components/responses/PlanningNotFound'
+        '409':
+          description: The plan is already published and is read-only (RFC 7807 conflict)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '422':
           $ref: '#/components/responses/PlanningValidationError'
+      security:
+      - appBearer: []
+  /app/plans/{planId}/stops/{shipmentId}:
+    delete:
+      tags:
+      - planning
+      operationId: removeShipmentFromPlan
+      summary: Remove a stop from an unpublished plan
+      parameters:
+      - $ref: '#/components/parameters/PlanId'
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Updated plan (stops renumbered)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanEnvelope'
+        '404':
+          description: Plan not found, or the shipment is not a stop of this plan (RFC 7807 not_found)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The plan is already published and is read-only (RFC 7807 conflict)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/sap/material-mappings:
@@ -4746,13 +4979,16 @@ paths:
         Read-only lookup available to every authenticated app role, with NO role scope: a store finds orders
         of another store and a picker finds orders of another city. `q` is resolved in this order: exact order
         code (external id or order reference, case-insensitive), then a scanned label id, then a partial text
-        match (3+ characters). Returns up to 10 shipments; an order split into several shipments returns all of
-        them. `can_process` tells whether the caller could operate each shipment (false = view only).
+        match (3+ characters). The partial match always covers the order code and order reference; it also
+        covers the customer NAME and DOCUMENT only for admin, supervisor and store roles. For any other role a
+        text that only matches customer data returns 404 (never 403). Returns up to 10 shipments; an order
+        split into several shipments returns all of them, with the same payload for every role. `can_process`
+        tells whether the caller could operate each shipment (false = view only).
       parameters:
       - name: q
         in: query
         required: true
-        description: Order code or scanned label id.
+        description: Order code, order reference or scanned label id. Admin, supervisor and store roles may also search by customer name or document.
         schema:
           type: string
           maxLength: 120
@@ -4827,8 +5063,10 @@ paths:
         in: query
         required: false
         description: >-
-          Ciudad (texto). Coincide, sin distinguir mayúsculas, con la dirección del envío o con el departamento /
-          nombre de su nodo destino. Los envíos no guardan la ciudad en un campo propio.
+          Ciudad. Si el valor es un código de departamento (la_paz, santa_cruz, cochabamba, oruro, potosi,
+          chuquisaca, tarija, beni, pando; exacto, en minúsculas) filtra por el departamento de DESTINO del envío
+          (`destination_department`). Cualquier otro texto coincide, sin distinguir mayúsculas, con la ciudad del
+          envío o, si no la tiene resuelta, con su dirección. Aplica también a `meta.count_by_status`.
         schema:
           type: string
           maxLength: 80
@@ -6736,7 +6974,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReceiveShipmentAccepted'
         '422':
-          description: Validation error in the payload
+          description: 'Validation error in the payload, or (code=business_rule_violation, reason in detail) the informed origin node does not exist or origin_node_id and origin_node_code point to different nodes. The origin is optional: when omitted it is derived from the destination; a resend never changes the stored origin.'
           content:
             application/json:
               schema:
@@ -7848,6 +8086,7 @@ paths:
       tags:
       - telemetry
       summary: Live positions of the whole fleet
+      description: 'Alcance según el usuario: admin y supervisor ven todas las ciudades; planificador con ciudad, solo los camiones cuya sede (nodo base) es de su departamento; planificador sin ciudad, todas (o lista vacía en modo estricto); otros roles, lista vacía. Los vehículos dados de baja en flota no se devuelven. El ETag depende también del alcance. Tiempo real: `fleet.position` (FleetPositionEvent) y `fleet.removed` (FleetRemovedEvent) por los canales del tema fleet.'
       operationId: getLiveFleetPositions
       parameters:
       - name: since
@@ -11492,7 +11731,7 @@ paths:
         required: false
         schema:
           type: string
-          enum: [chofer, preparador, tienda, transportista, supervisor, admin]
+          enum: [chofer, preparador, tienda, transportista, supervisor, planificador, admin]
       - name: node_id
         in: query
         required: false
@@ -11635,6 +11874,11 @@ paths:
                 issued_on: { type: string, format: date, nullable: true }
                 expires_on: { type: string, format: date, nullable: true }
                 note: { type: string, nullable: true }
+                side:
+                  description: 'Opcional. Cara del documento de dos caras (carnet, licencia); sin el campo = documento de una sola cara.'
+                  oneOf:
+                  - $ref: '#/components/schemas/StaffDocumentSide'
+                  - type: 'null'
                 file: { type: string, format: binary, description: 'pdf, jpg, jpeg, png o webp; máx. 10 MB' }
       responses:
         '201':
@@ -11711,7 +11955,7 @@ paths:
       tags:
       - staff
       operationId: listStaffPhotos
-      summary: Photos of a staff member (profile, document images, evidence captured)
+      summary: Photos of a staff member (profile and staff document images; never delivery evidence)
       parameters:
       - name: userId
         in: path
@@ -12093,7 +12337,7 @@ paths:
       - shipments
       operationId: previewRescheduleShipments
       summary: Preview a (bulk) reschedule without changing anything
-      description: Admin y supervisor. Mismo body que POST /app/shipments/reschedule.
+      description: Admin, supervisor y planificador. Mismo body y mismas reglas de alcance que POST /app/shipments/reschedule (el supervisor solo tiene esta vista previa). El planificador solo puede previsualizar pedidos puntuales (`scope.shipment_ids`) de su ciudad.
       requestBody:
         required: true
         content:
@@ -12112,6 +12356,12 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/RescheduleShipmentsResult'
+        '403':
+          description: 'code insufficient_role (rol sin acceso, o planificador con alcance masivo vehicle_id / city) | out_of_scope_city (algún envío de shipment_ids no es de la ciudad del planificador: no se reprograma ninguno)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '422':
           description: 'code invalid_scope | date_blocked | scope_too_large, o validación'
           content:
@@ -12125,9 +12375,9 @@ paths:
       tags:
       - shipments
       operationId: rescheduleShipments
-      summary: Reschedule orders — one, several, a whole truck or a whole city (admin only)
+      summary: Reschedule orders — one, several, a whole truck or a whole city
       description: |
-        Solo admin. Los pedidos cerrados (entregados, fallidos, anulados) se omiten y se informan en `skipped`. Una fecha bloqueada en el calendario se rechaza (code date_blocked). Un fallo en un pedido no corta el resto (queda en `failed`). Tope de 500 pedidos por operación (code scope_too_large). Queda auditado.
+        Admin: cualquier alcance. Planificador: SOLO pedidos puntuales (`scope.shipment_ids`, uno o una lista) dentro de su alcance por ciudad; el alcance masivo (`scope.vehicle_id` o `scope.city`) es solo de admin. Los pedidos cerrados (entregados, fallidos, anulados) se omiten y se informan en `skipped`. Una fecha bloqueada en el calendario se rechaza (code date_blocked). Un fallo en un pedido no corta el resto (queda en `failed`). Tope de 500 pedidos por operación (code scope_too_large). Queda auditado.
       requestBody:
         required: true
         content:
@@ -12146,8 +12396,70 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/RescheduleShipmentsResult'
+        '403':
+          description: 'code insufficient_role (rol sin acceso, o planificador con alcance masivo vehicle_id / city) | out_of_scope_city (algún envío de shipment_ids no es de la ciudad del planificador: no se reprograma ninguno)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '422':
           description: 'code invalid_scope | date_blocked | scope_too_large, o validación'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/broadcasting/config:
+    get:
+      tags:
+      - staff
+      operationId: getBroadcastConfig
+      summary: Real-time connection settings of this environment (Pusher protocol)
+      description: 'El servidor de sockets se publica por el MISMO host y puerto que la API: la app conecta a `ws(s)://<host de la API>/app/<key>` (wss cuando la API es https) y firma los canales privados en `POST /app/broadcasting/auth`. Con `enabled: false` el entorno no tiene tiempo real y la app sigue con su refresco normal.'
+      responses:
+        '200':
+          description: Connection settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BroadcastConfig'
+      security:
+      - appBearer: []
+  /app/broadcasting/auth:
+    post:
+      tags:
+      - staff
+      operationId: authorizeBroadcastChannel
+      summary: Sign the subscription to a private real-time channel (Pusher protocol)
+      description: 'La app se suscribe a `private-user.{id}` (su propio id) y recibe el evento `inbox.updated` con `{unread}` (schema InboxUpdatedEvent) cada vez que cambia su bandeja interna. Solo se autoriza el canal del propio usuario. Sin servidor de sockets en el entorno responde 503 y la app sigue con su refresco normal.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BroadcastAuthRequest'
+      responses:
+        '200':
+          description: Signed subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BroadcastAuthResponse'
+        '403':
+          description: El canal no es del usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Tiempo real no habilitado en este entorno
           content:
             application/json:
               schema:
@@ -12203,7 +12515,7 @@ paths:
               properties:
                 audience:
                   type: object
-                  description: Al menos uno. `role` y `node_id` juntos se combinan con AND; `user_ids` se suma.
+                  description: 'Al menos una audiencia efectiva: role, node_id o user_ids no vacío. `role` y `node_id` juntos se combinan con AND; `user_ids` se suma. El push FCM del aviso lleva data {type: "inbox", id}.'
                   properties:
                     role:
                       allOf:
@@ -12211,7 +12523,11 @@ paths:
                       nullable: true
                     node_id: { type: string, format: uuid, nullable: true }
                     user_ids:
-                      type: array
+                      type:
+                      - array
+                      - 'null'
+                      maxItems: 500
+                      description: 'Lista vacía o null = no aplica (el aviso va por rol o tienda).'
                       items: { type: integer }
                 title: { type: string, maxLength: 120 }
                 body: { type: string, maxLength: 1000 }
@@ -12337,6 +12653,16 @@ components:
       description: Token de integración de la plataforma (prefix.secret) enviado como Bearer y validado por
         el middleware access.token. Convive con serviceCredential en la puerta /integrations/*.
   schemas:
+    CloseTransferWithShortageRequest:
+      type: object
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 500
+          description: Motivo por el que la oficina cierra el traspaso sin la conciliación de la tienda.
     StoreDropMissingUnit:
       type: object
       description: 'Producto que el chofer no pudo dejar en la entrega en tienda, con su motivo.'
@@ -13173,6 +13499,7 @@ components:
       - tienda
       - transportista
       - supervisor
+      - planificador
       - admin
       description: Rol del personal de la app.
     AppConfigVersion:
@@ -13475,6 +13802,110 @@ components:
                 session_bucket: { type: string, nullable: true }
                 last_seen_at: { type: string, format: date-time, nullable: true }
                 revoked: { type: boolean }
+    BroadcastConfig:
+      type: object
+      required:
+      - enabled
+      - key
+      - cluster
+      - path
+      properties:
+        enabled: { type: boolean, description: 'false = entorno sin tiempo real' }
+        key:
+          type:
+          - string
+          - 'null'
+          description: 'Clave PÚBLICA de la app de sockets; null si enabled es false.'
+        cluster:
+          type:
+          - string
+          - 'null'
+        path: { type: string, description: 'Ruta base del WebSocket en el host de la API, p. ej. /app' }
+        channels:
+          type: object
+          x-events: 'user: InboxUpdatedEvent, NotificationsUpdatedEvent · fleet: FleetPositionEvent, FleetRemovedEvent · planning: PlanningRunUpdatedEvent, PlansUpdatedEvent'
+          description: 'Tema → canales (con prefijo private-) que ESTE usuario puede escuchar. Temas: user (canal personal: inbox.updated, notifications.updated), fleet (fleet.position), planning (planning.run.updated, plans.updated). Tema ausente = sin tiempo real para esa pantalla. Son exactamente los canales que firma POST /app/broadcasting/auth para esa persona; la app no arma nombres.'
+          additionalProperties:
+            type: array
+            items: { type: string }
+    BroadcastAuthRequest:
+      type: object
+      required:
+      - socket_id
+      - channel_name
+      properties:
+        socket_id: { type: string, description: 'Id de socket que entrega el servidor al conectar, p. ej. 1234.5678' }
+        channel_name: { type: string, description: 'Canal con prefijo, p. ej. private-user.42' }
+    BroadcastAuthResponse:
+      type: object
+      required:
+      - auth
+      properties:
+        auth: { type: string, description: '<app_key>:<firma HMAC-SHA256>' }
+        channel_data: { type: string, description: 'Solo en canales de presencia' }
+    NotificationsUpdatedEvent:
+      type: object
+      description: 'Carga del evento `notifications.updated` en el canal `private-user.{id}`. Solo es la señal para volver a pedir GET /app/notifications y /app/notifications/all (el no-leído sale de meta.unread_count); el contenido nunca viaja por el socket. Llega unos 3 s después del cambio.'
+      required:
+      - scope
+      properties:
+        scope:
+          type: string
+          enum: [feed, user]
+          description: 'feed = cambió el log (nueva, enviada, escalada, suprimida); user = cambió el estado de lectura del propio usuario (leída / leer todas).'
+    FleetPositionEvent:
+      description: 'Carga del evento `fleet.position` (tema fleet: canales `private-fleet.all` / `private-fleet.city.<ciudad>`). Es un objeto idéntico a un elemento de `data` de GET /app/telemetry/fleet/live: se aplica sobre la lista por `vehicle_id`. Como mucho uno por vehículo cada 5 s.'
+      allOf:
+      - $ref: '#/components/schemas/VehicleLive'
+    FleetRemovedEvent:
+      type: object
+      description: 'Carga del evento `fleet.removed` (tema fleet): el vehículo se dio de baja en flota; quitarlo de la lista por id.'
+      required:
+      - vehicle_id
+      properties:
+        vehicle_id: { type: string, format: uuid }
+    PlanningRunUpdatedEvent:
+      type: object
+      description: 'Carga del evento `planning.run.updated` (tema planning): cada cambio de estado de la corrida automática (queued, processing, completed, failed).'
+      required:
+      - plan_date
+      - strategy
+      - status
+      - run
+      properties:
+        plan_date: { type: string, format: date }
+        strategy: { type: string }
+        status: { type: string }
+        run:
+          $ref: '#/components/schemas/AutoPlanRun'
+    PlansUpdatedEvent:
+      type: object
+      description: 'Carga del evento `plans.updated` (tema planning): se creó, editó (paradas u orden), publicó o borró un plan de ese día. Solo es la señal para volver a pedir la lista o el detalle.'
+      required:
+      - plan_date
+      - plan_id
+      - deleted
+      properties:
+        plan_date: { type: string, format: date }
+        deleted:
+          type: boolean
+          description: 'true cuando ese plan_id se borró (sacarlo de la lista y cerrar su detalle, sin volver a pedirlo); false en cualquier otro cambio.'
+        plan_id:
+          type:
+          - string
+          - 'null'
+          description: 'null cuando cambiaron varios planes del día a la vez (mover un pedido entre camiones, corrida automática).'
+    InboxUpdatedEvent:
+      type: object
+      description: 'Carga del evento `inbox.updated` en el canal `private-user.{id}`.'
+      required:
+      - unread
+      properties:
+        unread: { type: integer, minimum: 0 }
+    StaffDocumentSide:
+      type: string
+      enum: [front, back]
+      description: 'Cara de un documento de dos caras (carnet, licencia): front = anverso, back = reverso.'
     StaffDocument:
       type: object
       properties:
@@ -13486,6 +13917,11 @@ components:
         expires_on: { type: string, format: date, nullable: true }
         expired: { type: boolean }
         note: { type: string, nullable: true }
+        side:
+          description: 'Cara del documento; null si es de una sola cara (y siempre null en source=fleet / kind=profile).'
+          oneOf:
+          - $ref: '#/components/schemas/StaffDocumentSide'
+          - type: 'null'
         mime_type: { type: string, nullable: true }
         url: { type: string, nullable: true, description: 'Enlace temporal para ver el archivo' }
         created_at: { type: string, format: date-time, nullable: true }
@@ -13499,10 +13935,15 @@ components:
     StaffPhoto:
       type: object
       properties:
-        kind: { type: string, enum: [profile, document, evidence] }
+        kind: { type: string, enum: [profile, document], description: 'La evidencia de entregas pertenece al pedido y no se lista acá.' }
         url: { type: string }
         at: { type: string, format: date-time, nullable: true }
         label: { type: string, nullable: true }
+        side:
+          description: 'Cara del documento; null si es de una sola cara (y siempre null en source=fleet / kind=profile).'
+          oneOf:
+          - $ref: '#/components/schemas/StaffDocumentSide'
+          - type: 'null'
     StaffBroadcast:
       type: object
       properties:
@@ -13779,6 +14220,13 @@ components:
       required:
       - count
       properties:
+        anchor:
+          description: Only in GET /app/plans/candidates. Point the distances were measured from.
+          oneOf:
+          - $ref: '#/components/schemas/TripCandidateAnchor'
+          - type: 'null'
+        capacity:
+          $ref: '#/components/schemas/TripCapacity'
         count:
           type: integer
           description: Number of items in this response.
@@ -17675,6 +18123,20 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScanEvent'
+        with_shortage:
+          type: boolean
+          description: 'Traspaso cerrado con faltantes: entregado aunque no llegaron todos los productos (conciliación con diferencias o cierre manual de oficina).'
+        shortage_closed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Cuándo se cerró con faltantes.
+        shortage_close_reason:
+          type:
+          - string
+          - 'null'
+          description: Motivo del cierre manual de oficina. Null si lo cerró la conciliación de la tienda.
         store_drop_missing_units:
           type: array
           description: 'Productos que el chofer declaró que no pudo dejar en la tienda. Vacío si dejó el pedido completo.'
@@ -18307,22 +18769,29 @@ components:
             type: object
             required:
             - shipment_id
-            - latitude
-            - longitude
             properties:
               shipment_id:
                 type: string
                 format: uuid
               latitude:
-                type: number
+                type:
+                - number
+                - 'null'
                 format: double
                 minimum: -90
                 maximum: 90
+                description: Optional (send both or none). When omitted the shipment location is used.
               longitude:
-                type: number
+                type:
+                - number
+                - 'null'
                 format: double
                 minimum: -180
                 maximum: 180
+        optimize:
+          type: boolean
+          default: false
+          description: false keeps the received stop order; true lets the routing engine reorder.
     GeoJsonPolygon:
       type: object
       required:
@@ -19480,6 +19949,20 @@ components:
       - status
       - stops
       properties:
+        origin_node:
+          oneOf:
+          - $ref: '#/components/schemas/PlanOriginNode'
+          - type: 'null'
+        distance_km:
+          type:
+          - number
+          - 'null'
+          format: double
+          description: Total of the stored route geometry. Null until it is computed.
+        duration_minutes:
+          type:
+          - integer
+          - 'null'
         plate:
           type: string
           nullable: true
@@ -19543,6 +20026,255 @@ components:
         duration_seconds:
           type: number
           description: Total route duration in seconds.
+    StopTimeWindow:
+      type: object
+      description: Delivery time chosen by the customer, anchored to the trip day (business time zone).
+      required:
+      - from
+      - to
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+    PlanOriginNode:
+      type: object
+      description: Network node the truck departs from (its home base).
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    TripCandidate:
+      type: object
+      required:
+      - shipment_id
+      - units_total
+      - fits
+      - suggested
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        order_reference:
+          type: [string, 'null']
+        customer_name:
+          type: [string, 'null']
+        short_address:
+          type: [string, 'null']
+        delivery_mode:
+          oneOf:
+          - $ref: '#/components/schemas/DeliveryMode'
+          - type: 'null'
+        units_total:
+          type: integer
+        lat:
+          type: [number, 'null']
+          format: double
+        lng:
+          type: [number, 'null']
+          format: double
+        distance_km_from_anchor:
+          type: [number, 'null']
+          format: double
+          description: Straight-line distance to the anchor. Null when the shipment has no location.
+        time_window:
+          oneOf:
+          - $ref: '#/components/schemas/StopTimeWindow'
+          - type: 'null'
+        weight_kg:
+          type: number
+          format: double
+        volume_m3:
+          type: number
+          format: double
+        fits:
+          type: boolean
+          description: Has a location, fits the remaining weight and volume, and its time window is reachable.
+        fits_reason:
+          type: [string, 'null']
+          description: Human-readable reason (Spanish) when fits is false.
+        suggested:
+          type: boolean
+          description: Fits and is close to an already selected stop (or to the home base).
+        suggested_reason:
+          type: [string, 'null']
+          description: Human-readable reason (Spanish) when suggested is true.
+    TripCandidateAnchor:
+      type: object
+      description: Point the distance was measured from.
+      required:
+      - kind
+      - name
+      properties:
+        kind:
+          type: string
+          enum:
+          - node
+          - shipment
+        name:
+          type: string
+    TripCapacity:
+      type: object
+      description: Load of the selected shipments against the truck capacity. Only in GET /app/plans/candidates.
+      required:
+      - used_units
+      - used_kg
+      - used_m3
+      properties:
+        used_units:
+          type: integer
+        max_units:
+          type: [integer, 'null']
+          description: Always null today; the fleet defines no unit limit.
+        used_kg:
+          type: number
+          format: double
+        max_kg:
+          type: [number, 'null']
+          format: double
+        used_m3:
+          type: number
+          format: double
+        max_m3:
+          type: [number, 'null']
+          format: double
+    TripCandidateList:
+      type: object
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TripCandidate'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    SuggestTripSequenceRequest:
+      type: object
+      required:
+      - date
+      - vehicle_id
+      - shipment_ids
+      properties:
+        date:
+          type: string
+          format: date
+        vehicle_id:
+          type: string
+          format: uuid
+        depart_at:
+          type: [string, 'null']
+          format: date-time
+          description: Departure time. Defaults to the configured departure time of the day.
+        shipment_ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+            format: uuid
+    TripSequenceStop:
+      type: object
+      required:
+      - shipment_id
+      - sequence
+      - within_window
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+        eta_at:
+          type: [string, 'null']
+          format: date-time
+          description: Null only for a shipment without location.
+        within_window:
+          type: boolean
+    TripSequenceWarning:
+      type: object
+      required:
+      - code
+      - shipment_id
+      - detail
+      properties:
+        code:
+          type: string
+          enum:
+          - window_missed
+          - over_capacity
+          - out_of_department
+          - missing_location
+        shipment_id:
+          type: string
+          format: uuid
+        detail:
+          type: string
+          description: Human-readable explanation (Spanish), with no internal identifiers.
+    TripSequenceSuggestion:
+      type: object
+      required:
+      - ordered_shipment_ids
+      - stops
+      - distance_km
+      - duration_minutes
+      - changed
+      - warnings
+      properties:
+        ordered_shipment_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        stops:
+          type: array
+          items:
+            $ref: '#/components/schemas/TripSequenceStop'
+        distance_km:
+          type: number
+          format: double
+        duration_minutes:
+          type: integer
+          description: From departure to the end of the last delivery, service time included.
+        changed:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/TripSequenceWarning'
+    TripSequenceSuggestionEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/TripSequenceSuggestion'
+    AssignShipmentToPlanRequest:
+      type: object
+      required:
+      - shipment_id
+      properties:
+        shipment_id:
+          type: string
+          format: uuid
+        latitude:
+          type: [number, 'null']
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: [number, 'null']
+          format: double
+          minimum: -180
+          maximum: 180
     PlanEnvelope:
       type: object
       required:
@@ -19655,6 +20387,35 @@ components:
       - sequence
       - load_order
       properties:
+        order_reference:
+          type:
+          - string
+          - 'null'
+        customer_name:
+          type:
+          - string
+          - 'null'
+        short_address:
+          type:
+          - string
+          - 'null'
+          description: Same rule as Shipment.short_address.
+        delivery_mode:
+          oneOf:
+          - $ref: '#/components/schemas/DeliveryMode'
+          - type: 'null'
+        units_total:
+          type:
+          - integer
+          - 'null'
+        time_window:
+          oneOf:
+          - $ref: '#/components/schemas/StopTimeWindow'
+          - type: 'null'
+        address:
+          type:
+          - string
+          - 'null'
         id:
           type: string
           format: uuid
@@ -20404,7 +21165,23 @@ components:
           description: True si la última posición es fresca (ventana en vivo), false si es solo la última conocida, null si no hay posición.
         stops_message:
           type: string
-          description: Mensaje al cliente en español, p. ej. "Tu pedido está a 3 paradas."
+          description: >
+            Mensaje al cliente en español, p. ej. "Tu pedido está a 3 paradas." Con ready_for_pickup = true
+            vale "Tu pedido ya está en la tienda. Puedes pasar a recogerlo."
+        at_store_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: >
+            Momento en que un pedido con retiro en tienda llegó a su tienda destino; null si aún no llegó
+            o si el pedido no es de retiro en tienda.
+        ready_for_pickup:
+          type: boolean
+          description: >
+            True si el pedido ya está en la tienda y el cliente puede pasar a recogerlo (at_store_at no
+            nulo y estado distinto de DELIVERED, CANCELLED y RETURNED). No es un estado nuevo: `status`
+            conserva su valor.
     QueueNotificationRequest:
       type: object
       required:
@@ -20558,6 +21335,18 @@ components:
           maxLength: 64
           nullable: true
           description: Store/DC code (network_nodes.code); used when no destination_node_id and no "#n:{uuid}" suffix.
+        origin_node_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Origin node of the order (where it ships from). Optional; when omitted the origin is derived (distribution center of the destination city). Must be an existing network node.
+        origin_node_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 64
+          description: Origin node code (network_nodes.code, case-insensitive). Alternative to origin_node_id; when both are sent they must point to the same node.
         customer_name:
           type: string
           maxLength: 255
@@ -21227,6 +22016,28 @@ components:
           - string
           - 'null'
           description: 'Código del departamento del destino (el del nodo destino, o el de la ciudad de entrega a domicilio); null mientras no se resuelve.'
+        delivery_evidence:
+          description: 'Cómo se entregó: qué evidencia quedó de la entrega. Null si el envío no está entregado. Viene en la lista y en la ficha de /app/shipments.'
+          oneOf:
+          - $ref: '#/components/schemas/ShipmentDeliveryEvidence'
+          - type: 'null'
+    ShipmentDeliveryEvidence:
+      type: object
+      description: 'Qué evidencia quedó de la entrega de un envío ENTREGADO. Sin evidencia, los tres indicadores van en false.'
+      required:
+      - signature
+      - photo
+      - document
+      properties:
+        signature:
+          type: boolean
+          description: Hay una firma del cliente capturada (evidencia de tipo signature).
+        photo:
+          type: boolean
+          description: Hay al menos una foto de la entrega (evidencia de tipo pod o foto ligada a la prueba de entrega).
+        document:
+          type: boolean
+          description: Hay una foto del documento de identidad del cliente (evidencia de tipo id_document).
     ShipmentLine:
       type: object
       required:
@@ -21359,6 +22170,20 @@ components:
           - boolean
           - 'null'
           description: True si la última posición es fresca, false si es solo la última conocida, null si no hay posición.
+        at_store_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: >
+            Momento en que un pedido con retiro en tienda llegó a su tienda destino; null si aún no llegó
+            o si el pedido no es de retiro en tienda.
+        ready_for_pickup:
+          type: boolean
+          description: >
+            True si el pedido ya está en la tienda y el cliente puede pasar a recogerlo (at_store_at no
+            nulo y estado distinto de DELIVERED, CANCELLED y RETURNED). No es un estado nuevo: `status`
+            conserva su valor.
     ShipmentsError:
       type: object
       required:
@@ -21451,6 +22276,31 @@ components:
       - shipment_id
       - sequence
       properties:
+        order_reference:
+          type:
+          - string
+          - 'null'
+        customer_name:
+          type:
+          - string
+          - 'null'
+        short_address:
+          type:
+          - string
+          - 'null'
+          description: Same rule as Shipment.short_address.
+        delivery_mode:
+          oneOf:
+          - $ref: '#/components/schemas/DeliveryMode'
+          - type: 'null'
+        units_total:
+          type:
+          - integer
+          - 'null'
+        time_window:
+          oneOf:
+          - $ref: '#/components/schemas/StopTimeWindow'
+          - type: 'null'
         shipment_id:
           type: string
           format: uuid
@@ -23600,7 +24450,7 @@ components:
         format: uuid
   responses:
     OrderScopeForbidden:
-      description: 'El pedido o envío está fuera del alcance del usuario autenticado. code: out_of_scope_city (preparador de otra ciudad), out_of_scope_node (tienda que no es origen ni destino) u out_of_scope_assignment (chofer o transportista sin esa asignación). El motivo viaja en detail y error.message. La consulta abierta (GET /app/orders/lookup) nunca responde esto.'
+      description: 'El pedido o envío está fuera del alcance del usuario autenticado. code: out_of_scope_city (preparador o planificador de otra ciudad, o sin ciudad asignada cuando SHIPMENTS_SCOPE_STRICT_NO_CITY=true), out_of_scope_node (tienda que no es origen ni destino) u out_of_scope_assignment (chofer o transportista sin esa asignación). El motivo viaja en detail y error.message. La consulta abierta (GET /app/orders/lookup) nunca responde esto.'
       content:
         application/problem+json:
           schema:

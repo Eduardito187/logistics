@@ -12,6 +12,8 @@ use Illuminate\Support\ServiceProvider;
 use Logistics\Coverage\Domain\Contract\MunicipalityLocator;
 use Logistics\Planning\Application\Command\AssignShipmentToVehicle\AssignShipmentToVehicle;
 use Logistics\Planning\Application\Command\AssignShipmentToVehicle\AssignShipmentToVehicleHandler;
+use Logistics\Planning\Application\Command\DeletePlan\DeletePlan;
+use Logistics\Planning\Application\Command\DeletePlan\DeletePlanHandler;
 use Logistics\Planning\Application\Command\GenerateDailyPlan\GenerateDailyPlan;
 use Logistics\Planning\Application\Command\GenerateDailyPlan\GenerateDailyPlanHandler;
 use Logistics\Planning\Application\Command\GeneratePlanProposal\GeneratePlanProposal;
@@ -22,6 +24,8 @@ use Logistics\Planning\Application\Command\ReassignShipmentToVehicle\ReassignShi
 use Logistics\Planning\Application\Command\ReassignShipmentToVehicle\ReassignShipmentToVehicleHandler;
 use Logistics\Planning\Application\Command\RemoveShipmentRequirement\RemoveShipmentRequirement;
 use Logistics\Planning\Application\Command\RemoveShipmentRequirement\RemoveShipmentRequirementHandler;
+use Logistics\Planning\Application\Command\RemoveStopFromPlan\RemoveStopFromPlan;
+use Logistics\Planning\Application\Command\RemoveStopFromPlan\RemoveStopFromPlanHandler;
 use Logistics\Planning\Application\Command\RemoveVehicleRestrictions\RemoveVehicleRestrictions;
 use Logistics\Planning\Application\Command\RemoveVehicleRestrictions\RemoveVehicleRestrictionsHandler;
 use Logistics\Planning\Application\Command\ReoptimizeRoute\ReoptimizeRoute;
@@ -35,6 +39,9 @@ use Logistics\Planning\Application\Command\SetShipmentRequirement\SetShipmentReq
 use Logistics\Planning\Application\Command\SetVehicleRestrictions\SetVehicleRestrictions;
 use Logistics\Planning\Application\Command\SetVehicleRestrictions\SetVehicleRestrictionsHandler;
 use Logistics\Planning\Application\Contract\PlanCrewLabels;
+use Logistics\Planning\Application\Contract\ShipmentPlanningFactsReader;
+use Logistics\Planning\Application\Contract\TripCandidateReader;
+use Logistics\Planning\Application\Contract\TripVehicleReader;
 use Logistics\Planning\Application\Query\CompareRoutingBackends\CompareRoutingBackends;
 use Logistics\Planning\Application\Query\CompareRoutingBackends\CompareRoutingBackendsHandler;
 use Logistics\Planning\Application\Query\GetDailyPlanRun\GetDailyPlanRun;
@@ -45,8 +52,14 @@ use Logistics\Planning\Application\Query\GetRouteQuality\GetRouteQuality;
 use Logistics\Planning\Application\Query\GetRouteQuality\GetRouteQualityHandler;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDate;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDateHandler;
+use Logistics\Planning\Application\Query\ListTripCandidates\ListTripCandidates;
+use Logistics\Planning\Application\Query\ListTripCandidates\ListTripCandidatesHandler;
+use Logistics\Planning\Application\Query\SuggestTripSequence\SuggestTripSequence;
+use Logistics\Planning\Application\Query\SuggestTripSequence\SuggestTripSequenceHandler;
 use Logistics\Planning\Application\Service\AutoPlanPublisher;
 use Logistics\Planning\Application\Service\PlanGeometryRefresher;
+use Logistics\Planning\Application\Service\TripBuilderSettings;
+use Logistics\Planning\Application\Service\TripMatrixSource;
 use Logistics\Planning\Domain\Contract\AutoPlanRunRepository;
 use Logistics\Planning\Domain\Contract\AutoPlanSettingsProvider;
 use Logistics\Planning\Domain\Contract\CrewShiftRulesProvider;
@@ -69,6 +82,7 @@ use Logistics\Planning\Domain\Service\DailyPlanComposer;
 use Logistics\Planning\Domain\Service\DepartmentRouteGrouping;
 use Logistics\Planning\Domain\Service\PublishGate;
 use Logistics\Planning\Domain\Service\RouteSequencer;
+use Logistics\Planning\Domain\Service\StraightLineMatrixBuilder;
 use Logistics\Planning\Domain\Service\VehicleCompatibility;
 use Logistics\Planning\Infrastructure\Adapter\BlackoutAwarePendingDeliveryProvider;
 use Logistics\Planning\Infrastructure\Adapter\EloquentPendingDeliveryProvider;
@@ -80,12 +94,19 @@ use Logistics\Planning\Infrastructure\Adapter\FleetVehicleAvailabilityProvider;
 use Logistics\Planning\Infrastructure\Adapter\NetworkNodeOriginLocator;
 use Logistics\Planning\Infrastructure\Adapter\ShipmentLoadReader;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
+use Logistics\Planning\Infrastructure\Persistence\Eloquent\BroadcastingAutoPlanRunRepository;
+use Logistics\Planning\Infrastructure\Persistence\Eloquent\BroadcastingPlanRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\DbRoutingConstraintRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentAutoPlanRunRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentPlanRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentReplanBacklogRepository;
 use Logistics\Planning\Infrastructure\Queue\QueuedDailyPlanDispatcher;
 use Logistics\Planning\Infrastructure\ReadModel\DbPlanCrewLabels;
+use Logistics\Planning\Infrastructure\ReadModel\DbShipmentPlanningFactsReader;
+use Logistics\Planning\Infrastructure\ReadModel\DbTripCandidateReader;
+use Logistics\Planning\Infrastructure\ReadModel\DbTripVehicleReader;
+use Logistics\Planning\Infrastructure\Realtime\PlanCityReader;
+use Logistics\Planning\Infrastructure\Realtime\PlanningRealtimeBroadcaster;
 use Logistics\Planning\Infrastructure\Routing\BuiltinRouteOptimizer;
 use Logistics\Planning\Infrastructure\Routing\BuiltinRoutingBackend;
 use Logistics\Planning\Infrastructure\Routing\OsrmRoadMatrixProvider;
@@ -119,11 +140,15 @@ final class PlanningServiceProvider extends ServiceProvider
         AssignShipmentToVehicle::class => AssignShipmentToVehicleHandler::class,
         ReassignShipmentToVehicle::class => ReassignShipmentToVehicleHandler::class,
         ReorderStops::class => ReorderStopsHandler::class,
+        RemoveStopFromPlan::class => RemoveStopFromPlanHandler::class,
+        DeletePlan::class => DeletePlanHandler::class,
         ReoptimizeRoute::class => ReoptimizeRouteHandler::class,
         ScheduleReplan::class => ScheduleReplanHandler::class,
         PublishPlan::class => PublishPlanHandler::class,
         GetPlan::class => GetPlanHandler::class,
         ListPlansByDate::class => ListPlansByDateHandler::class,
+        ListTripCandidates::class => ListTripCandidatesHandler::class,
+        SuggestTripSequence::class => SuggestTripSequenceHandler::class,
         GetDailyPlanRun::class => GetDailyPlanRunHandler::class,
         GetRouteQuality::class => GetRouteQualityHandler::class,
         CompareRoutingBackends::class => CompareRoutingBackendsHandler::class,
@@ -137,15 +162,82 @@ final class PlanningServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-planning.php', 'logistics-planning');
 
-        $this->app->bind(PlanRepository::class, EloquentPlanRepository::class);
+        // Tiempo real: el emisor junta lo guardado en una misma transacción y avisa tras el commit. `scoped`
+        // (una instancia por request o trabajo) porque guarda lo pendiente en la instancia.
+        $this->app->scoped(PlanningRealtimeBroadcaster::class);
+
+        // Los repositorios de planes y de corridas van envueltos en un decorador que avisa cada guardado
+        // (`plans.updated` / `planning.run.updated`); sin transporte de tiempo real no hacen nada extra.
+        $this->app->bind(PlanRepository::class, static function ($app): PlanRepository {
+            return new BroadcastingPlanRepository(
+                $app->make(EloquentPlanRepository::class),
+                $app->make(PlanningRealtimeBroadcaster::class),
+                $app->make(PlanCityReader::class),
+            );
+        });
         $this->app->bind(ReplanBacklogRepository::class, EloquentReplanBacklogRepository::class);
-        $this->app->bind(AutoPlanRunRepository::class, EloquentAutoPlanRunRepository::class);
+        $this->app->bind(AutoPlanRunRepository::class, static function ($app): AutoPlanRunRepository {
+            return new BroadcastingAutoPlanRunRepository(
+                $app->make(EloquentAutoPlanRunRepository::class),
+                $app->make(PlanningRealtimeBroadcaster::class),
+                $app->make(PlanCityReader::class),
+            );
+        });
 
         // Escritor de las restricciones de ruteo (R-04): perfil por camión y requisitos por envío.
         $this->app->bind(RoutingConstraintRepository::class, DbRoutingConstraintRepository::class);
 
         // Read-side: placa del camión y chofer del día para enriquecer los planes (en lote, sin N+1).
         $this->app->bind(PlanCrewLabels::class, DbPlanCrewLabels::class);
+
+        // Read-side del plan sin identificadores internos y del asistente de viajes: datos legibles y
+        // ubicación de los envíos, el camión con su base, y los candidatos por cercanía (todo en lote).
+        $this->app->bind(ShipmentPlanningFactsReader::class, DbShipmentPlanningFactsReader::class);
+        $this->app->bind(TripVehicleReader::class, DbTripVehicleReader::class);
+        $this->app->bind(TripCandidateReader::class, DbTripCandidateReader::class);
+
+        // Parámetros del asistente de viajes, desde la configuración del package (defaults funcionales).
+        $this->app->bind(TripBuilderSettings::class, static function ($app): TripBuilderSettings {
+            /** @var Config $config */
+            $config = $app->make(Config::class);
+            /** @var mixed $departTime */
+            $departTime = $config->get('logistics-planning.auto_planner.default_depart_time', '07:30');
+
+            return new TripBuilderSettings(
+                timezone: (string) $config->get('logistics-planning.trip_builder.timezone', 'America/La_Paz'),
+                defaultDepartTime: is_string($departTime) ? trim($departTime) : '07:30',
+                averageSpeedKmh: (float) $config->get('logistics-planning.trip_builder.average_speed_kmh', 25.0),
+                detourFactor: (float) $config->get('logistics-planning.trip_builder.detour_factor', 1.3),
+                serviceMinutes: (int) $config->get('logistics-planning.trip_builder.service_minutes', 10),
+                suggestRadiusMeters: (float) $config->get('logistics-planning.trip_builder.suggest_radius_meters', 1500.0),
+                sameBlockMeters: (float) $config->get('logistics-planning.trip_builder.same_block_meters', 120.0),
+                useRoadMatrix: (bool) $config->get('logistics-planning.trip_builder.road_matrix', true),
+                maxStops: (int) $config->get('logistics-planning.trip_builder.max_stops', 150),
+                maxCandidates: (int) $config->get('logistics-planning.trip_builder.max_candidates', 200),
+            );
+        });
+
+        // Matriz del asistente de viajes: el proveedor por carretera existente (OSRM /table, con caché y
+        // degradación) pero con un tope de espera CORTO propio, porque corre dentro del request del
+        // planificador; si no responde, TripMatrixSource cae al respaldo local determinista.
+        $this->app->bind(TripMatrixSource::class, static function ($app): TripMatrixSource {
+            /** @var Config $config */
+            $config = $app->make(Config::class);
+
+            return new TripMatrixSource(
+                new OsrmRoadMatrixProvider(
+                    $app->make(HttpClient::class),
+                    $app->make(Cache::class),
+                    (string) $config->get('logistics-planning.osrm_host', 'https://router.project-osrm.org'),
+                    max(1, (int) $config->get('logistics-planning.trip_builder.osrm_timeout', 2)),
+                    (int) $config->get('logistics-planning.routing.matrix.max_table_coordinates', 100),
+                    (int) $config->get('logistics-planning.routing.matrix.cache_ttl', 86400),
+                    (float) $config->get('logistics-planning.routing.fallback_speed_kmh', 30.0),
+                ),
+                $app->make(StraightLineMatrixBuilder::class),
+                $app->make(TripBuilderSettings::class),
+            );
+        });
 
         // Auto-planificador diario: puertos de lectura (pedidos pendientes y flota disponible),
         // parámetros configurables (settings/config) y encolado asíncrono del cálculo pesado.

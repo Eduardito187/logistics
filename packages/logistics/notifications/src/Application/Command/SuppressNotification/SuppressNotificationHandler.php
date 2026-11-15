@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Application\Command\SuppressNotification;
 
+use Logistics\Notifications\Application\Contract\NotificationFeedSignal;
+use Logistics\Notifications\Application\Service\NotificationVisibility;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Notifications\Domain\ValueObject\NotificationId;
@@ -20,6 +22,8 @@ final class SuppressNotificationHandler implements CommandHandler
 {
     public function __construct(
         private readonly NotificationRepository $notifications,
+        private readonly NotificationFeedSignal $feedSignal,
+        private readonly NotificationVisibility $visibility,
     ) {}
 
     public function handle(Command $command): void
@@ -29,12 +33,16 @@ final class SuppressNotificationHandler implements CommandHandler
         }
 
         $notification = $this->notifications->findById(NotificationId::fromString($command->notificationId));
-        if ($notification === null) {
+        // Fuera del alcance de quien opera se responde igual que si no existiera (no se revela).
+        if ($notification === null || !$this->visibility->canSeeShipment($command->scope, $notification->shipmentId())) {
             throw NotificationsException::because("no existe la notificación {$command->notificationId}");
         }
 
         $notification->suppress();
 
         $this->notifications->save($notification);
+
+        // Señal de tiempo real: cambió el estado visible de la notificación (suprimida).
+        $this->feedSignal->feedChanged();
     }
 }

@@ -8,6 +8,7 @@ use Illuminate\Database\Query\Builder;
 use Logistics\Shipments\Application\ReadModel\AddressPartsView;
 use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
 use Logistics\Shipments\Domain\ValueObject\DeliveryMode;
+use Logistics\Shipments\Domain\ValueObject\DepartmentCode;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ShipmentStatus;
 
@@ -164,10 +165,11 @@ final class ShipmentSqlFilters
     }
 
     /**
-     * Búsqueda por texto: código de pedido (`external_id` / `order_reference`), nombre o documento del
-     * cliente. Sin distinguir mayúsculas; los comodines del usuario se escapan (busca el texto literal).
+     * Búsqueda por texto: código de pedido (`external_id` / `order_reference`) y, si `$customerData`, nombre
+     * o documento del cliente. Sin distinguir mayúsculas; los comodines del usuario se escapan (busca el
+     * texto literal). Con `$customerData` en false el texto nunca se compara contra datos del cliente.
      */
-    public static function search(Builder $query, string $text): void
+    public static function search(Builder $query, string $text, bool $customerData = true): void
     {
         $text = trim($text);
         if ($text === '') {
@@ -177,34 +179,69 @@ final class ShipmentSqlFilters
         $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($text)).'%';
 
         // SQL literal por columna (nada dinámico en el texto de la consulta; el valor va por binding).
-        $query->where(static function (Builder $where) use ($like): void {
+        $query->where(static function (Builder $where) use ($like, $customerData): void {
             $where->whereRaw('lower(external_id) like ?', [$like])
-                ->orWhereRaw('lower(order_reference) like ?', [$like])
-                ->orWhereRaw('lower(customer_name) like ?', [$like])
-                ->orWhereRaw('lower(customer_document_id) like ?', [$like]);
+                ->orWhereRaw('lower(order_reference) like ?', [$like]);
+            if ($customerData) {
+                $where->orWhereRaw('lower(customer_name) like ?', [$like])
+                    ->orWhereRaw('lower(customer_document_id) like ?', [$like]);
+            }
         });
     }
 
     /**
-     * Ciudad: se filtra por la columna `city` (nombre canónico, indexada). El texto pedido se lleva a su
-     * nombre canónico cuando es una ciudad conocida («scz» → «Santa Cruz»). Para los envíos que todavía no
-     * tienen ciudad resuelta se conserva el respaldo: el texto dentro de la dirección. Los comodines del
-     * usuario se buscan como texto literal.
+     * Ciudad. Acepta dos formas del mismo parámetro:
+     *  - un CÓDIGO de departamento del catálogo (`la_paz`, `santa_cruz`, …, tal cual, en minúsculas): filtra
+     *    por igualdad sobre `destination_department` (columna indexada). Es lo que manda el selector de
+     *    departamentos de la app. Un envío que todavía NO tiene departamento de destino resuelto entra si
+     *    su ciudad o su dirección nombran ese departamento (no se esconde un pedido por un dato faltante);
+     *  - cualquier otro texto: se filtra por la columna `city` (nombre canónico, indexada). El texto pedido
+     *    se lleva a su nombre canónico cuando es una ciudad conocida («scz» → «Santa Cruz»). Para los envíos
+     *    que todavía no tienen ciudad resuelta se conserva el respaldo: el texto dentro de la dirección. Los
+     *    comodines del usuario se buscan como texto literal.
+     *
+     * `$prefix` califica las columnas cuando la consulta lee `shipments` con alias (p. ej. `sh.`).
      */
-    public static function city(Builder $query, string $city): void
+    public static function city(Builder $query, string $city, string $prefix = ''): void
     {
         $city = trim($city);
         if ($city === '') {
             return;
         }
 
+        if (in_array($city, DepartmentCode::ALL, true)) {
+            $code = $city;
+            $query->where(static function (Builder $where) use ($code, $prefix): void {
+                $where->where($prefix.'destination_department', $code)
+                    ->orWhere(static function (Builder $unresolved) use ($code, $prefix): void {
+                        $unresolved->whereNull($prefix.'destination_department');
+                        self::cityText($unresolved, str_replace('_', ' ', $code), $prefix);
+                    });
+            });
+
+            return;
+        }
+
+        self::cityText($query, $city, $prefix);
+    }
+
+    /**
+     * Ciudad como TEXTO: coincide con la columna `city` o, si el envío no la tiene resuelta, con el texto de
+     * la dirección. El alias es un literal del código (nunca texto del usuario); el valor va por binding.
+     */
+    private static function cityText(Builder $query, string $city, string $prefix): void
+    {
         $canonical = AddressPartsView::canonicalCity($city) ?? $city;
         $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($canonical)).'%';
 
-        $query->where(static function (Builder $where) use ($like): void {
-            $where->whereRaw('lower(city) like ?', [$like])
-                ->orWhere(static function (Builder $unresolved) use ($like): void {
-                    $unresolved->whereNull('city')->whereRaw('lower(address_text) like ?', [$like]);
+        $cityColumn = $prefix.'city';
+        $addressColumn = $prefix.'address_text';
+
+        // `ilike` de PostgreSQL: sin distinguir mayúsculas y sin SQL crudo (el valor va por binding).
+        $query->where(static function (Builder $where) use ($like, $cityColumn, $addressColumn): void {
+            $where->where($cityColumn, 'ilike', $like)
+                ->orWhere(static function (Builder $unresolved) use ($like, $cityColumn, $addressColumn): void {
+                    $unresolved->whereNull($cityColumn)->where($addressColumn, 'ilike', $like);
                 });
         });
     }

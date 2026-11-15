@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Execution\Application\Command\RecordLoadScan;
 
 use DateTimeImmutable;
+use Logistics\Execution\Application\Service\RouteDeliveryOpener;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
@@ -25,6 +26,7 @@ final class RecordLoadScanHandler implements CommandHandler
     public function __construct(
         private readonly DeliveryRepository $deliveries,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly RouteDeliveryOpener $opener,
     ) {}
 
     public function handle(Command $command): void
@@ -33,7 +35,11 @@ final class RecordLoadScanHandler implements CommandHandler
             throw ExecutionException::because('RecordLoadScanHandler solo maneja RecordLoadScan');
         }
 
-        $delivery = $this->deliveries->findByShipmentId($command->shipmentId);
+        $occurredAt = new DateTimeImmutable($command->occurredAt);
+
+        // Si el envío está en la ruta de un camión pero su entrega nunca se abrió (ruta armada desde el
+        // plan publicado), se abre con ese camión y la carga sigue. Sin ruta, el error claro de siempre.
+        $delivery = $this->opener->forShipment($command->shipmentId, $occurredAt);
         if ($delivery === null) {
             throw ExecutionException::because("no hay entrega abierta para el envío {$command->shipmentId}");
         }
@@ -42,7 +48,7 @@ final class RecordLoadScanHandler implements CommandHandler
             $command->unitId,
             GeoPoint::of($command->lat, $command->lng),
             DeviceContext::of($command->deviceId, $command->userId),
-            new DateTimeImmutable($command->occurredAt),
+            $occurredAt,
             $command->idempotencyKey,
         );
 

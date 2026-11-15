@@ -41,6 +41,23 @@ it('el preparador queda acotado a su ciudad, y sin ciudad no queda restringido',
         ->and(ShipmentScopeActor::fromIdentity(['preparador'], city: '  ')->unrestricted)->toBeTrue();
 });
 
+it('en modo estricto un preparador sin ciudad no ve nada y el motivo es la ciudad faltante', function (): void {
+    $picker = ShipmentScopeActor::fromIdentity(['preparador'], strictWithoutCity: true);
+
+    expect($picker->unrestricted)->toBeFalse()
+        ->and($picker->seesNothing())->toBeTrue()
+        ->and($picker->lacksCity())->toBeTrue()
+        ->and($picker->denialCode)->toBe('out_of_scope_city')
+        ->and($picker->denialMessage())->toContain('ciudad asignada')
+        // Con ciudad, el modo estricto no cambia nada.
+        ->and(ShipmentScopeActor::fromIdentity(['preparador'], city: 'la_paz', strictWithoutCity: true)->department)->toBe('la_paz')
+        ->and(ShipmentScopeActor::fromIdentity(['preparador'], city: 'la_paz', strictWithoutCity: true)->lacksCity())->toBeFalse()
+        // Admin y supervisor nunca se ven afectados; tampoco los roles que no se acotan por ciudad.
+        ->and(ShipmentScopeActor::fromIdentity(['admin'], strictWithoutCity: true)->unrestricted)->toBeTrue()
+        ->and(ShipmentScopeActor::fromIdentity(['supervisor', 'preparador'], strictWithoutCity: true)->unrestricted)->toBeTrue()
+        ->and(ShipmentScopeActor::fromIdentity(['chofer'], strictWithoutCity: true)->unrestricted)->toBeTrue();
+});
+
 it('la tienda queda acotada a su nodo, y sin nodo no ve nada', function (): void {
     $node = '019a0000-0000-7000-8000-000000000001';
     $store = ShipmentScopeActor::fromIdentity(['tienda'], city: 'la_paz', nodeId: $node);

@@ -41,13 +41,16 @@ return [
             Route::get('shipments/summary', ShipmentSummaryController::class)->name('summary');
             Route::get('shipments/low-confidence-addresses', ListLowConfidenceAddressesController::class)
                 ->name('low-confidence-addresses');
-            // Reprogramación (uno, varios, por camión o por ciudad). La vista previa la ven admin y
-            // supervisor; APLICAR es solo de admin. Antes de {shipment} para que no se tome como id.
+            // Reprogramación (uno, varios, por camión o por ciudad). Antes de {shipment} para que no se tome
+            // como id. Pedidos puntuales (`shipment_ids`): los aplica el admin y el planificador, este último
+            // solo dentro de su ciudad (403 `out_of_scope_city`); el supervisor solo ve la vista previa.
+            // Masivo (por camión o por ciudad): APLICAR es solo de admin y la vista previa, de admin y
+            // supervisor; el planificador recibe 403 `insufficient_role` (lo decide el controller).
             Route::post('shipments/reschedule/preview', [RescheduleShipmentsController::class, 'preview'])
-                ->middleware('role:supervisor,admin')
+                ->middleware('role:supervisor,planificador,admin')
                 ->name('reschedule.preview');
             Route::post('shipments/reschedule', [RescheduleShipmentsController::class, 'apply'])
-                ->middleware('role:admin')
+                ->middleware('role:planificador,admin')
                 ->name('reschedule.apply');
             Route::get('shipments/{shipment}', ShowShipmentController::class)->name('show');
             Route::post('shipments/{shipment}/geocode', GeocodeShipmentAddressController::class)

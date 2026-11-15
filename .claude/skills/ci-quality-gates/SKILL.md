@@ -285,6 +285,31 @@ para alinear la columna de tipo con `@return`, y la variable se alinea a la colu
 grupo. `@param`/`@return` van JUNTOS (sin línea ` *` en blanco entre ellos). Verificar contra un archivo de
 `origin/production` que ya pase, columna por columna.
 
+## Local ≠ CI: por qué un test pasa en un lado y falla en el otro
+
+Tres causas verificadas (2026-11-14/15). Mirarlas ANTES de tocar el código de producción:
+
+1. **Variables del container que `phpunit.xml` no fuerza.** El container define `APP_ENV=local`,
+   `CACHE_STORE`, etc. como variables de proceso y un `<env>` sin `force="true"` NO las pisa. Síntoma real:
+   `fillForm()` de Filament no llenaba nada ("Component has errors: data.x required") solo en local, porque
+   `fillFormDataForTesting` sale sin hacer nada si `app()->runningUnitTests()` es false. Fix aplicado:
+   `<server name="APP_ENV" value="testing" force="true"/>` + `<env ... force="true"/>`. Siguen SIN forzar:
+   `CACHE_STORE`, `QUEUE_CONNECTION`, `SESSION_DRIVER`, `MAIL_MAILER`.
+2. **Zona horaria.** Container en `America/La_Paz` (PHP y sesión de Postgres); CI en UTC.
+   - Unit sin bootstrap: `new DateTimeImmutable('2026-11-10 18:00')` cambia de instante según la máquina →
+     escribir siempre el desplazamiento (`'… +00:00'`).
+   - Columna `timestamp` SIN zona (`created_at`/`updated_at`): guarda reloj de pared y Postgres lo lee en la
+     zona de su sesión. El esperado se calcula igual:
+     `select extract(epoch from ?::timestamp::timestamptz)::bigint`.
+   - Columna `timestamptz` escrita por Eloquent: el cast `datetime` formatea SIN desplazamiento
+     (`Y-m-d H:i:s`) y la base lo interpreta en la zona de su sesión → fecha corrida 4 h si el valor venía
+     en UTC. Fix en el modelo: `protected $dateFormat = 'Y-m-d H:i:sP';` (hecho en `TrackingRecord`). Es un
+     bug REAL de datos, no solo del test: revisar otros `*Record` que reciban fechas de dispositivos.
+3. **Un `pint --dirty` o un agente tocó el archivo mientras corría la suite**: re-correr ese archivo.
+
+Depurar un test de Livewire/Filament que "no llena": test temporal con
+`fwrite(STDERR, json_encode($t->get('data')))` antes y después de `fillForm`, y BORRARLO al terminar.
+
 ## Mapa de workflows (`.github/workflows/`)
 
 | Workflow | Cuándo | Runner | Qué valida |
@@ -305,6 +330,10 @@ con actionlint antes de pushear (ver skill `staging-deploy`).
 ejecución → 755→644 falsos). Verificar: `git ls-files --eol <archivo>`.
 
 ## Gotchas PHPStan nivel 8 (recurrentes)
+- `whereRaw()` y `new Expression()` exigen **literal-string**: `'lower('.$col.') like ?'` falla
+  (`non-falsy-string given`). No hay cast que lo arregle: reescribir sin SQL crudo
+  (`->where($col, 'ilike', $like)`, `whereColumn`, `whereExists` con el builder).
+- Un caso nuevo en un enum (p. ej. un rol) rompe cada `match` exhaustivo: buscarlos todos antes.
 - `DB::table()->first()` → tipar el método como `?\stdClass` (acceso a props de stdClass exento). NO
   `@return object{...}` (error return.type) ni `@var` temporal (dispara "immediate return" de Sonar).
 - `bindec()`/binario → castear `(int)`.

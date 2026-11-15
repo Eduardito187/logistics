@@ -67,7 +67,15 @@ function appPlans(array $plans): PlanRepository
             return PlanId::generate();
         }
 
-        public function save(DeliveryPlan $plan): void {}
+        public function save(DeliveryPlan $plan): void
+        {
+            // Vacío a propósito (doble de prueba): el publicador despacha comandos y no guarda planes.
+        }
+
+        public function delete(DeliveryPlan $plan): void
+        {
+            // Vacío a propósito (doble de prueba): este test no borra planes.
+        }
 
         public function findById(PlanId $id): ?DeliveryPlan
         {

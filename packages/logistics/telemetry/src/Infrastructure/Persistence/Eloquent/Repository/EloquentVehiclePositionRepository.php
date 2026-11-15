@@ -74,6 +74,34 @@ final readonly class EloquentVehiclePositionRepository implements VehiclePositio
             ->all());
     }
 
+    public function visible(?DateTimeImmutable $since, ?array $onlyVehicleIds = null, array $exceptVehicleIds = []): array
+    {
+        if ($onlyVehicleIds === []) {
+            return [];
+        }
+
+        $query = VehiclePositionRecord::query();
+
+        if ($since !== null) {
+            // Mismo criterio que `changedSince`: >= y cursor llevado a la zona de la app.
+            $query->where('updated_at', '>=', $since->setTimezone(new DateTimeZone(date_default_timezone_get())));
+        }
+
+        if ($onlyVehicleIds !== null) {
+            $query->whereIn('vehicle_id', $onlyVehicleIds);
+        }
+
+        if ($exceptVehicleIds !== []) {
+            $query->whereNotIn('vehicle_id', $exceptVehicleIds);
+        }
+
+        return array_values($query
+            ->orderBy('vehicle_id')
+            ->get()
+            ->map(fn (VehiclePositionRecord $record): array => $this->mapper->toLiveRow($record))
+            ->all());
+    }
+
     public function watchState(string $vehicleId): array
     {
         $record = VehiclePositionRecord::query()->find($vehicleId, ['vehicle_id', 'speeding_since', 'off_route_since']);

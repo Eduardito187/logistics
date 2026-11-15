@@ -52,14 +52,15 @@ final class ShipmentPipeline extends Page
     }
 
     /**
-     * Tablero de operaciones: solo cuentas con alcance de oficina (administrador/supervisor). Un rol de
-     * campo opera desde sus propias secciones, no desde la vista supervisora global.
+     * Tablero de operaciones: cuentas con alcance de oficina (administrador/supervisor) y el planificador
+     * (lo usa en lectura para ver qué envíos faltan planificar). Un rol de campo opera desde sus propias
+     * secciones, no desde la vista supervisora global.
      */
     public static function canAccess(): bool
     {
         $user = Auth::user();
 
-        return $user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor);
+        return $user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor, Role::Planificador);
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
 
 // Ciudad (departamento) de cada persona de la app: se expone en la sesión y en la ficha del personal, se
 // filtra en la lista, se edita respetando la regla "quien tiene nodo es de la ciudad de su nodo" y se
@@ -187,12 +188,40 @@ it('edita la ciudad de quien no tiene nodo y rechaza una distinta a la de su nod
         ->assertJsonPath('data.city', 'santa_cruz');
 });
 
+it('sincroniza la ciudad al asignar la tienda desde el admin web y al cambiar el departamento del nodo', function (): void {
+    $store = sctNode('cochabamba');
+
+    // Asignación por Eloquent (así guarda Filament): la ciudad pasa a ser la del nodo.
+    $clerk = User::factory()->create(['city' => 'la_paz']);
+    $clerk->update(['node_id' => $store]);
+    expect($clerk->refresh()->city)->toBe('cochabamba');
+
+    // Quitar el nodo conserva la ciudad.
+    $clerk->update(['node_id' => null]);
+    expect($clerk->refresh()->city)->toBe('cochabamba');
+
+    // Cambiar el departamento del nodo mueve a su personal; el de otros nodos no se toca.
+    $clerk->update(['node_id' => $store]);
+    $other = User::factory()->create(['node_id' => sctNode('tarija')]);
+
+    NodeRecord::query()->findOrFail($store)->update(['department' => 'oruro']);
+
+    expect($clerk->refresh()->city)->toBe('oruro')
+        ->and($other->refresh()->city)->toBe('tarija');
+
+    // Un nodo que queda sin departamento no le quita la ciudad a nadie.
+    NodeRecord::query()->findOrFail($store)->update(['department' => null]);
+    expect($clerk->refresh()->city)->toBe('oruro');
+});
+
 it('completa la ciudad faltante desde el nodo o el vehículo, sin pisar la ya cargada', function (): void {
     $store = sctNode('la_paz');
     $base = sctNode('cochabamba', 'distribution_center');
     $otherBase = sctNode('oruro', 'distribution_center');
 
-    $clerk = User::factory()->create(['node_id' => $store]);
+    // Datos anteriores a la regla: el nodo se fija directo en la tabla (guardar el modelo ya sincroniza la ciudad).
+    $clerk = User::factory()->create();
+    DB::table('users')->where('id', $clerk->id)->update(['node_id' => $store]);
 
     // Chofer con dos tripulaciones: manda la más reciente (base Cochabamba).
     $driverId = (string) Str::uuid7();
@@ -200,7 +229,8 @@ it('completa la ciudad faltante desde el nodo o el vehículo, sin pisar la ya ca
     sctCrew($driverId, sctVehicle($otherBase), now()->subDays(5)->toDateString());
     sctCrew($driverId, sctVehicle($base), now()->subDay()->toDateString());
 
-    $alreadySet = User::factory()->create(['node_id' => $store, 'city' => 'tarija']);
+    $alreadySet = User::factory()->create(['city' => 'tarija']);
+    DB::table('users')->where('id', $alreadySet->id)->update(['node_id' => $store]);
     $unknown = User::factory()->create();
 
     $city = static fn (User $user): mixed => DB::table('users')->where('id', $user->id)->value('city');

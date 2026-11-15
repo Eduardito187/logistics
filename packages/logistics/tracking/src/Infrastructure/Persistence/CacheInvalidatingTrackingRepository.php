@@ -21,7 +21,8 @@ use Throwable;
  * a los comandos y a los reactores del outbox sin regar llamadas por los handlers.
  *
  * Qué invalida: se compara la foto guardada contra el agregado recién grabado y se olvida SOLO si
- * cambió lo que el cliente debe ver de inmediato (estado, paradas restantes, posición en la ruta) o si
+ * cambió lo que el cliente debe ver de inmediato (estado, paradas restantes, posición en la ruta, llegada
+ * a la tienda de retiro) o si
  * la entrada era negativa/vencida. La posición del camión y la ETA NO invalidan: llegan cada pocos
  * segundos por envío y las cubre el TTL fresco; invalidar en cada ping anularía el caché.
  *
@@ -123,8 +124,11 @@ final readonly class CacheInvalidatingTrackingRepository implements TrackingRepo
             return false;
         }
 
+        // La llegada a la tienda se compara por presencia (se fija una sola vez): comparar el texto de la
+        // fecha daría falsos cambios por la zona horaria con que se releyó la fila.
         return $view->status === $tracking->status()->value
             && $view->remainingStops === $tracking->remainingStops()
-            && $view->routePosition === $tracking->routePosition()?->value;
+            && $view->routePosition === $tracking->routePosition()?->value
+            && ($view->atStoreAt !== null) === ($tracking->atStoreAt() !== null);
     }
 }

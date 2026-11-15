@@ -49,13 +49,14 @@ final class DispatchTimeline extends Page
     }
 
     /**
-     * Solo cuentas con alcance de oficina (administrador/supervisor).
+     * Cuentas con alcance de oficina (administrador/supervisor) y el planificador, que arma el día sobre
+     * esta misma línea de tiempo.
      */
     public static function canAccess(): bool
     {
         $user = Auth::user();
 
-        return $user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor);
+        return $user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor, Role::Planificador);
     }
 
     /**

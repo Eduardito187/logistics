@@ -21,6 +21,9 @@ use Logistics\Shipments\Application\ReadModel\ShipmentView;
  * le avisa que ya puede pasar a recogerlo. La entrega al cliente la registra después la tienda, con la
  * prueba de entrega de mostrador.
  *
+ * TRASPASO interno (`transfer`): no hay cliente que retire, así que dejarlo en su nodo destino sin faltantes
+ * lo deja ENTREGADO (`status = DELIVERED`), sin foto ni firma obligatorias. Con `missing_units` queda en curso.
+ *
  * Solo aplica a envíos cuyo destino es un nodo (`store_pickup` o `transfer`) y en ESE nodo: una entrega a
  * domicilio u otra tienda responde 422. Idempotente: repetirlo no duplica el aviso ni el hecho.
  *

@@ -31,6 +31,7 @@ use Logistics\Execution\Infrastructure\Persistence\Eloquent\VehicleRouteRecord;
 use Logistics\Execution\Presentation\Filament\Resources\VehicleRouteResource\Pages\ListVehicleRoutes;
 use Logistics\Execution\Presentation\Filament\Resources\VehicleRouteResource\Pages\ViewVehicleRoute;
 use Logistics\Shared\Presentation\Filament\Concerns\ResolvesUserRoles;
+use Logistics\Shared\Presentation\Filament\Concerns\ScopesToUserCity;
 use Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource;
 use Throwable;
 
@@ -50,13 +51,24 @@ use Throwable;
 final class VehicleRouteResource extends Resource
 {
     use ResolvesUserRoles;
+    use ScopesToUserCity;
 
     /**
-     * Rutas de vehículo: la oficina planifica/supervisa y el chofer consulta la suya. Resto oculto.
+     * Rutas de vehículo: la oficina planifica/supervisa, el planificador las consulta para armar los viajes
+     * y el chofer consulta la suya. Resto oculto.
      *
      * Sobrescribir canAccess() basta: Filament lo usa para ocultar del menú y bloquear la URL (403).
      */
     public static function canAccess(): bool
+    {
+        return self::authUserHasAnyRoleValue('admin', 'supervisor', 'planificador', 'chofer');
+    }
+
+    /**
+     * ¿La cuenta autenticada registra hechos de TERRENO (escaneos, prueba de entrega, entrega fallida,
+     * incidentes)? Oficina y chofer. El planificador entra a consultar, pero no pasa esta puerta.
+     */
+    public static function canOperateField(): bool
     {
         return self::authUserHasAnyRoleValue('admin', 'supervisor', 'chofer');
     }
@@ -114,11 +126,23 @@ final class VehicleRouteResource extends Resource
     /**
      * Eager-load del camión y de las paradas para evitar N+1 al pintar placas y progreso.
      *
+     * Alcance por ciudad: un usuario acotado (planificador) solo ve las rutas de su ciudad (camión con base
+     * en ella, o con alguna parada que lleva un pedido suyo).
+     *
      * @return Builder<VehicleRouteRecord>
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['vehicle', 'stops'])->withCount('stops');
+        $query = parent::getEloquentQuery()->with(['vehicle', 'stops'])->withCount('stops');
+        self::scopeTripsToUserCity(
+            $query,
+            'execution_driver_routes.id',
+            'execution_driver_routes.vehicle_id',
+            'execution_driver_route_stops',
+            'route_id',
+        );
+
+        return $query;
     }
 
     public static function table(Table $table): Table

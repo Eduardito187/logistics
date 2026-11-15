@@ -133,6 +133,19 @@ if [ "${OPTIMIZE_ON_BOOT:-false}" = "true" ]; then
 fi
 
 # ------------------------------------------------------------
+# 3b. Páginas de error del servidor web — SIEMPRE (contenedor web de la app)
+# ------------------------------------------------------------
+# Regenera los archivos estáticos que nginx sirve cuando la aplicación no llega a responder (400 / 413 /
+# 502…), a partir de las vistas `errors.*`: así nunca quedan viejos respecto del código. No toca la base.
+# En dev escribe en `.docker/nginx/errors` (montado en nginx); en las imágenes inmutables ya van horneados
+# en el build (stage `prod` → `web`) y esta pasada solo los deja al día dentro del contenedor.
+# Tolerante: si falla, quedan los archivos anteriores y el arranque sigue.
+if [[ "$1" == "php-fpm" && "${APP_SERVICE_ROLE:-}" != "telemetry" ]]; then
+    php artisan logistics:error-pages:build \
+        || echo "[entrypoint] AVISO: no se pudieron regenerar las páginas de error; quedan las anteriores." >&2
+fi
+
+# ------------------------------------------------------------
 # 4. Migraciones — OPT-IN explícito (AUTO_MIGRATE=true)
 # ------------------------------------------------------------
 # Apagado por defecto: con varias réplicas web todas correrían `migrate` a la vez.
@@ -167,6 +180,10 @@ if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_BACKFILL_ORDERS:-false
         || echo "[entrypoint] AVISO: el relleno de origen y departamento de envíos falló; el arranque sigue."
     php artisan logistics:staff:backfill-city --force \
         || echo "[entrypoint] AVISO: el relleno de ciudad del personal falló; el arranque sigue."
+    # Seguimiento: marca la llegada a la tienda de los pedidos que ya estaban ahí y corrige las fechas de
+    # entrega guardadas con el corrimiento del desplazamiento horario. Idempotente; no emite eventos.
+    php artisan logistics:tracking:reconcile-dates --force \
+        || echo "[entrypoint] AVISO: la puesta al día de fechas del seguimiento falló; el arranque sigue."
 fi
 
 # ------------------------------------------------------------

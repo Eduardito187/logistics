@@ -83,7 +83,7 @@ use RuntimeException;
  *   make artisan c="db:seed --class=Database\\Seeders\\TodayScenarioSeeder"
  *
  * Qué deja armado para la fecha de hoy (zona America/La_Paz):
- *   1. Usuarios de prueba por rol (chofer, preparador, tienda, transportista, supervisor) con contraseña
+ *   1. Usuarios de prueba por rol (chofer, preparador, tienda, transportista, supervisor, planificador) con contraseña
  *      `password123`; el chofer ligado a un conductor de flota y la tienda a su nodo (T-SCZ-01).
  *   2. Tripulación del día (chofer + 2 ayudantes + camión del CD Santa Cruz + turno) vía AssembleCrew,
  *      y el camión pasa a `in_service`.
@@ -280,6 +280,8 @@ final class TodayScenarioSeeder extends Seeder
             'tienda' => ['Tienda Santa Cruz Norte', Role::Tienda],
             'transportista' => ['Transportista Externo', Role::Transportista],
             'supervisor' => ['Supervisor Santa Cruz', Role::Supervisor],
+            // Planificador de la ciudad del escenario: arma planes y viajes, reprograma y maneja el calendario.
+            'planificador' => ['Planificador Santa Cruz', Role::Planificador],
         ];
 
         $users = [];
@@ -343,6 +345,7 @@ final class TodayScenarioSeeder extends Seeder
             'tienda' => StaffCity::ofNode($storeNodeId) ?? $scenarioCity,
             'transportista' => $scenarioCity,
             'supervisor' => $scenarioCity,
+            'planificador' => $scenarioCity,
         ];
 
         foreach ($cities as $key => $city) {

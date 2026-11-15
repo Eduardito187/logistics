@@ -120,6 +120,83 @@ it('sube un documento a la ficha y lo lista con su enlace', function (): void {
     $this->getJson('/api/v1/app/staff/'.$person->id.'/photos')->assertOk()->assertJsonPath('data.0.kind', 'document');
 });
 
+it('guarda la cara del documento (anverso / reverso) y la devuelve en documentos y fotos', function (): void {
+    Storage::fake('id_document');
+    sdaActingAs(Role::Admin);
+    $person = User::factory()->create();
+    $url = '/api/v1/app/staff/'.$person->id.'/documents';
+    $base = ['document_type' => 'carnet_identidad', 'reference' => '7788991 SC'];
+
+    $this->post($url, $base + ['side' => 'front', 'file' => UploadedFile::fake()->image('anverso.jpg')], ['Accept' => 'application/json'])
+        ->assertStatus(201)
+        ->assertJsonPath('data.side', 'front');
+
+    // No distingue mayúsculas ni espacios.
+    $this->post($url, $base + ['side' => ' BACK ', 'file' => UploadedFile::fake()->image('reverso.jpg')], ['Accept' => 'application/json'])
+        ->assertStatus(201)
+        ->assertJsonPath('data.side', 'back');
+
+    // Quien no manda la cara sigue funcionando igual: documento de una sola cara.
+    $this->post($url, ['document_type' => 'contrato', 'file' => UploadedFile::fake()->image('contrato.jpg')], ['Accept' => 'application/json'])
+        ->assertStatus(201)
+        ->assertJsonPath('data.side', null);
+
+    // Un valor fuera del catálogo se rechaza con el motivo.
+    $this->post($url, $base + ['side' => 'lateral', 'file' => UploadedFile::fake()->image('otro.jpg')], ['Accept' => 'application/json'])
+        ->assertStatus(422);
+
+    expect(DB::table('staff_documents')->where('user_id', $person->id)->orderBy('created_at')->orderBy('id')->pluck('side')->all())
+        ->toEqualCanonicalizing(['front', 'back', null]);
+
+    $documents = collect($this->getJson($url)->assertOk()->assertJsonPath('meta.total', 3)->json('data'));
+    expect($documents->pluck('side')->all())->toEqualCanonicalizing(['front', 'back', null]);
+
+    $photos = collect($this->getJson('/api/v1/app/staff/'.$person->id.'/photos')->assertOk()->json('data'));
+    expect($photos->where('kind', 'document')->pluck('side')->all())->toEqualCanonicalizing(['front', 'back', null]);
+});
+
+it('las fotos del personal no incluyen evidencia de entregas (es dato del cliente)', function (): void {
+    Storage::fake('id_document');
+    sdaActingAs(Role::Admin);
+    $driver = User::factory()->create();
+    $driver->assignRole(Role::Chofer);
+
+    // Evidencia que capturó el chofer en entregas: firma, foto de entrega y documento del cliente.
+    foreach (['signature', 'pod', 'id_document'] as $kind) {
+        DB::table('execution_delivery_evidence')->insert([
+            'id' => (string) Str::uuid7(),
+            'shipment_id' => (string) Str::uuid7(),
+            'kind' => $kind,
+            'storage_disk' => 'evidence',
+            'storage_path' => 'tests/'.$kind.'-'.Str::random(12).'.jpg',
+            'sha256' => hash('sha256', $kind.Str::random(8)),
+            'captured_by_user' => (string) $driver->id,
+            'captured_at' => now(),
+        ]);
+    }
+
+    // Sin foto ni documentos propios, la pestaña queda vacía aunque haya capturado evidencia.
+    $this->getJson('/api/v1/app/staff/'.$driver->id.'/photos')
+        ->assertOk()
+        ->assertJsonPath('meta.total', 0)
+        ->assertJsonCount(0, 'data');
+
+    $this->post('/api/v1/app/staff/'.$driver->id.'/photo', [
+        'photo' => UploadedFile::fake()->image('perfil.jpg'),
+    ], ['Accept' => 'application/json'])->assertStatus(201);
+    $this->post('/api/v1/app/staff/'.$driver->id.'/documents', [
+        'document_type' => 'licencia',
+        'side' => 'front',
+        'file' => UploadedFile::fake()->image('licencia.jpg'),
+    ], ['Accept' => 'application/json'])->assertStatus(201);
+
+    $kinds = collect($this->getJson('/api/v1/app/staff/'.$driver->id.'/photos')->assertOk()->assertJsonPath('meta.total', 2)->json('data'))
+        ->pluck('kind')->all();
+
+    expect($kinds)->toEqualCanonicalizing(['profile', 'document'])
+        ->and($kinds)->not->toContain('evidence');
+});
+
 it('asigna y quita la tienda de una persona', function (): void {
     sdaActingAs(Role::Admin);
     $store = sdaStore('Tienda Norte');
