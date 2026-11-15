@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1\App;
 
+use App\Models\User;
+use App\Support\Realtime\UserRealtimeChannels;
 use App\Support\Staff\StaffInbox;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * Datos que la app necesita para conectarse al tiempo real (protocolo Pusher), sin llevarlos fijos en el
@@ -18,13 +21,18 @@ use Illuminate\Http\JsonResponse;
  * cuando la API es https. Con `enabled: false` el entorno no tiene tiempo real y la app sigue con su
  * refresco normal.
  *
+ * `channels` es el mapa tema → canales que ESTE usuario puede escuchar (`user`, `fleet`, `planning`): la app
+ * no arma nombres ni conoce ciudades o permisos. Un tema ausente = sin tiempo real para esa pantalla. Son
+ * exactamente los canales que firma `POST /api/v1/app/broadcasting/auth` para esa persona.
+ *
  * Solo viaja la clave PÚBLICA de la app de sockets; el secreto nunca sale del backend (firma las
  * suscripciones en `POST /api/v1/app/broadcasting/auth`).
  */
 final class BroadcastConfigController
 {
-    public function __invoke(): JsonResponse
+    public function __invoke(Request $request): JsonResponse
     {
+        $user = $request->user();
         $key = config('broadcasting.connections.pusher.key');
         $cluster = config('broadcasting.connections.pusher.options.cluster');
         $enabled = StaffInbox::realtimeEnabled()
@@ -36,6 +44,8 @@ final class BroadcastConfigController
             'key' => $enabled ? $key : null,
             'cluster' => $enabled && is_string($cluster) && $cluster !== '' ? $cluster : null,
             'path' => '/app',
+            // Objeto vacío (no lista) cuando no hay canales, para que el tipo no cambie.
+            'channels' => $enabled && $user instanceof User ? UserRealtimeChannels::for($user) : (object) [],
         ]);
     }
 }

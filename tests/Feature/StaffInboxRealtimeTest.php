@@ -103,7 +103,7 @@ it('la app recibe la clave pública y la ruta del tiempo real de su entorno, nun
     // Sin servidor de sockets: apagado y sin clave.
     $this->withToken($token)->getJson('/api/v1/app/broadcasting/config')
         ->assertOk()
-        ->assertExactJson(['enabled' => false, 'key' => null, 'cluster' => null, 'path' => '/app']);
+        ->assertExactJson(['enabled' => false, 'key' => null, 'cluster' => null, 'path' => '/app', 'channels' => []]);
 
     sirEnableSockets();
 
@@ -114,6 +114,54 @@ it('la app recibe la clave pública y la ruta del tiempo real de su entorno, nun
         ->assertJsonPath('path', '/app');
 
     expect((string) $response->getContent())->not->toContain('test-secret');
+});
+
+it('la configuración entrega los canales de cada tema según rol y ciudad, y solo esos se firman', function (): void {
+    sirEnableSockets();
+
+    // Cada pedido cambia de persona: se olvida la resuelta por el guard en el pedido anterior.
+    $channelsOf = function (string $token): array {
+        app('auth')->forgetGuards();
+        /** @var array<string, list<string>> $channels */
+        $channels = $this->withToken($token)->getJson('/api/v1/app/broadcasting/config')->assertOk()->json('channels');
+
+        return $channels;
+    };
+    $sign = function (string $token, string $channel) {
+        app('auth')->forgetGuards();
+
+        return $this->withToken($token)
+            ->postJson(SIR_AUTH_URL, ['socket_id' => SIR_SOCKET_ID, 'channel_name' => $channel]);
+    };
+
+    // Chofer: solo su canal personal.
+    [$driverToken, $driver] = sirBearer(Role::Chofer);
+    expect($channelsOf($driverToken))->toBe(['user' => ['private-user.'.$driver->getKey()]]);
+    $sign($driverToken, 'private-fleet.all')->assertForbidden();
+    $sign($driverToken, 'private-planning.city.santa_cruz')->assertForbidden();
+
+    // Supervisor: todas las ciudades.
+    [$supervisorToken, $supervisor] = sirBearer(Role::Supervisor);
+    expect($channelsOf($supervisorToken))->toBe([
+        'user' => ['private-user.'.$supervisor->getKey()],
+        'fleet' => ['private-fleet.all'],
+        'planning' => ['private-planning.all'],
+    ]);
+    $sign($supervisorToken, 'private-fleet.all')->assertOk();
+    $sign($supervisorToken, 'private-planning.all')->assertOk();
+
+    // Planificador con ciudad: solo la suya.
+    [$plannerToken, $planner] = sirBearer(Role::Planificador);
+    DB::table('users')->where('id', $planner->getKey())->update(['city' => 'santa_cruz']);
+    expect($channelsOf($plannerToken))->toBe([
+        'user' => ['private-user.'.$planner->getKey()],
+        'fleet' => ['private-fleet.city.santa_cruz'],
+        'planning' => ['private-planning.city.santa_cruz'],
+    ]);
+    $sign($plannerToken, 'private-fleet.city.santa_cruz')->assertOk();
+    $sign($plannerToken, 'private-planning.city.santa_cruz')->assertOk();
+    $sign($plannerToken, 'private-fleet.city.la_paz')->assertForbidden();
+    $sign($plannerToken, 'private-fleet.all')->assertForbidden();
 });
 
 it('sin Bearer no se entrega la configuración del tiempo real', function (): void {

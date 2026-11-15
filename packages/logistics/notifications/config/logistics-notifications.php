@@ -72,6 +72,24 @@ return [
         'timeout' => (int) env('SMS_GATEWAY_TIMEOUT', 5),
     ],
 
+    // Señal de tiempo real de la pantalla de notificaciones de la app (`notifications.updated` por el canal
+    // privado de cada usuario). Solo emite si hay transporte de sockets (BROADCAST_CONNECTION distinto de
+    // null/log); con los valores por defecto funciona en cualquier entorno.
+    'realtime' => [
+        // Ventana anti-ráfaga en segundos: varios cambios seguidos se avisan una sola vez.
+        'debounce_seconds' => (int) env('NOTIFICATIONS_REALTIME_DEBOUNCE', 3),
+
+        // Roles (valores de user_roles.role, separados por coma) a los que se avisa cuando cambia el log
+        // global. `*` = cualquier usuario con algún rol.
+        'audience_roles' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('NOTIFICATIONS_REALTIME_ROLES', '*')),
+        ))),
+
+        // Tope duro de destinatarios por aviso del log.
+        'max_recipients' => (int) env('NOTIFICATIONS_REALTIME_MAX_RECIPIENTS', 2000),
+    ],
+
     // Contenido rico: collage de imágenes de producto para push (FCM) y Telegram, y listado
     // con imágenes para el email.
     'rich_content' => [

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Notifications\Application\Command\AdvanceCascade;
 
+use Logistics\Notifications\Application\Contract\NotificationFeedSignal;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Notifications\Domain\ValueObject\NotificationId;
@@ -22,6 +23,7 @@ final class AdvanceCascadeHandler implements CommandHandler
     public function __construct(
         private readonly NotificationRepository $notifications,
         private readonly RecordDomainEvents $recordEvents,
+        private readonly NotificationFeedSignal $feedSignal,
     ) {}
 
     public function handle(Command $command): void
@@ -40,5 +42,8 @@ final class AdvanceCascadeHandler implements CommandHandler
         $this->notifications->save($notification);
 
         $this->recordEvents->record($notification->releaseEvents(), 'notifications.notification');
+
+        // Señal de tiempo real: cambió el canal actual o el estado visible (escalada / fallida).
+        $this->feedSignal->feedChanged();
     }
 }

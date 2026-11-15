@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\VehicleModel;
 use Logistics\Planning\Application\Command\AssignShipmentToVehicle\AssignShipmentToVehicle;
+use Logistics\Planning\Application\Command\DeletePlan\DeletePlan;
 use Logistics\Planning\Application\Command\GenerateDailyPlan\GenerateDailyPlan;
 use Logistics\Planning\Application\Command\GeneratePlanProposal\GeneratePlanProposal;
 use Logistics\Planning\Application\Command\GeneratePlanProposal\ProposalStopInput;
@@ -55,7 +56,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * propone secuencia y ETA, un humano reordena y finalmente lo publica. Por eso este resource NO expone
  * CRUD (crear/editar/borrar está deshabilitado) sino los CASOS DE USO del contexto como acciones que
  * despachan el comando real al CommandBus (dominio + outbox transaccional): generar la propuesta,
- * asignar un envío, reordenar paradas y publicar. Nunca se escribe el Record a mano para operaciones de
+ * asignar un envío, reordenar paradas, publicar y borrar un plan sin publicar. Nunca se escribe el Record a mano para operaciones de
  * negocio.
  *
  * La tabla y la vista muestran datos humanos (día del plan, placa del camión, referencia del pedido) en
@@ -291,6 +292,32 @@ final class PlanResource extends Resource
                         }
 
                         self::success(__('Plan published'), __('The plan is now available for execution.'));
+                    }),
+                // Flujo: borrar el plan entero (comando DeletePlan). Solo un plan sin publicar, y solo quien
+                // escribe como oficina (administrador o supervisor); el planificador no ve la acción. Los
+                // pedidos de sus paradas quedan libres para armar otro viaje.
+                Action::make('deletePlan')
+                    ->label(__('Delete plan'))
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading(__('Delete this delivery plan'))
+                    ->modalDescription(__('The plan and all its stops will be deleted. Its orders become available again to build another trip. This cannot be undone.'))
+                    ->modalSubmitActionLabel(__('Delete plan'))
+                    ->visible(static fn (PlanRecord $record): bool => self::canWriteAsOffice()
+                        && $record->status !== PlanStatus::Published->value)
+                    ->action(static function (PlanRecord $record, CommandBus $commandBus): void {
+                        try {
+                            $commandBus->dispatch(new DeletePlan(
+                                planId: (string) $record->getKey(),
+                            ));
+                        } catch (PlanningException $exception) {
+                            self::failure(__('Could not delete plan'), $exception);
+
+                            return;
+                        }
+
+                        self::success(__('Plan deleted'), __('The plan was deleted and its orders are available again.'));
                     }),
             ])
             ->defaultSort('plan_date', 'desc');

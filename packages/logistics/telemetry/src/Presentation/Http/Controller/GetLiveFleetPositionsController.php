@@ -13,6 +13,7 @@ use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Telemetry\Application\Query\GetLiveFleetPositions\GetLiveFleetPositions;
 use Logistics\Telemetry\Application\ReadModel\VehicleLiveView;
 use Logistics\Telemetry\Presentation\Http\ApiController;
+use Logistics\Telemetry\Presentation\Http\Support\FleetLiveScopeResolver;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Throwable;
 
@@ -25,7 +26,13 @@ use Throwable;
  *  - `?since=<ISO 8601>`: solo los vehículos cuya posición cambió DESPUÉS de ese instante (hora del servidor;
  *    usar el `meta.server_time` de la respuesta anterior para no depender del reloj del teléfono).
  *
- * El ETag se calcula sobre `data` (no sobre `meta.server_time`, que cambia en cada respuesta).
+ * El ETag se calcula sobre `data` (no sobre `meta.server_time`, que cambia en cada respuesta) más el alcance
+ * de quien consulta, así dos personas con distinto alcance nunca comparten validador.
+ *
+ * Alcance (el mismo de los canales `fleet.all` / `fleet.city.<departamento>`): admin y supervisor ven todas
+ * las ciudades; el planificador con ciudad, solo los camiones con sede en su departamento; sin ciudad ve
+ * todas salvo en modo estricto (lista vacía); cualquier otro rol, lista vacía. Los camiones dados de baja en
+ * flota no salen nunca.
  */
 final class GetLiveFleetPositionsController extends ApiController
 {
@@ -49,11 +56,17 @@ final class GetLiveFleetPositionsController extends ApiController
         return $this->guard(function () use ($request, $since): JsonResponse {
             $serverTime = Date::now()->format(DATE_ATOM);
 
+            // Alcance por rol y ciudad del usuario autenticado (sin usuario: sin restricción).
+            $scope = FleetLiveScopeResolver::fromUser($request->user());
+
             /** @var list<VehicleLiveView> $positions */
-            $positions = $this->queries->ask(new GetLiveFleetPositions($since));
+            $positions = $this->queries->ask(new GetLiveFleetPositions($since, true, $scope));
             $data = array_map(static fn (VehicleLiveView $view): array => $view->toArray(), $positions);
 
-            $etag = 'W/"'.hash('sha256', ($since?->format(DATE_ATOM) ?? '').'|'.(string) json_encode($data)).'"';
+            $etag = 'W/"'.hash(
+                'sha256',
+                $scope->key().'|'.($since?->format(DATE_ATOM) ?? '').'|'.(string) json_encode($data),
+            ).'"';
 
             if ($this->matches($request, $etag)) {
                 $notModified = new JsonResponse(null, Response::HTTP_NOT_MODIFIED);

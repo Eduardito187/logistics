@@ -6,6 +6,7 @@ namespace Logistics\Notifications\Application\Query\GetNotification;
 
 use Logistics\Notifications\Application\Contract\NotificationInboxReader;
 use Logistics\Notifications\Application\ReadModel\NotificationView;
+use Logistics\Notifications\Application\Service\NotificationVisibility;
 use Logistics\Notifications\Domain\Contract\NotificationRepository;
 use Logistics\Notifications\Domain\Exception\NotificationsException;
 use Logistics\Notifications\Domain\ValueObject\NotificationId;
@@ -21,6 +22,7 @@ final class GetNotificationHandler implements QueryHandler
     public function __construct(
         private readonly NotificationRepository $notifications,
         private readonly NotificationInboxReader $inbox,
+        private readonly NotificationVisibility $visibility,
     ) {}
 
     public function handle(Query $query): ?NotificationView
@@ -32,6 +34,11 @@ final class GetNotificationHandler implements QueryHandler
         $notification = $this->notifications->findById(NotificationId::fromString($query->notificationId));
 
         if ($notification === null) {
+            return null;
+        }
+
+        // Fuera del alcance de quien consulta: se responde como si no existiera.
+        if (!$this->visibility->canSeeShipment($query->scope, $notification->shipmentId())) {
             return null;
         }
 

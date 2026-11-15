@@ -433,7 +433,7 @@
                             }
                         };
                         try {
-                            const channel = window.Echo.channel('fleet');
+                            const channel = window.Echo.private('fleet');
                             channel.listen('.vehicle.position', liveRefresh);
                             // Al salir se quita ESTE listener (si no, cada visita sumaba uno más al canal).
                             live.onDispose(() => {

@@ -39,6 +39,9 @@ return [
             Route::delete('/{planId}/stops/{shipmentId}', [PlanController::class, 'removeStop'])
                 ->name('stops.remove')->whereUuid(['planId', 'shipmentId']);
 
+            // Borrar un plan sin publicar (con sus paradas).
+            Route::delete('/{planId}', [PlanController::class, 'destroy'])->name('destroy')->whereUuid('planId');
+
             // Ver un plan con su secuencia, ETA y plan de carga.
             Route::get('/{planId}', [PlanController::class, 'show'])->name('show')->whereUuid('planId');
 

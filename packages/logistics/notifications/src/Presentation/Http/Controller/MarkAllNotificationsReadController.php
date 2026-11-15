@@ -12,11 +12,15 @@ use Logistics\Notifications\Application\Query\CountUnreadNotifications\CountUnre
 use Logistics\Notifications\Presentation\Http\Support\AuthenticatedUser;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
 
 /**
  * Marca como leídas todas las notificaciones del usuario autenticado (puerta app), opcionalmente solo
  * las creadas hasta `up_to` (ISO 8601, inclusive; por defecto "ahora"). La app debería mandar el
  * created_at más nuevo que tenía en pantalla, para no dar por leída una que llegó después.
+ *
+ * Alcance por rol: la marca es una marca de agua por usuario (por fecha), y el `unread_count` devuelto
+ * cuenta solo las notificaciones de envíos que el usuario puede ver, igual que el listado.
  *
  * Idempotente y monótono: repetirlo, o mandar un up_to anterior al vigente, no cambia nada.
  * Responde 200 con el nuevo unread_count; 401 sin usuario identificable, 422 si up_to es inválido.
@@ -45,7 +49,7 @@ final readonly class MarkAllNotificationsReadController
         $this->commandBus->dispatch(new MarkAllNotificationsRead($userId, is_string($upTo) ? $upTo : null));
 
         /** @var int $unread */
-        $unread = $this->queryBus->ask(new CountUnreadNotifications($userId));
+        $unread = $this->queryBus->ask(new CountUnreadNotifications($userId, ScopeActorResolver::fromUser($request->user())));
 
         return new JsonResponse([
             'data' => [

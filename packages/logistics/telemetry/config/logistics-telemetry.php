@@ -143,6 +143,26 @@ return [
         'ttl_seconds' => (int) env('TELEMETRY_LIVE_TTL_SECONDS', 300),
         // Coalescing: como mucho una difusión por vehículo cada N segundos (corta el tráfico de fan-out).
         'throttle_seconds' => (int) env('TELEMETRY_LIVE_THROTTLE_SECONDS', 3),
+        // Evento `fleet.position` (app Flutter, objeto completo de fleet/live): como mucho uno por vehículo
+        // cada N segundos. Va aparte del throttle de arriba (el del admin) para poder afinarlos por separado.
+        'fleet_throttle_seconds' => (int) env('TELEMETRY_LIVE_FLEET_THROTTLE_SECONDS', 5),
+        // TTL (segundos) de los datos de referencia del camión que viajan en `fleet.position` (placa, sede,
+        // chofer del día y su nombre): se leen de la base como mucho una vez por vehículo en esa ventana.
+        'reference_ttl_seconds' => (int) env('TELEMETRY_LIVE_REFERENCE_TTL_SECONDS', 60),
+        // Cola del trabajo de difusión de `fleet.position`. Vacío = la cola de avisos (la misma de
+        // `inbox.updated`), que siempre tiene worker.
+        'broadcast_queue' => env('TELEMETRY_LIVE_BROADCAST_QUEUE'),
+        // Emisión final tras el throttle: la última lectura que la ventana descartó queda pendiente y un
+        // único trabajo por vehículo (en la cola de arriba, con espera = la ventana) la difunde si no salió
+        // otra más nueva. Evita que la app se quede con una posición vieja cuando el camión se detiene.
+        // Necesita una cola real: con QUEUE_CONNECTION=sync no hay espera y no emite.
+        'trailing_emit' => (bool) env('TELEMETRY_LIVE_TRAILING_EMIT', true),
+        // Estados de `fleet_vehicles.status` que significan "dado de baja": esos camiones no salen en
+        // `fleet/live`, no difunden `fleet.position` y disparan `fleet.removed` al pasar a ese estado.
+        'retired_statuses' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('TELEMETRY_LIVE_RETIRED_STATUSES', 'inactive')),
+        ))),
     ],
 
     // Analítica de calles (map-matching OSRM). Reutiliza el host OSRM de planning por defecto.

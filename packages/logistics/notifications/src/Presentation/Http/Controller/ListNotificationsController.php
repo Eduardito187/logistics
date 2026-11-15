@@ -14,6 +14,7 @@ use Logistics\Notifications\Application\ReadModel\NotificationView;
 use Logistics\Notifications\Presentation\Http\Support\AuthenticatedUser;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shared\Application\ReadModel\Page;
+use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
 
 /**
  * Lista el log global de notificaciones, de la más reciente a la más antigua (puerta app:
@@ -24,6 +25,10 @@ use Logistics\Shared\Application\ReadModel\Page;
  *
  * Estado de lectura por usuario (aditivo): cada ítem trae `read_at` del usuario autenticado y
  * `meta.unread_count` el total de no leídas (badge). `?unread=true` filtra solo las no leídas.
+ *
+ * Alcance por rol: solo entran las notificaciones de envíos que el usuario puede ver (mismo alcance que
+ * los pedidos). `meta.total` y `meta.unread_count` cuentan solo lo visible. Sin usuario de la app, sin
+ * restricción.
  *
  * Solo habla con el QueryBus y devuelve el envelope data + meta.
  */
@@ -41,6 +46,8 @@ final readonly class ListNotificationsController
         )->validate();
 
         $userId = AuthenticatedUser::id($request);
+        // El alcance sale SIEMPRE del usuario autenticado, nunca de un parámetro del cliente.
+        $scope = ScopeActorResolver::fromUser($request->user());
 
         /** @var Page<NotificationView> $page */
         $page = $this->queryBus->ask(new ListNotifications(
@@ -48,6 +55,7 @@ final readonly class ListNotificationsController
             offset: ApiPagination::offset($request),
             userId: $userId,
             unreadOnly: $request->boolean('unread'),
+            scope: $scope,
         ));
 
         $items = array_map(
@@ -58,7 +66,7 @@ final readonly class ListNotificationsController
         $body = ApiPagination::envelope($items, $page->total, $request);
 
         /** @var int|null $unread */
-        $unread = $userId !== null ? $this->queryBus->ask(new CountUnreadNotifications($userId)) : null;
+        $unread = $userId !== null ? $this->queryBus->ask(new CountUnreadNotifications($userId, $scope)) : null;
         $body['meta']['unread_count'] = $unread;
 
         return new JsonResponse($body);

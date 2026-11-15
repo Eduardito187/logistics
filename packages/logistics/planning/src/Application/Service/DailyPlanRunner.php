@@ -83,6 +83,38 @@ final readonly class DailyPlanRunner
         }
     }
 
+    /**
+     * El worker tomó la corrida: la deja en PROCESSING. El trabajo lo llama ANTES de abrir su transacción,
+     * para que el estado se confirme (y se vea desde la app) mientras dura el cálculo y no recién al final.
+     * Tolerante a reentregas: si la corrida no existe o ya no está encolada, no hace nada.
+     */
+    public function start(AutoPlanRunId $runId): void
+    {
+        $run = $this->runs->findById($runId);
+        if ($run === null || $run->status() !== AutoPlanRunStatus::Queued) {
+            return;
+        }
+
+        $run->markProcessing();
+        $this->runs->save($run);
+    }
+
+    /**
+     * Cierra la corrida como FALLIDA con su motivo. El trabajo lo llama cuando agotó sus reintentos, FUERA
+     * de la transacción que se revirtió (lo que {@see run()} guarda al fallar se revierte con ella). No pisa
+     * una corrida ya completada ni repite una ya fallida.
+     */
+    public function markFailed(AutoPlanRunId $runId, string $reason): void
+    {
+        $run = $this->runs->findById($runId);
+        if ($run === null || in_array($run->status(), [AutoPlanRunStatus::Completed, AutoPlanRunStatus::Failed], true)) {
+            return;
+        }
+
+        $run->fail($reason, $this->clock->now());
+        $this->runs->save($run);
+    }
+
     private function process(AutoPlanRun $run, PlanDate $date, AutoPlanParameters $params): void
     {
         if ($run->status() === AutoPlanRunStatus::Queued) {

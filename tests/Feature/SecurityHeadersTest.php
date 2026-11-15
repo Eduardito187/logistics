@@ -94,6 +94,86 @@ it('is wired onto the admin panel responses', function (): void {
         ->and((string) $response->headers->get('Content-Security-Policy'))->not->toContain('unpkg.com');
 });
 
+/**
+ * Extrae los orígenes de la directiva connect-src de la CSP de una respuesta.
+ *
+ * @return list<string>
+ */
+function connectSources(Response $response): array
+{
+    $csp = (string) $response->headers->get('Content-Security-Policy');
+    preg_match('/connect-src ([^;]*)/', $csp, $match);
+
+    return array_values(array_filter(explode(' ', $match[1] ?? '')));
+}
+
+it('adds nothing to connect-src when broadcasting is off', function (): void {
+    config(['broadcasting.default' => 'null', 'broadcasting.client_ws' => ['host' => null, 'port' => null, 'scheme' => null]]);
+
+    $response = runSecurityHeaders(Request::create('http://localhost:8080/admin'));
+
+    expect(connectSources($response))->toBe(["'self'"])
+        ->and((string) $response->headers->get('Content-Security-Policy'))->not->toContain('ws://')
+        ->not->toContain('wss://');
+});
+
+it('allows the same-origin websocket when broadcasting is on, without any fixed host', function (): void {
+    // El servidor de sockets se publica por el mismo host y puerto de la web: la CSP abre el ws(s) del
+    // origen de la petición y NADA más (el default viejo `localhost:6001` rompía staging/producción).
+    config(['broadcasting.default' => 'pusher', 'broadcasting.client_ws' => ['host' => null, 'port' => null, 'scheme' => null]]);
+
+    $plain = runSecurityHeaders(Request::create('http://localhost:8080/admin'));
+    expect(connectSources($plain))->toBe(["'self'", 'ws://localhost:8080']);
+
+    // HTTPS en el puerto estándar: wss y sin puerto.
+    $secure = runSecurityHeaders(Request::create('https://logistica.example.test/admin'));
+    expect(connectSources($secure))->toBe(["'self'", 'wss://logistica.example.test']);
+});
+
+it('does not default the client websocket to localhost:6001 (config evaluated without VITE_PUSHER_*)', function (): void {
+    // Se evalúa config/broadcasting.php SIN las variables, como en una imagen de staging/producción.
+    $names = ['VITE_PUSHER_HOST', 'VITE_PUSHER_PORT', 'VITE_PUSHER_SCHEME'];
+    $saved = [];
+    foreach ($names as $name) {
+        $saved[$name] = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
+        putenv($name);
+        unset($_ENV[$name], $_SERVER[$name]);
+    }
+
+    try {
+        /** @var array{client_ws: array{host: mixed, port: mixed, scheme: mixed}} $broadcasting */
+        $broadcasting = require base_path('config/broadcasting.php');
+    } finally {
+        foreach ($saved as $name => [$env, $envSuper, $serverSuper]) {
+            if (is_string($env)) {
+                putenv($name.'='.$env);
+            }
+            if ($envSuper !== null) {
+                $_ENV[$name] = $envSuper;
+            }
+            if ($serverSuper !== null) {
+                $_SERVER[$name] = $serverSuper;
+            }
+        }
+    }
+
+    expect($broadcasting['client_ws'])->toBe(['host' => null, 'port' => null, 'scheme' => null]);
+});
+
+it('keeps an explicitly configured websocket origin as an extra override', function (): void {
+    // Desarrollo con Soketi publicado directo en el 6001: solo el puerto fijado = mismo host, ese puerto.
+    config(['broadcasting.default' => 'pusher', 'broadcasting.client_ws' => ['host' => null, 'port' => 6001, 'scheme' => null]]);
+
+    expect(connectSources(runSecurityHeaders(Request::create('http://localhost:8080/admin'))))
+        ->toBe(["'self'", 'ws://localhost:8080', 'ws://localhost:6001', 'http://localhost:6001']);
+
+    // Host, puerto y esquema explícitos.
+    config(['broadcasting.client_ws' => ['host' => 'ws.example.test', 'port' => 443, 'scheme' => 'https']]);
+
+    expect(connectSources(runSecurityHeaders(Request::create('https://logistica.example.test/admin'))))
+        ->toBe(["'self'", 'wss://logistica.example.test', 'wss://ws.example.test:443', 'https://ws.example.test:443']);
+});
+
 it('does not overwrite a Content-Security-Policy already set downstream', function (): void {
     $response = (new SecurityHeaders)->handle(
         Request::create('http://localhost/admin'),

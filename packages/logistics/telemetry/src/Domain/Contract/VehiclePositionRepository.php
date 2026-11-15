@@ -50,6 +50,18 @@ interface VehiclePositionRepository
     public function changedSince(DateTimeImmutable $since): array;
 
     /**
+     * Posición en vivo de la flota VISIBLE para quien consulta, filtrada en la propia consulta:
+     *  - `$since`: solo las que cambiaron desde ese instante inclusive (igual que `changedSince`); null = todas.
+     *  - `$onlyVehicleIds`: si viene, solo esos vehículos (alcance por ciudad); lista vacía = ninguno.
+     *  - `$exceptVehicleIds`: vehículos que nunca salen (dados de baja).
+     *
+     * @param  list<string>|null     $onlyVehicleIds
+     * @param  list<string>          $exceptVehicleIds
+     * @return list<LivePositionRow>
+     */
+    public function visible(?DateTimeImmutable $since, ?array $onlyVehicleIds = null, array $exceptVehicleIds = []): array;
+
+    /**
      * Estado de las condiciones sostenidas del vehículo (desde cuándo excede la velocidad / está fuera de
      * ruta). Sin fila: ambos null.
      *

@@ -3729,6 +3729,7 @@ paths:
       summary: List a shipment's notifications (internal app)
       description: |
         Returns the notification log of a shipment, newest first. App gate (operations/support visibility). The shipment id is passed as a query parameter.
+        Alcance por rol: solo se ven las notificaciones de envíos que el usuario puede ver (misma regla que los pedidos: admin/supervisor sin restricción; preparador/planificador por ciudad de origen o destino; tienda por su nodo; chofer/transportista por asignación). Los totales y el no-leído cuentan solo lo visible; una notificación fuera de alcance responde 404 y un envío fuera de alcance devuelve lista vacía.
       operationId: appListShipmentNotifications
       parameters:
       - name: shipment_id
@@ -3755,6 +3756,7 @@ paths:
       summary: List the global notification log (internal app)
       description: |
         Returns the latest notifications across the whole operation, newest first. App gate.
+        Alcance por rol: solo se ven las notificaciones de envíos que el usuario puede ver (misma regla que los pedidos: admin/supervisor sin restricción; preparador/planificador por ciudad de origen o destino; tienda por su nodo; chofer/transportista por asignación). Los totales y el no-leído cuentan solo lo visible; una notificación fuera de alcance responde 404 y un envío fuera de alcance devuelve lista vacía.
       operationId: appListNotifications
       parameters:
       - $ref: '#/components/parameters/PageNumber'
@@ -4494,6 +4496,31 @@ paths:
                 $ref: '#/components/schemas/PlanEnvelope'
         '404':
           $ref: '#/components/responses/PlanningNotFound'
+      security:
+      - appBearer: []
+    delete:
+      tags:
+      - planning
+      operationId: deletePlan
+      summary: Delete an unpublished plan with all its stops
+      description: 'Borra un plan SIN publicar (borrador o propuesta) y sus paradas; sus pedidos quedan libres para armar otro viaje. Emite `plans.updated` con `deleted: true`.'
+      parameters:
+      - $ref: '#/components/parameters/PlanId'
+      responses:
+        '204':
+          description: Plan deleted (no body)
+        '404':
+          description: Plan not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The plan is already published and is read-only
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/plans/{planId}/eta:
@@ -8059,6 +8086,7 @@ paths:
       tags:
       - telemetry
       summary: Live positions of the whole fleet
+      description: 'Alcance según el usuario: admin y supervisor ven todas las ciudades; planificador con ciudad, solo los camiones cuya sede (nodo base) es de su departamento; planificador sin ciudad, todas (o lista vacía en modo estricto); otros roles, lista vacía. Los vehículos dados de baja en flota no se devuelven. El ETag depende también del alcance. Tiempo real: `fleet.position` (FleetPositionEvent) y `fleet.removed` (FleetRemovedEvent) por los canales del tema fleet.'
       operationId: getLiveFleetPositions
       parameters:
       - name: since
@@ -13793,6 +13821,13 @@ components:
           - string
           - 'null'
         path: { type: string, description: 'Ruta base del WebSocket en el host de la API, p. ej. /app' }
+        channels:
+          type: object
+          x-events: 'user: InboxUpdatedEvent, NotificationsUpdatedEvent · fleet: FleetPositionEvent, FleetRemovedEvent · planning: PlanningRunUpdatedEvent, PlansUpdatedEvent'
+          description: 'Tema → canales (con prefijo private-) que ESTE usuario puede escuchar. Temas: user (canal personal: inbox.updated, notifications.updated), fleet (fleet.position), planning (planning.run.updated, plans.updated). Tema ausente = sin tiempo real para esa pantalla. Son exactamente los canales que firma POST /app/broadcasting/auth para esa persona; la app no arma nombres.'
+          additionalProperties:
+            type: array
+            items: { type: string }
     BroadcastAuthRequest:
       type: object
       required:
@@ -13808,6 +13843,58 @@ components:
       properties:
         auth: { type: string, description: '<app_key>:<firma HMAC-SHA256>' }
         channel_data: { type: string, description: 'Solo en canales de presencia' }
+    NotificationsUpdatedEvent:
+      type: object
+      description: 'Carga del evento `notifications.updated` en el canal `private-user.{id}`. Solo es la señal para volver a pedir GET /app/notifications y /app/notifications/all (el no-leído sale de meta.unread_count); el contenido nunca viaja por el socket. Llega unos 3 s después del cambio.'
+      required:
+      - scope
+      properties:
+        scope:
+          type: string
+          enum: [feed, user]
+          description: 'feed = cambió el log (nueva, enviada, escalada, suprimida); user = cambió el estado de lectura del propio usuario (leída / leer todas).'
+    FleetPositionEvent:
+      description: 'Carga del evento `fleet.position` (tema fleet: canales `private-fleet.all` / `private-fleet.city.<ciudad>`). Es un objeto idéntico a un elemento de `data` de GET /app/telemetry/fleet/live: se aplica sobre la lista por `vehicle_id`. Como mucho uno por vehículo cada 5 s.'
+      allOf:
+      - $ref: '#/components/schemas/VehicleLive'
+    FleetRemovedEvent:
+      type: object
+      description: 'Carga del evento `fleet.removed` (tema fleet): el vehículo se dio de baja en flota; quitarlo de la lista por id.'
+      required:
+      - vehicle_id
+      properties:
+        vehicle_id: { type: string, format: uuid }
+    PlanningRunUpdatedEvent:
+      type: object
+      description: 'Carga del evento `planning.run.updated` (tema planning): cada cambio de estado de la corrida automática (queued, processing, completed, failed).'
+      required:
+      - plan_date
+      - strategy
+      - status
+      - run
+      properties:
+        plan_date: { type: string, format: date }
+        strategy: { type: string }
+        status: { type: string }
+        run:
+          $ref: '#/components/schemas/AutoPlanRun'
+    PlansUpdatedEvent:
+      type: object
+      description: 'Carga del evento `plans.updated` (tema planning): se creó, editó (paradas u orden), publicó o borró un plan de ese día. Solo es la señal para volver a pedir la lista o el detalle.'
+      required:
+      - plan_date
+      - plan_id
+      - deleted
+      properties:
+        plan_date: { type: string, format: date }
+        deleted:
+          type: boolean
+          description: 'true cuando ese plan_id se borró (sacarlo de la lista y cerrar su detalle, sin volver a pedirlo); false en cualquier otro cambio.'
+        plan_id:
+          type:
+          - string
+          - 'null'
+          description: 'null cuando cambiaron varios planes del día a la vez (mover un pedido entre camiones, corrida automática).'
     InboxUpdatedEvent:
       type: object
       description: 'Carga del evento `inbox.updated` en el canal `private-user.{id}`.'

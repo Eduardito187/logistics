@@ -65,8 +65,36 @@ it('covers every error nginx can answer on its own and hides the server version'
     foreach (['default.conf', 'ha-upstream.conf'] as $conf) {
         $body = nginxFile($conf);
         expect($body)->toContain('include /etc/nginx/snippets/error-pages.conf;')
-            ->and($body)->toContain('map $request_uri $error_page_format');
+            ->and($body)->toContain('map "$request|$http_accept" $error_page_format');
     }
+});
+
+it('replaces the Server header on every response, whatever location answers', function (): void {
+    // La directiva solo vale dentro de una location: cada una debe incluir el snippet, o esa ruta
+    // volvería a delatar el software del servidor.
+    $files = ['default.conf', 'ha-upstream.conf', 'snippets/error-pages.conf'];
+
+    foreach ($files as $conf) {
+        $body = nginxFile($conf);
+        $locations = preg_match_all('/^\s*location [^{]*\{/m', $body);
+        $withHeader = preg_match_all('/^\s*location [^{]*\{\s*include \/etc\/nginx\/snippets\/server-header\.conf;/m', $body);
+
+        expect($locations)->toBeGreaterThan(0)
+            ->and($withHeader)->toBe($locations, "Hay una location sin la cabecera propia en {$conf}");
+    }
+
+    expect(nginxFile('snippets/server-header.conf'))->toContain('js_header_filter serverHeader.clean;')
+        ->and(nginxFile('njs/headers.js'))->toContain("r.headersOut['Server']")->not->toContain('nginx/')
+        ->and(nginxFile('default.conf'))->toContain('js_import serverHeader from /etc/nginx/njs/headers.js;');
+
+    // El módulo se carga al arrancar nginx, en dev y en la imagen de despliegue.
+    $loadModule = 'load_module modules/ngx_http_js_module.so; daemon off;';
+    expect((string) file_get_contents(base_path('docker-compose.yml')))
+        ->toContain($loadModule)
+        ->toContain('./.docker/nginx/njs:/etc/nginx/njs:ro');
+    expect((string) file_get_contents(base_path('.docker/php/Dockerfile')))
+        ->toContain($loadModule)
+        ->toContain('COPY .docker/nginx/njs /etc/nginx/njs');
 });
 
 it('ships the error pages to every nginx that serves the platform', function (): void {

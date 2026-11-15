@@ -45,4 +45,22 @@ interface FleetDirectory
      * @return array<string, string|null>
      */
     public function assignedDriverIds(array $vehicleIds, DateTimeImmutable $day): array;
+
+    /**
+     * Ids de los vehículos cuya sede (nodo base) pertenece a ese departamento (código tipo `santa_cruz`).
+     * Es el filtro del alcance por ciudad de la flota en vivo. Si no se puede leer, lista vacía (un alcance
+     * acotado nunca se abre por un fallo de lectura).
+     *
+     * @return list<string>
+     */
+    public function vehicleIdsInDepartment(string $department): array;
+
+    /**
+     * Ids de los vehículos dados de baja en flota (ya no son parte de la flota en vivo). Con `$among`, solo
+     * los de esa lista que están de baja. Si no se puede leer, lista vacía.
+     *
+     * @param  list<string>|null $among
+     * @return list<string>
+     */
+    public function retiredVehicleIds(?array $among = null): array;
 }

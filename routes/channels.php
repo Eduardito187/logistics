@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 use App\Enums\Role;
 use App\Models\User;
+use App\Support\Realtime\UserRealtimeChannels;
 use Illuminate\Support\Facades\Broadcast;
+use Logistics\Shared\Presentation\Realtime\RealtimeChannels;
 
 /*
 | Autorización de canales de broadcasting (seguimiento en tiempo real — ADR 016).
 |
 | Este archivo define QUIÉN puede suscribirse a cada canal. El orquestador lo registra en bootstrap/app.php
-| (withBroadcasting / channels) — NO se registra aquí. El transporte real (Reverb + Echo) lo habilita el
+| (withBroadcasting / channels) — NO se registra aquí. El transporte real (Soketi, protocolo Pusher, + Echo) lo habilita el
 | orquestador; mientras tanto, con BROADCAST_CONNECTION=log estas reglas quedan latentes pero correctas.
 */
 
@@ -24,6 +26,22 @@ use Illuminate\Support\Facades\Broadcast;
 Broadcast::channel('user.{id}', static function (User $user, string $id): bool {
     return ctype_digit($id) && (int) $user->getAuthIdentifier() === (int) $id;
 });
+
+/**
+ * Canales por TEMA de la app (`fleet` = flota en vivo, `planning` = planes y corrida automática), con
+ * alcance por ciudad: `<tema>.all` para quien ve todas las ciudades y `<tema>.city.<código>` para el personal
+ * de una ciudad. Quién entra a cuál lo decide UserRealtimeChannels, la misma regla con la que
+ * GET /api/v1/app/broadcasting/config le dice a la app a qué suscribirse.
+ */
+foreach ([RealtimeChannels::TOPIC_FLEET, RealtimeChannels::TOPIC_PLANNING] as $topic) {
+    Broadcast::channel($topic.'.all', static function (User $user) use ($topic): bool {
+        return UserRealtimeChannels::canJoinAll($user, $topic);
+    });
+
+    Broadcast::channel($topic.'.city.{city}', static function (User $user, string $city) use ($topic): bool {
+        return UserRealtimeChannels::canJoinCity($user, $topic, $city);
+    });
+}
 
 /**
  * Canal del PANEL de la torre de control: toda la flota en vivo.
@@ -61,11 +79,12 @@ Broadcast::channel('vehicle.{vehicleId}', static function (User $user, string $v
 /**
  * Canal por ENVÍO: tracking del cliente ("tu pedido se acerca").
  *
- * STUB preparado para la Fase 4 (ADR 016): el cliente final no tiene cuenta, se autoriza con un token de
- * corta vida del tracking público (sin PII), coherente con el guard de PublicTracking. Por ahora la
- * autorización es un placeholder laxo; SE AFINA EN FASE 4 antes de exponer datos reales a clientes.
+ * El cliente final no tiene cuenta: en la Fase 4 (ADR 016) se autorizará con un token de corta vida del
+ * seguimiento público (sin datos personales). Mientras tanto solo entra la oficina (admin y supervisor).
  */
 Broadcast::channel('shipment.{shipmentId}', static function (?User $user, string $shipmentId): bool {
-    // TODO(Fase 4): validar token de tracking público de corta vida en vez de autorizar abiertamente.
-    return true;
+    // Hasta que exista el token de seguimiento público de corta vida (Fase 4), el canal queda cerrado a la
+    // oficina: el servidor de sockets ya es alcanzable desde internet y un canal abierto dejaría a
+    // cualquier cuenta de la app seguir cualquier envío.
+    return $user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor);
 });

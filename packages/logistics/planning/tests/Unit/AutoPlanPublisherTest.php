@@ -69,6 +69,8 @@ function appPlans(array $plans): PlanRepository
 
         public function save(DeliveryPlan $plan): void {}
 
+        public function delete(DeliveryPlan $plan): void {}
+
         public function findById(PlanId $id): ?DeliveryPlan
         {
             return null;

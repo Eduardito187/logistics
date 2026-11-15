@@ -16,6 +16,7 @@ use Logistics\Planning\Application\Service\DailyPlanRunner;
 use Logistics\Planning\Domain\ValueObject\AutoPlanParameters;
 use Logistics\Planning\Domain\ValueObject\AutoPlanRunId;
 use Logistics\Planning\Domain\ValueObject\PlanDate;
+use Throwable;
 
 /**
  * Trabajo encolado que ejecuta el cálculo PESADO del auto-planificador FUERA del request del usuario
@@ -55,6 +56,10 @@ final class GenerateDailyPlanJob implements ShouldBeUnique, ShouldQueue
     {
         // Ola 5: se cronometra la generación completa (histograma + log con request_id) sin tocar su lógica.
         Span::measure('planning.daily_plan', function () use ($runner, $connection): void {
+            // El paso a PROCESSING se confirma antes de la transacción del cálculo: así la app lo ve (y
+            // recibe su aviso en tiempo real) mientras la corrida trabaja, no recién al terminar.
+            $runner->start(AutoPlanRunId::fromString($this->runId));
+
             $connection->transaction(function () use ($runner): void {
                 $runner->run(
                     AutoPlanRunId::fromString($this->runId),
@@ -63,6 +68,23 @@ final class GenerateDailyPlanJob implements ShouldBeUnique, ShouldQueue
                 );
             });
         });
+    }
+
+    /**
+     * Agotados los reintentos, la corrida queda FALLIDA con su motivo. Hace falta acá porque lo que el
+     * runner guarda al fallar vive dentro de la transacción del intento y se revierte con ella; sin esto
+     * la corrida quedaría «en proceso» para siempre y bloquearía volver a dispararla.
+     */
+    public function failed(?Throwable $exception): void
+    {
+        try {
+            app(DailyPlanRunner::class)->markFailed(
+                AutoPlanRunId::fromString($this->runId),
+                $exception?->getMessage() ?? 'unknown error',
+            );
+        } catch (Throwable) {
+            // Sin base disponible no hay nada más que hacer: el trabajo ya quedó como fallido en la cola.
+        }
     }
 
     /**

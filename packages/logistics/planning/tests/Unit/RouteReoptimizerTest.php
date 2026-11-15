@@ -39,6 +39,8 @@ function reoptPlanRepository(): PlanRepository
             $this->saved = $plan;
         }
 
+        public function delete(DeliveryPlan $plan): void {}
+
         public function findById(PlanId $id): ?DeliveryPlan
         {
             return null;

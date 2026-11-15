@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Validator;
 use Logistics\Notifications\Application\Query\ListNotificationsByShipment\ListNotificationsByShipment;
 use Logistics\Notifications\Application\ReadModel\NotificationView;
 use Logistics\Shared\Application\Query\QueryBus;
+use Logistics\Shipments\Application\Scope\ShipmentScopeActor;
+use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
 
 /**
  * Lista las notificaciones de un envío, de la más reciente a la más antigua (log de envíos).
@@ -17,6 +19,9 @@ use Logistics\Shared\Application\Query\QueryBus;
  * Sirve a dos puertas con la misma consulta:
  *  - app: el id del envío llega como query param `shipment_id` (visibilidad de operación/soporte).
  *  - channels: el id del envío llega como parámetro de ruta `{shipment}` (web/call center del cliente).
+ *
+ * Alcance por rol (solo puerta app): si el usuario no puede ver ese envío, la lista sale vacía. La puerta
+ * de canales no se acota por rol (su credencial es del canal, no de un usuario de la operación).
  *
  * Solo habla con el QueryBus y devuelve NotificationView en forma primitiva; nunca el objeto de dominio.
  */
@@ -37,7 +42,7 @@ final readonly class ListShipmentNotificationsController
         )->validate();
 
         /** @var list<NotificationView> $views */
-        $views = $this->queryBus->ask(new ListNotificationsByShipment($shipmentId));
+        $views = $this->queryBus->ask(new ListNotificationsByShipment($shipmentId, $this->scope($request, $shipment)));
 
         return new JsonResponse([
             'data' => array_map(
@@ -45,5 +50,18 @@ final readonly class ListShipmentNotificationsController
                 $views,
             ),
         ]);
+    }
+
+    /**
+     * Alcance de quien consulta. El parámetro de ruta `{shipment}` identifica la puerta de canales: ahí no
+     * hay usuario de la operación a quien acotar.
+     */
+    private function scope(Request $request, ?string $routeShipment): ShipmentScopeActor
+    {
+        if ($routeShipment !== null) {
+            return ShipmentScopeActor::unrestricted();
+        }
+
+        return ScopeActorResolver::fromUser($request->user());
     }
 }

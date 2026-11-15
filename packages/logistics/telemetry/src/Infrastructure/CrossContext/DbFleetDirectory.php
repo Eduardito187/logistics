@@ -84,6 +84,61 @@ final readonly class DbFleetDirectory implements FleetDirectory
         return array_replace($result, array_intersect_key($found, $result));
     }
 
+    public function vehicleIdsInDepartment(string $department): array
+    {
+        $department = strtolower(trim($department));
+        if ($department === '') {
+            return [];
+        }
+
+        /** @var list<string> $found */
+        $found = SafeRead::run($this->connection, function () use ($department): array {
+            $ids = [];
+            $rows = $this->connection->table('fleet_vehicles as v')
+                ->join('network_nodes as n', 'n.id', '=', 'v.home_base_node_id')
+                ->where('n.department', $department)
+                ->get(['v.id']);
+
+            foreach ($rows as $row) {
+                $ids[] = (string) $row->id;
+            }
+
+            return $ids;
+        }, []);
+
+        return $found;
+    }
+
+    public function retiredVehicleIds(?array $among = null): array
+    {
+        $statuses = RetiredVehicleStatuses::all();
+        if ($statuses === []) {
+            return [];
+        }
+
+        $only = $among === null ? null : SafeRead::uuids($among);
+        if ($only === []) {
+            return [];
+        }
+
+        /** @var list<string> $found */
+        $found = SafeRead::run($this->connection, function () use ($statuses, $only): array {
+            $query = $this->connection->table('fleet_vehicles')->whereIn('status', $statuses);
+            if ($only !== null) {
+                $query->whereIn('id', $only);
+            }
+
+            $ids = [];
+            foreach ($query->get(['id']) as $row) {
+                $ids[] = (string) $row->id;
+            }
+
+            return $ids;
+        }, []);
+
+        return $found;
+    }
+
     /**
      * Mapa id→columna de una tabla de otro contexto, con null para lo no encontrado.
      *
