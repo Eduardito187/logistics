@@ -16,7 +16,7 @@ use Illuminate\Foundation\Events\Dispatchable;
  * La carga trae `plan_date`, `strategy`, `status` y, bajo `run`, el MISMO objeto que devuelve
  * `GET /api/v1/app/plans/auto` (schema AutoPlanRun), así la app pinta el avance sin volver a consultar.
  *
- * La corrida es de todo el día y no de una ciudad, así que viaja por `private-planning.all` y por el canal
+ * La corrida abarca el día completo y no una ciudad, así que viaja por `private-planning.all` y por el canal
  * de cada ciudad (`private-planning.city.<ciudad>`), con el nombre estable `planning.run.updated`.
  *
  * Se difunde por la COLA (`ShouldBroadcast`, nunca `ShouldBroadcastNow`) y con un solo intento (best-effort).

@@ -21,6 +21,9 @@ use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Factory\VehiclePosit
  */
 const FLH_URL = '/api/v1/app/telemetry/fleet/live';
 const FLH_RECORDED_AT = '2026-11-15T14:00:00+00:00';
+const FLH_FIRST_PLATE = '1111AAA';
+const FLH_SECOND_PLATE = '2222BBB';
+const FLH_THIRD_PLATE = '3333CCC';
 
 beforeEach(function (): void {
     $this->withoutMiddleware();
@@ -65,14 +68,14 @@ function flhUser(Role $role, ?string $city = null): User
  */
 function flhVisible(object $test, User $user, string $query = ''): array
 {
-    $ids = collect($test->actingAs($user)->getJson(FLH_URL.$query)->assertOk()->json('data'))
-        ->pluck('vehicle_id')
-        ->sort()
-        ->values()
-        ->all();
-
-    /** @var list<string> $ids */
-    return $ids;
+    return array_values(array_filter(
+        collect($test->actingAs($user)->getJson(FLH_URL.$query)->assertOk()->json('data'))
+            ->pluck('vehicle_id')
+            ->sort()
+            ->values()
+            ->all(),
+        is_string(...),
+    ));
 }
 
 it('admin y supervisor ven los camiones de todas las ciudades', function (): void {
@@ -179,31 +182,31 @@ it('los vehículos dados de baja en flota no salen, para ningún alcance ni con 
 it('el resolver de placas no guarda nada en el proceso: su estado vive en la caché corta', function (): void {
     config(['logistics-telemetry.live.reference_ttl_seconds' => 60]);
     $node = NodeFactory::new()->inDepartment(Department::SantaCruz)->create();
-    $vehicle = VehicleFactory::new()->homeBase((string) $node->getKey())->create(['plate' => '1111AAA']);
+    $vehicle = VehicleFactory::new()->homeBase((string) $node->getKey())->create(['plate' => FLH_FIRST_PLATE]);
     $vehicleId = (string) $vehicle->getKey();
 
     $resolver = new FleetPlateResolver;
 
-    expect($resolver->label($vehicleId))->toBe('1111AAA')
+    expect($resolver->label($vehicleId))->toBe(FLH_FIRST_PLATE)
         ->and($resolver->homeBaseNode($vehicleId))->toBe((string) $node->getKey());
 
-    DB::table('fleet_vehicles')->where('id', $vehicleId)->update(['plate' => '2222BBB']);
+    DB::table('fleet_vehicles')->where('id', $vehicleId)->update(['plate' => FLH_SECOND_PLATE]);
 
     // Dentro de la ventana, una instancia NUEVA responde lo mismo: el dato sale del store, no del objeto.
-    expect((new FleetPlateResolver)->label($vehicleId))->toBe('1111AAA');
+    expect((new FleetPlateResolver)->label($vehicleId))->toBe(FLH_FIRST_PLATE);
 
     // Vencida la caché, la MISMA instancia (un worker persistente) ya ve la placa nueva.
     $this->travel(61)->seconds();
-    expect($resolver->label($vehicleId))->toBe('2222BBB');
+    expect($resolver->label($vehicleId))->toBe(FLH_SECOND_PLATE);
 
     // Y al olvidarla a mano, también sin esperar.
-    DB::table('fleet_vehicles')->where('id', $vehicleId)->update(['plate' => '3333CCC']);
+    DB::table('fleet_vehicles')->where('id', $vehicleId)->update(['plate' => FLH_THIRD_PLATE]);
     $resolver->forget($vehicleId);
-    expect($resolver->label($vehicleId))->toBe('3333CCC');
+    expect($resolver->label($vehicleId))->toBe(FLH_THIRD_PLATE);
 
     // Lo inexistente y lo que no tiene forma de UUID degradan a null sin romper.
     expect($resolver->labels(['0192aaaa-bbbb-7ccc-8ddd-0000000000ff', 'veh-1']))
         ->toBe(['0192aaaa-bbbb-7ccc-8ddd-0000000000ff' => null, 'veh-1' => null])
         ->and(Cache::store('array')->get('telemetry:live:ref:plate:'.$vehicleId))
-        ->toBe(['plate' => '3333CCC', 'node' => (string) $node->getKey()]);
+        ->toBe(['plate' => FLH_THIRD_PLATE, 'node' => (string) $node->getKey()]);
 });

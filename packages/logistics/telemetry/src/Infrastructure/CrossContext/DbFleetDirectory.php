@@ -12,6 +12,8 @@ use Logistics\Telemetry\Application\Contract\FleetDirectory;
  * Directorio de flota por query builder (patrón api-readmodel-enrichment): lee `fleet_vehicles`,
  * `fleet_drivers` y `execution_driver_routes` en solo lectura, sin modelos ni dependencia composer de esos
  * contextos. Una query por concepto (whereIn), sin N+1; degradación con gracia (null) si algo falta.
+ *
+ * @phpstan-type HomeBase array{node_id: string, node_name: string|null, department: string|null}
  */
 final readonly class DbFleetDirectory implements FleetDirectory
 {
@@ -36,26 +38,7 @@ final readonly class DbFleetDirectory implements FleetDirectory
             return [];
         }
 
-        /** @var array<string, array{node_id: string, node_name: string|null, department: string|null}> $found */
-        $found = SafeRead::run($this->connection, function () use ($ids): array {
-            $map = [];
-            $rows = $this->connection->table('fleet_vehicles as v')
-                ->join('network_nodes as n', 'n.id', '=', 'v.home_base_node_id')
-                ->whereIn('v.id', $ids)
-                ->get(['v.id', 'n.id as node_id', 'n.name as node_name', 'n.department']);
-
-            foreach ($rows as $row) {
-                $map[(string) $row->id] = [
-                    'node_id' => (string) $row->node_id,
-                    'node_name' => is_string($row->node_name) && $row->node_name !== '' ? $row->node_name : null,
-                    'department' => is_string($row->department) && $row->department !== '' ? $row->department : null,
-                ];
-            }
-
-            return $map;
-        }, []);
-
-        return $found;
+        return SafeRead::run($this->connection, fn (): array => $this->readHomeBases($ids), []);
     }
 
     public function assignedDriverIds(array $vehicleIds, DateTimeImmutable $day): array
@@ -91,22 +74,7 @@ final readonly class DbFleetDirectory implements FleetDirectory
             return [];
         }
 
-        /** @var list<string> $found */
-        $found = SafeRead::run($this->connection, function () use ($department): array {
-            $ids = [];
-            $rows = $this->connection->table('fleet_vehicles as v')
-                ->join('network_nodes as n', 'n.id', '=', 'v.home_base_node_id')
-                ->where('n.department', $department)
-                ->get(['v.id']);
-
-            foreach ($rows as $row) {
-                $ids[] = (string) $row->id;
-            }
-
-            return $ids;
-        }, []);
-
-        return $found;
+        return SafeRead::run($this->connection, fn (): array => $this->readVehicleIdsInDepartment($department), []);
     }
 
     public function retiredVehicleIds(?array $among = null): array
@@ -121,22 +89,75 @@ final readonly class DbFleetDirectory implements FleetDirectory
             return [];
         }
 
-        /** @var list<string> $found */
-        $found = SafeRead::run($this->connection, function () use ($statuses, $only): array {
-            $query = $this->connection->table('fleet_vehicles')->whereIn('status', $statuses);
-            if ($only !== null) {
-                $query->whereIn('id', $only);
-            }
+        return SafeRead::run($this->connection, fn (): array => $this->readRetiredVehicleIds($statuses, $only), []);
+    }
 
-            $ids = [];
-            foreach ($query->get(['id']) as $row) {
-                $ids[] = (string) $row->id;
-            }
+    /**
+     * Sede (nodo base) de cada vehículo, por id. Lanza si la lectura falla: quien llama la protege.
+     *
+     * @param  list<string>            $ids
+     * @return array<string, HomeBase>
+     */
+    private function readHomeBases(array $ids): array
+    {
+        $map = [];
+        $rows = $this->connection->table('fleet_vehicles as v')
+            ->join('network_nodes as n', 'n.id', '=', 'v.home_base_node_id')
+            ->whereIn('v.id', $ids)
+            ->get(['v.id', 'n.id as node_id', 'n.name as node_name', 'n.department']);
 
-            return $ids;
-        }, []);
+        foreach ($rows as $row) {
+            $map[(string) $row->id] = [
+                'node_id' => (string) $row->node_id,
+                'node_name' => is_string($row->node_name) && $row->node_name !== '' ? $row->node_name : null,
+                'department' => is_string($row->department) && $row->department !== '' ? $row->department : null,
+            ];
+        }
 
-        return $found;
+        return $map;
+    }
+
+    /**
+     * Ids de los vehículos con sede en ese departamento. Lanza si la lectura falla: quien llama la protege.
+     *
+     * @return list<string>
+     */
+    private function readVehicleIdsInDepartment(string $department): array
+    {
+        $ids = [];
+        $rows = $this->connection->table('fleet_vehicles as v')
+            ->join('network_nodes as n', 'n.id', '=', 'v.home_base_node_id')
+            ->where('n.department', $department)
+            ->get(['v.id']);
+
+        foreach ($rows as $row) {
+            $ids[] = (string) $row->id;
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Ids de los vehículos dados de baja (opcionalmente solo entre `$only`). Lanza si la lectura falla:
+     * quien llama la protege.
+     *
+     * @param  list<string>      $statuses
+     * @param  list<string>|null $only
+     * @return list<string>
+     */
+    private function readRetiredVehicleIds(array $statuses, ?array $only): array
+    {
+        $query = $this->connection->table('fleet_vehicles')->whereIn('status', $statuses);
+        if ($only !== null) {
+            $query->whereIn('id', $only);
+        }
+
+        $ids = [];
+        foreach ($query->get(['id']) as $row) {
+            $ids[] = (string) $row->id;
+        }
+
+        return $ids;
     }
 
     /**

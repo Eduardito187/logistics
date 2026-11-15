@@ -34,6 +34,15 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
 // El trabajo de difusión se intercepta con Bus::fake (qué se encola y para quién) y se ejecuta a mano con
 // Event::fake para ver el evento que saldría al socket. Nada habla con un servidor de sockets real.
 
+/** «Leer todas» de la app. */
+const NRT_READ_ALL_URL = '/api/v1/app/notifications/read-all';
+
+/**
+ * Falla simulada dentro de una transacción externa, para forzar su reversión. Extiende RuntimeException
+ * para que el `catch` del test la siga atrapando.
+ */
+final class NrtRollbackException extends RuntimeException {}
+
 beforeEach(function (): void {
     $this->withoutMiddleware();
 
@@ -154,7 +163,7 @@ it('«leer todas» avisa solo al usuario que la pidió', function (): void {
     nrtNotification();
 
     $this->actingAs($user)
-        ->postJson('/api/v1/app/notifications/read-all', ['up_to' => '2026-11-02T00:00:00+00:00'])
+        ->postJson(NRT_READ_ALL_URL, ['up_to' => '2026-11-02T00:00:00+00:00'])
         ->assertOk();
 
     Bus::assertDispatchedTimes(BroadcastNotificationsUpdated::class, 1);
@@ -174,7 +183,7 @@ it('anti-ráfaga: varias lecturas seguidas del mismo usuario encolan un solo avi
     $this->actingAs($alice);
     $this->postJson("/api/v1/app/notifications/{$first->id}/read")->assertOk();
     $this->postJson("/api/v1/app/notifications/{$second->id}/read")->assertOk();
-    $this->postJson('/api/v1/app/notifications/read-all')->assertOk();
+    $this->postJson(NRT_READ_ALL_URL)->assertOk();
 
     Bus::assertDispatchedTimes(BroadcastNotificationsUpdated::class, 1);
 
@@ -287,7 +296,7 @@ it('sin transporte de tiempo real no encola nada y la operación sigue funcionan
 
     $this->actingAs($user);
     $this->postJson("/api/v1/app/notifications/{$notification->id}/read")->assertOk();
-    $this->postJson('/api/v1/app/notifications/read-all')->assertOk();
+    $this->postJson(NRT_READ_ALL_URL)->assertOk();
     $this->postJson("/api/v1/app/notifications/{$queued}/suppress")->assertStatus(202);
 
     Bus::assertNotDispatched(BroadcastNotificationsUpdated::class);
@@ -307,7 +316,7 @@ it('si la transacción del caso de uso se revierte, no se avisa nada', function 
         DB::transaction(function () use ($user, $notification): void {
             app(CommandBus::class)->dispatch(new MarkNotificationRead($notification->id, (string) $user->id));
 
-            throw new RuntimeException('falla posterior al caso de uso');
+            throw new NrtRollbackException('falla posterior al caso de uso');
         });
     } catch (RuntimeException) {
         // esperado: la transacción externa se revierte.

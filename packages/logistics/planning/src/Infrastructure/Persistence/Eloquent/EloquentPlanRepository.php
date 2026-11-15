@@ -52,7 +52,7 @@ final class EloquentPlanRepository implements PlanRepository
     {
         $planId = $plan->id()->toString();
 
-        // Todo lo del plan vive en estas dos tablas: las paradas (con su ETA y su carril de carga) y la
+        // El plan completo vive en estas dos tablas: las paradas (con su ETA y su carril de carga) y la
         // fila del plan (con la geometría del recorrido). Se borran juntas o no se borra nada.
         $this->connections->connection()->transaction(static function () use ($planId): void {
             PlannedStopRecord::query()->where('plan_id', $planId)->delete();

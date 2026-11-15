@@ -71,19 +71,20 @@ final class UserRealtimeChannels
             return RealtimeChannels::all($topic);
         }
 
-        if (!$user->hasAnyRole(Role::Planificador)) {
-            return null;
-        }
+        return $user->hasAnyRole(Role::Planificador) ? self::plannerChannel($user, $topic) : null;
+    }
 
+    /**
+     * Canal del tema para un planificador: el de su ciudad; sin ciudad asignada, el de todas, salvo que el
+     * entorno pida el modo estricto (ahí no escucha nada).
+     */
+    private static function plannerChannel(User $user, string $topic): ?string
+    {
         // Lectura tolerante: si la columna todavía no existe en este entorno, es «sin ciudad».
         $raw = $user->getAttributes()['city'] ?? null;
-        $city = RealtimeChannels::city($topic, is_string($raw) ? $raw : null);
-        if ($city !== null) {
-            return $city;
-        }
+        $strict = (bool) config('logistics-shipments.scope.strict_without_city', false);
 
-        return (bool) config('logistics-shipments.scope.strict_without_city', false)
-            ? null
-            : RealtimeChannels::all($topic);
+        return RealtimeChannels::city($topic, is_string($raw) ? $raw : null)
+            ?? ($strict ? null : RealtimeChannels::all($topic));
     }
 }

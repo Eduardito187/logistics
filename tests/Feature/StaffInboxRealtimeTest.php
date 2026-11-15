@@ -25,6 +25,7 @@ use Laravel\Sanctum\Sanctum;
 // `inbox.updated` {unread}, autorizado con el Bearer de la app, y siempre por la cola (nada síncrono).
 const SIR_AUTH_URL = '/api/v1/app/broadcasting/auth';
 const SIR_SOCKET_ID = '1234.5678';
+const SIR_CONFIG_URL = '/api/v1/app/broadcasting/config';
 
 beforeEach(function (): void {
     Queue::fake();
@@ -101,13 +102,13 @@ it('la app recibe la clave pública y la ruta del tiempo real de su entorno, nun
     [$token] = sirBearer();
 
     // Sin servidor de sockets: apagado y sin clave.
-    $this->withToken($token)->getJson('/api/v1/app/broadcasting/config')
+    $this->withToken($token)->getJson(SIR_CONFIG_URL)
         ->assertOk()
         ->assertExactJson(['enabled' => false, 'key' => null, 'cluster' => null, 'path' => '/app', 'channels' => []]);
 
     sirEnableSockets();
 
-    $response = $this->withToken($token)->getJson('/api/v1/app/broadcasting/config')
+    $response = $this->withToken($token)->getJson(SIR_CONFIG_URL)
         ->assertOk()
         ->assertJsonPath('enabled', true)
         ->assertJsonPath('key', 'test-key')
@@ -122,10 +123,8 @@ it('la configuración entrega los canales de cada tema según rol y ciudad, y so
     // Cada pedido cambia de persona: se olvida la resuelta por el guard en el pedido anterior.
     $channelsOf = function (string $token): array {
         app('auth')->forgetGuards();
-        /** @var array<string, list<string>> $channels */
-        $channels = $this->withToken($token)->getJson('/api/v1/app/broadcasting/config')->assertOk()->json('channels');
 
-        return $channels;
+        return (array) $this->withToken($token)->getJson(SIR_CONFIG_URL)->assertOk()->json('channels');
     };
     $sign = function (string $token, string $channel) {
         app('auth')->forgetGuards();
@@ -165,7 +164,7 @@ it('la configuración entrega los canales de cada tema según rol y ciudad, y so
 });
 
 it('sin Bearer no se entrega la configuración del tiempo real', function (): void {
-    $this->getJson('/api/v1/app/broadcasting/config')->assertUnauthorized();
+    $this->getJson(SIR_CONFIG_URL)->assertUnauthorized();
 });
 
 it('sin Bearer no se firma ningún canal', function (): void {

@@ -75,6 +75,15 @@ final readonly class FleetLiveScope
             return self::none();
         }
 
+        return self::forCityRole($city, $strictWithoutCity);
+    }
+
+    /**
+     * Alcance del rol acotado a su ciudad: su departamento si tiene uno válido; sin ciudad, todas (o
+     * ninguna en modo estricto).
+     */
+    private static function forCityRole(?string $city, bool $strictWithoutCity): self
+    {
         $code = self::cityCode($city);
         if ($code !== null) {
             return new self(self::MODE_CITY, $code);

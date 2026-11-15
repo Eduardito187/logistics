@@ -12,6 +12,8 @@ use Logistics\Telemetry\Presentation\Broadcasting\VehiclePositionUpdated;
  *
  * Los tres son PRIVADOS: el socket es alcanzable desde internet y el canal global lleva la flota entera.
  */
+const VPU_OCCURRED_AT = '2026-11-06T12:00:00+00:00';
+
 it('difunde al canal global, al acotado por nodo y al del vehículo cuando hay nodo base', function (): void {
     $event = new VehiclePositionUpdated(
         vehicleId: 'veh-1',
@@ -19,7 +21,7 @@ it('difunde al canal global, al acotado por nodo y al del vehículo cuando hay n
         lat: -16.5,
         lng: -68.15,
         status: 'moving',
-        occurredAt: '2026-11-06T12:00:00+00:00',
+        occurredAt: VPU_OCCURRED_AT,
         homeBaseNodeId: 'node-9',
     );
 
@@ -35,7 +37,7 @@ it('sin nodo base resuelto, difunde solo al canal global y al del vehículo (sin
         lat: -16.5,
         lng: -68.15,
         status: 'idle',
-        occurredAt: '2026-11-06T12:00:00+00:00',
+        occurredAt: VPU_OCCURRED_AT,
         homeBaseNodeId: null,
     );
 
@@ -51,7 +53,7 @@ it('el canal global de la flota es privado: nadie lo escucha sin autorizarse', f
         lat: -17.78,
         lng: -63.18,
         status: 'stopped',
-        occurredAt: '2026-11-06T12:00:00+00:00',
+        occurredAt: VPU_OCCURRED_AT,
         homeBaseNodeId: 'node-1',
     );
 

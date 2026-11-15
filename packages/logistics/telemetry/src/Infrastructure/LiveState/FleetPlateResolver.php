@@ -100,10 +100,19 @@ final class FleetPlateResolver
 
         $found = $this->cached($ids);
         $missing = array_values(array_diff($ids, array_keys($found)));
-        if ($missing === []) {
-            return $found;
-        }
 
+        return $missing === [] ? $found : $found + $this->fresh($missing);
+    }
+
+    /**
+     * Lee de la base, en UNA query, las referencias que faltaban en la caché y las guarda. Si la lectura
+     * falla devuelve vacío (sin cachear nada): quien llama se queda con lo que ya tenía.
+     *
+     * @param  list<string>                  $missing
+     * @return array<string, PlateReference>
+     */
+    private function fresh(array $missing): array
+    {
         // Solo ids con forma de UUID llegan a la columna uuid; la lectura va protegida (savepoint si hay
         // transacción abierta) para que un fallo no aborte la transacción de la ingesta.
         $connection = DB::connection();
@@ -121,7 +130,7 @@ final class FleetPlateResolver
 
         if ($rows === null) {
             // Degradación con gracia: sin placa/nodo, el fan-out sigue con el UUID y sin canal acotado.
-            return $found;
+            return [];
         }
 
         $fresh = array_fill_keys($missing, ['plate' => null, 'node' => null]);
@@ -134,7 +143,7 @@ final class FleetPlateResolver
 
         $this->remember($fresh);
 
-        return $found + $fresh;
+        return $fresh;
     }
 
     /**

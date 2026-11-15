@@ -35,6 +35,9 @@ final readonly class StaticErrorPages
      */
     private const string PROBLEM_TYPE_BASE = '/problems';
 
+    /** Título de los errores en que el servicio no está disponible (502 / 503 / 504). */
+    private const string UNAVAILABLE = 'Service unavailable';
+
     /**
      * Código HTTP → [código del catálogo, título, detalle] del cuerpo JSON. Cada código tiene además su
      * vista `errors.<código>`.
@@ -50,9 +53,9 @@ final readonly class StaticErrorPages
         413 => [ErrorCode::PayloadTooLarge, 'Payload too large', 'The request body exceeds the allowed size.'],
         429 => [ErrorCode::RateLimited, 'Too many requests', 'Too many requests. Try again in a moment.'],
         500 => [ErrorCode::ServerError, 'Internal server error', 'Something went wrong on our side. Try again in a few minutes.'],
-        502 => [ErrorCode::ServiceUnavailable, 'Service unavailable', 'The service is temporarily unavailable. Try again in a few minutes.'],
-        503 => [ErrorCode::ServiceUnavailable, 'Service unavailable', 'The service is temporarily unavailable. Try again in a few minutes.'],
-        504 => [ErrorCode::ServiceUnavailable, 'Service unavailable', 'The service took too long to respond. Try again in a few minutes.'],
+        502 => [ErrorCode::ServiceUnavailable, self::UNAVAILABLE, 'The service is temporarily unavailable. Try again in a few minutes.'],
+        503 => [ErrorCode::ServiceUnavailable, self::UNAVAILABLE, 'The service is temporarily unavailable. Try again in a few minutes.'],
+        504 => [ErrorCode::ServiceUnavailable, self::UNAVAILABLE, 'The service took too long to respond. Try again in a few minutes.'],
     ];
 
     public function __construct(

@@ -53,6 +53,50 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 // `planning.run.updated` (cambió el estado de la corrida automática). Se verifica qué operación emite qué,
 // por qué canales y con qué carga, que la señal sale después del commit y que sin transporte no hace nada.
 
+/** Día de reparto de los planes y corridas de este archivo. */
+const PRB_PLAN_DATE = '2026-12-01';
+
+/** Endpoint de la corrida automática (disparo y consulta). */
+const PRB_AUTO_PLAN_URL = '/api/v1/app/plans/auto';
+
+/** Motivo con el que falla el trabajo de la corrida en el caso de reintentos agotados. */
+const PRB_ROUTER_DOWN_REASON = 'el ruteador no responde';
+
+/**
+ * Falla propia de este archivo para forzar la reversión de una transacción. Extiende la genérica para que
+ * el `catch (RuntimeException)` del test la siga atrapando.
+ */
+final class PrbPostSaveFailure extends RuntimeException {}
+
+/**
+ * Backend de ruteo falso: arma una ruta de una parada por cada camión dado. Es una clase con nombre (y no
+ * una anónima dentro de `prbRunner`) para que el recorrido de los camiones se analice en su propio ámbito.
+ */
+final class PrbOneStopPerVehicleBackend implements RoutingBackend
+{
+    /** @param list<string> $vehicleIds */
+    public function __construct(private readonly array $vehicleIds) {}
+
+    public function route(
+        DateTimeImmutable $departAt,
+        ?GeoPoint $origin,
+        array $candidates,
+        array $vehicles,
+        AutoPlanParameters $params,
+    ): RoutingResult {
+        $vehicleIds = $this->vehicleIds;
+        $routes = [];
+        foreach ($vehicleIds as $vehicleId) { // NOSONAR: FP de data-flow de Sonar sobre el foreach (la lista viene del constructor).
+            $shipmentId = (string) Str::uuid7();
+            $candidate = DeliveryCandidate::of($shipmentId, -16.5, -68.15, 10.0, 0.1, 'LP');
+            $eta = Eta::at($departAt->modify('+10 minutes'), 10);
+            $routes[] = new PlannedRoute($vehicleId, 'LP', [$candidate], [$shipmentId => $eta], null);
+        }
+
+        return new RoutingResult($routes, []);
+    }
+}
+
 beforeEach(function (): void {
     // Sin OSRM alcanzable el ruteo degrada a cercanía/haversine: el test corre offline y determinista.
     Http::fake(['*' => Http::response(null, 500)]);
@@ -137,29 +181,7 @@ function prbLoadPlan(string $planId): DeliveryPlan
  */
 function prbRunner(array $vehicleIds): DailyPlanRunner
 {
-    $backend = new class($vehicleIds) implements RoutingBackend
-    {
-        /** @param list<string> $vehicleIds */
-        public function __construct(private readonly array $vehicleIds) {}
-
-        public function route(
-            DateTimeImmutable $departAt,
-            ?GeoPoint $origin,
-            array $candidates,
-            array $vehicles,
-            AutoPlanParameters $params,
-        ): RoutingResult {
-            $routes = [];
-            foreach ($this->vehicleIds as $vehicleId) {
-                $shipmentId = (string) Str::uuid7();
-                $candidate = DeliveryCandidate::of($shipmentId, -16.5, -68.15, 10.0, 0.1, 'LP');
-                $eta = Eta::at($departAt->modify('+10 minutes'), 10);
-                $routes[] = new PlannedRoute($vehicleId, 'LP', [$candidate], [$shipmentId => $eta], null);
-            }
-
-            return new RoutingResult($routes, []);
-        }
-    };
+    $backend = new PrbOneStopPerVehicleBackend($vehicleIds);
 
     return new DailyPlanRunner(
         app(AutoPlanRunRepository::class),
@@ -209,7 +231,7 @@ function prbQueuedRun(): AutoPlanRunId
 {
     $run = AutoPlanRun::queue(
         AutoPlanRunId::generate(),
-        PlanDate::fromString('2026-12-01'),
+        PlanDate::fromString(PRB_PLAN_DATE),
         PlanStrategy::Optimization,
         new DateTimeImmutable('2026-11-30T22:00:00+00:00'),
     );
@@ -221,27 +243,27 @@ function prbQueuedRun(): AutoPlanRunId
 // ──────────────────────────── Forma de los eventos ────────────────────────────
 
 it('plans.updated viaja encolado por planning.all y por cada ciudad, solo con la señal', function (): void {
-    $event = new PlansUpdated('2026-12-01', '01a13700-3333-7333-8333-333333333333', ['santa_cruz', 'la_paz', 'santa_cruz', 'No Válida']);
+    $event = new PlansUpdated(PRB_PLAN_DATE, '01a13700-3333-7333-8333-333333333333', ['santa_cruz', 'la_paz', 'santa_cruz', 'No Válida']);
 
     expect($event)->toBeInstanceOf(ShouldBroadcast::class)
         ->and($event)->not->toBeInstanceOf(ShouldBroadcastNow::class)
         ->and($event->tries)->toBe(1)
         ->and($event->broadcastAs())->toBe('plans.updated')
         ->and(prbChannels($event))->toBe(['private-planning.all', 'private-planning.city.santa_cruz', 'private-planning.city.la_paz'])
-        ->and($event->broadcastWith())->toBe(['plan_date' => '2026-12-01', 'plan_id' => '01a13700-3333-7333-8333-333333333333', 'deleted' => false])
+        ->and($event->broadcastWith())->toBe(['plan_date' => PRB_PLAN_DATE, 'plan_id' => '01a13700-3333-7333-8333-333333333333', 'deleted' => false])
         ->and($event->broadcastQueue())->toBe((string) config('observability.metrics.queues.notifications', 'notifications'));
 
     // Sin ciudades y con varios planes: solo el canal general y plan_id null.
-    $many = new PlansUpdated('2026-12-01', null);
+    $many = new PlansUpdated(PRB_PLAN_DATE, null);
 
     expect(prbChannels($many))->toBe(['private-planning.all'])
-        ->and($many->broadcastWith())->toBe(['plan_date' => '2026-12-01', 'plan_id' => null, 'deleted' => false]);
+        ->and($many->broadcastWith())->toBe(['plan_date' => PRB_PLAN_DATE, 'plan_id' => null, 'deleted' => false]);
 });
 
 it('planning.run.updated lleva plan_date, strategy, status y la corrida completa bajo run', function (): void {
     $run = [
         'id' => '01a13700-4444-7444-8444-444444444444',
-        'plan_date' => '2026-12-01',
+        'plan_date' => PRB_PLAN_DATE,
         'strategy' => 'optimization',
         'status' => 'completed',
         'requested_at' => '2026-11-30T22:00:00+00:00',
@@ -259,7 +281,7 @@ it('planning.run.updated lleva plan_date, strategy, status y la corrida completa
         ->and($event->broadcastAs())->toBe('planning.run.updated')
         ->and(prbChannels($event))->toBe(['private-planning.all', 'private-planning.city.cochabamba'])
         ->and($event->broadcastWith())->toBe([
-            'plan_date' => '2026-12-01',
+            'plan_date' => PRB_PLAN_DATE,
             'strategy' => 'optimization',
             'status' => 'completed',
             'run' => $run,
@@ -284,7 +306,7 @@ it('sin transporte de tiempo real (null o log) no emite nada y las operaciones s
         ],
     ])->assertStatus(201);
 
-    $this->postJson('/api/v1/app/plans/auto', ['plan_date' => $date, 'strategy' => 'optimization'])->assertStatus(202);
+    $this->postJson(PRB_AUTO_PLAN_URL, ['plan_date' => $date, 'strategy' => 'optimization'])->assertStatus(202);
 
     Event::assertNotDispatched(PlansUpdated::class);
     Event::assertNotDispatched(PlanningRunUpdated::class);
@@ -297,7 +319,7 @@ it('si encolar el aviso falla, el plan se guarda igual', function (): void {
     $events->shouldReceive('dispatch')->once()->andThrow(new RuntimeException('cola caída'));
     app()->instance(PlanningRealtimeBroadcaster::class, new PlanningRealtimeBroadcaster($events, app('config')));
 
-    $record = PlanRecordFactory::new()->onDate('2026-12-01')->proposed()->withStops(2)->create();
+    $record = PlanRecordFactory::new()->onDate(PRB_PLAN_DATE)->proposed()->withStops(2)->create();
     $plan = prbLoadPlan((string) $record->getKey());
     $plan->publish();
 
@@ -310,7 +332,7 @@ it('con transporte configurado el aviso se ENCOLA en la cola de avisos, no se di
     config(['broadcasting.default' => 'pusher']);
     Queue::fake();
 
-    $record = PlanRecordFactory::new()->onDate('2026-12-01')->proposed()->withStops(2)->create();
+    $record = PlanRecordFactory::new()->onDate(PRB_PLAN_DATE)->proposed()->withStops(2)->create();
     app(PlanRepository::class)->save(prbLoadPlan((string) $record->getKey()));
 
     Queue::assertPushedOn(
@@ -328,7 +350,7 @@ it('crear un plan avisa una vez con su fecha, su id y la ciudad de la base del c
     $vehicleId = prbVehicleIn(Department::LaPaz);
 
     $planId = $this->postJson('/api/v1/app/plans', [
-        'plan_date' => '2026-12-01',
+        'plan_date' => PRB_PLAN_DATE,
         'vehicle_id' => $vehicleId,
         'depart_at' => '2026-12-01T11:30:00+00:00',
         'stops' => [
@@ -340,13 +362,13 @@ it('crear un plan avisa una vez con su fecha, su id y la ciudad de la base del c
     $events = prbPlanEvents();
 
     expect($events)->toHaveCount(1)
-        ->and($events[0]->broadcastWith())->toBe(['plan_date' => '2026-12-01', 'plan_id' => $planId, 'deleted' => false])
+        ->and($events[0]->broadcastWith())->toBe(['plan_date' => PRB_PLAN_DATE, 'plan_id' => $planId, 'deleted' => false])
         ->and(prbChannels($events[0]))->toBe(['private-planning.all', 'private-planning.city.la_paz']);
 });
 
 it('sumar, reordenar y quitar paradas avisan una vez cada uno con el id del plan', function (): void {
     prbRealtimeOn();
-    $plan = PlanRecordFactory::new()->onDate('2026-12-01')->withStops(2)->create();
+    $plan = PlanRecordFactory::new()->onDate(PRB_PLAN_DATE)->withStops(2)->create();
     $planId = (string) $plan->getKey();
 
     $this->postJson("/api/v1/app/plans/{$planId}/stops", ['shipment_id' => (string) Str::uuid7()])->assertOk();
@@ -363,20 +385,20 @@ it('sumar, reordenar y quitar paradas avisan una vez cada uno con el id del plan
 
     expect($events)->toHaveCount(3);
     foreach ($events as $event) {
-        expect($event->broadcastWith())->toBe(['plan_date' => '2026-12-01', 'plan_id' => $planId, 'deleted' => false]);
+        expect($event->broadcastWith())->toBe(['plan_date' => PRB_PLAN_DATE, 'plan_id' => $planId, 'deleted' => false]);
     }
 });
 
 it('publicar un plan avisa una vez', function (): void {
     prbRealtimeOn();
-    $plan = PlanRecordFactory::new()->onDate('2026-12-01')->proposed()->withStops(2)->create();
+    $plan = PlanRecordFactory::new()->onDate(PRB_PLAN_DATE)->proposed()->withStops(2)->create();
 
     $this->postJson("/api/v1/app/plans/{$plan->getKey()}/publish")->assertOk();
 
     $events = prbPlanEvents();
 
     expect($events)->toHaveCount(1)
-        ->and($events[0]->broadcastWith())->toBe(['plan_date' => '2026-12-01', 'plan_id' => (string) $plan->getKey(), 'deleted' => false]);
+        ->and($events[0]->broadcastWith())->toBe(['plan_date' => PRB_PLAN_DATE, 'plan_id' => (string) $plan->getKey(), 'deleted' => false]);
 });
 
 it('el plan avisa a la base del camión y al origen y destino de sus pedidos, incluida la parada recién quitada', function (): void {
@@ -387,7 +409,7 @@ it('el plan avisa a la base del camión y al origen y destino de sus pedidos, in
         'destination_department' => 'oruro',
     ]);
 
-    $record = PlanRecordFactory::new()->onDate('2026-12-01')->create(['vehicle_id' => $vehicleId]);
+    $record = PlanRecordFactory::new()->onDate(PRB_PLAN_DATE)->create(['vehicle_id' => $vehicleId]);
     PlannedStopRecordFactory::new()->scheduled(1)->create(['plan_id' => $record->getKey(), 'shipment_id' => $shipment->getKey()]);
     PlannedStopRecordFactory::new()->scheduled(2)->create(['plan_id' => $record->getKey()]);
 
@@ -416,8 +438,8 @@ it('el plan avisa a la base del camión y al origen y destino de sus pedidos, in
 
 it('varios planes del mismo día guardados en una transacción salen en UN aviso, después del commit', function (): void {
     prbRealtimeOn();
-    $first = PlanRecordFactory::new()->onDate('2026-12-01')->proposed()->withStops(1)->create(['vehicle_id' => prbVehicleIn(Department::LaPaz)]);
-    $second = PlanRecordFactory::new()->onDate('2026-12-01')->proposed()->withStops(1)->create(['vehicle_id' => prbVehicleIn(Department::Tarija)]);
+    $first = PlanRecordFactory::new()->onDate(PRB_PLAN_DATE)->proposed()->withStops(1)->create(['vehicle_id' => prbVehicleIn(Department::LaPaz)]);
+    $second = PlanRecordFactory::new()->onDate(PRB_PLAN_DATE)->proposed()->withStops(1)->create(['vehicle_id' => prbVehicleIn(Department::Tarija)]);
 
     DB::transaction(function () use ($first, $second): void {
         app(PlanRepository::class)->save(prbLoadPlan((string) $first->getKey()));
@@ -429,7 +451,7 @@ it('varios planes del mismo día guardados en una transacción salen en UN aviso
 
     $events = prbPlanEvents();
     expect($events)->toHaveCount(1)
-        ->and($events[0]->broadcastWith())->toBe(['plan_date' => '2026-12-01', 'plan_id' => null, 'deleted' => false]);
+        ->and($events[0]->broadcastWith())->toBe(['plan_date' => PRB_PLAN_DATE, 'plan_id' => null, 'deleted' => false]);
 
     $channels = prbChannels($events[0]);
     sort($channels);
@@ -439,13 +461,13 @@ it('varios planes del mismo día guardados en una transacción salen en UN aviso
 
 it('si la transacción se revierte no sale ningún aviso', function (): void {
     prbRealtimeOn();
-    $record = PlanRecordFactory::new()->onDate('2026-12-01')->proposed()->withStops(1)->create();
+    $record = PlanRecordFactory::new()->onDate(PRB_PLAN_DATE)->proposed()->withStops(1)->create();
 
     try {
         DB::transaction(function () use ($record): void {
             app(PlanRepository::class)->save(prbLoadPlan((string) $record->getKey()));
 
-            throw new RuntimeException('falla posterior al guardado');
+            throw new PrbPostSaveFailure('falla posterior al guardado');
         });
     } catch (RuntimeException) {
         // Esperado: la transacción se revierte.
@@ -460,16 +482,16 @@ it('disparar la corrida automática avisa queued a planning.all y a todas las ci
     prbRealtimeOn();
     Queue::fake();
 
-    $this->postJson('/api/v1/app/plans/auto', ['plan_date' => '2026-12-01', 'strategy' => 'optimization'])->assertStatus(202);
+    $this->postJson(PRB_AUTO_PLAN_URL, ['plan_date' => PRB_PLAN_DATE, 'strategy' => 'optimization'])->assertStatus(202);
 
     $events = prbRunEvents();
     expect($events)->toHaveCount(1);
 
     $payload = $events[0]->broadcastWith();
-    $shown = $this->getJson('/api/v1/app/plans/auto?date=2026-12-01&strategy=optimization')->assertOk()->json('data');
+    $shown = $this->getJson(PRB_AUTO_PLAN_URL.'?date='.PRB_PLAN_DATE.'&strategy=optimization')->assertOk()->json('data');
     $channels = prbChannels($events[0]);
 
-    expect($payload['plan_date'])->toBe('2026-12-01')
+    expect($payload['plan_date'])->toBe(PRB_PLAN_DATE)
         ->and($payload['strategy'])->toBe('optimization')
         ->and($payload['status'])->toBe('queued')
         // `run` es el mismo objeto que devuelve GET /plans/auto: mismas claves, misma corrida.
@@ -484,7 +506,7 @@ it('disparar la corrida automática avisa queued a planning.all y a todas las ci
         ->and($channels)->toContain('private-planning.city.la_paz');
 
     // Re-disparar el mismo día y modo es idempotente: no abre otra corrida ni avisa de nuevo.
-    $this->postJson('/api/v1/app/plans/auto', ['plan_date' => '2026-12-01', 'strategy' => 'optimization'])->assertStatus(202);
+    $this->postJson(PRB_AUTO_PLAN_URL, ['plan_date' => PRB_PLAN_DATE, 'strategy' => 'optimization'])->assertStatus(202);
     expect(prbRunEvents())->toHaveCount(1);
 });
 
@@ -499,7 +521,7 @@ it('la corrida avisa processing al arrancar y completed con su resumen, y sus pl
         ->toBe(['queued', 'processing']);
 
     DB::transaction(function () use ($runner, $runId): void {
-        $runner->run($runId, PlanDate::fromString('2026-12-01'), prbParameters());
+        $runner->run($runId, PlanDate::fromString(PRB_PLAN_DATE), prbParameters());
     });
 
     $runEvents = prbRunEvents();
@@ -515,7 +537,7 @@ it('la corrida avisa processing al arrancar y completed con su resumen, y sus pl
 
     $planEvents = prbPlanEvents();
     expect($planEvents)->toHaveCount(1)
-        ->and($planEvents[0]->broadcastWith())->toBe(['plan_date' => '2026-12-01', 'plan_id' => null, 'deleted' => false]);
+        ->and($planEvents[0]->broadcastWith())->toBe(['plan_date' => PRB_PLAN_DATE, 'plan_id' => null, 'deleted' => false]);
 
     $channels = prbChannels($planEvents[0]);
     sort($channels);
@@ -528,8 +550,8 @@ it('agotados los reintentos del trabajo la corrida queda fallida y avisa failed 
     $runId = prbQueuedRun();
     app(DailyPlanRunner::class)->start($runId);
 
-    $job = new GenerateDailyPlanJob($runId->toString(), '2026-12-01', prbParameters());
-    $job->failed(new RuntimeException('el ruteador no responde'));
+    $job = new GenerateDailyPlanJob($runId->toString(), PRB_PLAN_DATE, prbParameters());
+    $job->failed(new RuntimeException(PRB_ROUTER_DOWN_REASON));
     // Una segunda llamada no repite el aviso ni pisa el motivo.
     $job->failed(new RuntimeException('otro motivo'));
 
@@ -538,7 +560,7 @@ it('agotados los reintentos del trabajo la corrida queda fallida y avisa failed 
 
     expect(array_map(static fn (PlanningRunUpdated $event): string => $event->run['status'], $events))
         ->toBe(['queued', 'processing', 'failed'])
-        ->and($events[2]->broadcastWith()['run']['failure_reason'])->toBe('el ruteador no responde')
+        ->and($events[2]->broadcastWith()['run']['failure_reason'])->toBe(PRB_ROUTER_DOWN_REASON)
         ->and($row?->status)->toBe('failed')
-        ->and($row?->failure_reason)->toBe('el ruteador no responde');
+        ->and($row?->failure_reason)->toBe(PRB_ROUTER_DOWN_REASON);
 });

@@ -81,23 +81,13 @@ final readonly class TrailingFleetEmitter
             $this->state->releaseTrailingFleet($vehicleId);
 
             $pending = $this->state->pendingFleet($vehicleId);
-            if ($pending === null || !$this->isNewer($pending['recorded_at'], $this->state->lastFleetEmittedAt($vehicleId))) {
-                // Nada pendiente, o ya salió una lectura igual o más nueva por el camino normal.
-                return false;
-            }
-
-            if ($this->views->isRetired($vehicleId)) {
-                $this->state->forgetPendingFleet($vehicleId);
-
-                return false;
-            }
-
-            if (!$this->state->shouldEmitFleet($vehicleId)) {
-                // La ventana sigue tomada por una emisión reciente: se espera una ventana más.
-                if ($mayReschedule) {
-                    $this->schedule($vehicleId);
-                }
-
+            // Nada pendiente, o ya salió una lectura igual o más nueva por el camino normal; recién después
+            // se mira si el vehículo puede emitir ahora.
+            if (
+                $pending === null
+                || !$this->isNewer($pending['recorded_at'], $this->state->lastFleetEmittedAt($vehicleId))
+                || !$this->mayEmitNow($vehicleId, $mayReschedule)
+            ) {
                 return false;
             }
 
@@ -108,6 +98,30 @@ final readonly class TrailingFleetEmitter
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /**
+     * ¿El vehículo puede emitir su lectura pendiente ahora? Si está dado de baja, se descarta la pendiente;
+     * si la ventana del throttle sigue tomada, se reprograma (cuando se permite) y no emite.
+     */
+    private function mayEmitNow(string $vehicleId, bool $mayReschedule): bool
+    {
+        if ($this->views->isRetired($vehicleId)) {
+            $this->state->forgetPendingFleet($vehicleId);
+
+            return false;
+        }
+
+        if ($this->state->shouldEmitFleet($vehicleId)) {
+            return true;
+        }
+
+        // La ventana sigue tomada por una emisión reciente: se espera una ventana más.
+        if ($mayReschedule) {
+            $this->schedule($vehicleId);
+        }
+
+        return false;
     }
 
     /**

@@ -140,8 +140,9 @@ fi
 # En dev escribe en `.docker/nginx/errors` (montado en nginx); en las imágenes inmutables ya van horneados
 # en el build (stage `prod` → `web`) y esta pasada solo los deja al día dentro del contenedor.
 # Tolerante: si falla, quedan los archivos anteriores y el arranque sigue.
-if [ "$1" = "php-fpm" ] && [ "${APP_SERVICE_ROLE:-}" != "telemetry" ]; then
-    php artisan logistics:error-pages:build         || echo "[entrypoint] AVISO: no se pudieron regenerar las páginas de error; quedan las anteriores."
+if [[ "$1" == "php-fpm" && "${APP_SERVICE_ROLE:-}" != "telemetry" ]]; then
+    php artisan logistics:error-pages:build \
+        || echo "[entrypoint] AVISO: no se pudieron regenerar las páginas de error; quedan las anteriores." >&2
 fi
 
 # ------------------------------------------------------------

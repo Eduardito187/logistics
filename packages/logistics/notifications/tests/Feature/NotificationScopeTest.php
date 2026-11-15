@@ -31,6 +31,13 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * Se omite el middleware de puerta (auth / device / rol); el usuario se fija con actingAs. Contra
  * PostgreSQL (base logistics_test).
  */
+
+/** Log completo de notificaciones de la app. */
+const NSC_ALL_URL = '/api/v1/app/notifications/all';
+
+/** Log de notificaciones de un envío; se le concatena el id del envío. */
+const NSC_BY_SHIPMENT_URL = '/api/v1/app/notifications?shipment_id=';
+
 beforeEach(function (): void {
     $this->withoutMiddleware();
 })->skip(
@@ -179,10 +186,7 @@ function nscScenario(): array
  */
 function nscListedIds(string $query = ''): array
 {
-    /** @var list<string> $ids */
-    $ids = collect(test()->getJson('/api/v1/app/notifications/all'.$query)->assertOk()->json('data'))->pluck('id')->all();
-
-    return $ids;
+    return array_values(array_filter(collect(test()->getJson(NSC_ALL_URL.$query)->assertOk()->json('data'))->pluck('id')->all(), 'is_string'));
 }
 
 it('admin, supervisor y una cuenta sin rol ven el log completo, incluidos los avisos huérfanos', function (): void {
@@ -191,7 +195,7 @@ it('admin, supervisor y una cuenta sin rol ven el log completo, incluidos los av
 
     nscActingAs(Role::Admin);
     expect(nscListedIds())->toBe($all);
-    $this->getJson('/api/v1/app/notifications/all')
+    $this->getJson(NSC_ALL_URL)
         ->assertJsonPath('meta.total', 4)
         ->assertJsonPath('meta.unread_count', 4);
     $this->getJson("/api/v1/app/notifications/{$s['orphan']->id}")->assertOk();
@@ -213,7 +217,7 @@ it('el planificador y el preparador con ciudad ven solo los avisos de su ciudad,
         expect(nscListedIds())->toBe([$s['lpz_new']->id, $s['lpz_old']->id]);
 
         // La paginación cuenta solo lo visible.
-        $this->getJson('/api/v1/app/notifications/all?page=1&per_page=1')
+        $this->getJson(NSC_ALL_URL.'?page=1&per_page=1')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $s['lpz_new']->id)
@@ -221,14 +225,14 @@ it('el planificador y el preparador con ciudad ven solo los avisos de su ciudad,
             ->assertJsonPath('meta.total_pages', 2)
             ->assertJsonPath('meta.unread_count', 2);
 
-        $this->getJson('/api/v1/app/notifications/all?page=2&per_page=1')
+        $this->getJson(NSC_ALL_URL.'?page=2&per_page=1')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $s['lpz_old']->id)
             ->assertJsonPath('meta.next_page', null);
 
         // El filtro de no leídas también respeta el alcance.
-        $this->getJson('/api/v1/app/notifications/all?unread=true')
+        $this->getJson(NSC_ALL_URL.'?unread=true')
             ->assertOk()
             ->assertJsonCount(2, 'data')
             ->assertJsonPath('meta.total', 2)
@@ -261,7 +265,7 @@ it('un envío entre dos ciudades lo ven las dos, y un preparador sin ciudad no q
     // Con el modo estricto, sin ciudad no ve ningún aviso.
     config(['logistics-shipments.scope.strict_without_city' => true]);
     expect(nscListedIds())->toBe([]);
-    $this->getJson('/api/v1/app/notifications/all')->assertJsonPath('meta.total', 0)->assertJsonPath('meta.unread_count', 0);
+    $this->getJson(NSC_ALL_URL)->assertJsonPath('meta.total', 0)->assertJsonPath('meta.unread_count', 0);
 });
 
 it('la tienda ve solo los avisos de envíos que salen de su nodo o llegan a él', function (): void {
@@ -275,7 +279,7 @@ it('la tienda ve solo los avisos de envíos que salen de su nodo o llegan a él'
     nscActingAs(Role::Tienda, ['node_id' => $s['net']['store_scz']]);
 
     expect(nscListedIds())->toBe([$fromStore->id, $s['scz_one']->id]);
-    $this->getJson('/api/v1/app/notifications/all')
+    $this->getJson(NSC_ALL_URL)
         ->assertJsonPath('meta.total', 2)
         ->assertJsonPath('meta.unread_count', 2);
     $this->getJson("/api/v1/app/notifications/{$foreignNotification->id}")->assertNotFound();
@@ -295,7 +299,7 @@ it('el chofer ve solo los avisos de los envíos que le asignaron', function (): 
     nscActingAs(Role::Chofer, ['driver_id' => $driverId]);
 
     expect(nscListedIds())->toBe([$s['scz_one']->id]);
-    $this->getJson('/api/v1/app/notifications/all')
+    $this->getJson(NSC_ALL_URL)
         ->assertJsonPath('meta.total', 1)
         ->assertJsonPath('meta.unread_count', 1);
     $this->getJson("/api/v1/app/notifications/{$s['lpz_new']->id}")->assertNotFound();
@@ -305,16 +309,16 @@ it('el log por envío sale vacío si el envío está fuera de alcance', function
     $s = nscScenario();
     nscActingAs(Role::Planificador, ['city' => 'la_paz']);
 
-    $this->getJson('/api/v1/app/notifications?shipment_id='.$s['lpz']->id)
+    $this->getJson(NSC_BY_SHIPMENT_URL.$s['lpz']->id)
         ->assertOk()
         ->assertJsonCount(2, 'data');
 
-    $this->getJson('/api/v1/app/notifications?shipment_id='.$s['scz']->id)
+    $this->getJson(NSC_BY_SHIPMENT_URL.$s['scz']->id)
         ->assertOk()
         ->assertJsonCount(0, 'data');
 
     // Envío que no existe (aviso huérfano): tampoco se lista para un usuario acotado.
-    $this->getJson('/api/v1/app/notifications?shipment_id='.$s['orphan']->shipment_id)
+    $this->getJson(NSC_BY_SHIPMENT_URL.$s['orphan']->shipment_id)
         ->assertOk()
         ->assertJsonCount(0, 'data');
 
@@ -351,7 +355,7 @@ it('detalle, marcar leída y suprimir fuera de alcance responden 404 y no cambia
 });
 
 it('«leer todas» deja en cero lo visible y no toca las no leídas de otro usuario', function (): void {
-    $s = nscScenario();
+    nscScenario();
     $admin = User::factory()->create();
     $admin->assignRole(Role::Admin);
 
@@ -366,7 +370,7 @@ it('«leer todas» deja en cero lo visible y no toca las no leídas de otro usua
         ->assertOk()
         ->assertJsonPath('data.unread_count', 0);
 
-    $this->getJson('/api/v1/app/notifications/all?unread=true')
+    $this->getJson(NSC_ALL_URL.'?unread=true')
         ->assertOk()
         ->assertJsonCount(0, 'data')
         ->assertJsonPath('meta.total', 0)
@@ -374,7 +378,7 @@ it('«leer todas» deja en cero lo visible y no toca las no leídas de otro usua
 
     // El estado de lectura es por usuario: para el admin siguen las cuatro sin leer.
     $this->actingAs($admin);
-    $this->getJson('/api/v1/app/notifications/all')
+    $this->getJson(NSC_ALL_URL)
         ->assertOk()
         ->assertJsonPath('meta.total', 4)
         ->assertJsonPath('meta.unread_count', 4);
@@ -391,7 +395,7 @@ it('sin usuario de la app (procesos internos) no hay restricción', function ():
         ->and($bus->ask(new CountUnreadNotifications('usuario-interno')))->toBe(4);
 
     // Petición sin usuario autenticado (el middleware de la puerta está omitido): log completo.
-    $this->getJson('/api/v1/app/notifications/all')
+    $this->getJson(NSC_ALL_URL)
         ->assertOk()
         ->assertJsonCount(4, 'data')
         ->assertJsonPath('meta.total', 4)

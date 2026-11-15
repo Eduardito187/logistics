@@ -67,10 +67,14 @@ final readonly class BroadcastFleetRemovedOnVehicleRetired implements MessageDis
         $this->fleetViews->forgetVehicle($vehicleId);
         $this->plates->forget($vehicleId);
 
-        if (!$retiredNow) {
-            return;
+        if ($retiredNow) {
+            $this->removeFromLiveFleet($vehicleId);
         }
+    }
 
+    /** Baja efectiva: limpia el estado caliente del camión y avisa a la app con `fleet.removed`. */
+    private function removeFromLiveFleet(string $vehicleId): void
+    {
         $this->state->forget($vehicleId);
 
         // Ciudad del camión: departamento de su nodo base (sin sede conocida, solo `fleet.all`).

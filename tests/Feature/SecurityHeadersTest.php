@@ -13,6 +13,12 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Invoca el middleware con una petición de prueba y devuelve la respuesta ya con cabeceras.
  */
+/** Fuente CSP del propio origen, tal como viaja en la cabecera. */
+const SHT_SELF = "'self'";
+
+/** Página del admin servida por el nginx local (http, puerto no estándar). */
+const SHT_LOCAL_ADMIN_URL = 'http://localhost:8080/admin';
+
 function runSecurityHeaders(Request $request): Response
 {
     return (new SecurityHeaders)->handle($request, static fn (): Response => new Response('ok'));
@@ -110,9 +116,9 @@ function connectSources(Response $response): array
 it('adds nothing to connect-src when broadcasting is off', function (): void {
     config(['broadcasting.default' => 'null', 'broadcasting.client_ws' => ['host' => null, 'port' => null, 'scheme' => null]]);
 
-    $response = runSecurityHeaders(Request::create('http://localhost:8080/admin'));
+    $response = runSecurityHeaders(Request::create(SHT_LOCAL_ADMIN_URL));
 
-    expect(connectSources($response))->toBe(["'self'"])
+    expect(connectSources($response))->toBe([SHT_SELF])
         ->and((string) $response->headers->get('Content-Security-Policy'))->not->toContain('ws://')
         ->not->toContain('wss://');
 });
@@ -122,12 +128,12 @@ it('allows the same-origin websocket when broadcasting is on, without any fixed 
     // origen de la petición y NADA más (el default viejo `localhost:6001` rompía staging/producción).
     config(['broadcasting.default' => 'pusher', 'broadcasting.client_ws' => ['host' => null, 'port' => null, 'scheme' => null]]);
 
-    $plain = runSecurityHeaders(Request::create('http://localhost:8080/admin'));
-    expect(connectSources($plain))->toBe(["'self'", 'ws://localhost:8080']);
+    $plain = runSecurityHeaders(Request::create(SHT_LOCAL_ADMIN_URL));
+    expect(connectSources($plain))->toBe([SHT_SELF, 'ws://localhost:8080']);
 
     // HTTPS en el puerto estándar: wss y sin puerto.
     $secure = runSecurityHeaders(Request::create('https://logistica.example.test/admin'));
-    expect(connectSources($secure))->toBe(["'self'", 'wss://logistica.example.test']);
+    expect(connectSources($secure))->toBe([SHT_SELF, 'wss://logistica.example.test']);
 });
 
 it('does not default the client websocket to localhost:6001 (config evaluated without VITE_PUSHER_*)', function (): void {
@@ -164,14 +170,14 @@ it('keeps an explicitly configured websocket origin as an extra override', funct
     // Desarrollo con Soketi publicado directo en el 6001: solo el puerto fijado = mismo host, ese puerto.
     config(['broadcasting.default' => 'pusher', 'broadcasting.client_ws' => ['host' => null, 'port' => 6001, 'scheme' => null]]);
 
-    expect(connectSources(runSecurityHeaders(Request::create('http://localhost:8080/admin'))))
-        ->toBe(["'self'", 'ws://localhost:8080', 'ws://localhost:6001', 'http://localhost:6001']);
+    expect(connectSources(runSecurityHeaders(Request::create(SHT_LOCAL_ADMIN_URL))))
+        ->toBe([SHT_SELF, 'ws://localhost:8080', 'ws://localhost:6001', 'http://localhost:6001']);
 
     // Host, puerto y esquema explícitos.
     config(['broadcasting.client_ws' => ['host' => 'ws.example.test', 'port' => 443, 'scheme' => 'https']]);
 
     expect(connectSources(runSecurityHeaders(Request::create('https://logistica.example.test/admin'))))
-        ->toBe(["'self'", 'wss://logistica.example.test', 'wss://ws.example.test:443', 'https://ws.example.test:443']);
+        ->toBe([SHT_SELF, 'wss://logistica.example.test', 'wss://ws.example.test:443', 'https://ws.example.test:443']);
 });
 
 it('does not overwrite a Content-Security-Policy already set downstream', function (): void {

@@ -34,6 +34,15 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
 
 const PLAN_DELETION_DATE = '2031-04-09';
 
+/** Motivo del salto de los tests HTTP mientras la ruta de borrado no esté registrada. */
+const PLAN_DELETION_ROUTE_PENDING = 'la ruta se registra al integrar routes/api/planning.php';
+
+/**
+ * Falla propia de este archivo para forzar la reversión de una transacción. Extiende la genérica para que
+ * el `catch (RuntimeException)` del test la siga atrapando.
+ */
+final class PdPostDeletionFailure extends RuntimeException {}
+
 beforeEach(function (): void {
     Http::fake(['*' => Http::response(null, 500)]);
     $this->withoutMiddleware();
@@ -214,7 +223,7 @@ it('DELETE /plans/{id} responde 204 sin cuerpo y el plan ya no existe; repetirlo
 
     // El segundo intento no deja otro evento.
     expect(pdDeletedEvents($planId))->toHaveCount(1);
-})->skip(fn (): bool => !Route::has('api.v1.app.planning.plans.destroy'), 'la ruta se registra al integrar routes/api/planning.php');
+})->skip(fn (): bool => !Route::has('api.v1.app.planning.plans.destroy'), PLAN_DELETION_ROUTE_PENDING);
 
 it('DELETE /plans/{id} de un plan publicado responde 409 y no lo borra', function (): void {
     $plan = PlanRecordFactory::new()->onDate(PLAN_DELETION_DATE)->published()->withStops(2)->create();
@@ -227,7 +236,7 @@ it('DELETE /plans/{id} de un plan publicado responde 409 y no lo borra', functio
     expect(PlanRecord::query()->whereKey($planId)->exists())->toBeTrue()
         ->and(PlannedStopRecord::query()->where('plan_id', $planId)->count())->toBe(2)
         ->and(pdDeletedEvents($planId))->toBe([]);
-})->skip(fn (): bool => !Route::has('api.v1.app.planning.plans.destroy'), 'la ruta se registra al integrar routes/api/planning.php');
+})->skip(fn (): bool => !Route::has('api.v1.app.planning.plans.destroy'), PLAN_DELETION_ROUTE_PENDING);
 
 it('DELETE /plans/{id} de un plan inexistente responde 404 con el motivo', function (): void {
     $response = $this->deleteJson('/api/v1/app/plans/'.Str::uuid7())
@@ -235,7 +244,7 @@ it('DELETE /plans/{id} de un plan inexistente responde 404 con el motivo', funct
         ->assertJsonPath('code', 'not_found');
 
     expect($response->json('detail'))->toBe('El plan indicado no existe.');
-})->skip(fn (): bool => !Route::has('api.v1.app.planning.plans.destroy'), 'la ruta se registra al integrar routes/api/planning.php');
+})->skip(fn (): bool => !Route::has('api.v1.app.planning.plans.destroy'), PLAN_DELETION_ROUTE_PENDING);
 
 // ──────────────────────────── Aviso en tiempo real ────────────────────────────
 
@@ -282,7 +291,7 @@ it('si la transacción del borrado se revierte no sale ningún aviso y el plan s
         DB::transaction(function () use ($planId): void {
             app(CommandBus::class)->dispatch(new DeletePlan($planId));
 
-            throw new RuntimeException('falla posterior al borrado');
+            throw new PdPostDeletionFailure('falla posterior al borrado');
         });
     } catch (RuntimeException) {
         // Esperado: la transacción se revierte.

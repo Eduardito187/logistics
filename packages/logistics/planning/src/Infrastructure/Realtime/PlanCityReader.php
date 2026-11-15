@@ -44,21 +44,16 @@ final readonly class PlanCityReader
         }
 
         try {
-            if ($this->connection->transactionLevel() > 0) {
-                /** @var list<string> $cities */
-                $cities = $this->connection->transaction(fn (): array => $this->read($planId, $vehicleId));
-
-                return $cities;
-            }
-
-            return $this->read($planId, $vehicleId);
+            return $this->connection->transactionLevel() > 0
+                ? $this->readInSavepoint($planId, $vehicleId)
+                : $this->read($planId, $vehicleId);
         } catch (Throwable) {
             return [];
         }
     }
 
     /**
-     * Todas las ciudades de la red: para los hechos que son del día entero y no de una ciudad (la corrida
+     * Cada ciudad de la red: para los hechos que son del día entero y no de una ciudad (la corrida
      * automática). Sale del catálogo de departamentos, sin consultar nada.
      *
      * @return list<string>
@@ -66,6 +61,17 @@ final readonly class PlanCityReader
     public function allCities(): array
     {
         return array_map(static fn (Department $department): string => $department->value, Department::cases());
+    }
+
+    /**
+     * Misma lectura dentro de una transacción ya abierta: corre en un savepoint, así un fallo de la consulta
+     * no aborta la transacción externa.
+     *
+     * @return list<string>
+     */
+    private function readInSavepoint(?string $planId, ?string $vehicleId): array
+    {
+        return $this->connection->transaction(fn (): array => $this->read($planId, $vehicleId));
     }
 
     /**
