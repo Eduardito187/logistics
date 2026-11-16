@@ -16,7 +16,9 @@ use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 
 /**
- * Resuelve la asignación VIGENTE de un chofer en una fecha y la devuelve como proyección de lectura.
+ * Resuelve la asignación VIGENTE de un TRIPULANTE (chofer o ayudante) en una fecha y la devuelve como
+ * proyección de lectura. El chofer se resuelve por su `driverId`; el ayudante, por su `helperId` (figura en
+ * los `helper_ids` de la tripulación). En ambos casos la vista es la misma.
  *
  * Un chofer tiene UN camión por día (una sola tripulación vigente; cambiarle el camión reemplaza la
  * anterior), y con ese camión puede salir varias veces. Se devuelve su tripulación con la ruta de su
@@ -58,14 +60,12 @@ final readonly class GetMyCrewHandler implements QueryHandler
     {
         assert($query instanceof GetMyCrew);
 
-        $rows = $this->mostRecentFirst(
-            $this->directory->list($query->date, null, $query->driverId, self::MAX_CREWS_PER_DAY, 0)['items'],
-        );
+        $rows = $this->mostRecentFirst($this->viewerCrews($query));
         if ($rows === []) {
             return null;
         }
 
-        $routes = $this->routesOfDriver($query, $rows);
+        $routes = $this->routesOfViewer($query->date, $rows);
         [$row, $route] = $this->currentDeparture($rows, $routes);
 
         $crew = $this->crews->findById(CrewId::fromString($row['id']));
@@ -90,19 +90,42 @@ final readonly class GetMyCrewHandler implements QueryHandler
     }
 
     /**
-     * Rutas del día de los camiones del chofer. Si la ruta tiene chofer grabado y es OTRO, no es su salida
-     * (dos choferes pueden compartir el camión en el día); sin chofer grabado vale el vínculo por camión.
+     * Tripulaciones del día que ve el solicitante: las del CHOFER (filtro por `driver_id`) o, si la cuenta
+     * es un AYUDANTE, aquellas en las que figura (filtro por `helper_ids`). Devuelve [] si no trae ningún
+     * vínculo utilizable.
+     *
+     * @return list<CrewRow>
+     */
+    private function viewerCrews(GetMyCrew $query): array
+    {
+        if ($query->driverId !== null && $query->driverId !== '') {
+            return $this->directory->list($query->date, null, $query->driverId, self::MAX_CREWS_PER_DAY, 0)['items'];
+        }
+
+        if ($query->helperId !== null && $query->helperId !== '') {
+            return $this->directory->listForHelper($query->date, $query->helperId, self::MAX_CREWS_PER_DAY, 0)['items'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Rutas del día de los camiones de las tripulaciones del solicitante. Si la ruta tiene chofer grabado y
+     * no es el de NINGUNA de esas tripulaciones, no es su salida (dos choferes pueden compartir el camión en
+     * el día); sin chofer grabado vale el vínculo por camión. Vale igual para el chofer (un solo driver_id
+     * en sus filas) y para el ayudante (el driver_id del chofer de su tripulación).
      *
      * @param  list<CrewRow>        $rows
      * @return list<DepartureRoute>
      */
-    private function routesOfDriver(GetMyCrew $query, array $rows): array
+    private function routesOfViewer(string $date, array $rows): array
     {
         $vehicleIds = array_values(array_unique(array_column($rows, 'vehicle_id')));
+        $driverIds = array_values(array_unique(array_column($rows, 'driver_id')));
 
         return array_values(array_filter(
-            $this->routes->onDate($query->date, $vehicleIds),
-            static fn (array $route): bool => $route['driver_id'] === null || $route['driver_id'] === $query->driverId,
+            $this->routes->onDate($date, $vehicleIds),
+            static fn (array $route): bool => $route['driver_id'] === null || in_array($route['driver_id'], $driverIds, true),
         ));
     }
 

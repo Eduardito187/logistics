@@ -114,6 +114,38 @@ it('deja al ayudante tripulante de ese vehículo leer su ruta ese día', functio
     test()->getJson("/api/v1/app/vehicles/{$vehicle}/route?date=".VCS_DATE)->assertOk();
 });
 
+it('deja al rol tripulante (ligado por users.helper_id) leer la ruta de su vehículo ese día', function (): void {
+    $vehicle = Uuid::generate()->value;
+    $helper = Uuid::generate()->value;
+    vcsSeedCrew($vehicle, Uuid::generate()->value, $helper, VCS_DATE);
+    vcsAssembleRoute($vehicle, VCS_DATE);
+
+    // Cuenta tripulante real: NO es chofer (driver_id null); se liga por su users.helper_id. Solo lectura.
+    $user = User::factory()->create(['driver_id' => null, 'helper_id' => $helper]);
+    $user->assignRole(Role::Tripulante);
+    test()->actingAs($user, 'sanctum');
+
+    test()->getJson("/api/v1/app/vehicles/{$vehicle}/route?date=".VCS_DATE)
+        ->assertOk()
+        ->assertJsonPath('data.vehicle_id', $vehicle);
+});
+
+it('bloquea con 403 al tripulante (por helper_id) que no integra la tripulación de ese vehículo', function (): void {
+    $vehicle = Uuid::generate()->value;
+    vcsSeedCrew($vehicle, Uuid::generate()->value, Uuid::generate()->value, VCS_DATE);
+    vcsAssembleRoute($vehicle, VCS_DATE);
+
+    // Ayudante de OTRA tripulación (su helper_id no figura en este camión ese día).
+    $user = User::factory()->create(['driver_id' => null, 'helper_id' => Uuid::generate()->value]);
+    $user->assignRole(Role::Tripulante);
+    test()->actingAs($user, 'sanctum');
+
+    test()->getJson("/api/v1/app/vehicles/{$vehicle}/route?date=".VCS_DATE)
+        ->assertStatus(403)
+        ->assertJsonPath('code', VCS_FORBIDDEN_CODE)
+        ->assertJsonMissingPath('data');
+});
+
 it('bloquea con 403 al chofer de otro vehículo y no revela nada de la ruta ajena', function (): void {
     $vehicle = Uuid::generate()->value;
     vcsSeedCrew($vehicle, Uuid::generate()->value, Uuid::generate()->value, VCS_DATE);

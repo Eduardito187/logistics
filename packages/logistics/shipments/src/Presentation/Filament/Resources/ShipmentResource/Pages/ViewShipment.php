@@ -99,7 +99,8 @@ final class ViewShipment extends ViewRecord
             ->modalSubmitActionLabel(__('Register return'))
             ->schema([
                 Select::make('warehouse_id')
-                    ->label(__('Return warehouse'))
+                    ->label(__('Return location'))
+                    ->helperText(__('A store, the central warehouse or a distribution center can receive the return.'))
                     ->options(fn (): array => $this->returnWarehouses())
                     ->searchable()
                     ->native(false)
@@ -227,24 +228,38 @@ final class ViewShipment extends ViewRecord
     }
 
     /**
-     * Almacenes a los que puede volver la mercadería (centros de distribución), por nombre.
+     * Lugares a los que puede volver la mercadería: una TIENDA, el ALMACÉN CENTRAL o un centro de distribución
+     * (no solo los CD). Cada opción muestra el nombre del nodo y su tipo para que el operador sepa qué es.
      *
      * @return array<string, string>
      */
     private function returnWarehouses(): array
     {
         try {
-            /** @var array<string, string> $nodes */
-            $nodes = DB::table('network_nodes')
-                ->where('type', 'distribution_center')
+            $rows = DB::table('network_nodes')
+                ->whereIn('type', ['distribution_center', 'central_warehouse', 'store'])
+                ->orderBy('type')
                 ->orderBy('name')
-                ->pluck('name', 'id')
-                ->all();
-
-            return $nodes;
+                ->get(['id', 'name', 'type']);
         } catch (\Throwable) {
             return [];
         }
+
+        // Etiqueta del tipo en inglés (admin en inglés); si apareciera un tipo nuevo, se muestra su clave.
+        $typeLabels = [
+            'store' => __('Store'),
+            'central_warehouse' => __('Central warehouse'),
+            'distribution_center' => __('Distribution center'),
+        ];
+
+        $out = [];
+        foreach ($rows as $row) {
+            $name = is_string($row->name ?? null) && $row->name !== '' ? $row->name : (string) $row->id;
+            $type = $typeLabels[(string) $row->type] ?? (string) $row->type;
+            $out[(string) $row->id] = $name.' · '.$type;
+        }
+
+        return $out;
     }
 
     /**

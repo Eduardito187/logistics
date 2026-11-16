@@ -44,11 +44,22 @@ final class ChecklistTemplateResource extends Resource
 
     protected static string | BackedEnum | null $navigationIcon = 'heroicon-o-clipboard-document-list';
 
-    protected static ?int $navigationSort = 37;
-
+    // Vive en «Configuración» (grupo Administration), al mismo nivel que outbox, versiones de configuración e
+    // impresoras de red: las plantillas del checklist son configuración del sistema, no un ítem de flota.
     public static function getNavigationGroup(): string
     {
-        return __('Fleet');
+        return __('Administration');
+    }
+
+    // Anidada BAJO el ítem «Configuration» de la navegación (igual que las impresoras de red y el outbox).
+    public static function getNavigationParentItem(): string
+    {
+        return __('Configuration');
+    }
+
+    public static function getNavigationSort(): int
+    {
+        return 63;
     }
 
     public static function getModelLabel(): string
