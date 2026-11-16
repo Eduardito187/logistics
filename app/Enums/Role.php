@@ -20,6 +20,7 @@ enum Role: string
     case Transportista = 'transportista';
     case Supervisor = 'supervisor';
     case Planificador = 'planificador';
+    case Tripulante = 'tripulante';
     case Admin = 'admin';
 
     /**
@@ -34,6 +35,7 @@ enum Role: string
             self::Transportista => 'Carrier',
             self::Supervisor => 'Supervisor',
             self::Planificador => 'Planner',
+            self::Tripulante => 'Crew Member',
             self::Admin => 'Administrator',
         };
     }
@@ -108,6 +110,17 @@ enum Role: string
                 Ability::CAPACITY_WRITE,
                 Ability::EXECUTION_READ,
                 Ability::EXECUTION_WRITE,
+            ],
+            // Tripulante (ayudante del camión): acompaña al chofer en el reparto. SOLO LECTURA — ve su
+            // tripulación del día y la hoja de ruta de su camión (pedidos, paradas, seguimiento), pero no
+            // opera: no prepara, no carga, no firma POD ni reporta GPS. Sin ninguna habilidad *_WRITE.
+            self::Tripulante => [
+                Ability::SHIPMENTS_READ,
+                Ability::PLANNING_READ,
+                Ability::EXECUTION_READ,
+                Ability::TRACKING_READ,
+                Ability::NETWORK_READ,
+                Ability::NOTIFICATIONS_READ,
             ],
             // Admin: acceso total.
             self::Admin => [Ability::WILDCARD],

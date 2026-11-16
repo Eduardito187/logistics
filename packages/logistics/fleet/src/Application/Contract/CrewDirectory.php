@@ -20,6 +20,14 @@ interface CrewDirectory
     public function list(?string $date, ?string $vehicleId, ?string $driverId, int $limit, int $offset): array;
 
     /**
+     * Tripulaciones en las que un AYUDANTE figura (su id dentro de `helper_ids`) en la fecha, de la más
+     * reciente a la más vieja. Mismo shape que `list`; filtra a nivel de base por pertenencia del ayudante.
+     *
+     * @return array{items: list<CrewRow>, total: int}
+     */
+    public function listForHelper(?string $date, string $helperId, int $limit, int $offset): array;
+
+    /**
      * Una tripulación por id, o null.
      *
      * @return CrewRow|null

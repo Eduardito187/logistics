@@ -88,7 +88,7 @@ final class AccessSeeder extends Seeder
     }
 
     /**
-     * Siembra los 6 roles de sistema derivados de `App\Enums\Role`. Las habilidades se convierten a claves
+     * Siembra todos los roles de sistema derivados de `App\Enums\Role`. Las habilidades se convierten a claves
      * de permiso con punto; el rol admin lleva el comodín "*".
      */
     private function seedRoles(): void

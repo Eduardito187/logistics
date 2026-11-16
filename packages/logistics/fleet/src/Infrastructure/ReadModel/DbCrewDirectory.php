@@ -28,7 +28,29 @@ final readonly class DbCrewDirectory implements CrewDirectory
 
     public function list(?string $date, ?string $vehicleId, ?string $driverId, int $limit, int $offset): array
     {
-        $query = $this->filtered($date, $vehicleId, $driverId);
+        return $this->page($this->filtered($date, $vehicleId, $driverId), $limit, $offset);
+    }
+
+    public function listForHelper(?string $date, string $helperId, int $limit, int $offset): array
+    {
+        $query = $this->connections->connection()->table('fleet_crews');
+
+        if ($date !== null && $date !== '') {
+            $query->whereDate('assembled_for', $date);
+        }
+        // `helper_ids` es jsonb: se filtra por pertenencia del ayudante a nivel de base (sin traer el día entero).
+        $query->whereJsonContains('helper_ids', $helperId);
+
+        return $this->page($query, $limit, $offset);
+    }
+
+    /**
+     * Pagina una consulta ya filtrada de `fleet_crews` con el orden estándar (más reciente primero) e hidrata.
+     *
+     * @return array{items: list<CrewRow>, total: int}
+     */
+    private function page(Builder $query, int $limit, int $offset): array
+    {
         $total = (clone $query)->count();
 
         // De la más reciente a la más vieja; dentro de un día, la armada más tarde primero.

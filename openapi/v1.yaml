@@ -1887,12 +1887,14 @@ paths:
   /app/fleet/my-crew:
     get:
       tags: [Fleet]
-      summary: Get the authenticated driver's crew assignment for a date
+      summary: Get the authenticated crew member's assignment for a date
       description: >-
         Returns the vehicle (truck) and crew (driver + helpers) the admin assembled for the
-        AUTHENTICATED driver on a date. The driver does not pick the vehicle; it is assigned. The
-        account→driver link is `users.driver_id` (a by-value reference to fleet_drivers.id). Responds
-        404 (RFC 7807) when the authenticated account is not linked to a driver, or has no crew
+        AUTHENTICATED crew member on a date. Works for both the driver and a helper (role
+        `tripulante`): the driver is resolved by `users.driver_id`, a helper by `users.helper_id`
+        (both by-value references to fleet_drivers.id / fleet_helpers.id). The response shape is the
+        same in either case. Neither picks the vehicle; it is assigned. Responds 404 (RFC 7807) when
+        the authenticated account is linked to neither a driver nor a helper, or has no crew
         assembled for the date.
       operationId: fleetGetMyCrew
       parameters:
@@ -1917,7 +1919,7 @@ paths:
                   data:
                     $ref: '#/components/schemas/MyCrew'
         '404':
-          description: The account is not a driver, or has no assignment for the date
+          description: The account is neither a driver nor a helper, or has no assignment for the date
           content:
             application/problem+json:
               schema:
