@@ -313,7 +313,7 @@ final class VehicleRouteResource extends Resource
                 ->where('shipment_id', $shipmentId)
                 ->orderBy('product_name')
                 ->get(['product_name', 'sku', 'product_image_url', 'quantity']);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return [];
         }
 
