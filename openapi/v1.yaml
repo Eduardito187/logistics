@@ -5124,8 +5124,14 @@ paths:
         in: query
         required: false
         description: >-
-          true = only assigned shipments (PLANNED / IN_EXECUTION) whose delivery has no PREPARATION scan yet
-          (includes labels emitted but not prepared). Accepts true/false/1/0. Not applied to meta.count_by_status.
+          true = deja solo los pedidos asignados en planificación (PLANNED / IN_EXECUTION) que TODAVÍA NO
+          tienen una entrega de ejecución abierta: los pendientes de preparar / de asignación de vehículo
+          (incluye los que solo tienen etiquetas emitidas). Al asignarles un vehículo se abre la entrega
+          (= preparado) y SALEN de esta lista. false o ausente = sin filtro. Se combina en AND con los demás
+          filtros y con el alcance por rol, e implica status ∈ {PLANNED, IN_EXECUTION}: no combinar con
+          status=received (daría vacío). La paginación (total, cursor y has_more / next_page) respeta este
+          filtro; solo meta.count_by_status lo ignora (los contadores por estado se calculan sobre el universo
+          sin el filtro de estado). Accepts true/false/1/0.
         schema:
           type: boolean
       - name: source

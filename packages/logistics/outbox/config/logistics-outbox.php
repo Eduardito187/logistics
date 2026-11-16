@@ -12,6 +12,7 @@ use Logistics\Compensation\Infrastructure\Outbox\DeliveryFailedCompensationReact
 use Logistics\Compensation\Infrastructure\Outbox\LowRatingCompensationReactor;
 use Logistics\Execution\Infrastructure\Outbox\AssembleRouteOnPlanPublished;
 use Logistics\Execution\Infrastructure\Outbox\StoreDropOnReceptionReconciled;
+use Logistics\Fleet\Infrastructure\Outbox\EnsureCrewOnPlanPublished;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
 use Logistics\FleetOps\Infrastructure\Outbox\CloseDepartureOnRouteClosed;
 use Logistics\FleetOps\Infrastructure\Outbox\OpenDepartureOnRouteStarted;
@@ -354,9 +355,11 @@ return [
             ShipmentStatusProgressionDispatcher::class,
         ],
 
-        // Plan publicado (encadenamiento automático Fase 3.3): execution ARMA la ruta del chofer, y luego el
-        // estado del envío avanza a PLANNED. ShipmentStatusProgressionDispatcher SIEMPRE último.
+        // Plan publicado (encadenamiento automático Fase 3.3): flota ARRASTRA la tripulación del día (chofer
+        // del camión) para que la ruta quede visible, execution ARMA la ruta del chofer, y luego el estado
+        // del envío avanza a PLANNED. ShipmentStatusProgressionDispatcher SIEMPRE último.
         'planning.plan_published' => [
+            EnsureCrewOnPlanPublished::class,
             AssembleRouteOnPlanPublished::class,
             ShipmentStatusProgressionDispatcher::class,
         ],
