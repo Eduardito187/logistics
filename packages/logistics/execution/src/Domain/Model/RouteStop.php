@@ -34,10 +34,15 @@ final class RouteStop
         private ?DateTimeImmutable $settledAt,
         private ?DateTimeImmutable $arrivedAt = null,
         private ?ArrivalSource $arrivalSource = null,
+        private readonly ?DateTimeImmutable $attachedAt = null,
     ) {}
 
     /**
      * Crea una parada pendiente de la ruta, con su foto legible del destino.
+     *
+     * `$attachedAt` solo se informa cuando la parada NO viene del plan publicado sino de una asignación
+     * explícita (alguien sumó el pedido al camión): deja constancia de CUÁNDO se sumó, que es lo que permite
+     * distinguir «se sumó ese día» de un pedido arrastrado de otro día.
      */
     public static function plan(
         RouteStopId $id,
@@ -49,6 +54,7 @@ final class RouteStop
         ?DateTimeImmutable $etaAt = null,
         ?float $lat = null,
         ?float $lng = null,
+        ?DateTimeImmutable $attachedAt = null,
     ): self {
         $trimmed = trim($shipmentId);
         if ($trimmed === '') {
@@ -70,6 +76,9 @@ final class RouteStop
             $lng,
             RouteStopStatus::Pending,
             null,
+            null,
+            null,
+            $attachedAt,
         );
     }
 
@@ -90,6 +99,7 @@ final class RouteStop
         ?DateTimeImmutable $settledAt,
         ?DateTimeImmutable $arrivedAt = null,
         ?ArrivalSource $arrivalSource = null,
+        ?DateTimeImmutable $attachedAt = null,
     ): self {
         return new self(
             $id,
@@ -105,6 +115,7 @@ final class RouteStop
             $settledAt,
             $arrivedAt,
             $arrivalSource,
+            $attachedAt,
         );
     }
 
@@ -248,6 +259,15 @@ final class RouteStop
     public function arrivalSource(): ?ArrivalSource
     {
         return $this->arrivalSource;
+    }
+
+    /**
+     * Cuándo se sumó la parada a la ruta por una asignación explícita. Null si la parada vino del plan
+     * publicado (o si es anterior a que se registrara este dato).
+     */
+    public function attachedAt(): ?DateTimeImmutable
+    {
+        return $this->attachedAt;
     }
 
     /**

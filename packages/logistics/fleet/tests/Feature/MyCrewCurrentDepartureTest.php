@@ -15,6 +15,11 @@ use Laravel\Sanctum\Sanctum;
  */
 beforeEach(function (): void {
     $this->withoutMiddleware(EnsureDeviceToken::class);
+    // Estos casos simulan DATOS VIEJOS: varias tripulaciones del mismo chofer en un día (lo que dejó el
+    // bug). Hoy el índice único lo impide, pero el lado de lectura sigue tolerándolo; se bajan los índices
+    // dentro de la transacción del test (RefreshDatabase la revierte al terminar) para poder insertarlos.
+    DB::statement('DROP INDEX IF EXISTS fleet_crews_driver_day_unique');
+    DB::statement('DROP INDEX IF EXISTS fleet_crews_vehicle_day_unique');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',
     'Requiere PostgreSQL (base logistics_test). Correr dentro de los containers.',

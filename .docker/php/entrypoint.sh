@@ -184,6 +184,12 @@ if [ -n "$DB_HOST" ] && [ "$1" = "php-fpm" ] && [ "${AUTO_BACKFILL_ORDERS:-false
     # entrega guardadas con el corrimiento del desplazamiento horario. Idempotente; no emite eventos.
     php artisan logistics:tracking:reconcile-dates --force \
         || echo "[entrypoint] AVISO: la puesta al día de fechas del seguimiento falló; el arranque sigue."
+    # Tripulaciones: deja una sola vigente por chofer y día (manda los duplicados viejos al historial).
+    php artisan logistics:fleet:reconcile-crews --force \
+        || echo "[entrypoint] AVISO: el saneo de tripulaciones falló; el arranque sigue."
+    # Rutas: quita de las rutas abiertas las paradas que no son del plan del día ni se sumaron ese día.
+    php artisan logistics:execution:reconcile-route-stops --force \
+        || echo "[entrypoint] AVISO: el saneo de paradas de ruta falló; el arranque sigue."
 fi
 
 # ------------------------------------------------------------

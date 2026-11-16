@@ -145,9 +145,16 @@ it('la configuración entrega los canales de cada tema según rol y ciudad, y so
         'user' => ['private-user.'.$supervisor->getKey()],
         'fleet' => ['private-fleet.all'],
         'planning' => ['private-planning.all'],
+        'tracking' => ['private-tracking.all'],
+        'picking' => ['private-picking.all'],
+        'store' => ['private-store.all'],
+        'operations' => ['private-operations.all'],
+        'loading' => ['private-loading.all'],
     ]);
     $sign($supervisorToken, 'private-fleet.all')->assertOk();
     $sign($supervisorToken, 'private-planning.all')->assertOk();
+    $sign($supervisorToken, 'private-store.all')->assertOk();
+    $sign($supervisorToken, 'private-loading.all')->assertOk();
 
     // Planificador con ciudad: solo la suya.
     [$plannerToken, $planner] = sirBearer(Role::Planificador);
@@ -156,11 +163,18 @@ it('la configuración entrega los canales de cada tema según rol y ciudad, y so
         'user' => ['private-user.'.$planner->getKey()],
         'fleet' => ['private-fleet.city.santa_cruz'],
         'planning' => ['private-planning.city.santa_cruz'],
+        'tracking' => ['private-tracking.city.santa_cruz'],
+        'picking' => ['private-picking.city.santa_cruz'],
+        'operations' => ['private-operations.city.santa_cruz'],
     ]);
     $sign($plannerToken, 'private-fleet.city.santa_cruz')->assertOk();
     $sign($plannerToken, 'private-planning.city.santa_cruz')->assertOk();
+    $sign($plannerToken, 'private-operations.city.santa_cruz')->assertOk();
     $sign($plannerToken, 'private-fleet.city.la_paz')->assertForbidden();
     $sign($plannerToken, 'private-fleet.all')->assertForbidden();
+    // El planificador no opera tienda ni carga: esos temas no están en su mapa.
+    $sign($plannerToken, 'private-store.city.santa_cruz')->assertForbidden();
+    $sign($plannerToken, 'private-loading.city.santa_cruz')->assertForbidden();
 });
 
 it('sin Bearer no se entrega la configuración del tiempo real', function (): void {

@@ -87,32 +87,36 @@ it('ignora las tripulaciones sin turno en la consulta de turnos', function (): v
     expect($shifts)->toBeEmpty();
 });
 
-it('rechaza armar una tripulación cuyo turno viola el descanso mínimo del chofer', function (): void {
+it('rechaza armar una tripulación cuyo turno viola el descanso mínimo de un integrante', function (): void {
+    // Con la regla del día (un chofer = un camión por día) un segundo armado del MISMO chofer reemplaza al
+    // primero, así que el choque de descanso se prueba entre DOS tripulaciones distintas que comparten una
+    // persona: ese chofer sale de día en la suya y lo quieren meter de ayudante en otra de noche.
     $driverId = Uuid::generate()->value;
-    $vehicleId = Uuid::generate()->value;
+    $otherDriverId = Uuid::generate()->value;
 
-    // Primer turno válido (06:00–14:00).
+    // Turno de día válido (06:00–14:00) del chofer, en su propia tripulación.
     app(CommandBus::class)->dispatch(new AssembleCrew(
         driverId: $driverId,
         helperIds: [],
-        vehicleId: $vehicleId,
+        vehicleId: Uuid::generate()->value,
         assembledFor: '2026-10-14',
-        shiftStartsAt: '2026-10-14 06:00:00',
-        shiftEndsAt: '2026-10-14 14:00:00',
+        shiftStartsAt: '2026-10-14T06:00:00+00:00',
+        shiftEndsAt: '2026-10-14T14:00:00+00:00',
     ));
 
-    // Segundo turno el mismo día de noche: solo 6 h de descanso respecto del primero.
+    // Otra tripulación de noche (otro chofer, otro camión) que lo lleva de ayudante: solo 6 h de descanso.
     $second = fn () => app(CommandBus::class)->dispatch(new AssembleCrew(
-        driverId: $driverId,
-        helperIds: [],
-        vehicleId: $vehicleId,
+        driverId: $otherDriverId,
+        helperIds: [$driverId],
+        vehicleId: Uuid::generate()->value,
         assembledFor: '2026-10-14',
-        shiftStartsAt: '2026-10-14 20:00:00',
-        shiftEndsAt: '2026-10-14 21:30:00',
+        shiftStartsAt: '2026-10-14T20:00:00+00:00',
+        shiftEndsAt: '2026-10-14T21:30:00+00:00',
     ));
 
     expect($second)->toThrow(FleetException::class, 'descanso mínimo');
 
-    // Solo quedó persistida la primera tripulación: la segunda no se armó.
-    expect(CrewModel::query()->where('driver_id', $driverId)->count())->toBe(1);
+    // La de noche no se armó; la de día del chofer sigue en pie y el otro chofer no tiene ninguna.
+    expect(CrewModel::query()->where('driver_id', $driverId)->count())->toBe(1)
+        ->and(CrewModel::query()->where('driver_id', $otherDriverId)->count())->toBe(0);
 });

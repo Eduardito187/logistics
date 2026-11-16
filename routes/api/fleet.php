@@ -52,8 +52,11 @@ return [
             // Tripulaciones por fecha / vehículo / chofer (qué camión tiene cada chofer). Paginada.
             Route::get('crews', [CrewController::class, 'index'])->name('crews.index');
 
-            // Habilitar / inhabilitar / mandar a mantenimiento un vehículo.
+            // Habilitar / inhabilitar / mandar a mantenimiento un vehículo. Escritura de ESTADO de flota:
+            // es de oficina (supervisor / admin), no de cualquier chofer, igual que send-to-maintenance y
+            // clear-fitness de abajo.
             Route::patch('vehicles/{vehicleId}/status', [VehicleController::class, 'changeStatus'])
+                ->middleware('role:supervisor,admin')
                 ->name('vehicles.change-status');
 
             // Mandar a mantenimiento AHORA: abre la orden y cambia el estado en una sola llamada.

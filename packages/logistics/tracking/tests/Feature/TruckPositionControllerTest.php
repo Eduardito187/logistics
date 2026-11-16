@@ -49,6 +49,41 @@ it('acepta la posición aunque todavía no exista seguimiento (proyección toler
     ])->assertStatus(202);
 });
 
+it('acepta y proyecta la cinemática GPS opcional (velocidad, rumbo, precisión)', function (): void {
+    $shipment = Uuid::generate()->value;
+    TrackingRecord::factory()->onTheWay()->create([
+        'shipment_id' => $shipment,
+        'last_lat' => null,
+        'last_lng' => null,
+        'last_position_at' => null,
+    ]);
+
+    $this->postJson("/api/v1/app/tracking/shipments/{$shipment}/position", [
+        'lat' => -16.5,
+        'lng' => -68.15,
+        'reported_at' => '2026-11-10T12:00:00+00:00',
+        'speed_mps' => 9.25,
+        'heading_deg' => 180.0,
+        'accuracy_m' => 5.0,
+    ])->assertStatus(202);
+
+    $record = TrackingRecord::query()->where('shipment_id', $shipment)->firstOrFail();
+    expect((float) $record->last_speed_mps)->toBe(9.25)
+        ->and((float) $record->last_heading_deg)->toBe(180.0)
+        ->and((float) $record->last_accuracy_m)->toBe(5.0);
+});
+
+it('rechaza con 422 un rumbo fuera de 0..360', function (): void {
+    $shipment = Uuid::generate()->value;
+
+    $this->postJson("/api/v1/app/tracking/shipments/{$shipment}/position", [
+        'lat' => -16.5,
+        'lng' => -68.15,
+        'reported_at' => '2026-11-10T12:00:00+00:00',
+        'heading_deg' => 400,
+    ])->assertStatus(422);
+});
+
 it('rechaza con 422 una coordenada fuera de rango', function (): void {
     $shipment = Uuid::generate()->value;
 

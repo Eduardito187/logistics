@@ -10,6 +10,8 @@ use Logistics\Capacity\Application\Command\ActivateCapacityWindow\ActivateCapaci
 use Logistics\Capacity\Application\Command\ActivateCapacityWindow\ActivateCapacityWindowHandler;
 use Logistics\Capacity\Application\Command\BlockDispatchDay\BlockDispatchDayCommand;
 use Logistics\Capacity\Application\Command\BlockDispatchDay\BlockDispatchDayHandler;
+use Logistics\Capacity\Application\Command\BlockDispatchSlot\BlockDispatchSlotCommand;
+use Logistics\Capacity\Application\Command\BlockDispatchSlot\BlockDispatchSlotHandler;
 use Logistics\Capacity\Application\Command\ConsumeCapacity\ConsumeCapacityCommand;
 use Logistics\Capacity\Application\Command\ConsumeCapacity\ConsumeCapacityHandler;
 use Logistics\Capacity\Application\Command\DefineCapacity\DefineCapacityCommand;
@@ -18,8 +20,12 @@ use Logistics\Capacity\Application\Command\ReleaseCapacity\ReleaseCapacityComman
 use Logistics\Capacity\Application\Command\ReleaseCapacity\ReleaseCapacityHandler;
 use Logistics\Capacity\Application\Command\UnblockDispatchDay\UnblockDispatchDayCommand;
 use Logistics\Capacity\Application\Command\UnblockDispatchDay\UnblockDispatchDayHandler;
+use Logistics\Capacity\Application\Command\UnblockDispatchSlot\UnblockDispatchSlotCommand;
+use Logistics\Capacity\Application\Command\UnblockDispatchSlot\UnblockDispatchSlotHandler;
 use Logistics\Capacity\Application\Query\CheckDispatchDay\CheckDispatchDayHandler;
 use Logistics\Capacity\Application\Query\CheckDispatchDay\CheckDispatchDayQuery;
+use Logistics\Capacity\Application\Query\CheckDispatchSlot\CheckDispatchSlotHandler;
+use Logistics\Capacity\Application\Query\CheckDispatchSlot\CheckDispatchSlotQuery;
 use Logistics\Capacity\Application\Query\GetActivationOptions\GetActivationOptionsHandler;
 use Logistics\Capacity\Application\Query\GetActivationOptions\GetActivationOptionsQuery;
 use Logistics\Capacity\Application\Query\GetActiveHorizon\GetActiveHorizonHandler;
@@ -28,6 +34,8 @@ use Logistics\Capacity\Application\Query\GetAvailableCapacity\GetAvailableCapaci
 use Logistics\Capacity\Application\Query\GetAvailableCapacity\GetAvailableCapacityQuery;
 use Logistics\Capacity\Application\Query\GetCapacityRuleset\GetCapacityRulesetHandler;
 use Logistics\Capacity\Application\Query\GetCapacityRuleset\GetCapacityRulesetQuery;
+use Logistics\Capacity\Application\Query\GetDeliveryCalendarDay\GetDeliveryCalendarDayHandler;
+use Logistics\Capacity\Application\Query\GetDeliveryCalendarDay\GetDeliveryCalendarDayQuery;
 use Logistics\Capacity\Application\Query\GetEffectiveCapacity\GetEffectiveCapacityHandler;
 use Logistics\Capacity\Application\Query\GetEffectiveCapacity\GetEffectiveCapacityQuery;
 use Logistics\Capacity\Application\Query\GetReceivingDockCalendar\GetReceivingDockCalendarHandler;
@@ -42,10 +50,12 @@ use Logistics\Capacity\Domain\Contract\CapacityRepository;
 use Logistics\Capacity\Domain\Contract\CapacityRuleProvider;
 use Logistics\Capacity\Domain\Contract\CapacityRulesetProvider;
 use Logistics\Capacity\Domain\Contract\DispatchBlackoutRepository;
+use Logistics\Capacity\Domain\Contract\DispatchBlackoutSlotRepository;
 use Logistics\Capacity\Infrastructure\Cache\CacheInvalidatingCapacityRepository;
 use Logistics\Capacity\Infrastructure\Persistence\Eloquent\EloquentActiveHorizonRepository;
 use Logistics\Capacity\Infrastructure\Persistence\Eloquent\EloquentCapacityRepository;
 use Logistics\Capacity\Infrastructure\Persistence\Eloquent\EloquentDispatchBlackoutRepository;
+use Logistics\Capacity\Infrastructure\Persistence\Eloquent\EloquentDispatchBlackoutSlotRepository;
 use Logistics\Capacity\Infrastructure\Queue\QueuedCapacityActivationDispatcher;
 use Logistics\Capacity\Infrastructure\Settings\ConfiguredCapacityRuleProvider;
 use Logistics\Capacity\Infrastructure\Settings\SettingsCapacityRulesetProvider;
@@ -87,6 +97,9 @@ final class CapacityServiceProvider extends ServiceProvider
         // Feriados/bloqueos de despacho y horizonte activo de cupos por municipio (calendario de 7 días):
         // sus puertos de persistencia se resuelven a las implementaciones Eloquent.
         $this->app->bind(DispatchBlackoutRepository::class, EloquentDispatchBlackoutRepository::class);
+        // Franjas horarias bloqueadas (bloqueo por slot, no por día entero): su puerto de persistencia se
+        // resuelve a la implementación Eloquent.
+        $this->app->bind(DispatchBlackoutSlotRepository::class, EloquentDispatchBlackoutSlotRepository::class);
         $this->app->bind(ActiveHorizonRepository::class, EloquentActiveHorizonRepository::class);
 
         // Activación por rango: el puerto de encolado se resuelve al dispatcher que empuja el job a la cola.
@@ -113,6 +126,9 @@ final class CapacityServiceProvider extends ServiceProvider
         // Calendario de 7 días: feriados/bloqueos y activación de cupos por rango y municipio.
         $registry->register(BlockDispatchDayCommand::class, BlockDispatchDayHandler::class);
         $registry->register(UnblockDispatchDayCommand::class, UnblockDispatchDayHandler::class);
+        // Bloqueo por FRANJA horaria (sin bloquear el día entero).
+        $registry->register(BlockDispatchSlotCommand::class, BlockDispatchSlotHandler::class);
+        $registry->register(UnblockDispatchSlotCommand::class, UnblockDispatchSlotHandler::class);
         $registry->register(ActivateCapacityWindowCommand::class, ActivateCapacityWindowHandler::class);
         $registry->register(GetAvailableCapacityQuery::class, GetAvailableCapacityHandler::class);
         $registry->register(GetEffectiveCapacityQuery::class, GetEffectiveCapacityHandler::class);
@@ -121,6 +137,9 @@ final class CapacityServiceProvider extends ServiceProvider
         $registry->register(GetReceivingDockCalendarQuery::class, GetReceivingDockCalendarHandler::class);
         $registry->register(GetCapacityRulesetQuery::class, GetCapacityRulesetHandler::class);
         $registry->register(CheckDispatchDayQuery::class, CheckDispatchDayHandler::class);
+        // Disponibilidad de una FRANJA concreta (día o franja bloqueada) y el calendario de entregas del día.
+        $registry->register(CheckDispatchSlotQuery::class, CheckDispatchSlotHandler::class);
+        $registry->register(GetDeliveryCalendarDayQuery::class, GetDeliveryCalendarDayHandler::class);
         $registry->register(ListBlackoutDaysQuery::class, ListBlackoutDaysHandler::class);
         $registry->register(GetActiveHorizonQuery::class, GetActiveHorizonHandler::class);
         // Catálogo para activar cupos desde la app (franjas, unidades y ventanas por defecto).

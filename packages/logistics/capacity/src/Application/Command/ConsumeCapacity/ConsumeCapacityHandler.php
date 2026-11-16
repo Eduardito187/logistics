@@ -8,6 +8,7 @@ use Logistics\Capacity\Domain\Contract\ActiveHorizonRepository;
 use Logistics\Capacity\Domain\Contract\CapacityRepository;
 use Logistics\Capacity\Domain\Exception\CapacityException;
 use Logistics\Capacity\Domain\Service\DispatchDayAvailability;
+use Logistics\Capacity\Domain\Service\DispatchSlotAvailability;
 use Logistics\Capacity\Domain\ValueObject\BucketScope;
 use Logistics\Capacity\Domain\ValueObject\CapacityUnit;
 use Logistics\Capacity\Domain\ValueObject\Quantity;
@@ -22,7 +23,8 @@ use Logistics\Shared\Application\Command\CommandHandler;
  * consumo (que lanza si excede), persiste y publica sus eventos al outbox.
  *
  * Enforcement end-to-end (frente de calendario): antes de imputar capacidad RECHAZA
- *  - un día bloqueado (feriado u otro motivo), global o del municipio del cupo; y
+ *  - un día bloqueado (feriado u otro motivo), global o del municipio del cupo;
+ *  - una FRANJA bloqueada (global o del municipio), aunque el resto del día siga disponible; y
  *  - una fecha fuera del horizonte activo del alcance, cuando hay un horizonte registrado.
  * Si no hay horizonte registrado para el alcance, no se exige (compatibilidad con cupos definidos a
  * mano antes de activar por rango).
@@ -39,6 +41,7 @@ final readonly class ConsumeCapacityHandler implements CommandHandler
         private RecordDomainEvents $recordEvents,
         private DispatchDayAvailability $availability,
         private ActiveHorizonRepository $horizons,
+        private DispatchSlotAvailability $slotAvailability,
     ) {}
 
     public function handle(Command $command): void
@@ -55,7 +58,7 @@ final readonly class ConsumeCapacityHandler implements CommandHandler
         $unit = CapacityUnit::tryFrom($command->unit)
             ?? throw CapacityException::because("unidad de capacidad desconocida: {$command->unit}");
 
-        $this->guardDispatchable($scope, $date);
+        $this->guardDispatchable($scope, $date, $slot);
 
         // Lock pesimista: serializa el consumo concurrente del mismo cupo para no sobre-reservarlo. El
         // lock corre dentro de la transacción que abre el CommandBus y se suelta al cerrarla.
@@ -70,10 +73,11 @@ final readonly class ConsumeCapacityHandler implements CommandHandler
     }
 
     /**
-     * Rechaza consumir capacidad en un día no despachable: bloqueado (feriado/otro motivo) o fuera del
-     * horizonte activo del alcance. El horizonte solo se exige si hay uno registrado para el alcance.
+     * Rechaza consumir capacidad en un día/franja no despachable: día bloqueado (feriado/otro motivo),
+     * franja bloqueada, o fecha fuera del horizonte activo del alcance. El horizonte solo se exige si hay
+     * uno registrado para el alcance.
      */
-    private function guardDispatchable(BucketScope $scope, SlotDate $date): void
+    private function guardDispatchable(BucketScope $scope, SlotDate $date, TimeSlot $slot): void
     {
         // El calendario de bloqueos y el horizonte activo son del eje de DESPACHO (por municipio). Un
         // cupo de RECEPCIÓN (inbound) tiene su propio calendario de andenes: no se le aplican los
@@ -86,6 +90,10 @@ final readonly class ConsumeCapacityHandler implements CommandHandler
 
         if ($this->availability->isBlocked($date, $municipalityId)) {
             throw CapacityException::because("el día {$date->toString()} está bloqueado para despacho (feriado u otro motivo); no se puede consumir capacidad");
+        }
+
+        if ($this->slotAvailability->isSlotBlocked($date, $slot, $municipalityId)) {
+            throw CapacityException::because("la franja {$slot->toString()} del {$date->toString()} está bloqueada para despacho; no se puede consumir capacidad");
         }
 
         $horizon = $this->horizons->findFor($municipalityId);

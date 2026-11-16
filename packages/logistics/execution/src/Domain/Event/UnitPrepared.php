@@ -1,0 +1,44 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Logistics\Execution\Domain\Event;
+
+use DateTimeImmutable;
+use Logistics\Shared\Domain\Event\BaseDomainEvent;
+
+/**
+ * Se preparó UN bulto del envío (escaneo de preparación: EAN → etiqueta → carril).
+ *
+ * A diferencia de {@see ShipmentPrepared} —que sale UNA sola vez, en la transición del primer bulto— este
+ * hecho liviano sale por CADA escaneo de preparación, para que los observadores de tiempo real reflejen en
+ * vivo cada bulto que un preparador ya escaneó (dos preparadores del mismo envío se ven mutuamente). No lo
+ * consume ningún reactor: solo se persiste en el outbox y lo leen los observadores de realtime.
+ */
+final readonly class UnitPrepared extends BaseDomainEvent
+{
+    public function __construct(
+        string $deliveryId,
+        public string $shipmentId,
+        public string $vehicleId,
+        public string $unitId,
+        DateTimeImmutable $occurredAt,
+    ) {
+        parent::__construct($deliveryId, null, $occurredAt);
+    }
+
+    public function eventName(): string
+    {
+        return 'execution.unit_prepared';
+    }
+
+    public function payload(): array
+    {
+        return [
+            'delivery_id' => $this->aggregateId,
+            'shipment_id' => $this->shipmentId,
+            'vehicle_id' => $this->vehicleId,
+            'unit_id' => $this->unitId,
+        ];
+    }
+}

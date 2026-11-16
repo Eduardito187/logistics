@@ -36,6 +36,7 @@ use Logistics\Fleet\Application\Command\UpdateHelperProfile\UpdateHelperProfileH
 use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfile;
 use Logistics\Fleet\Application\Command\UpdateVehicleProfile\UpdateVehicleProfileHandler;
 use Logistics\Fleet\Application\Contract\CrewDirectory;
+use Logistics\Fleet\Application\Contract\CrewReconciler;
 use Logistics\Fleet\Application\Contract\DepartureRouteReader;
 use Logistics\Fleet\Application\Query\GetChecklistTemplate\GetChecklistTemplate;
 use Logistics\Fleet\Application\Query\GetChecklistTemplate\GetChecklistTemplateHandler;
@@ -63,6 +64,7 @@ use Logistics\Fleet\Application\Query\ListVehicles\ListVehicles;
 use Logistics\Fleet\Application\Query\ListVehicles\ListVehiclesHandler;
 use Logistics\Fleet\Domain\Contract\ChecklistTemplateRepository;
 use Logistics\Fleet\Domain\Contract\CrewRepository;
+use Logistics\Fleet\Domain\Contract\CrewRoster;
 use Logistics\Fleet\Domain\Contract\DocumentExpiryPolicy;
 use Logistics\Fleet\Domain\Contract\DocumentRepository;
 use Logistics\Fleet\Domain\Contract\DriverRepository;
@@ -74,8 +76,10 @@ use Logistics\Fleet\Domain\Contract\VehicleFitnessLog;
 use Logistics\Fleet\Domain\Contract\VehicleRepository;
 use Logistics\Fleet\Domain\ValueObject\ShiftRules;
 use Logistics\Fleet\Infrastructure\Outbox\VehicleIncidentFleetDispatcher;
+use Logistics\Fleet\Infrastructure\Persistence\DbCrewReconciler;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentChecklistTemplateRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentCrewRepository;
+use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentCrewRoster;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentDocumentRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentDriverRepository;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Repository\EloquentFleetLabelReader;
@@ -88,6 +92,7 @@ use Logistics\Fleet\Infrastructure\ReadModel\DbDepartureRouteReader;
 use Logistics\Fleet\Infrastructure\Settings\SettingsDocumentExpiryPolicy;
 use Logistics\Fleet\Infrastructure\Settings\SettingsShiftRulesPolicy;
 use Logistics\Fleet\Presentation\Console\AlertExpiringDocumentsCommand;
+use Logistics\Fleet\Presentation\Console\ReconcileCrewsCommand;
 use Logistics\Fleet\Presentation\Filament\Configuration\CrewShiftsSection;
 use Logistics\Fleet\Presentation\Filament\Configuration\DocumentAlertsSection;
 use Logistics\Settings\Presentation\Filament\Configuration\ConfigurationRegistry;
@@ -146,6 +151,11 @@ final class FleetServiceProvider extends ServiceProvider
         $this->app->bind(DriverRepository::class, EloquentDriverRepository::class);
         $this->app->bind(HelperRepository::class, EloquentHelperRepository::class);
         $this->app->bind(CrewRepository::class, EloquentCrewRepository::class);
+        // Planilla del día: bloqueo por fecha, ocupante del camión y baja con rastro (un chofer = un camión
+        // por día, un camión = una tripulación por día).
+        $this->app->bind(CrewRoster::class, static fn ($app): EloquentCrewRoster => new EloquentCrewRoster($app['db']->connection()));
+        // Saneo de tripulaciones duplicadas de datos viejos (comando logistics:fleet:reconcile-crews).
+        $this->app->bind(CrewReconciler::class, static fn ($app): DbCrewReconciler => new DbCrewReconciler($app['db']->connection()));
         // Lado lectura de tripulaciones (listado con nombres y placa) + baja de la asignación.
         $this->app->bind(CrewDirectory::class, static fn ($app): DbCrewDirectory => new DbCrewDirectory($app['db']));
         // Salidas (rutas de reparto) del día: lectura cross-context para la tripulación vigente del chofer.
@@ -205,7 +215,7 @@ final class FleetServiceProvider extends ServiceProvider
 
         // Barrido programado de documentos por vencer / vencidos (lo agenda routes/console.php).
         if ($this->app->runningInConsole()) {
-            $this->commands([AlertExpiringDocumentsCommand::class]);
+            $this->commands([AlertExpiringDocumentsCommand::class, ReconcileCrewsCommand::class]);
         }
     }
 }

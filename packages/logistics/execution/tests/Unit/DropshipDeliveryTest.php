@@ -6,6 +6,8 @@ use Logistics\Execution\Domain\Event\ShipmentDelivered;
 use Logistics\Execution\Domain\Event\ShipmentDeparted;
 use Logistics\Execution\Domain\Event\ShipmentLoaded;
 use Logistics\Execution\Domain\Event\ShipmentPrepared;
+use Logistics\Execution\Domain\Event\UnitLoaded;
+use Logistics\Execution\Domain\Event\UnitPrepared;
 use Logistics\Execution\Domain\Model\Delivery;
 use Logistics\Execution\Domain\Model\ScanEvent;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
@@ -81,8 +83,12 @@ it('runs a dropship delivery through preparation, load, departure and POD with o
     $ownedEvents = uniformFlowRun($owned);
     $dropshipEvents = uniformFlowRun($dropship);
 
+    // Cada escaneo emite su señal liviana por bulto (Unit*) y, en el primer bulto, el hito del envío
+    // (Shipment*): preparación → UnitPrepared + ShipmentPrepared; carga → UnitLoaded + ShipmentLoaded.
     $expected = [
+        UnitPrepared::class,
         ShipmentPrepared::class,
+        UnitLoaded::class,
         ShipmentLoaded::class,
         ShipmentDeparted::class,
         ShipmentDelivered::class,
@@ -99,7 +105,7 @@ it('runs a dropship delivery through preparation, load, departure and POD with o
 it('runs an FBD delivery through the same own-scan flow', function (): void {
     $delivery = uniformFlowStart(FulfillmentMode::Fbd);
 
-    expect(uniformFlowRun($delivery))->toHaveCount(4)
+    expect(uniformFlowRun($delivery))->toHaveCount(6)
         ->and($delivery->status())->toBe(DeliveryStatus::Delivered)
         ->and($delivery->fulfillmentMode())->toBe(FulfillmentMode::Fbd);
 });

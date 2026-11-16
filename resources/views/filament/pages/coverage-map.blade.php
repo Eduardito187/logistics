@@ -90,32 +90,36 @@
     @endphp
     <div id="coverage-map-data" hidden aria-hidden="true">{!! json_encode($coverageData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) !!}</div>
 
-    {{-- Assets vía stacks del layout (NO @@assets/@@script, que inyectan nodos raíz y rompen el root único de
-         la Page). @@push no renderiza inline: va a @@stack del layout, así la Page conserva UN SOLO root. --}}
-    @push('styles')
+    {{-- Carga de assets e init con las directivas de Livewire @@assets/@@script, el MISMO patrón probado del
+         resto de mapas del admin (Torre de control, mapa de nodos, mapa del plan, ficha de nodo, ficha de
+         cliente). @@assets inyecta Leaflet/Geoman/los helpers UNA sola vez y los conserva entre navegaciones
+         SPA; @@script corre el init al montar el componente TANTO en la carga directa por URL como tras cada
+         navegación wire:navigate, dentro del root único de la Page y con el `$wire` del componente ya
+         disponible. (Antes se usaba @@push('styles')/@@push('scripts'): el layout del panel Filament NO
+         renderiza esos @@stack ni hay render hook que los emita, así que Leaflet, Geoman, los helpers y el
+         <script> de init NUNCA llegaban a la página → `L` quedaba indefinido y el mapa no se inicializaba:
+         área en blanco, sin teselas ni controles. Ese era el bug.) --}}
+    @assets
         {{-- Leaflet + Geoman vendorizados localmente: cero dependencias externas en runtime (CERO CDN). --}}
         <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.css') }}" />
         <link rel="stylesheet" href="{{ asset('vendor/leaflet-geoman/leaflet-geoman.css') }}" />
-    @endpush
-
-    @push('scripts')
         {{-- Orden crítico: leaflet ANTES de geoman y de los helpers. Servidos desde self (CERO CDN). --}}
         <script src="{{ asset('vendor/leaflet/leaflet.js') }}"></script>
         <script src="{{ asset('js/dismac-maps.js') }}"></script>
         {{-- Libera el mapa al navegar en SPA (evita "Map container is already initialized" al revisitar). --}}
         <script src="{{ asset('js/dismac-live.js') }}"></script>
         <script src="{{ asset('vendor/leaflet-geoman/leaflet-geoman.min.js') }}"></script>
-        <script>
-        (function () {
-            'use strict';
+    @endassets
 
-            // Inicializa (o re-inicializa) el mapa de cobertura. Se llama en la carga inicial y en cada
-            // navegación SPA (livewire:navigated), porque la pila de scripts del layout NO vuelve a
-            // ejecutarse en una navegación wire:navigate. Es idempotente: la guarda anti doble-init
-            // libera el mapa previo antes de recrearlo.
+    @script
+        <script>
+            // Inicializa (o re-inicializa) el mapa de cobertura. @@script lo corre al montar el componente en
+            // la carga directa por URL y de nuevo tras cada navegación SPA (wire:navigate). Es idempotente: la
+            // guarda anti doble-init libera el mapa previo antes de recrearlo.
             function initCoverageMap() {
                 const container = document.getElementById('coverage-map');
                 if (!container) { return; } // navegamos a otra página: no hay mapa que montar
+                if (!window.L) { return; } // Leaflet aún no disponible: nada que montar (defensivo)
 
                 // Toda la init va en try/catch: una geometría o un estado inesperado jamás deben tirar el
                 // script ni dejar la página en blanco.
@@ -132,13 +136,10 @@
                     const zonesLabel = data.zonesLabel || 'Coverage Zones';
                     const nodesLabel = data.nodesLabel || 'Nodes';
 
-                    // En un script normal del layout no existe el mágico `$wire` de Livewire: resolvemos el
-                    // componente desde el DOM (el root de la Page lleva wire:id) y usamos su proxy $wire.
-                    const rootEl = container.closest('[wire\\:id]');
-                    const component = (rootEl && window.Livewire)
-                        ? window.Livewire.find(rootEl.getAttribute('wire:id'))
-                        : null;
-                    const wire = component ? component.$wire : null;
+                    // Dentro de @@script el proxy `$wire` del componente ya está disponible: lo usamos directo
+                    // (y su instancia para enganchar la limpieza SPA en DismacLive).
+                    const component = $wire.__instance;
+                    const wire = $wire;
 
                     // Guarda anti doble-init: si Leaflet ya montó un mapa en este contenedor, lo liberamos
                     // antes de recrearlo. Evita el clásico "Map container is already initialized".
@@ -338,14 +339,10 @@
                 }
             }
 
-            // Registrar el disparador UNA sola vez, aunque la pila de scripts se re-ejecute en una navegación.
-            // `livewire:navigated` se dispara tanto en la carga inicial del panel SPA como tras cada
-            // navegación wire:navigate, así el mapa se (re)monta siempre que se entra a esta página.
-            if (!window.__coverageMapBooted) {
-                window.__coverageMapBooted = true;
-                document.addEventListener('livewire:navigated', initCoverageMap);
-            }
-        })();
+            // @@script corre este bloque al montar el componente (carga directa por URL) y de nuevo tras cada
+            // navegación SPA, así el mapa se (re)monta siempre que se entra a esta página. La guarda
+            // anti doble-init de arriba lo hace seguro frente a cualquier re-ejecución.
+            initCoverageMap();
         </script>
-    @endpush
+    @endscript
 </x-filament-panels::page>

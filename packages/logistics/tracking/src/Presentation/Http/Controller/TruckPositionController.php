@@ -39,6 +39,9 @@ final class TruckPositionController
                 latitude: $request->latitude(),
                 longitude: $request->longitude(),
                 reportedAt: $request->reportedAt(),
+                speedMps: $request->speedMps(),
+                headingDeg: $request->headingDeg(),
+                accuracyM: $request->accuracyM(),
             ));
         } catch (DomainException $exception) {
             return $this->error('position_rejected', $exception->getMessage(), 422);

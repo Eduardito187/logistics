@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\EnsureDeviceToken;
+use App\Http\Middleware\EnsureVehicleCrew;
 use App\Http\Middleware\IdempotentRequests;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,7 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  * units_loaded), cliente y dirección corta, paginación opt-in, y destination.node_id en la parada.
  */
 beforeEach(function (): void {
-    $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+    $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class, EnsureVehicleCrew::class]);
     $this->actingAs(User::factory()->create(), 'sanctum');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',

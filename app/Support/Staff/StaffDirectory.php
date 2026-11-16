@@ -169,7 +169,7 @@ final class StaffDirectory
 
     /**
      * Actividad de la persona, de lo más reciente a lo más viejo. `type` acota a una fuente:
-     * `scan` (escaneos en terreno), `assignment` (vehículo asignado), `checklist` (inspección pre-salida),
+     * `scan` (escaneos en terreno), `assignment` (vehículo asignado o cambiado), `checklist` (inspección pre-salida),
      * `device` (último uso de un dispositivo). Rango opcional por fecha (Y-m-d, inclusive).
      *
      * @return array{items: list<array<string, mixed>>, total: int}
@@ -416,6 +416,10 @@ final class StaffDirectory
                 ->where('driver_id', $driverId)
                 ->whereDate('assembled_for', '<=', now()->toDateString())
                 ->orderByDesc('assembled_for')
+                // Un chofer tiene una sola por día; si por datos viejos hubiera más, manda la armada más
+                // tarde (nunca la primera que aparezca).
+                ->orderByRaw('created_at desc nulls last')
+                ->orderByDesc('id')
                 ->first(['id', 'vehicle_id', 'assembled_for']);
             if (!$crew instanceof stdClass) {
                 return null;
@@ -489,6 +493,10 @@ final class StaffDirectory
     }
 
     /**
+     * Asignaciones de camión del chofer. Por cada día con tripulación vigente sale un `vehicle_assigned`
+     * (con el camión con el que EMPEZÓ el día) y, por cada vez que se lo cambiaron, un `vehicle_changed`
+     * con el camión anterior y el nuevo. La tripulación reemplazada no cuenta como otra asignación.
+     *
      * @return array{0: list<array<string, mixed>>, 1: int}
      */
     private function assignments(string $driverId, ?string $from, ?string $to, int $window): array
@@ -497,17 +505,74 @@ final class StaffDirectory
         $this->between($query, 'c.assembled_for', $from, $to);
 
         $total = (clone $query)->count();
+        $changes = $this->vehicleChanges($driverId, $from, $to, $window);
+
         $items = [];
-        foreach ($query->orderByDesc('c.assembled_for')->limit($window)->get(['c.assembled_for', 'v.plate']) as $row) {
+        $rows = $query->orderByDesc('c.assembled_for')->orderByRaw('c.created_at desc nulls last')->limit($window)->get(['c.assembled_for', 'v.plate']);
+        foreach ($rows as $row) {
+            $day = substr((string) $row->assembled_for, 0, 10);
+            $plate = $changes['first_plates'][$day] ?? $this->str($row->plate ?? null);
             $items[] = [
                 'type' => 'assignment',
                 'at' => $this->iso($row->assembled_for ?? null) ?? '',
                 'title' => 'vehicle_assigned',
-                'detail' => $this->str($row->plate ?? null),
+                'detail' => $plate,
+                'plate' => $plate,
+                'previous_plate' => null,
             ];
         }
 
-        return [$items, $total];
+        return [[...$items, ...$changes['items']], $total + $changes['total']];
+    }
+
+    /**
+     * Cambios de camión del chofer (mismo día, otro camión), del más reciente al más viejo, leídos del
+     * rastro de tripulaciones reemplazadas. `first_plates` da, por día, la placa con la que empezó (la del
+     * primer cambio). Tolerante: sin la tabla de historial no hay cambios que mostrar.
+     *
+     * @return array{items: list<array<string, mixed>>, total: int, first_plates: array<string, string>}
+     */
+    private function vehicleChanges(string $driverId, ?string $from, ?string $to, int $window): array
+    {
+        $items = [];
+        $firstPlates = [];
+        $total = 0;
+
+        try {
+            $query = DB::table('fleet_crew_history as h')
+                ->leftJoin('fleet_vehicles as old_v', 'old_v.id', '=', 'h.vehicle_id')
+                ->leftJoin('fleet_vehicles as new_v', 'new_v.id', '=', 'h.new_vehicle_id')
+                ->where('h.driver_id', $driverId)
+                ->where('h.reason', 'replaced')
+                ->whereNotNull('h.new_vehicle_id')
+                ->whereColumn('h.new_vehicle_id', '<>', 'h.vehicle_id');
+            $this->between($query, 'h.assembled_for', $from, $to);
+
+            $total = (clone $query)->count();
+            $rows = $query->orderByDesc('h.retired_at')->limit($window)
+                ->get(['h.assembled_for', 'h.retired_at', 'old_v.plate as previous_plate', 'new_v.plate as plate']);
+
+            foreach ($rows as $row) {
+                $previous = $this->str($row->previous_plate ?? null);
+                $current = $this->str($row->plate ?? null);
+                $items[] = [
+                    'type' => 'assignment',
+                    'at' => $this->iso($row->retired_at ?? null) ?? '',
+                    'title' => 'vehicle_changed',
+                    'detail' => ($previous ?? 'sin placa').' → '.($current ?? 'sin placa'),
+                    'plate' => $current,
+                    'previous_plate' => $previous,
+                ];
+                // Vienen del más reciente al más viejo: el último que pisa es el primer cambio del día.
+                if ($previous !== null) {
+                    $firstPlates[substr((string) $row->assembled_for, 0, 10)] = $previous;
+                }
+            }
+        } catch (Throwable) {
+            // historial no disponible en este entorno: se muestran solo las asignaciones.
+        }
+
+        return ['items' => $items, 'total' => $total, 'first_plates' => $firstPlates];
     }
 
     /**

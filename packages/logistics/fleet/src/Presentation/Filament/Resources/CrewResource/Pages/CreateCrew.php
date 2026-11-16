@@ -9,6 +9,7 @@ use Filament\Resources\Pages\CreateRecord;
 use Filament\Support\Exceptions\Halt;
 use Illuminate\Database\Eloquent\Model;
 use Logistics\Fleet\Application\Command\AssembleCrew\AssembleCrew;
+use Logistics\Fleet\Domain\Exception\CrewConflict;
 use Logistics\Fleet\Domain\Exception\FleetException;
 use Logistics\Fleet\Infrastructure\Persistence\Eloquent\Model\CrewModel;
 use Logistics\Fleet\Presentation\Filament\Resources\CrewResource;
@@ -17,7 +18,8 @@ use Logistics\Shared\Application\Command\CommandBus;
 /**
  * Armado de una tripulación desde el admin.
  *
- * Despacha AssembleCrew por el CommandBus (el UUID lo genera el dominio) y relee la tripulación recién
+ * Despacha AssembleCrew por el CommandBus (el UUID lo genera el dominio; si el chofer ya tenía tripulación
+ * ese día, la reemplaza) y relee la tripulación recién
  * creada por chofer + vehículo + fecha, tomando la más reciente, para que Filament muestre el resultado.
  */
 final class CreateCrew extends CreateRecord
@@ -48,8 +50,9 @@ final class CreateCrew extends CreateRecord
                 shiftStartsAt: $shiftStartsAt,
                 shiftEndsAt: $shiftEndsAt,
             ));
-        } catch (FleetException $e) {
-            // Regla de negocio (vehículo no apto, turno inválido): se muestra el motivo y no se arma nada.
+        } catch (FleetException | CrewConflict $e) {
+            // Regla de negocio (vehículo no apto, turno inválido, camión ya tomado por otro chofer ese día):
+            // se muestra el motivo y no se arma nada.
             Notification::make()
                 ->title(__('Could not assemble the crew'))
                 ->body($e->getMessage())

@@ -40,6 +40,9 @@ final class TrackingMapper
             'last_lat' => $position !== null ? (string) $position->point->latitude : null,
             'last_lng' => $position !== null ? (string) $position->point->longitude : null,
             'last_position_at' => $position?->reportedAt->format(DateTimeImmutable::ATOM),
+            'last_speed_mps' => $position?->speedMps,
+            'last_heading_deg' => $position?->headingDeg,
+            'last_accuracy_m' => $position?->accuracyM,
         ];
 
         // `delivered_at` solo se escribe cuando el dominio lo conoce: el dominio nunca lo borra, y omitirlo
@@ -76,6 +79,9 @@ final class TrackingMapper
             ? TruckPosition::at(
                 GeoPoint::of((float) $record->last_lat, (float) $record->last_lng),
                 $record->last_position_at->toDateTimeImmutable(),
+                $record->last_speed_mps !== null ? (float) $record->last_speed_mps : null,
+                $record->last_heading_deg !== null ? (float) $record->last_heading_deg : null,
+                $record->last_accuracy_m !== null ? (float) $record->last_accuracy_m : null,
             )
             : null;
 
