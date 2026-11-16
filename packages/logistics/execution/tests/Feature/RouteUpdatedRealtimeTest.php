@@ -280,6 +280,30 @@ it('toma del hecho lo que traiga: dos camiones en un cambio de camión, el día 
     Bus::assertDispatchedTimes(BroadcastRouteUpdated::class, 4);
 });
 
+it('un cambio de camión de la tripulación (reasignación manual) avisa al chofer por el camión nuevo y su día', function (): void {
+    rurEnableSockets();
+    $driverId = rurUuid();
+    $previousVehicle = rurUuid();
+    $newVehicle = rurUuid();
+
+    // Payload real de fleet.crew_vehicle_changed (sin route_id: la ruta puede ya existir).
+    rurObserve('fleet.crew_vehicle_changed', [
+        'previous_crew_id' => rurUuid(),
+        'driver_id' => $driverId,
+        'previous_vehicle_id' => $previousVehicle,
+        'vehicle_id' => $newVehicle,
+        'helper_ids' => [],
+        'assembled_for' => '2026-11-11T00:00:00+00:00',
+        'shift' => null,
+    ]);
+
+    Bus::assertDispatchedTimes(BroadcastRouteUpdated::class, 1);
+    Bus::assertDispatched(
+        BroadcastRouteUpdated::class,
+        static fn (BroadcastRouteUpdated $job): bool => $job->vehicleIds === [$newVehicle] && $job->date === RUR_NEXT_DATE && $job->routeId === null,
+    );
+});
+
 it('varios hechos seguidos de la misma ruta se avisan una sola vez; otra ruta tiene su propia ventana', function (): void {
     rurEnableSockets();
     $routeId = rurUuid();
