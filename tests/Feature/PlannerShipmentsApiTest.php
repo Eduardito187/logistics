@@ -315,9 +315,9 @@ it('la lista trae delivery_evidence: null sin entregar y la evidencia que quedó
 
     expect($items[$pending->id])->toHaveKey('delivery_evidence')
         ->and($items[$pending->id]['delivery_evidence'])->toBeNull()
-        ->and($items[$signed->id]['delivery_evidence'])->toBe(['signature' => true, 'photo' => false, 'document' => true])
-        ->and($items[$photographed->id]['delivery_evidence'])->toBe(['signature' => false, 'photo' => true, 'document' => false])
-        ->and($items[$bare->id]['delivery_evidence'])->toBe(['signature' => false, 'photo' => false, 'document' => false]);
+        ->and($items[$signed->id]['delivery_evidence'])->toBe(['signature' => true, 'photo' => false, 'document' => true, 'with_shortage' => false, 'missing_count' => null])
+        ->and($items[$photographed->id]['delivery_evidence'])->toBe(['signature' => false, 'photo' => true, 'document' => false, 'with_shortage' => false, 'missing_count' => null])
+        ->and($items[$bare->id]['delivery_evidence'])->toBe(['signature' => false, 'photo' => false, 'document' => false, 'with_shortage' => false, 'missing_count' => null]);
 });
 
 it('la ficha del envío trae delivery_evidence con el mismo criterio', function (): void {
@@ -332,7 +332,7 @@ it('la ficha del envío trae delivery_evidence con el mismo criterio', function 
 
     test()->getJson('/api/v1/app/shipments/'.$delivered->id)
         ->assertOk()
-        ->assertJsonPath('data.delivery_evidence', ['signature' => true, 'photo' => true, 'document' => false]);
+        ->assertJsonPath('data.delivery_evidence', ['signature' => true, 'photo' => true, 'document' => false, 'with_shortage' => false, 'missing_count' => null]);
 
     $response = test()->getJson('/api/v1/app/shipments/'.$pending->id)->assertOk();
 
