@@ -365,6 +365,8 @@ final class VehicleRoute extends AggregateRoot
      * Agrega un envío a la ruta como parada pendiente al final de la secuencia (asignación manual desde el
      * andén: el preparador elige el camión de reparto). Idempotente: si el envío ya es una parada de esta
      * ruta, no hace nada. Reabre el estado a InProgress si la ruta estaba terminada (reasignación).
+     *
+     * La parada guarda las coordenadas del destino (si el envío las tiene) y el momento en que se sumó.
      */
     public function attachShipment(
         RouteStopId $stopId,
@@ -373,6 +375,8 @@ final class VehicleRoute extends AggregateRoot
         ?string $customerName,
         ?string $address,
         DateTimeImmutable $at,
+        ?float $lat = null,
+        ?float $lng = null,
     ): void {
         if ($this->hasShipment($shipmentId)) {
             return;
@@ -390,8 +394,9 @@ final class VehicleRoute extends AggregateRoot
             $customerName,
             $address,
             null,
-            null,
-            null,
+            $lat,
+            $lng,
+            $at,
         );
         $this->refreshStatus();
 
@@ -448,6 +453,59 @@ final class VehicleRoute extends AggregateRoot
         ));
 
         return true;
+    }
+
+    /**
+     * Quita de la ruta las paradas de los envíos dados porque NO le corresponden (pedidos arrastrados de otro
+     * día, o envíos que ya estaban cerrados antes del día de la ruta). Es un SANEO, no un hecho de negocio:
+     * no graba eventos y no distingue el estado de la parada (quien llama decide cuáles salen). Recompacta la
+     * secuencia 1..n para que «parada N de M» cuente solo las paradas reales. Devuelve cuántas quitó.
+     *
+     * No recalcula el estado de la ruta: para persistir el saneo, llamar después a
+     * {@see recalculateStatusAfterCleanup()}.
+     *
+     * @param list<string> $shipmentIds
+     */
+    public function dropStops(array $shipmentIds): int
+    {
+        if ($shipmentIds === []) {
+            return 0;
+        }
+
+        $before = count($this->stops);
+        $this->stops = array_values(array_filter(
+            $this->stops,
+            static fn (RouteStop $stop): bool => !in_array($stop->shipmentId(), $shipmentIds, true),
+        ));
+
+        foreach ($this->stops as $index => $stop) {
+            $stop->resequence($index + 1);
+        }
+
+        return $before - count($this->stops);
+    }
+
+    /**
+     * Deja el estado de la ruta coherente con las paradas que quedaron tras un saneo ({@see dropStops()}),
+     * sin grabar eventos. Una ruta suspendida o ya cerrada por el chofer conserva su estado; sin pendientes
+     * queda Completed; si nunca arrancó (sin inicio ni paradas atendidas) sigue Planned; si no, InProgress.
+     */
+    public function recalculateStatusAfterCleanup(): void
+    {
+        if ($this->status === RouteStatus::Suspended || $this->closedAt !== null) {
+            return;
+        }
+
+        if ($this->stopsRemaining() === 0) {
+            $this->status = RouteStatus::Completed;
+
+            return;
+        }
+
+        $untouched = $this->startedAt === null && $this->settledCount() === 0;
+        $this->status = $untouched && $this->status === RouteStatus::Planned
+            ? RouteStatus::Planned
+            : RouteStatus::InProgress;
     }
 
     /**

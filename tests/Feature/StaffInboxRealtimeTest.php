@@ -145,6 +145,7 @@ it('la configuración entrega los canales de cada tema según rol y ciudad, y so
         'user' => ['private-user.'.$supervisor->getKey()],
         'fleet' => ['private-fleet.all'],
         'planning' => ['private-planning.all'],
+        'tracking' => ['private-tracking.all'],
     ]);
     $sign($supervisorToken, 'private-fleet.all')->assertOk();
     $sign($supervisorToken, 'private-planning.all')->assertOk();
@@ -156,6 +157,7 @@ it('la configuración entrega los canales de cada tema según rol y ciudad, y so
         'user' => ['private-user.'.$planner->getKey()],
         'fleet' => ['private-fleet.city.santa_cruz'],
         'planning' => ['private-planning.city.santa_cruz'],
+        'tracking' => ['private-tracking.city.santa_cruz'],
     ]);
     $sign($plannerToken, 'private-fleet.city.santa_cruz')->assertOk();
     $sign($plannerToken, 'private-planning.city.santa_cruz')->assertOk();

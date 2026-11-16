@@ -81,4 +81,16 @@ return [
     'scan_batch' => [
         'max_items' => (int) env('EXECUTION_SCAN_BATCH_MAX_ITEMS', 200),
     ],
+
+    // Tiempo real de la hoja de ruta del chofer: señal `route.updated` por el canal privado de cada persona
+    // de la tripulación (`private-user.{id}`) cuando cambia su ruta. Funciona sin ninguna variable: solo
+    // emite si hay un transporte de sockets (`BROADCAST_CONNECTION` distinto de null/log).
+    'realtime' => [
+        // Interruptor propio de esta señal (el resto del tiempo real no se toca).
+        'enabled' => (bool) env('EXECUTION_REALTIME_ENABLED', true),
+
+        // Ventana anti-ráfaga en segundos: varios cambios seguidos de una misma ruta se avisan una sola vez,
+        // y la señal sale con esa misma demora para que la ruta ya incluya toda la ráfaga.
+        'debounce_seconds' => max(1, (int) env('EXECUTION_REALTIME_DEBOUNCE_SECONDS', 2)),
+    ],
 ];

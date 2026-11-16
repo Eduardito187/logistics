@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\EnsureDeviceToken;
+use App\Http\Middleware\EnsureVehicleCrew;
 use App\Http\Middleware\IdempotentRequests;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,7 @@ beforeEach(function (): void {
         test()->markTestSkipped('fleet_vehicles.unfit_since todavía no existe (migración de Flota).');
     }
 
-    $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+    $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class, EnsureVehicleCrew::class]);
     $this->actingAs(User::factory()->create(), 'sanctum');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',

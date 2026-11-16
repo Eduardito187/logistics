@@ -63,8 +63,10 @@ use Logistics\Execution\Application\Contract\NodeReceptionListReader;
 use Logistics\Execution\Application\Contract\NodeReceptionTargetReader;
 use Logistics\Execution\Application\Contract\PlannedRouteStopsProvider;
 use Logistics\Execution\Application\Contract\RouteGeometryReader;
+use Logistics\Execution\Application\Contract\RouteStopsReconciler;
 use Logistics\Execution\Application\Contract\ScanBatchLedger;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
+use Logistics\Execution\Application\Contract\ShipmentRouteFactsReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitIdsReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitProductReader;
 use Logistics\Execution\Application\Contract\StopEnrichmentReader;
@@ -90,6 +92,7 @@ use Logistics\Execution\Application\Query\ResolveNodeReceptionTarget\ResolveNode
 use Logistics\Execution\Application\Query\ResolveNodeReceptionTarget\ResolveNodeReceptionTargetHandler;
 use Logistics\Execution\Application\Query\VerifyLabel\VerifyLabel;
 use Logistics\Execution\Application\Query\VerifyLabel\VerifyLabelHandler;
+use Logistics\Execution\Application\Service\StaleRouteStops;
 use Logistics\Execution\Domain\Contract\DeliveryEvidenceRepository;
 use Logistics\Execution\Domain\Contract\DeliveryIssueRepository;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
@@ -102,6 +105,7 @@ use Logistics\Execution\Infrastructure\Console\OpenMissingDeliveriesCommand;
 use Logistics\Execution\Infrastructure\Console\PruneScanEventsCommand;
 use Logistics\Execution\Infrastructure\Labels\SodiumLabelVerificationGateway;
 use Logistics\Execution\Infrastructure\Labels\StubLabelVerificationGateway;
+use Logistics\Execution\Infrastructure\Persistence\Eloquent\DbRouteStopsReconciler;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryEvidenceRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryIssueRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryRepository;
@@ -115,6 +119,7 @@ use Logistics\Execution\Infrastructure\ReadModel\DbPlannedRouteStopsProvider;
 use Logistics\Execution\Infrastructure\ReadModel\DbRouteGeometryReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbScanBatchLedger;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentFulfillmentReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbShipmentRouteFactsReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitIdsReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitProductReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbStopEnrichmentReader;
@@ -122,6 +127,7 @@ use Logistics\Execution\Infrastructure\ReadModel\DbVehicleFitnessReader;
 use Logistics\Execution\Infrastructure\ReadModel\EloquentDeliveryEvidenceReader;
 use Logistics\Execution\Infrastructure\ReadModel\QueryBusTransferDestinationReader;
 use Logistics\Execution\Infrastructure\Storage\FilesystemEvidenceStorage;
+use Logistics\Execution\Presentation\Console\ReconcileRouteStopsCommand;
 use Logistics\Execution\Presentation\Http\ServeEvidenceFileController;
 use Logistics\Execution\Presentation\Support\EvidenceFileUrl;
 use Logistics\Outbox\Application\RecordDomainEvents;
@@ -216,6 +222,21 @@ final class ExecutionServiceProvider extends ServiceProvider
         // Paradas del plan publicado para armar la ruta del día (el backend ensambla; la app no manda paradas).
         $this->app->bind(PlannedRouteStopsProvider::class, static function ($app): PlannedRouteStopsProvider {
             return new DbPlannedRouteStopsProvider($app->make('db')->connection());
+        });
+        // Hechos del envío para la regla de la ruta del día: día de cierre (no mostrar un envío ya entregado en
+        // una fecha anterior) y coordenadas del destino. SIN este binding, StaleRouteStops y el filtro de
+        // ensamblado quedaban en null (parámetros opcionales) y la ruta arrastraba paradas de otros días.
+        $this->app->bind(ShipmentRouteFactsReader::class, static function ($app): ShipmentRouteFactsReader {
+            return new DbShipmentRouteFactsReader($app->make('db')->connection());
+        });
+        // Saneo de las paradas de más en rutas no cerradas (comando logistics:execution:reconcile-route-stops).
+        $this->app->bind(RouteStopsReconciler::class, static function ($app): RouteStopsReconciler {
+            return new DbRouteStopsReconciler(
+                $app->make('db')->connection(),
+                $app->make(VehicleRouteRepository::class),
+                $app->make(PlannedRouteStopsProvider::class),
+                $app->make(StaleRouteStops::class),
+            );
         });
         // Referencia legible del envío (pedido/cliente/dirección) para las entregas del chofer: NUNCA UUID.
         $this->app->bind(DeliveryReferenceReader::class, static function ($app): DeliveryReferenceReader {
@@ -392,7 +413,13 @@ final class ExecutionServiceProvider extends ServiceProvider
         // Comandos de ops (no se agendan: manual/ops). Poda de escaneos (C7) y backfill de consistencia que
         // avanza las entregas atascadas en PENDING a LOADED.
         if ($this->app->runningInConsole()) {
-            $this->commands([PruneScanEventsCommand::class, AdvanceStuckDeliveriesCommand::class, OpenMissingDeliveriesCommand::class]);
+            $this->commands([
+                PruneScanEventsCommand::class,
+                AdvanceStuckDeliveriesCommand::class,
+                OpenMissingDeliveriesCommand::class,
+                // Saneo de las paradas de más en rutas no cerradas (ruta del día arrastrada de otros días).
+                ReconcileRouteStopsCommand::class,
+            ]);
         }
     }
 }

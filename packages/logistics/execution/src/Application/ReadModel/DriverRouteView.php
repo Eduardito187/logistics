@@ -111,6 +111,8 @@ final readonly class DriverRouteView
             $data['unit_ids'] ?? [],
             $podConfirmation,
             $podPhotoUrl,
+            $data['lat'] ?? null,
+            $data['lng'] ?? null,
         );
     }
 

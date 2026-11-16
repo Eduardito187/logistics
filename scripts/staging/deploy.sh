@@ -132,6 +132,15 @@ dc exec -T app php artisan logistics:tracking:reconcile-dates --force \
     || echo "AVISO: la puesta al día de fechas del seguimiento falló; el deploy sigue. Revisar logistics:tracking:reconcile-dates."
 endstep
 
+step "Tripulaciones: una vigente por chofer/día; rutas: solo paradas del plan del día (idempotente)"
+# Saneo de los dos críticos reportados en staging: tripulaciones duplicadas y paradas arrastradas. No emiten
+# eventos. NO bloquean el deploy si fallan.
+dc exec -T app php artisan logistics:fleet:reconcile-crews --force \
+    || echo "AVISO: el saneo de tripulaciones falló; el deploy sigue. Revisar logistics:fleet:reconcile-crews."
+dc exec -T app php artisan logistics:execution:reconcile-route-stops --force \
+    || echo "AVISO: el saneo de paradas de ruta falló; el deploy sigue. Revisar logistics:execution:reconcile-route-stops."
+endstep
+
 step "Smoke test HTTP"
 port="$(grep -E '^STAGING_HTTP_PORT=' "$env_file" | tail -1 | cut -d= -f2)"
 port="${port:-8110}"

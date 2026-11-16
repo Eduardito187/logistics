@@ -26,7 +26,7 @@ use Logistics\Shared\Presentation\Realtime\RealtimeChannels;
 final class UserRealtimeChannels
 {
     /** Temas con alcance por ciudad. */
-    private const array CITY_TOPICS = [RealtimeChannels::TOPIC_FLEET, RealtimeChannels::TOPIC_PLANNING];
+    private const array CITY_TOPICS = [RealtimeChannels::TOPIC_FLEET, RealtimeChannels::TOPIC_PLANNING, RealtimeChannels::TOPIC_TRACKING];
 
     /**
      * Canales por tema, con el prefijo `private-` que usa el cliente al suscribirse. Un tema sin canales no

@@ -8,12 +8,15 @@ use DateTimeImmutable;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Query\Builder;
 use Logistics\Fleet\Application\Contract\CrewDirectory;
+use Logistics\Fleet\Domain\ValueObject\CrewRetirementReason;
+use Logistics\Fleet\Infrastructure\Persistence\CrewHistoryWriter;
 use stdClass;
 use Throwable;
 
 /**
  * Lee las tripulaciones de `fleet_crews` por el query builder y resuelve placa y nombres en lote (una
- * consulta por tabla, sin N+1). Solo lectura salvo la baja de la asignación.
+ * consulta por tabla, sin N+1). Solo lectura salvo la baja de la asignación. La tabla guarda solo las
+ * tripulaciones VIGENTES (las reemplazadas o quitadas pasan a `fleet_crew_history`).
  *
  * @phpstan-import-type CrewRow from CrewDirectory
  */
@@ -28,7 +31,9 @@ final readonly class DbCrewDirectory implements CrewDirectory
         $query = $this->filtered($date, $vehicleId, $driverId);
         $total = (clone $query)->count();
 
+        // De la más reciente a la más vieja; dentro de un día, la armada más tarde primero.
         $rows = $query->orderByDesc('assembled_for')
+            ->orderByRaw('created_at desc nulls last')
             ->orderByDesc('id')
             ->limit(max(1, $limit))
             ->offset(max(0, $offset))
@@ -50,7 +55,9 @@ final readonly class DbCrewDirectory implements CrewDirectory
 
     public function remove(string $crewId): bool
     {
-        return $this->connections->connection()->table('fleet_crews')->where('id', $crewId)->delete() > 0;
+        // Quitar no borra el rastro: la fila pasa al historial con el motivo «disuelta».
+        return (new CrewHistoryWriter($this->connections->connection()))
+            ->retire($crewId, CrewRetirementReason::Disbanded->value);
     }
 
     private function filtered(?string $date, ?string $vehicleId, ?string $driverId): Builder

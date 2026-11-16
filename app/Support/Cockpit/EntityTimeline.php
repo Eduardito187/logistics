@@ -48,6 +48,8 @@ final class EntityTimeline
         'labels.labels_emitted' => 'Etiquetas emitidas',
         'fleet.vehicle_status_changed' => 'Cambio de estado del vehículo',
         'fleet.crew_assembled' => 'Tripulación armada',
+        'fleet.crew_vehicle_changed' => 'Camión cambiado',
+        'fleet.crew_disbanded' => 'Tripulación sin efecto',
         'fleet.documents_expiry_alerted' => 'Documentos por vencer',
         'fleetops.departure_registered' => 'Salida registrada',
         'fleetops.departure_closed' => 'Salida cerrada',

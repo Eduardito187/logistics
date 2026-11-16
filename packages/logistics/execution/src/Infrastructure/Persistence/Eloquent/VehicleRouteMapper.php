@@ -59,6 +59,7 @@ final class VehicleRouteMapper
             'settled_at' => $stop->settledAt()?->format(DateTimeInterface::ATOM),
             'arrived_at' => $stop->arrivedAt()?->format(DateTimeInterface::ATOM),
             'arrival_source' => $stop->arrivalSource()?->value,
+            'attached_at' => $stop->attachedAt()?->format(DateTimeInterface::ATOM),
         ];
     }
 
@@ -103,6 +104,7 @@ final class VehicleRouteMapper
             $record->settled_at !== null ? new DateTimeImmutable($record->settled_at) : null,
             self::date($record->arrived_at),
             $record->arrival_source !== null ? ArrivalSource::tryFrom($record->arrival_source) : null,
+            self::date($record->attached_at),
         );
     }
 

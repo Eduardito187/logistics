@@ -7,6 +7,7 @@ namespace Logistics\Execution\Application\Query\GetDriverRoute;
 use Logistics\Execution\Application\Contract\RouteGeometryReader;
 use Logistics\Execution\Application\Contract\StopEnrichmentReader;
 use Logistics\Execution\Application\ReadModel\DriverRouteView;
+use Logistics\Execution\Application\Service\StaleRouteStops;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\Model\VehicleRoute;
@@ -23,6 +24,7 @@ final class GetDriverRouteHandler implements QueryHandler
         private readonly VehicleRouteRepository $routes,
         private readonly StopEnrichmentReader $stopEnrichment,
         private readonly RouteGeometryReader $routeGeometry,
+        private readonly StaleRouteStops $staleStops,
     ) {}
 
     public function handle(Query $query): ?DriverRouteView
@@ -38,6 +40,11 @@ final class GetDriverRouteHandler implements QueryHandler
         if ($route === null) {
             return null;
         }
+
+        // Lectura defensiva: aunque la ruta tenga filas viejas, no se devuelven paradas de envíos que ya
+        // estaban cerrados antes del día de la ruta, y los contadores («parada N de M») cuentan solo las
+        // paradas reales. La copia cargada no se persiste.
+        $route = $this->staleStops->hideFrom($route);
 
         // Enriquecimiento cross-context (shipments/planning) por lectura directa, fuera del dominio:
         // teléfono + referencia + líneas de cada parada (en lote) y la geometría de la ruta del plan.

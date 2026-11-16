@@ -142,7 +142,7 @@ final class PartnersDirectory extends Page
                 $contact = $this->str($r->contact_name) ?? $this->str($r->contact_phone);
                 $out[] = [
                     'name' => (string) $r->legal_name,
-                    'type' => 'Vendedor',
+                    'type' => 'Seller',
                     'tone' => 'positive',
                     'document' => $this->str($r->tax_id),
                     'contact' => $contact,

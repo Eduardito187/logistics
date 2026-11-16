@@ -22,6 +22,8 @@ final class RealtimeChannels
 
     public const string TOPIC_PLANNING = 'planning';
 
+    public const string TOPIC_TRACKING = 'tracking';
+
     /**
      * Canales a los que se EMITE un hecho del tema, según la ciudad a la que pertenece.
      *

@@ -37,8 +37,14 @@ return [
         // (lo mismo que la página «Dispatch calendar» del admin web). Admin, supervisor y planificador.
         Route::prefix('delivery-calendar')->name('delivery-calendar.')->middleware('role:supervisor,planificador,admin')->group(function (): void {
             Route::get('/', [DeliveryCalendarController::class, 'index'])->name('index');
+            // Un día en detalle: bloqueo de día + franjas horarias (cupo, consumo y bloqueo por franja).
+            Route::get('day', [DeliveryCalendarController::class, 'day'])->name('day');
             Route::post('blocked', [DeliveryCalendarController::class, 'block'])->name('block');
             Route::delete('blocked', [DeliveryCalendarController::class, 'unblock'])->name('unblock');
+            // Bloqueo/desbloqueo por FRANJA horaria. Ruta separada de `blocked` (día entero) a propósito:
+            // `blocked-slots` es un path distinto de `blocked`, así que no hay colisión de rutas.
+            Route::post('blocked-slots', [DeliveryCalendarController::class, 'blockSlot'])->name('block-slot');
+            Route::delete('blocked-slots', [DeliveryCalendarController::class, 'unblockSlot'])->name('unblock-slot');
             Route::post('open', [DeliveryCalendarController::class, 'open'])->name('open');
             // Catálogos para armar la activación (municipios, franjas, unidades, ventanas por defecto).
             Route::get('options', [DeliveryCalendarController::class, 'options'])->name('options');

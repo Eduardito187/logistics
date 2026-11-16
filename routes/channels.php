@@ -7,6 +7,8 @@ use App\Models\User;
 use App\Support\Realtime\UserRealtimeChannels;
 use Illuminate\Support\Facades\Broadcast;
 use Logistics\Shared\Presentation\Realtime\RealtimeChannels;
+use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
+use Logistics\Shipments\Presentation\Http\Support\ScopeActorResolver;
 
 /*
 | Autorización de canales de broadcasting (seguimiento en tiempo real — ADR 016).
@@ -33,7 +35,7 @@ Broadcast::channel('user.{id}', static function (User $user, string $id): bool {
  * de una ciudad. Quién entra a cuál lo decide UserRealtimeChannels, la misma regla con la que
  * GET /api/v1/app/broadcasting/config le dice a la app a qué suscribirse.
  */
-foreach ([RealtimeChannels::TOPIC_FLEET, RealtimeChannels::TOPIC_PLANNING] as $topic) {
+foreach ([RealtimeChannels::TOPIC_FLEET, RealtimeChannels::TOPIC_PLANNING, RealtimeChannels::TOPIC_TRACKING] as $topic) {
     Broadcast::channel($topic.'.all', static function (User $user) use ($topic): bool {
         return UserRealtimeChannels::canJoinAll($user, $topic);
     });
@@ -87,4 +89,25 @@ Broadcast::channel('shipment.{shipmentId}', static function (?User $user, string
     // oficina: el servidor de sockets ya es alcanzable desde internet y un canal abierto dejaría a
     // cualquier cuenta de la app seguir cualquier envío.
     return $user instanceof User && $user->hasAnyRole(Role::Admin, Role::Supervisor);
+});
+
+/**
+ * Canal de la FICHA de un pedido (`private-order.{shipment_id}`): por acá llega `tracking.updated` cada vez
+ * que cambia el estado visible del pedido (incluidos cancelado, reprogramado y devuelto), su avance por
+ * producto o la ruta que lo transporta.
+ *
+ * Oficina (admin/supervisor) siempre; el resto del personal solo si ese envío está en su alcance operativo
+ * (misma regla que el middleware order.scope y la consulta de pedidos). Así un chofer o una tienda que mira
+ * un pedido suyo recibe la señal, y nadie ve pedidos fuera de su alcance.
+ */
+Broadcast::channel('order.{shipmentId}', static function (?User $user, string $shipmentId): bool {
+    if (!$user instanceof User) {
+        return false;
+    }
+
+    if ($user->hasAnyRole(Role::Admin, Role::Supervisor)) {
+        return true;
+    }
+
+    return app(ShipmentScopeReader::class)->inScope(ScopeActorResolver::fromUser($user), [$shipmentId]) !== [];
 });
