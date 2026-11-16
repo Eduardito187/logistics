@@ -17,9 +17,15 @@ use Illuminate\Foundation\Events\Dispatchable;
  * que la app del chofer vuelva a pedir su ruta: el contenido (paradas, estados, ETAs) nunca viaja por el
  * socket.
  *
- * Carga: `{"route_id": "<uuid>"|null, "vehicle_id": "<uuid>"}`. `route_id` va en null cuando el cambio es del
- * camión y todavía no tiene una ruta armada para ese día (p. ej. recién se le asignó la tripulación o un
+ * Carga base: `{"route_id": "<uuid>"|null, "vehicle_id": "<uuid>"}`. `route_id` va en null cuando el cambio es
+ * del camión y todavía no tiene una ruta armada para ese día (p. ej. recién se le asignó la tripulación o un
  * pedido): la app igual refresca lo que muestra de ese vehículo.
+ *
+ * Campos ADITIVOS (opcionales, solo cuando el motor único de ETA respondió): `off_route` (bool, el camión se
+ * salió de su ruta planificada), `rerouted` (bool, la ETA se recalculó desde la posición actual hacia la
+ * siguiente parada) y `stops` (lista `{shipment_id, eta_at}` con la ETA viva por parada pendiente). La app
+ * puede usarlos directo o, como respaldo, re-pedir `GET /app/vehicles/{id}/route`, que trae lo mismo. Cuando
+ * el motor no está (telemetría apagada) la carga es la histórica de dos campos, sin romper compatibilidad.
  *
  * Un mismo evento lleva varios canales (chofer y ayudantes): el transporte Pusher los publica en una sola
  * llamada. Se difunde por la COLA (`ShouldBroadcast`, nunca `ShouldBroadcastNow`) y con un solo intento:
@@ -44,12 +50,16 @@ final class RouteUpdated implements ShouldBroadcast
     public int $timeout = 15;
 
     /**
-     * @param list<int> $userIds Destinatarios (ids enteros de usuario); a lo sumo MAX_CHANNELS.
+     * @param list<int>                                        $userIds Destinatarios (ids enteros de usuario); a lo sumo MAX_CHANNELS.
+     * @param list<array{shipment_id: string, eta_at: string}> $stops   ETA viva por parada pendiente (vacío = no se incluye)
      */
     public function __construct(
         public readonly array $userIds,
         public readonly ?string $routeId,
         public readonly string $vehicleId,
+        public readonly ?bool $offRoute = null,
+        public readonly ?bool $rerouted = null,
+        public readonly array $stops = [],
     ) {}
 
     /**
@@ -81,11 +91,24 @@ final class RouteUpdated implements ShouldBroadcast
     }
 
     /**
-     * @return array{route_id: string|null, vehicle_id: string}
+     * @return array<string, mixed>
      */
     public function broadcastWith(): array
     {
-        return ['route_id' => $this->routeId, 'vehicle_id' => $this->vehicleId];
+        $payload = ['route_id' => $this->routeId, 'vehicle_id' => $this->vehicleId];
+
+        // Campos aditivos: solo viajan cuando el motor de ETA aportó el estado (compatibilidad hacia atrás).
+        if ($this->offRoute !== null) {
+            $payload['off_route'] = $this->offRoute;
+        }
+        if ($this->rerouted !== null) {
+            $payload['rerouted'] = $this->rerouted;
+        }
+        if ($this->stops !== []) {
+            $payload['stops'] = $this->stops;
+        }
+
+        return $payload;
     }
 
     /**

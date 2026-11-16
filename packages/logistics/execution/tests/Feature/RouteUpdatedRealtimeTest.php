@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Logistics\Execution\Application\Contract\LiveRouteStateReader;
 use Logistics\Execution\Infrastructure\Realtime\BroadcastRouteUpdated;
 use Logistics\Execution\Infrastructure\Realtime\RouteSignalReader;
 use Logistics\Execution\Infrastructure\Realtime\RouteUpdatedObserver;
@@ -180,7 +181,7 @@ function rurUser(?string $driverId): int
  */
 function rurRun(BroadcastRouteUpdated $job): void
 {
-    $job->handle(app(RouteSignalReader::class));
+    $job->handle(app(RouteSignalReader::class), app(LiveRouteStateReader::class));
 }
 
 /**
@@ -302,6 +303,35 @@ it('la ventana anti-ráfaga y la demora salen de la config', function (): void {
     rurObserve(RUR_STOP_COMPLETED, ['route_id' => rurUuid(), 'vehicle_id' => rurUuid()]);
 
     Bus::assertDispatched(BroadcastRouteUpdated::class, static fn (BroadcastRouteUpdated $job): bool => $job->delay === 5);
+});
+
+it('el movimiento del camión encola la señal con throttle largo y una sola vez por ventana', function (): void {
+    rurEnableSockets();
+    $vehicleId = rurUuid();
+
+    // Dos lotes de posición seguidos del mismo camión: avisan una sola vez (throttle de movimiento).
+    rurObserve('telemetry.vehicle_position_reported', ['vehicle_id' => $vehicleId, 'shipment_ids' => [rurUuid()]]);
+    rurObserve('telemetry.vehicle_position_reported', ['vehicle_id' => $vehicleId, 'shipment_ids' => [rurUuid()]]);
+
+    Bus::assertDispatchedTimes(BroadcastRouteUpdated::class, 1);
+    // La demora del trabajo sigue siendo corta (la señal sale enseguida); el throttle largo es solo la ventana.
+    Bus::assertDispatched(
+        BroadcastRouteUpdated::class,
+        static fn (BroadcastRouteUpdated $job): bool => $job->vehicleIds === [$vehicleId] && $job->delay === 2,
+    );
+});
+
+it('el throttle de movimiento sale de la config y es independiente del anti-ráfaga de cambios', function (): void {
+    rurEnableSockets();
+    config(['logistics-execution.realtime.movement_throttle_seconds' => 30]);
+    $vehicleId = rurUuid();
+
+    rurObserve('telemetry.vehicle_position_reported', ['vehicle_id' => $vehicleId, 'shipment_ids' => [rurUuid()]]);
+
+    // La ventana de 30 s sigue bloqueando el segundo aviso de movimiento.
+    rurObserve('telemetry.vehicle_position_reported', ['vehicle_id' => $vehicleId, 'shipment_ids' => [rurUuid()]]);
+
+    Bus::assertDispatchedTimes(BroadcastRouteUpdated::class, 1);
 });
 
 it('sin transporte de tiempo real el observador no encola', function (?string $driver, bool $enabled): void {

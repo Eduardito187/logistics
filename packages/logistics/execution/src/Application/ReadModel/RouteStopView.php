@@ -73,10 +73,15 @@ final readonly class RouteStopView
         ?string $podPhotoUrl = null,
         ?float $fallbackLat = null,
         ?float $fallbackLng = null,
+        ?string $liveEtaAt = null,
     ): self {
         // Coordenadas: las de la parada; si quedó sin ellas (paradas sumadas antes de que se copiaran del
         // envío), las del destino del envío. Solo se usa el respaldo si la parada no tiene NINGUNA de las dos.
         $useFallback = $stop->lat() === null && $stop->lng() === null;
+
+        // ETA viva del motor único (desde la posición actual del camión) si llegó; si no, la planificada que
+        // la parada trae del plan. Así la app, el admin y el cliente muestran el MISMO número.
+        $etaAt = $liveEtaAt ?? $stop->etaAt()?->format(DateTimeInterface::ATOM);
 
         return new self(
             $stop->id()->toString(),
@@ -85,7 +90,7 @@ final readonly class RouteStopView
             $stop->orderReference(),
             $stop->customerName(),
             $stop->address(),
-            $stop->etaAt()?->format(DateTimeInterface::ATOM),
+            $etaAt,
             $useFallback ? $fallbackLat : $stop->lat(),
             $useFallback ? $fallbackLng : $stop->lng(),
             $stop->status()->value,

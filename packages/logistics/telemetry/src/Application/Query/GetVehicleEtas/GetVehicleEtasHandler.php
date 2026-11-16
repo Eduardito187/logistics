@@ -12,6 +12,7 @@ use Logistics\Telemetry\Application\Contract\FleetDirectory;
 use Logistics\Telemetry\Application\ReadModel\VehicleEtaView;
 use Logistics\Telemetry\Application\Service\StopEtaCalculator;
 use Logistics\Telemetry\Domain\Contract\StopEtaRepository;
+use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
 use Throwable;
 
 /**
@@ -30,6 +31,7 @@ final readonly class GetVehicleEtasHandler implements QueryHandler
         private StopEtaRepository $stored,
         private FleetDirectory $fleet,
         private Clock $clock,
+        private VehiclePositionRepository $positions,
     ) {}
 
     public function handle(Query $query): VehicleEtaView
@@ -78,6 +80,8 @@ final readonly class GetVehicleEtasHandler implements QueryHandler
             'recorded_at' => $result['position']['recorded_at']->format(DATE_ATOM),
         ] : null;
 
+        [$offRoute, $offRouteSince] = $this->offRouteState($query->vehicleId, $result['stale']);
+
         return new VehicleEtaView(
             $query->vehicleId,
             $this->fleet->plates([$query->vehicleId])[$query->vehicleId] ?? null,
@@ -85,7 +89,30 @@ final readonly class GetVehicleEtasHandler implements QueryHandler
             $result['stale'],
             $this->clock->now()->format(DATE_ATOM),
             $stops,
+            $offRoute,
+            $offRouteSince,
         );
+    }
+
+    /**
+     * Estado "fuera de ruta" del vehículo: el mismo que vigila la ingesta (desvío sostenido más allá de
+     * `deviation.max_distance_m` durante `deviation.min_seconds`). Está FUERA de ruta cuando el desvío lleva
+     * sostenido al menos ese mínimo (histéresis que evita el parpadeo). Con la posición añeja no se afirma
+     * (el camión dejó de reportar: no hay verdad en vivo).
+     *
+     * @return array{0: bool, 1: string|null}
+     */
+    private function offRouteState(string $vehicleId, bool $stale): array
+    {
+        $since = $this->positions->watchState($vehicleId)['off_route_since'];
+        if ($since === null || $stale) {
+            return [false, $since?->format(DATE_ATOM)];
+        }
+
+        $minSeconds = max(0, (int) config('logistics-telemetry.deviation.min_seconds', 120));
+        $offRoute = ($this->clock->now()->getTimestamp() - $since->getTimestamp()) >= $minSeconds;
+
+        return [$offRoute, $since->format(DATE_ATOM)];
     }
 
     /** Normaliza la ETA planificada (texto de la base) a ISO 8601, o null. */

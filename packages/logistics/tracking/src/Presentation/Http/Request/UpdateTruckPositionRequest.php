@@ -31,7 +31,33 @@ final class UpdateTruckPositionRequest extends FormRequest
             // Instante del reporte en ISO 8601 (p. ej. 2026-10-13T14:03:00-04:00). Se acepta cualquier
             // variante válida; el handler arma el DateTimeImmutable y el dominio valida la regla.
             'reported_at' => ['required', 'string', 'date'],
+            // Cinemática GPS OPCIONAL (contrato con la app). Si no viene, la ingesta deriva velocidad y
+            // rumbo de dos posiciones seguidas.
+            'speed_mps' => ['nullable', 'numeric', 'min:0'],
+            'heading_deg' => ['nullable', 'numeric', 'between:0,360'],
+            'accuracy_m' => ['nullable', 'numeric', 'min:0'],
         ];
+    }
+
+    public function speedMps(): ?float
+    {
+        $value = $this->input('speed_mps');
+
+        return $value === null ? null : (float) $value;
+    }
+
+    public function headingDeg(): ?float
+    {
+        $value = $this->input('heading_deg');
+
+        return $value === null ? null : (float) $value;
+    }
+
+    public function accuracyM(): ?float
+    {
+        $value = $this->input('accuracy_m');
+
+        return $value === null ? null : (float) $value;
     }
 
     public function latitude(): float

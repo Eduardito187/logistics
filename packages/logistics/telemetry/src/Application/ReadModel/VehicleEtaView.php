@@ -16,6 +16,10 @@ namespace Logistics\Telemetry\Application\ReadModel;
 final readonly class VehicleEtaView
 {
     /**
+     * `offRoute` es la verdad del backend sobre si el camión está FUERA de su ruta planificada (desvío
+     * sostenido más allá del umbral + histéresis de la config de telemetría); `offRouteSince` es desde
+     * cuándo (ISO 8601) o null. Son el estado que la app muestra como cartel "Fuera de ruta".
+     *
      * @param PositionItem|null $position
      * @param list<StopEtaItem> $stops
      */
@@ -26,6 +30,8 @@ final readonly class VehicleEtaView
         public bool $positionStale,
         public string $generatedAt,
         public array $stops,
+        public bool $offRoute = false,
+        public ?string $offRouteSince = null,
     ) {}
 
     /**
@@ -40,11 +46,13 @@ final readonly class VehicleEtaView
             $this->positionStale,
             $this->generatedAt,
             array_values(array_filter($this->stops, static fn (array $s): bool => $s['shipment_id'] === $shipmentId)),
+            $this->offRoute,
+            $this->offRouteSince,
         );
     }
 
     /**
-     * @return array{vehicle_id: string, plate: string|null, traffic_aware: bool, position: PositionItem|null, position_stale: bool, generated_at: string, stops: list<StopEtaItem>}
+     * @return array{vehicle_id: string, plate: string|null, traffic_aware: bool, position: PositionItem|null, position_stale: bool, off_route: bool, off_route_since: string|null, generated_at: string, stops: list<StopEtaItem>}
      */
     public function toArray(): array
     {
@@ -54,6 +62,8 @@ final readonly class VehicleEtaView
             'traffic_aware' => false,
             'position' => $this->position,
             'position_stale' => $this->positionStale,
+            'off_route' => $this->offRoute,
+            'off_route_since' => $this->offRouteSince,
             'generated_at' => $this->generatedAt,
             'stops' => $this->stops,
         ];

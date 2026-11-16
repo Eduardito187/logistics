@@ -63,6 +63,17 @@ final readonly class RouteUpdatedObserver implements OutboxObserver
         'fleet.crew_assembled',
     ];
 
+    /**
+     * Hechos de MOVIMIENTO del camión: no cambian la hoja de ruta, solo la ETA viva. Avisan con un throttle
+     * más largo (uno por ruta cada tanto) para no inundar con cada lote de posición. La app, al recibir la
+     * señal, re-pide su ruta y obtiene las ETAs frescas del motor único.
+     *
+     * @var list<string>
+     */
+    public const MOVEMENT_EVENTS = [
+        'telemetry.vehicle_position_reported',
+    ];
+
     private const KEY_PREFIX = 'execution:realtime:route-signal:';
 
     private const UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
@@ -72,8 +83,12 @@ final readonly class RouteUpdatedObserver implements OutboxObserver
     public function observe(OutboxMessage $message): void
     {
         try {
-            if (in_array($message->eventName(), self::EVENTS, true) && RouteRealtime::enabled()) {
-                $this->signal($message->payload());
+            $event = $message->eventName();
+            $isChange = in_array($event, self::EVENTS, true);
+            $isMovement = in_array($event, self::MOVEMENT_EVENTS, true);
+
+            if (($isChange || $isMovement) && RouteRealtime::enabled()) {
+                $this->signal($message->payload(), $isMovement);
             }
         } catch (Throwable $e) {
             report($e);
@@ -83,7 +98,7 @@ final readonly class RouteUpdatedObserver implements OutboxObserver
     /**
      * @param array<string, mixed> $payload
      */
-    private function signal(array $payload): void
+    private function signal(array $payload, bool $movement = false): void
     {
         $routeId = self::uuid($payload['route_id'] ?? null);
         $shipmentId = self::uuid($payload['shipment_id'] ?? null);
@@ -98,14 +113,17 @@ final readonly class RouteUpdatedObserver implements OutboxObserver
         }
 
         $key = self::key($routeId, $vehicleIds, $shipmentId, $date);
-        $seconds = RouteRealtime::debounceSeconds();
+        // El movimiento se avisa con throttle largo (uno por ventana); un cambio de parada, con la ventana
+        // anti-ráfaga corta (enseguida). La demora del trabajo se mantiene corta en ambos casos.
+        $window = $movement ? RouteRealtime::movementThrottleSeconds() : RouteRealtime::debounceSeconds();
+        $delay = RouteRealtime::debounceSeconds();
 
         // Sin ruta, camión ni envío no hay a quién avisar; dentro de la ventana ya hay una señal en camino.
-        if ($key === null || !Cache::add($key, true, $seconds)) {
+        if ($key === null || !Cache::add($key, true, $window)) {
             return;
         }
 
-        BroadcastRouteUpdated::dispatch($routeId, $vehicleIds, $shipmentId, $date)->delay($seconds);
+        BroadcastRouteUpdated::dispatch($routeId, $vehicleIds, $shipmentId, $date)->delay($delay);
     }
 
     /**

@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Cache;
+use Logistics\Execution\Application\Contract\LiveRouteStateReader;
 use Logistics\Execution\Presentation\Broadcasting\RouteUpdated;
 use Throwable;
 
@@ -26,6 +27,8 @@ use Throwable;
  *    ruta después de esa señal.
  *  - Un solo intento: es best-effort; un error queda en el log y no se reintenta.
  *  - Sin transporte de tiempo real no hace nada.
+ *
+ * @phpstan-import-type LiveRouteState from LiveRouteStateReader
  */
 final class BroadcastRouteUpdated implements ShouldQueue
 {
@@ -51,7 +54,7 @@ final class BroadcastRouteUpdated implements ShouldQueue
         $this->onQueue((string) config('observability.metrics.queues.notifications', 'notifications'));
     }
 
-    public function handle(RouteSignalReader $reader): void
+    public function handle(RouteSignalReader $reader, LiveRouteStateReader $liveState): void
     {
         if (!RouteRealtime::enabled()) {
             return;
@@ -62,7 +65,7 @@ final class BroadcastRouteUpdated implements ShouldQueue
                 $userIds = $reader->userIds($target);
 
                 if ($userIds !== [] && $this->firstInWindow($target['route_id'], $target['vehicle_id'])) {
-                    $this->emit($userIds, $target['route_id'], $target['vehicle_id']);
+                    $this->emit($userIds, $target['route_id'], $target['vehicle_id'], $liveState);
                 }
             }
         } catch (Throwable $e) {
@@ -71,13 +74,50 @@ final class BroadcastRouteUpdated implements ShouldQueue
     }
 
     /**
+     * Emite la señal, enriquecida con el estado en vivo del motor único de ETA (ETA viva por parada y "fuera
+     * de ruta") cuando está disponible. `rerouted` = `off_route`: estar fuera de ruta implica que la ETA se
+     * recalculó desde la posición actual hacia la siguiente parada. Sin motor de ETA, viaja la carga histórica.
+     *
      * @param list<int> $userIds
      */
-    private function emit(array $userIds, ?string $routeId, string $vehicleId): void
+    private function emit(array $userIds, ?string $routeId, string $vehicleId, LiveRouteStateReader $liveState): void
     {
-        foreach (array_chunk($userIds, RouteUpdated::MAX_CHANNELS) as $chunk) {
-            RouteUpdated::dispatch($chunk, $routeId, $vehicleId);
+        $live = $liveState->forVehicle($vehicleId);
+        // Solo se enriquece cuando el motor de ETA aportó algo útil (ETA viva o estado "fuera de ruta"); si
+        // no hay dato en vivo viaja la carga histórica de dos campos, sin romper compatibilidad.
+        $offRoute = null;
+        $stops = [];
+        if ($live !== null && ($live['etas'] !== [] || $live['off_route'])) {
+            $offRoute = $live['off_route'];
+            $stops = $this->stopEtas($live);
         }
+        // `rerouted` = `off_route`: estar fuera de ruta implica que la ETA se recalculó desde la posición
+        // actual hacia la siguiente parada (motor único).
+        $rerouted = $offRoute;
+
+        foreach (array_chunk($userIds, RouteUpdated::MAX_CHANNELS) as $chunk) {
+            RouteUpdated::dispatch($chunk, $routeId, $vehicleId, $offRoute, $rerouted, $stops);
+        }
+    }
+
+    /**
+     * ETA viva por parada pendiente, en la forma del payload. Vacío si no hay motor de ETA.
+     *
+     * @param  LiveRouteState|null                              $live
+     * @return list<array{shipment_id: string, eta_at: string}>
+     */
+    private function stopEtas(?array $live): array
+    {
+        if ($live === null) {
+            return [];
+        }
+
+        $stops = [];
+        foreach ($live['etas'] as $shipmentId => $etaAt) {
+            $stops[] = ['shipment_id' => $shipmentId, 'eta_at' => $etaAt];
+        }
+
+        return $stops;
     }
 
     private function firstInWindow(?string $routeId, string $vehicleId): bool

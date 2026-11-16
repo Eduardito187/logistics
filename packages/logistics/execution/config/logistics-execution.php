@@ -92,5 +92,10 @@ return [
         // Ventana anti-ráfaga en segundos: varios cambios seguidos de una misma ruta se avisan una sola vez,
         // y la señal sale con esa misma demora para que la ruta ya incluya toda la ráfaga.
         'debounce_seconds' => max(1, (int) env('EXECUTION_REALTIME_DEBOUNCE_SECONDS', 2)),
+
+        // Throttle (segundos) del aviso por MOVIMIENTO del camión: a lo sumo una señal `route.updated` por
+        // ruta cada tanto. El movimiento no cambia la hoja de ruta, solo la ETA viva; la app re-pide la ruta
+        // y obtiene ETAs frescas del motor único. Separado de la ventana anti-ráfaga de los cambios de parada.
+        'movement_throttle_seconds' => max(1, (int) env('EXECUTION_REALTIME_MOVEMENT_THROTTLE_SECONDS', 20)),
     ],
 ];

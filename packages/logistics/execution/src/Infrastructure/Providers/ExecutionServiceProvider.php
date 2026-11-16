@@ -59,6 +59,7 @@ use Logistics\Execution\Application\Command\StartDriverRoute\StartDriverRouteHan
 use Logistics\Execution\Application\Contract\DeliveryEvidenceReader;
 use Logistics\Execution\Application\Contract\DeliveryReferenceReader;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
+use Logistics\Execution\Application\Contract\LiveRouteStateReader;
 use Logistics\Execution\Application\Contract\NodeReceptionListReader;
 use Logistics\Execution\Application\Contract\NodeReceptionTargetReader;
 use Logistics\Execution\Application\Contract\PlannedRouteStopsProvider;
@@ -125,6 +126,7 @@ use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitProductReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbStopEnrichmentReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbVehicleFitnessReader;
 use Logistics\Execution\Infrastructure\ReadModel\EloquentDeliveryEvidenceReader;
+use Logistics\Execution\Infrastructure\ReadModel\QueryBusLiveRouteStateReader;
 use Logistics\Execution\Infrastructure\ReadModel\QueryBusTransferDestinationReader;
 use Logistics\Execution\Infrastructure\Storage\FilesystemEvidenceStorage;
 use Logistics\Execution\Presentation\Console\ReconcileRouteStopsCommand;
@@ -270,6 +272,12 @@ final class ExecutionServiceProvider extends ServiceProvider
             : null;
 
             return new DbRouteGeometryReader($app->make('db')->connection(), $ensure);
+        });
+
+        // Estado en vivo de la ruta (ETA viva + "fuera de ruta") desde el motor único de ETA de telemetría,
+        // por el QueryBus compartido. Si el contexto telemetría no está cargado, el lector degrada a null.
+        $this->app->bind(LiveRouteStateReader::class, static function ($app): LiveRouteStateReader {
+            return new QueryBusLiveRouteStateReader($app->make(QueryBus::class));
         });
 
         // Lectura del fulfillment_mode del envío (desde shipments, read-only) para bifurcar la ejecución

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Application\Query\GetDriverRoute;
 
+use Logistics\Execution\Application\Contract\LiveRouteStateReader;
 use Logistics\Execution\Application\Contract\RouteGeometryReader;
 use Logistics\Execution\Application\Contract\StopEnrichmentReader;
 use Logistics\Execution\Application\ReadModel\DriverRouteView;
@@ -25,6 +26,7 @@ final class GetDriverRouteHandler implements QueryHandler
         private readonly StopEnrichmentReader $stopEnrichment,
         private readonly RouteGeometryReader $routeGeometry,
         private readonly StaleRouteStops $staleStops,
+        private readonly LiveRouteStateReader $liveState,
     ) {}
 
     public function handle(Query $query): ?DriverRouteView
@@ -51,7 +53,11 @@ final class GetDriverRouteHandler implements QueryHandler
         $enrichment = $this->stopEnrichment->forShipmentIds($this->shipmentIdsOf($route));
         $geometry = $this->routeGeometry->forVehicleAndDate($route->vehicleId(), $route->date()->toString());
 
-        return DriverRouteView::fromRoute($route, $enrichment, $geometry);
+        // Estado en vivo del motor único de ETA: ETA fresca por parada y "fuera de ruta". Null si el motor
+        // no está disponible; entonces cada parada conserva su ETA planificada.
+        $live = $this->liveState->forVehicle($route->vehicleId());
+
+        return DriverRouteView::fromRoute($route, $enrichment, $geometry, $live);
     }
 
     /**

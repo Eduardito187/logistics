@@ -18,6 +18,14 @@ final class RouteRealtime
     public const DEFAULT_DEBOUNCE_SECONDS = 2;
 
     /**
+     * Throttle por defecto (segundos) del aviso por MOVIMIENTO del camión: a lo sumo una señal `route.updated`
+     * por ruta cada tanto, para no inundar con cada ping. El movimiento no cambia la hoja de ruta, solo la
+     * ETA viva; la app re-pide la ruta y obtiene ETAs frescas. Separado de la ventana anti-ráfaga de los
+     * cambios de parada (esos sí deben avisar enseguida).
+     */
+    public const DEFAULT_MOVEMENT_THROTTLE_SECONDS = 20;
+
+    /**
      * Transportes que no entregan nada a un cliente.
      *
      * @var list<string>
@@ -43,5 +51,15 @@ final class RouteRealtime
         $seconds = config('logistics-execution.realtime.debounce_seconds', self::DEFAULT_DEBOUNCE_SECONDS);
 
         return is_numeric($seconds) && (int) $seconds > 0 ? (int) $seconds : self::DEFAULT_DEBOUNCE_SECONDS;
+    }
+
+    /**
+     * Throttle (segundos) del aviso por movimiento del camión: una señal por ruta como mucho cada tanto.
+     */
+    public static function movementThrottleSeconds(): int
+    {
+        $seconds = config('logistics-execution.realtime.movement_throttle_seconds', self::DEFAULT_MOVEMENT_THROTTLE_SECONDS);
+
+        return is_numeric($seconds) && (int) $seconds > 0 ? (int) $seconds : self::DEFAULT_MOVEMENT_THROTTLE_SECONDS;
     }
 }
