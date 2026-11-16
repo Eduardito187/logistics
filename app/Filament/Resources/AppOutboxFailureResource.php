@@ -49,12 +49,15 @@ final class AppOutboxFailureResource extends Resource
 
     public static function getNavigationGroup(): string
     {
-        return __('Operations');
+        // Vive en Configuración (grupo «Administration», el área de plataforma) junto al outbox: no es
+        // necesaria para la operación diaria, es un listado de supervisión de solo lectura.
+        return __('Administration');
     }
 
     public static function getNavigationSort(): int
     {
-        return 90;
+        // Justo después de «Outbox messages» (42) y antes de «Setting versions» (44): queda al nivel del outbox.
+        return 43;
     }
 
     public static function getNavigationLabel(): string

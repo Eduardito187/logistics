@@ -14,7 +14,7 @@ namespace Logistics\Execution\Application\Contract;
  *
  * @phpstan-type StopItem array{sku: string, name: string, quantity: int, image_url: string|null}
  * @phpstan-type StopDestination array{type: string, name: string|null, node_code: string|null, node_id?: string|null, delivery_mode?: string}
- * @phpstan-type StopEnrichment array{customer_phone: string|null, address_reference: string|null, items: list<StopItem>, unit_ids: list<string>, units_total?: int, destination?: StopDestination}
+ * @phpstan-type StopEnrichment array{customer_phone: string|null, address_reference: string|null, items: list<StopItem>, unit_ids: list<string>, units_total?: int, destination?: StopDestination, lat?: float|null, lng?: float|null}
  */
 interface StopEnrichmentReader
 {

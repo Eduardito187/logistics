@@ -48,6 +48,53 @@ it('guarda la posición cuando el seguimiento existe y la lectura es fresca', fu
         ->and($record->last_position_at)->not->toBeNull();
 });
 
+it('guarda la cinemática GPS que vino en el reporte', function (): void {
+    $shipment = Uuid::generate()->value;
+    TrackingRecord::factory()->onTheWay()->create([
+        'shipment_id' => $shipment,
+        'last_lat' => null,
+        'last_lng' => null,
+        'last_position_at' => null,
+    ]);
+
+    utpBus()->dispatch(new UpdateTruckPosition(
+        shipmentId: $shipment,
+        latitude: -16.5,
+        longitude: -68.15,
+        reportedAt: '2026-11-10T12:00:00+00:00',
+        speedMps: 12.5,
+        headingDeg: 90.0,
+        accuracyM: 8.0,
+    ));
+
+    $record = TrackingRecord::query()->where('shipment_id', $shipment)->firstOrFail();
+    expect((float) $record->last_speed_mps)->toBe(12.5)
+        ->and((float) $record->last_heading_deg)->toBe(90.0)
+        ->and((float) $record->last_accuracy_m)->toBe(8.0);
+});
+
+it('deriva velocidad y rumbo de dos posiciones seguidas cuando no vienen en el reporte', function (): void {
+    $shipment = Uuid::generate()->value;
+    TrackingRecord::factory()->onTheWay()->create([
+        'shipment_id' => $shipment,
+        'last_lat' => (string) -16.5,
+        'last_lng' => (string) -68.15,
+        'last_position_at' => '2026-11-10T12:00:00+00:00',
+    ]);
+
+    // ~1 km al este, 100 s después: sin speed/heading en el comando, la ingesta los deriva.
+    utpBus()->dispatch(new UpdateTruckPosition(
+        shipmentId: $shipment,
+        latitude: -16.5,
+        longitude: -68.1406,
+        reportedAt: '2026-11-10T12:01:40+00:00',
+    ));
+
+    $record = TrackingRecord::query()->where('shipment_id', $shipment)->firstOrFail();
+    expect((float) $record->last_speed_mps)->toBeGreaterThan(5.0)
+        ->and((float) $record->last_heading_deg)->toBeGreaterThan(70.0)->toBeLessThan(110.0);
+});
+
 it('descarta una lectura más vieja que la última conocida (proyección monótona)', function (): void {
     $shipment = Uuid::generate()->value;
     TrackingRecord::factory()->onTheWay()->create([

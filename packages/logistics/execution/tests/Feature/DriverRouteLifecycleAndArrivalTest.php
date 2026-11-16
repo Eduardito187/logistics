@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\EnsureDeviceToken;
+use App\Http\Middleware\EnsureVehicleCrew;
 use App\Http\Middleware\IdempotentRequests;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,7 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  * - arrived → arrived_at persistido (la primera gana) + execution.stop_arrived en el outbox.
  */
 beforeEach(function (): void {
-    $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class]);
+    $this->withoutMiddleware([EnsureDeviceToken::class, IdempotentRequests::class, EnsureVehicleCrew::class]);
     $this->actingAs(User::factory()->create(), 'sanctum');
 })->skip(
     env('DB_CONNECTION') !== 'pgsql',

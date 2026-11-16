@@ -18,12 +18,16 @@ use Logistics\Shared\Application\Query\QueryHandler;
 /**
  * Resuelve la asignación VIGENTE de un chofer en una fecha y la devuelve como proyección de lectura.
  *
- * El chofer puede salir varias veces el mismo día, con el mismo camión o con otro: tiene una tripulación
- * por cada camión que le asignaron. La que se devuelve es la de su SALIDA VIGENTE:
+ * Un chofer tiene UN camión por día (una sola tripulación vigente; cambiarle el camión reemplaza la
+ * anterior), y con ese camión puede salir varias veces. Se devuelve su tripulación con la ruta de su
+ * SALIDA VIGENTE:
  *
- *   1. la tripulación del camión cuya ruta está abierta (en curso antes que planificada);
- *   2. si no hay ninguna ruta abierta, la tripulación más reciente del día (con la última ruta de ese
- *      camión en la fecha, si existe).
+ *   1. la ruta abierta de su camión (en curso antes que planificada);
+ *   2. si no hay ninguna ruta abierta, la última ruta de ese camión en la fecha, si existe.
+ *
+ * Tolerancia a datos viejos: si quedara más de una tripulación del chofer en el día (antes del saneo
+ * `logistics:fleet:reconcile-crews`), manda la de ruta abierta y, sin rutas, la armada más tarde; nunca
+ * la primera que aparezca.
  *
  * Sin tripulación en la fecha devuelve null (el controller lo traduce a 404). El vehículo, el chofer y
  * cada ayudante se enriquecen con sus datos legibles (placa, nombre) contra sus repositorios.
@@ -137,8 +141,8 @@ final readonly class GetMyCrewHandler implements QueryHandler
 
     /**
      * Ordena las tripulaciones del día de la más reciente a la más vieja: por inicio de turno cuando lo
-     * tienen (las que no fijaron turno van después) y, a igualdad, conserva el orden del directorio (id
-     * UUID v7 descendente = la armada más tarde primero).
+     * tienen (las que no fijaron turno van después) y, a igualdad, conserva el orden del directorio (la
+     * armada más tarde primero).
      *
      * @param  list<CrewRow> $rows
      * @return list<CrewRow>

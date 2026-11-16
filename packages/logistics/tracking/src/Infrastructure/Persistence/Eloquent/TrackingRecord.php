@@ -31,6 +31,9 @@ use Logistics\Tracking\Database\Factories\TrackingRecordFactory;
  * @property string|null $last_lat
  * @property string|null $last_lng
  * @property Carbon|null $last_position_at
+ * @property string|null $last_speed_mps
+ * @property string|null $last_heading_deg
+ * @property string|null $last_accuracy_m
  * @property Carbon|null $delivered_at
  * @property Carbon|null $at_store_at
  * @property string|null $customer_email
@@ -71,6 +74,9 @@ final class TrackingRecord extends Model
         'last_lat',
         'last_lng',
         'last_position_at',
+        'last_speed_mps',
+        'last_heading_deg',
+        'last_accuracy_m',
         'delivered_at',
         'at_store_at',
         'customer_email',

@@ -27,6 +27,7 @@ use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlotHandl
 use Logistics\Shipments\Application\Contract\CatalogMeasurementsReader;
 use Logistics\Shipments\Application\Contract\DailyKpisReader;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
+use Logistics\Shipments\Application\Contract\LiveShipmentEtaReader;
 use Logistics\Shipments\Application\Contract\MagentoOrderReader;
 use Logistics\Shipments\Application\Contract\NetworkNodeLookup;
 use Logistics\Shipments\Application\Contract\OrderLookupReader;
@@ -87,6 +88,7 @@ use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentProgressReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentScopeReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentSummaryReader;
 use Logistics\Shipments\Infrastructure\ReadModel\NetworkReturnsWarehouseResolver;
+use Logistics\Shipments\Infrastructure\ReadModel\QueryBusLiveShipmentEtaReader;
 use Logistics\Shipments\Infrastructure\ReadModel\QueryBusScannedLabelResolver;
 use Logistics\Shipments\Infrastructure\ReadModel\ShortReadCache;
 use Logistics\Shipments\Presentation\Console\PullMagentoOrdersCommand;
@@ -164,6 +166,10 @@ final class ShipmentsServiceProvider extends ServiceProvider
 
         // Alcance por rol (ciudad / tienda / asignación): regla única que usan el listado, `can_process` de
         // la consulta de pedidos y la guarda de escrituras (middleware `order.scope`).
+        $this->app->bind(LiveShipmentEtaReader::class, function ($app): LiveShipmentEtaReader {
+            return new QueryBusLiveShipmentEtaReader($app->make(QueryBus::class));
+        });
+
         $this->app->bind(ShipmentScopeReader::class, function ($app): ShipmentScopeReader {
             return new DbShipmentScopeReader($app->make(ConnectionInterface::class));
         });

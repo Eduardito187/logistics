@@ -10,8 +10,11 @@ use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Telemetry\Application\Contract\FleetDirectory;
 use Logistics\Telemetry\Application\ReadModel\VehicleEtaView;
+use Logistics\Telemetry\Application\Service\OffRouteEvaluator;
+use Logistics\Telemetry\Application\Service\RerouteGeometryCalculator;
 use Logistics\Telemetry\Application\Service\StopEtaCalculator;
 use Logistics\Telemetry\Domain\Contract\StopEtaRepository;
+use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
 use Throwable;
 
 /**
@@ -30,6 +33,9 @@ final readonly class GetVehicleEtasHandler implements QueryHandler
         private StopEtaRepository $stored,
         private FleetDirectory $fleet,
         private Clock $clock,
+        private VehiclePositionRepository $positions,
+        private OffRouteEvaluator $offRoute,
+        private RerouteGeometryCalculator $reroute,
     ) {}
 
     public function handle(Query $query): VehicleEtaView
@@ -78,6 +84,18 @@ final readonly class GetVehicleEtasHandler implements QueryHandler
             'recorded_at' => $result['position']['recorded_at']->format(DATE_ATOM),
         ] : null;
 
+        $since = $this->positions->watchState($query->vehicleId)['off_route_since'];
+        [$offRoute, $offRouteSince] = $this->offRoute->evaluate($since, $result['stale']);
+
+        // Geometría del reruteo (posición actual → próxima parada) SOLO si está fuera de ruta. Camino de
+        // lectura: usa lo que el scheduler dejó cacheado (OSRM) o, si no hay, la línea recta; nunca I/O externo.
+        $rerouteGeometry = $this->reroute->forRead(
+            $query->vehicleId,
+            $offRoute,
+            $position === null ? null : ['lat' => $position['lat'], 'lng' => $position['lng']],
+            RerouteGeometryCalculator::firstStopWithCoords($result['stops']),
+        );
+
         return new VehicleEtaView(
             $query->vehicleId,
             $this->fleet->plates([$query->vehicleId])[$query->vehicleId] ?? null,
@@ -85,6 +103,9 @@ final readonly class GetVehicleEtasHandler implements QueryHandler
             $result['stale'],
             $this->clock->now()->format(DATE_ATOM),
             $stops,
+            $offRoute,
+            $offRouteSince,
+            $rerouteGeometry,
         );
     }
 

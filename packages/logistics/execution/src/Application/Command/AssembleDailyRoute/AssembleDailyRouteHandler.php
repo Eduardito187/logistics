@@ -7,6 +7,7 @@ namespace Logistics\Execution\Application\Command\AssembleDailyRoute;
 use DateTimeImmutable;
 use Exception;
 use Logistics\Execution\Application\Contract\PlannedRouteStopsProvider;
+use Logistics\Execution\Application\Contract\ShipmentRouteFactsReader;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\Model\RouteStop;
@@ -37,6 +38,7 @@ final class AssembleDailyRouteHandler implements CommandHandler
         private readonly VehicleRouteRepository $routes,
         private readonly RecordDomainEvents $recordEvents,
         private readonly PlannedRouteStopsProvider $plannedStops,
+        private readonly ShipmentRouteFactsReader $facts,
     ) {}
 
     public function handle(Command $command): void
@@ -64,26 +66,16 @@ final class AssembleDailyRouteHandler implements CommandHandler
             throw ExecutionException::because("no hay un plan publicado para el vehículo {$command->vehicleId} el {$command->routeDate}; no se puede armar la ruta");
         }
 
-        $stops = array_map(
-            static fn (RouteStopInput $input): RouteStop => RouteStop::plan(
-                RouteStopId::generate(),
-                $input->shipmentId,
-                $input->sequence,
-                $input->orderReference,
-                $input->customerName,
-                $input->address,
-                self::parseEta($input->etaAt),
-                $input->lat,
-                $input->lng,
-            ),
-            $inputs,
-        );
+        $stops = $this->openStops($inputs);
+        if ($stops === []) {
+            throw ExecutionException::because("todos los envíos del plan del vehículo {$command->vehicleId} para el {$command->routeDate} ya están entregados; no hay paradas que armar");
+        }
 
         $route = VehicleRoute::assemble(
             $this->routes->nextIdentity(),
             $command->vehicleId,
             $date,
-            array_values($stops),
+            $stops,
         );
 
         $this->routes->save($route);
@@ -102,6 +94,45 @@ final class AssembleDailyRouteHandler implements CommandHandler
         }
 
         return $this->lastRouteId;
+    }
+
+    /**
+     * Paradas de la ruta a partir de las candidatas, en su orden, SIN los envíos ya entregados (un envío
+     * cerrado nunca es una parada de la ruta del día) y con la secuencia recompactada 1..n. Completa las
+     * coordenadas desde el envío cuando la candidata no las trae.
+     *
+     * @param  list<RouteStopInput> $inputs
+     * @return list<RouteStop>
+     */
+    private function openStops(array $inputs): array
+    {
+        usort($inputs, static fn (RouteStopInput $a, RouteStopInput $b): int => $a->sequence <=> $b->sequence);
+
+        $shipmentIds = array_map(static fn (RouteStopInput $input): string => $input->shipmentId, $inputs);
+        $closed = $this->facts->closedDays($shipmentIds);
+        $points = $this->facts->coordinates($shipmentIds);
+
+        $stops = [];
+        foreach ($inputs as $input) {
+            if (isset($closed[$input->shipmentId])) {
+                continue;
+            }
+
+            $point = $points[$input->shipmentId] ?? null;
+            $stops[] = RouteStop::plan(
+                RouteStopId::generate(),
+                $input->shipmentId,
+                $closed === [] ? $input->sequence : count($stops) + 1,
+                $input->orderReference,
+                $input->customerName,
+                $input->address,
+                self::parseEta($input->etaAt),
+                $input->lat ?? $point['lat'] ?? null,
+                $input->lng ?? $point['lng'] ?? null,
+            );
+        }
+
+        return $stops;
     }
 
     private static function parseEta(?string $etaAt): ?DateTimeImmutable

@@ -79,7 +79,10 @@ final readonly class EloquentCrewRepository implements CrewRepository
         $model = CrewModel::query()
             ->where('driver_id', $driverId->toString())
             ->where('assembled_for', $date->format('Y-m-d'))
-            ->orderByDesc('shift_starts_at')
+            // La vigente: con un chofer = un camión por día hay una sola; si por datos viejos hubiera
+            // más, manda la armada más tarde (nunca la primera que aparezca).
+            ->orderByRaw('created_at desc nulls last')
+            ->orderByDesc('id')
             ->first();
 
         return $model instanceof CrewModel ? $this->mapper->toDomain($model) : null;

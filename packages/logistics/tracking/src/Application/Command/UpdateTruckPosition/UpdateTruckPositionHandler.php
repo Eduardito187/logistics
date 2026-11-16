@@ -44,10 +44,15 @@ final class UpdateTruckPositionHandler implements CommandHandler
             throw TrackingException::because("instante del reporte inválido: {$command->reportedAt}");
         }
 
+        // Cinemática del reporte: la del dispositivo si vino; velocidad/rumbo se derivan de la posición
+        // anterior cuando faltan (dos lecturas seguidas). La derivación es dato puro del dominio.
         $position = TruckPosition::at(
             GeoPoint::of($command->latitude, $command->longitude),
             $reportedAt,
-        );
+            $command->speedMps,
+            $command->headingDeg,
+            $command->accuracyM,
+        )->deriveKinematicsFrom($tracking->lastPosition());
 
         // Si el reporte llega fuera de orden (más viejo que el último conocido) el dominio lo descarta:
         // no se persiste nada, para no reescribir la fila con una lectura añeja ni generar I/O inútil.

@@ -31,7 +31,12 @@ final readonly class DetachShipmentFromRouteHandler implements CommandHandler
             throw ExecutionException::because('DetachShipmentFromRouteHandler solo maneja DetachShipmentFromRoute');
         }
 
-        $route = $this->routes->findOpenByVehicleId($command->vehicleId);
+        // La ruta de ESE camión donde el envío tiene su parada (puede no ser la vigente: un pedido que quedó
+        // en una ruta de otro día sin cerrar). Si no se ubica por el envío, la ruta abierta vigente.
+        $route = $this->routes->findByShipmentId($command->shipmentId);
+        if ($route === null || $route->vehicleId() !== $command->vehicleId || $route->isClosed()) {
+            $route = $this->routes->findOpenByVehicleId($command->vehicleId);
+        }
         if ($route === null) {
             return;
         }

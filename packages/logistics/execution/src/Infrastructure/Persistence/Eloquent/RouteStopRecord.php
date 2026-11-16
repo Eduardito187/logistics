@@ -12,7 +12,8 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * Fila de la tabla `execution_driver_route_stops`. PK uuid string no incremental.
  *
  * Lleva la foto legible del destino (referencia del pedido, cliente, dirección, ETA, coordenadas) y el
- * estado de la parada. `settled_at` marca cuándo se cerró (entregada o fallida).
+ * estado de la parada. `settled_at` marca cuándo se cerró (entregada o fallida) y `attached_at` cuándo se
+ * sumó por una asignación explícita (null si vino del plan publicado).
  *
  * @property string      $id
  * @property string      $route_id
@@ -28,6 +29,7 @@ use Logistics\Shipments\Infrastructure\Persistence\Eloquent\ShipmentRecord;
  * @property string|null $settled_at
  * @property string|null $arrived_at
  * @property string|null $arrival_source
+ * @property string|null $attached_at
  */
 final class RouteStopRecord extends Model
 {

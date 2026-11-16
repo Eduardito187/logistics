@@ -132,6 +132,18 @@ services:
                     memory: ${MINIO_MEM_LIMIT:-1g}
 
     soketi:
+        # En producción las credenciales del servidor de sockets son OBLIGATORIAS y propias: `:?` aborta el
+        # arranque si faltan, para NO caer en los defaults públicos del base (`dismaclocalkey/secret`), que
+        # permitirían a un tercero firmar canales privados. Cliente-a-cliente apagado (nadie emite por socket).
+        environment:
+            SOKETI_DEFAULT_APP_ID: ${PUSHER_APP_ID:?Falta PUSHER_APP_ID en producción}
+            SOKETI_DEFAULT_APP_KEY: ${PUSHER_APP_KEY:?Falta PUSHER_APP_KEY en producción}
+            SOKETI_DEFAULT_APP_SECRET: ${PUSHER_APP_SECRET:?Falta PUSHER_APP_SECRET en producción}
+            SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: 'false'
+            SOKETI_METRICS_ENABLED: 'true'
+        # No publicar el 6001 al host (el base sí lo hace para dev): el navegador llega por nginx con TLS y
+        # Laravel por la red interna. `!reset []` descarta la lista de ports heredada del base.
+        ports: !reset []
         deploy:
             resources:
                 limits:

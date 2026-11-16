@@ -10,14 +10,19 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Logistics\Capacity\Application\Command\ActivateCapacityWindow\ActivateCapacityWindowCommand;
 use Logistics\Capacity\Application\Command\BlockDispatchDay\BlockDispatchDayCommand;
+use Logistics\Capacity\Application\Command\BlockDispatchSlot\BlockDispatchSlotCommand;
 use Logistics\Capacity\Application\Command\UnblockDispatchDay\UnblockDispatchDayCommand;
+use Logistics\Capacity\Application\Command\UnblockDispatchSlot\UnblockDispatchSlotCommand;
 use Logistics\Capacity\Application\Query\CheckDispatchDay\CheckDispatchDayQuery;
 use Logistics\Capacity\Application\Query\GetActivationOptions\GetActivationOptionsQuery;
+use Logistics\Capacity\Application\Query\GetDeliveryCalendarDay\GetDeliveryCalendarDayQuery;
 use Logistics\Capacity\Application\Query\ListBlackoutDays\ListBlackoutDaysQuery;
 use Logistics\Capacity\Application\ReadModel\ActivationOptionsView;
 use Logistics\Capacity\Application\ReadModel\BlackoutDayView;
+use Logistics\Capacity\Application\ReadModel\DeliveryCalendarDayView;
 use Logistics\Capacity\Application\ReadModel\DispatchDayAvailabilityView;
 use Logistics\Capacity\Domain\Exception\CapacityException;
+use Logistics\Capacity\Domain\ValueObject\CapacityUnit;
 use Logistics\Coverage\Application\Query\ListMunicipalities;
 use Logistics\Coverage\Application\ReadModel\MunicipalityView;
 use Logistics\Shared\Application\Command\CommandBus;
@@ -70,6 +75,8 @@ final readonly class DeliveryCalendarController
                 $data = $view->toArray();
                 // Un día se puede prometer si no está bloqueado y cae dentro del horizonte con cupos activos.
                 $data['available'] = !($data['blocked'] ?? false) && (bool) ($data['within_horizon'] ?? false);
+                // Cupo de entregas total y consumido del día, para pintar el mes (additivo: no quita campos).
+                [$data['capacity_total'], $data['capacity_used']] = $this->capacityTotals($day->format('Y-m-d'), $municipalityId);
                 $days[] = $data;
             }
         }
@@ -86,6 +93,95 @@ final readonly class DeliveryCalendarController
                 'blocked' => array_map(static fn (BlackoutDayView $view): array => $view->toArray(), $blackouts),
             ],
         ]);
+    }
+
+    /**
+     * Calendario de entregas de UN día: el bloqueo de día entero y sus franjas horarias (cupo, consumo,
+     * unidad y bloqueo por franja). Con municipio, las franjas de ese municipio; sin municipio, el
+     * consolidado GLOBAL. Las franjas van ordenadas por hora de inicio.
+     */
+    public function day(Request $request): JsonResponse
+    {
+        /** @var array{date: string, municipality_id?: string|null} $filters */
+        $filters = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'municipality_id' => ['sometimes', 'nullable', 'uuid'],
+        ]);
+
+        return $this->guard(function () use ($filters): JsonResponse {
+            $municipalityId = $filters['municipality_id'] ?? null;
+            $this->ensureMunicipalityExists($municipalityId);
+
+            /** @var DeliveryCalendarDayView $view */
+            $view = $this->queryBus->ask(new GetDeliveryCalendarDayQuery($filters['date'], $municipalityId));
+
+            return new JsonResponse(['data' => $view->toArray()]);
+        });
+    }
+
+    /**
+     * Bloquea SOLO una franja horaria (no el día entero). Endpoint separado de `blocked` a propósito: una
+     * versión vieja que ignore `time_slot` no debe terminar bloqueando el día entero. Idempotente.
+     */
+    public function blockSlot(Request $request): JsonResponse
+    {
+        /** @var array{date: string, time_slot: string, reason: string, municipality_id?: string|null} $data */
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'time_slot' => ['required', 'string', 'max:32'],
+            'reason' => ['required', 'string', 'max:255'],
+            'municipality_id' => ['sometimes', 'nullable', 'uuid'],
+        ]);
+
+        return $this->guard(function () use ($data, $request): JsonResponse {
+            $municipalityId = $data['municipality_id'] ?? null;
+            $this->ensureMunicipalityExists($municipalityId);
+
+            // El formato de la franja (HH:MM-HH:MM, inicio<fin) lo valida el VO TimeSlot en el handler
+            // (lanza CapacityException → 422). Re-bloquear no duplica (idempotencia por clave natural).
+            $this->commandBus->dispatch(new BlockDispatchSlotCommand(
+                date: $data['date'],
+                timeSlot: trim($data['time_slot']),
+                municipalityId: $municipalityId,
+                reason: trim($data['reason']),
+                blockedBy: $this->actor($request),
+            ));
+
+            return new JsonResponse(['data' => [
+                'status' => 'accepted',
+                'date' => $data['date'],
+                'time_slot' => trim($data['time_slot']),
+                'municipality_id' => $municipalityId,
+                'blocked' => true,
+            ]], 202);
+        });
+    }
+
+    /**
+     * Quita el bloqueo de una franja horaria. Idempotente: si no había bloqueo para esa clave, responde
+     * 204 igual.
+     */
+    public function unblockSlot(Request $request): JsonResponse
+    {
+        /** @var array{date: string, time_slot: string, municipality_id?: string|null} $data */
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'time_slot' => ['required', 'string', 'max:32'],
+            'municipality_id' => ['sometimes', 'nullable', 'uuid'],
+        ]);
+
+        return $this->guard(function () use ($data): JsonResponse {
+            $municipalityId = $data['municipality_id'] ?? null;
+            $this->ensureMunicipalityExists($municipalityId);
+
+            $this->commandBus->dispatch(new UnblockDispatchSlotCommand(
+                date: $data['date'],
+                timeSlot: trim($data['time_slot']),
+                municipalityId: $municipalityId,
+            ));
+
+            return new JsonResponse(null, 204);
+        });
     }
 
     public function block(Request $request): JsonResponse
@@ -279,6 +375,48 @@ final readonly class DeliveryCalendarController
         $options = $this->queryBus->ask(new GetActivationOptionsQuery);
 
         return $options;
+    }
+
+    /**
+     * Cupo de entregas total y consumido de un día (unidad `deliveries`), para pintar el mes en el índice.
+     * Con municipio, el de ese municipio; sin municipio, el consolidado global. Reusa el calendario del día.
+     *
+     * @return array{0: float, 1: float}
+     */
+    private function capacityTotals(string $date, ?string $municipalityId): array
+    {
+        /** @var DeliveryCalendarDayView $view */
+        $view = $this->queryBus->ask(new GetDeliveryCalendarDayQuery($date, $municipalityId));
+
+        $total = 0.0;
+        $used = 0.0;
+        foreach ($view->slots as $slot) {
+            if ($slot->unit === CapacityUnit::Deliveries->value) {
+                $total += $slot->capacity ?? 0.0;
+                $used += $slot->used;
+            }
+        }
+
+        return [$total, $used];
+    }
+
+    /**
+     * Valida que el municipio exista en el catálogo de cobertura (igual criterio que el resto del grupo).
+     * Un municipio inexistente lanza CapacityException → 422. Null (alcance global) siempre es válido.
+     */
+    private function ensureMunicipalityExists(?string $municipalityId): void
+    {
+        if ($municipalityId === null) {
+            return;
+        }
+
+        foreach ($this->municipalities() as $municipality) {
+            if ($municipality->id === $municipalityId) {
+                return;
+            }
+        }
+
+        throw CapacityException::because("el municipio {$municipalityId} no existe en el catálogo de cobertura");
     }
 
     /**

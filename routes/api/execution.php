@@ -48,30 +48,38 @@ return [
     // Puerta app — escaneos, ruta, POD, fallidas y recepción en nodos (app interna Flutter).
     'app' => static function (): void {
         Route::name('execution.')->group(function (): void {
-            // Hoja de ruta del chofer: entregas asignadas a un vehículo.
-            Route::get('vehicles/{vehicleId}/deliveries', ListVehicleDeliveriesController::class)
-                ->name('vehicles.deliveries');
+            // Endpoints POR VEHÍCULO: solo oficina (admin/supervisor/planificador) o el tripulante (chofer o
+            // ayudante) de ESE camión el día relevante. La hoja de ruta y las entregas traen PII del cliente
+            // (teléfono, dirección, líneas), así que la pertenencia la exige el middleware `vehicle.crew`
+            // server-side; el chofer resuelve su propio vehículo por «Mi ruta», así que su caso normal no se
+            // rompe. Armar / abrir / cerrar la ruta y reportar un incidente quedan igual acotados: oficina o
+            // el tripulante de ese camión.
+            Route::middleware('vehicle.crew')->group(function (): void {
+                // Hoja de ruta del chofer: entregas asignadas a un vehículo.
+                Route::get('vehicles/{vehicleId}/deliveries', ListVehicleDeliveriesController::class)
+                    ->name('vehicles.deliveries');
 
-            // "Mi ruta" del chofer: secuencia ordenada de paradas, parada actual y restantes.
-            // GET con ?date=YYYY-MM-DD (opcional); sin fecha, la ruta abierta vigente del camión.
-            Route::get('vehicles/{vehicleId}/route', GetDriverRouteController::class)
-                ->name('vehicles.route.show');
+                // "Mi ruta" del chofer: secuencia ordenada de paradas, parada actual y restantes.
+                // GET con ?date=YYYY-MM-DD (opcional); sin fecha, la ruta abierta vigente del camión.
+                Route::get('vehicles/{vehicleId}/route', GetDriverRouteController::class)
+                    ->name('vehicles.route.show');
 
-            // Armar la ruta del día del camión a partir de las paradas del plan publicado.
-            Route::post('vehicles/{vehicleId}/route', AssembleDailyRouteController::class)
-                ->name('vehicles.route.assemble');
+                // Armar la ruta del día del camión a partir de las paradas del plan publicado.
+                Route::post('vehicles/{vehicleId}/route', AssembleDailyRouteController::class)
+                    ->name('vehicles.route.assemble');
 
-            // Abrir / cerrar la ruta del día (idempotentes; devuelven status/started_at/closed_at). El cierre
-            // NO exige todas las paradas entregadas: las pendientes quedan y se informan (pending_stops).
-            Route::post('vehicles/{vehicleId}/route/start', [DriverRouteLifecycleController::class, 'start'])
-                ->name('vehicles.route.start');
-            Route::post('vehicles/{vehicleId}/route/close', [DriverRouteLifecycleController::class, 'close'])
-                ->name('vehicles.route.close');
+                // Abrir / cerrar la ruta del día (idempotentes; devuelven status/started_at/closed_at). El cierre
+                // NO exige todas las paradas entregadas: las pendientes quedan y se informan (pending_stops).
+                Route::post('vehicles/{vehicleId}/route/start', [DriverRouteLifecycleController::class, 'start'])
+                    ->name('vehicles.route.start');
+                Route::post('vehicles/{vehicleId}/route/close', [DriverRouteLifecycleController::class, 'close'])
+                    ->name('vehicles.route.close');
 
-            // Reporte de incidente del chofer (avería/accidente): dispara la reacción automática
-            // (fuera de servicio + reprogramación + avisos). Idempotente por Idempotency-Key.
-            Route::post('vehicles/{vehicleId}/incidents', ReportVehicleIncidentController::class)
-                ->name('vehicles.incidents.report');
+                // Reporte de incidente del chofer (avería/accidente): dispara la reacción automática
+                // (fuera de servicio + reprogramación + avisos). Idempotente por Idempotency-Key.
+                Route::post('vehicles/{vehicleId}/incidents', ReportVehicleIncidentController::class)
+                    ->name('vehicles.incidents.report');
+            });
             // Asignar el pedido a un camión de reparto real y atarlo a la ruta de ese vehículo (andén):
             // aparece en «Mi ruta de hoy» del chofer. 422 si el vehículo no existe/no está operativo.
             Route::post('orders/{orderNumber}/vehicle', AssignOrderVehicleController::class)

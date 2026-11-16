@@ -27,6 +27,20 @@ return [
         'ttl_negative' => (int) env('TRACKING_PUBLIC_CACHE_TTL_NEGATIVE', 15),
     ],
 
+    // Seguimiento del PEDIDO en vivo por sockets (señal `tracking.updated`): un observador del outbox encola
+    // una señal por pedido ante cada cambio del seguimiento (estado visible, avance por producto, ruta que lo
+    // transporta) y el trabajo la emite al canal de la ficha del pedido y al tema tracking por ciudad. Es solo
+    // la señal para «volver a pedir el estado»; el detalle nunca viaja por el socket. Defaults funcionales en
+    // un docker nuevo: sin transporte de sockets (`broadcasting.default` null/log) no encola ni consulta nada.
+    'realtime' => [
+        // Interruptor del contexto. Con false no se encola ni se emite, aun con transporte de sockets activo.
+        'enabled' => (bool) env('TRACKING_REALTIME_ENABLED', true),
+
+        // Ventana anti-ráfaga (segundos): varios cambios seguidos de un mismo pedido se avisan una sola vez.
+        // Es también la demora del trabajo, para que al emitir el estado vigente ya incluya la ráfaga completa.
+        'debounce_seconds' => (int) env('TRACKING_REALTIME_DEBOUNCE_SECONDS', 2),
+    ],
+
     'public_http' => [
         // Cabeceras `Cache-Control: public` + `ETag` en las respuestas públicas por token (JSON y página
         // HTML). Solo se emiten para visitantes anónimos; nunca en respuestas autenticadas.

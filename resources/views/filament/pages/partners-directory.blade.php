@@ -13,7 +13,7 @@
             <div class="ck-hub__id">
                 <div style="min-width:0">
                     <div class="ck-hub__title">Socios comerciales</div>
-                    <div class="ck-hub__sub">Transportistas y vendedores — gestionados juntos como lo que son: socios externos</div>
+                    <div class="ck-hub__sub">Transportistas y sellers — gestionados juntos como lo que son: socios externos</div>
                 </div>
             </div>
             <div class="ck-hub__aside" style="min-width:260px">
@@ -28,7 +28,7 @@
                 <div class="ck-stat__value">{{ number_format($c['carriers']) }}</div>
             </div>
             <div class="ck-stat ck-stat--positive">
-                <div class="ck-stat__label">Vendedores</div>
+                <div class="ck-stat__label">Sellers</div>
                 <div class="ck-stat__value">{{ number_format($c['sellers']) }}</div>
             </div>
             <div class="ck-stat">
@@ -57,7 +57,7 @@
                 @empty
                     <div class="ck-empty">
                         <div class="ck-empty__title">Sin socios</div>
-                        <div class="ck-empty__hint">{{ trim($search) !== '' ? 'Nadie coincide con la búsqueda.' : 'No hay transportistas ni vendedores cargados.' }}</div>
+                        <div class="ck-empty__hint">{{ trim($search) !== '' ? 'Nadie coincide con la búsqueda.' : 'No hay transportistas ni sellers cargados.' }}</div>
                     </div>
                 @endforelse
             </div>

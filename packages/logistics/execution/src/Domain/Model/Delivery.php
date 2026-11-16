@@ -15,6 +15,8 @@ use Logistics\Execution\Domain\Event\ShipmentDroppedAtStore;
 use Logistics\Execution\Domain\Event\ShipmentLoaded;
 use Logistics\Execution\Domain\Event\ShipmentPrepared;
 use Logistics\Execution\Domain\Event\ShipmentUnloaded;
+use Logistics\Execution\Domain\Event\UnitLoaded;
+use Logistics\Execution\Domain\Event\UnitPrepared;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
@@ -499,6 +501,16 @@ final class Delivery extends AggregateRoot
 
         $this->appendScan(ScanType::Preparation, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
 
+        // Señal liviana POR BULTO: cada escaneo de preparación emite su propio hecho, para que los
+        // observadores de tiempo real reflejen en vivo cada bulto ya preparado (no solo el primero).
+        $this->recordEvent(new UnitPrepared(
+            $this->id->toString(),
+            $this->shipmentId,
+            $this->vehicleId,
+            $unitId,
+            $occurredAt,
+        ));
+
         if ($this->status === DeliveryStatus::Pending) {
             $this->status = DeliveryStatus::Prepared;
             $this->recordEvent(new ShipmentPrepared(
@@ -529,6 +541,16 @@ final class Delivery extends AggregateRoot
         $this->guardTransition([DeliveryStatus::Prepared, DeliveryStatus::Loaded], 'Loaded');
 
         $this->appendScan(ScanType::Load, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
+
+        // Señal liviana POR BULTO: cada escaneo de carga emite su propio hecho, para que el andén vea en vivo
+        // cada bulto ya subido al camión (no solo el primero).
+        $this->recordEvent(new UnitLoaded(
+            $this->id->toString(),
+            $this->shipmentId,
+            $this->vehicleId,
+            $unitId,
+            $occurredAt,
+        ));
 
         if ($this->status === DeliveryStatus::Prepared) {
             $this->status = DeliveryStatus::Loaded;

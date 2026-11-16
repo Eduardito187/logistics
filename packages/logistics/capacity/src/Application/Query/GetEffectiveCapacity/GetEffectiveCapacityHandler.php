@@ -8,6 +8,7 @@ use Logistics\Capacity\Application\ReadModel\EffectiveCapacityView;
 use Logistics\Capacity\Domain\Contract\CapacityRepository;
 use Logistics\Capacity\Domain\Contract\CapacityRuleProvider;
 use Logistics\Capacity\Domain\Exception\CapacityException;
+use Logistics\Capacity\Domain\Service\DispatchSlotAvailability;
 use Logistics\Capacity\Domain\ValueObject\BucketScope;
 use Logistics\Capacity\Domain\ValueObject\CapacityUnit;
 use Logistics\Capacity\Domain\ValueObject\SlotDate;
@@ -28,6 +29,7 @@ final readonly class GetEffectiveCapacityHandler implements QueryHandler
     public function __construct(
         private CapacityRepository $buckets,
         private CapacityRuleProvider $rules,
+        private DispatchSlotAvailability $slotAvailability,
     ) {}
 
     public function handle(Query $query): EffectiveCapacityView
@@ -40,14 +42,18 @@ final readonly class GetEffectiveCapacityHandler implements QueryHandler
         $unit = CapacityUnit::tryFrom($query->unit)
             ?? throw CapacityException::because("unidad de capacidad desconocida: {$query->unit}");
 
-        $bucket = $this->buckets->findBucket($scope, $date, $slot, $unit);
-        if ($bucket !== null) {
-            return EffectiveCapacityView::fromBucket($bucket);
-        }
+        // Una franja bloqueada (por el día o por la franja) tiene capacidad efectiva cero, así no se
+        // agenda sobre ella aunque exista un cupo o una regla por defecto: se salta la resolución normal.
+        if (!$this->slotAvailability->isBlocked($date, $slot, $scope->municipalityId)) {
+            $bucket = $this->buckets->findBucket($scope, $date, $slot, $unit);
+            if ($bucket !== null) {
+                return EffectiveCapacityView::fromBucket($bucket);
+            }
 
-        $defaultTotal = $this->rules->defaultTotalFor($scope, $date, $slot, $unit);
-        if ($defaultTotal !== null) {
-            return EffectiveCapacityView::fromRule($scope, $date, $slot, $unit, $defaultTotal);
+            $defaultTotal = $this->rules->defaultTotalFor($scope, $date, $slot, $unit);
+            if ($defaultTotal !== null) {
+                return EffectiveCapacityView::fromRule($scope, $date, $slot, $unit, $defaultTotal);
+            }
         }
 
         return EffectiveCapacityView::none($scope, $date, $slot, $unit);
