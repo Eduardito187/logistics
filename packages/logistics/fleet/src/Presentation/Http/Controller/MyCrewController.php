@@ -21,9 +21,10 @@ use Logistics\Shared\Application\Query\QueryBus;
  * El chofer no elige vehículo ni tripulación: se los arma el admin con AssembleCrew. Este endpoint deja
  * que el chofer consulte SU asignación (vehículo + chofer + ayudantes) para una fecha.
  *
- * El vínculo usuario↔chofer sale de `users.driver_id` (referencia por valor al UUID de fleet_drivers;
- * ver la migración add_driver_id_to_users_table). Si la cuenta autenticada no está ligada a un chofer,
- * o no tiene asignación para la fecha, se responde 404 en formato RFC 7807.
+ * El vínculo usuario↔tripulante sale de `users.driver_id` (chofer) o `users.helper_id` (ayudante/rol
+ * tripulante), referencias por valor a los UUID de fleet_drivers / fleet_helpers (ver las migraciones
+ * add_driver_id_to_users_table y add_helper_id_to_users_table). Si la cuenta autenticada no está ligada
+ * a un chofer ni a un ayudante, o no tiene asignación para la fecha, se responde 404 en formato RFC 7807.
  */
 final readonly class MyCrewController
 {
@@ -44,25 +45,34 @@ final readonly class MyCrewController
         $date = $this->operationalDate($request);
 
         $user = $request->user();
-        $driverId = $user instanceof User ? $user->driver_id : null;
+        $driverId = $user instanceof User ? $this->linkId($user->driver_id) : null;
+        $helperId = $user instanceof User ? $this->linkId($user->helper_id) : null;
 
-        if (!is_string($driverId) || $driverId === '') {
+        if ($driverId === null && $helperId === null) {
             return ProblemDetails::fromCode(
                 ErrorCode::NotFound,
-                'La cuenta autenticada no está vinculada a un chofer.',
+                'La cuenta autenticada no está vinculada a un chofer ni a un ayudante.',
             )->withInstance($request->getRequestUri())->toResponse($request);
         }
 
         /** @var MyCrewView|null $crew */
-        $crew = $this->queryBus->ask(new GetMyCrew($driverId, $date));
+        $crew = $this->queryBus->ask(new GetMyCrew($driverId, $date, $helperId));
 
         if ($crew === null) {
             return ProblemDetails::fromCode(
                 ErrorCode::NotFound,
-                "No hay asignación de tripulación para el chofer en la fecha {$date}.",
+                "No hay asignación de tripulación para la cuenta en la fecha {$date}.",
             )->withInstance($request->getRequestUri())->toResponse($request);
         }
 
         return $this->respondData($crew->toArray());
+    }
+
+    /**
+     * Normaliza un vínculo de la cuenta (driver_id / helper_id): devuelve el string no vacío o null.
+     */
+    private function linkId(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
     }
 }

@@ -114,6 +114,35 @@ it('con plan sin geometría la calcula vía planificación, la persiste y la sir
         ->and(DB::table('planning_plans')->where('id', $planId)->value('route_geometry'))->not->toBeNull();
 });
 
+it('ignora una geometría del plan DEGENERADA (puntos iguales) y cae a la recta entre paradas', function (): void {
+    [$vehicle] = assembleTwoStopRoute(ROUTE_DATE);
+
+    // Plan con geometría colapsada: cuatro coordenadas IGUALES (lo que vimos en staging: un punto repetido,
+    // distancia 0). Tiene >= 2 coordenadas, así que sin el guardia se serviría y el mapa dibujaría un punto.
+    DB::table('planning_plans')->insert([
+        'id' => Uuid::generate()->value,
+        'plan_date' => ROUTE_DATE,
+        'vehicle_id' => $vehicle,
+        'status' => 'PUBLISHED',
+        'route_geometry' => json_encode([
+            'type' => 'LineString',
+            'coordinates' => [[-63.169888, -17.756876], [-63.169888, -17.756876], [-63.169888, -17.756876], [-63.169888, -17.756876]],
+            'distance_meters' => 0,
+            'duration_seconds' => 0,
+        ], JSON_THROW_ON_ERROR),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $response = $this->getJson("/api/v1/app/vehicles/{$vehicle}/route?date=".ROUTE_DATE)->assertOk();
+
+    // No se sirve la geometría degenerada: cae a la recta entre las DOS paradas reales de la ruta (distintas).
+    $response->assertJsonPath('data.route_geometry.type', 'LineString');
+    $response->assertJsonPath('data.route_geometry.coordinates.0', [-68.13, -16.5]);
+    $response->assertJsonPath('data.route_geometry.coordinates.1', [-68.15, -16.52]);
+    expect($response->json('data.route_geometry.distance_meters'))->toBeGreaterThan(2000);
+});
+
 it('con una sola parada y sin plan no inventa geometría', function (): void {
     $vehicle = Uuid::generate()->value;
     app(CommandBus::class)->dispatch(new AssembleDailyRoute(

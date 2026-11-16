@@ -25,6 +25,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 /**
  * @property string|null        $driver_id                         UUID del chofer de Fleet vinculado a esta cuenta (null si no es chofer).
+ * @property string|null        $helper_id                         UUID del ayudante de Fleet (fleet_helpers) vinculado a esta cuenta (null si no es tripulante/ayudante).
  * @property string|null        $node_id                           UUID del nodo de tienda (network_nodes) al que pertenece la cuenta (null si no es tienda).
  * @property string|null        $carrier_id                        UUID del transportista (carriers) al que pertenece la cuenta (null si no es transportista).
  * @property string|null        $city                              Código del departamento (ciudad) al que pertenece la persona: `la_paz`, `santa_cruz`… (null si no tiene ciudad asignada).
@@ -33,7 +34,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property array<string>|null $app_authentication_recovery_codes Códigos de recuperación cifrados (cast `encrypted:array`).
  * @property Carbon|null        $two_factor_confirmed_at           Momento de confirmación del enrolamiento 2FA.
  */
-#[Fillable(['name', 'email', 'password', 'driver_id', 'node_id', 'carrier_id', 'city'])]
+#[Fillable(['name', 'email', 'password', 'driver_id', 'helper_id', 'node_id', 'carrier_id', 'city'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery
 {

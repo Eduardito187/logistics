@@ -83,7 +83,10 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
         $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
 
         if (!is_array($decoded) || !isset($decoded['coordinates']) || !is_array($decoded['coordinates'])
-            || count($decoded['coordinates']) < 2) {
+            || !self::isDrawable($decoded['coordinates'])) {
+            // No dibujable: sin dos puntos DISTINTOS (p. ej. una geometría degenerada que quedó persistida con
+            // todas sus coordenadas iguales y distancia 0) la devolvemos como ausente, para caer al recálculo
+            // del plan y, en último caso, a la línea recta entre las paradas reales de la ruta (que sí dibuja).
             return null;
         }
 
@@ -142,7 +145,7 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
             $previous = $point;
         }
 
-        if (count($coordinates) < 2) {
+        if (!self::isDrawable($coordinates)) {
             return null;
         }
 
@@ -152,6 +155,33 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
             'distance_meters' => round($distance, 1),
             'duration_seconds' => round($distance / (self::FALLBACK_SPEED_KMH * 1000.0 / 3600.0), 1),
         ];
+    }
+
+    /**
+     * ¿La lista de coordenadas dibuja una línea de verdad? Exige al menos DOS puntos DISTINTOS: una geometría
+     * con dos o más coordenadas IGUALES (longitud/latitud repetidas) colapsa a un punto y no debe servirse.
+     *
+     * @param array<int|string, mixed> $coordinates lista de pares [lng, lat]
+     */
+    private static function isDrawable(array $coordinates): bool
+    {
+        $first = null;
+        foreach ($coordinates as $pair) {
+            if (!is_array($pair) || !isset($pair[0], $pair[1]) || !is_numeric($pair[0]) || !is_numeric($pair[1])) {
+                continue;
+            }
+            $point = [(float) $pair[0], (float) $pair[1]];
+            if ($first === null) {
+                $first = $point;
+
+                continue;
+            }
+            if ($point !== $first) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

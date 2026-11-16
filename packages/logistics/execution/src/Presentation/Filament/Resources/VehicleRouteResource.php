@@ -20,6 +20,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Logistics\Execution\Application\Contract\RouteGeometryReader;
 use Logistics\Execution\Domain\ValueObject\RouteStatus;
 use Logistics\Execution\Domain\ValueObject\RouteStopStatus;
@@ -268,6 +269,13 @@ final class VehicleRouteResource extends Resource
                                     ->dateTime()
                                     ->placeholder('—')
                                     ->columnSpanFull(),
+                                // Preview de los PRODUCTOS del pedido de esta parada: miniaturas circulares con
+                                // nombre + SKU; un producto con cantidad ≥ 2 lleva el badge «x2» arriba a la derecha.
+                                View::make('logistics-execution::filament.route-stop-products')
+                                    ->viewData(static fn (RouteStopRecord $record): array => [
+                                        'products' => self::stopProducts($record),
+                                    ])
+                                    ->columnSpanFull(),
                                 // Hace clickeable el recuadro ENTERO de la parada: un clic en cualquier parte de la
                                 // tarjeta centra y abre su punto en el mapa de la ruta de arriba (los links de
                                 // texto Pedido/Cliente se respetan y siguen navegando). Es solo cableado, va oculto.
@@ -285,6 +293,42 @@ final class VehicleRouteResource extends Resource
                     ])
                     ->columnSpanFull(),
             ]);
+    }
+
+    /**
+     * Productos del pedido de una parada para el preview: nombre, SKU, URL de imagen y cantidad. En orden
+     * estable por nombre. Tolerante: lista vacía si no hay pedido o la fuente no está disponible.
+     *
+     * @return list<array{name: string, sku: string, image: string|null, qty: int}>
+     */
+    private static function stopProducts(?RouteStopRecord $record): array
+    {
+        $shipmentId = $record?->shipment_id;
+        if (!is_string($shipmentId) || $shipmentId === '') {
+            return [];
+        }
+
+        try {
+            $rows = DB::table('shipment_lines')
+                ->where('shipment_id', $shipmentId)
+                ->orderBy('product_name')
+                ->get(['product_name', 'sku', 'product_image_url', 'quantity']);
+        } catch (Throwable) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $image = $row->product_image_url ?? null;
+            $out[] = [
+                'name' => is_string($row->product_name ?? null) && $row->product_name !== '' ? $row->product_name : (string) ($row->sku ?? ''),
+                'sku' => (string) ($row->sku ?? ''),
+                'image' => is_string($image) && $image !== '' ? $image : null,
+                'qty' => max(1, (int) ($row->quantity ?? 1)),
+            ];
+        }
+
+        return $out;
     }
 
     /**

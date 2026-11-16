@@ -119,6 +119,43 @@ it('devuelve 404 cuando la cuenta autenticada no está vinculada a un chofer', f
         ->assertJsonPath('code', 'not_found');
 });
 
+it('devuelve la tripulación al AYUDANTE autenticado (rol tripulante, por users.helper_id)', function (): void {
+    $vehicleId = registrarVehiculoMyCrew();
+    $driverId = registrarChoferMyCrew('Juan Pérez');
+    $helperName = 'Ayudante '.uniqid();
+    $helperId = registrarAyudanteMyCrew($helperName);
+
+    app(CommandBus::class)->dispatch(new AssembleCrew(
+        driverId: $driverId,
+        helperIds: [$helperId],
+        vehicleId: $vehicleId,
+        assembledFor: '2026-10-15',
+        shiftStartsAt: '2026-10-15 06:00:00',
+        shiftEndsAt: '2026-10-15 14:00:00',
+    ));
+
+    // El tripulante NO es chofer (driver_id null): se resuelve por su helper_id. La vista es la misma.
+    Sanctum::actingAs(User::factory()->create(['driver_id' => null, 'helper_id' => $helperId]));
+
+    $this->getJson('/api/v1/app/fleet/my-crew?date=2026-10-15')
+        ->assertOk()
+        ->assertJsonPath('data.driver.id', $driverId)
+        ->assertJsonPath('data.vehicle.id', $vehicleId)
+        ->assertJsonPath('data.helpers.0.id', $helperId)
+        ->assertJsonPath('data.helpers.0.name', $helperName)
+        ->assertJsonPath('data.date', '2026-10-15');
+});
+
+it('devuelve 404 al ayudante que no integra ninguna tripulación esa fecha', function (): void {
+    $helperId = registrarAyudanteMyCrew('Ayudante sin tripulación '.uniqid());
+
+    Sanctum::actingAs(User::factory()->create(['driver_id' => null, 'helper_id' => $helperId]));
+
+    $this->getJson('/api/v1/app/fleet/my-crew?date=2026-10-15')
+        ->assertNotFound()
+        ->assertJsonPath('code', 'not_found');
+});
+
 it('usa la fecha de hoy (America/La_Paz) cuando no se envía el parámetro date', function (): void {
     $vehicleId = registrarVehiculoMyCrew();
     $driverId = registrarChoferMyCrew();

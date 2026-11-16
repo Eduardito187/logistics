@@ -72,18 +72,20 @@ final class EnsureVehicleCrew
         }
 
         $vehicleId = $this->routeText($request, 'vehicleId');
-        $linkId = $this->userLinkId($user);
+        $linkIds = $this->userLinkIds($user);
 
         return $vehicleId !== null
-            && $linkId !== null
-            && $this->isCrewMember($vehicleId, $linkId, $this->relevantDate($request));
+            && $linkIds !== []
+            && $this->isCrewMember($vehicleId, $linkIds, $this->relevantDate($request));
     }
 
     /**
-     * ¿El usuario (por su `users.driver_id`) es chofer o ayudante de una tripulación vigente de ese
-     * vehículo esa fecha? Consulta de solo lectura sobre `fleet_crews`.
+     * ¿El usuario (por su `users.driver_id` como chofer o `users.helper_id` como ayudante) integra una
+     * tripulación vigente de ese vehículo esa fecha? Consulta de solo lectura sobre `fleet_crews`.
+     *
+     * @param list<string> $linkIds vínculos de la cuenta (chofer y/o ayudante), en forma de UUID
      */
-    private function isCrewMember(string $vehicleId, string $linkId, string $date): bool
+    private function isCrewMember(string $vehicleId, array $linkIds, string $date): bool
     {
         try {
             $rows = DB::table('fleet_crews')
@@ -96,7 +98,8 @@ final class EnsureVehicleCrew
         }
 
         foreach ($rows as $row) {
-            if ((string) $row->driver_id === $linkId || in_array($linkId, $this->helperIds($row->helper_ids ?? null), true)) {
+            if (in_array((string) $row->driver_id, $linkIds, true)
+                || array_intersect($this->helperIds($row->helper_ids ?? null), $linkIds) !== []) {
                 return true;
             }
         }
@@ -124,16 +127,22 @@ final class EnsureVehicleCrew
     }
 
     /**
-     * Vínculo del usuario con la tripulación: su `users.driver_id`, solo si tiene forma de UUID. Null si no
-     * está ligado a un chofer (entonces no puede ser tripulante de ningún vehículo).
+     * Vínculos del usuario con una tripulación: su `users.driver_id` (si es chofer) y su `users.helper_id`
+     * (si es ayudante / rol tripulante), cada uno solo si tiene forma de UUID. Lista vacía si la cuenta no
+     * está ligada a ninguno (entonces no puede integrar ninguna tripulación).
+     *
+     * @return list<string>
      */
-    private function userLinkId(User $user): ?string
+    private function userLinkIds(User $user): array
     {
-        $driverId = $user->driver_id;
+        $ids = [];
+        foreach ([$user->driver_id, $user->helper_id] as $raw) {
+            if (is_string($raw) && preg_match(self::UUID_PATTERN, trim($raw)) === 1) {
+                $ids[] = strtolower(trim($raw));
+            }
+        }
 
-        return is_string($driverId) && preg_match(self::UUID_PATTERN, trim($driverId)) === 1
-            ? strtolower(trim($driverId))
-            : null;
+        return $ids;
     }
 
     /**
