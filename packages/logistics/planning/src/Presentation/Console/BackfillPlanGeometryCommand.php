@@ -11,9 +11,11 @@ use Throwable;
 
 /**
  * Calcula y persiste la geometría por calles de los planes que quedaron sin ella (armados a mano, por
- * propuesta, reordenados o publicados antes de este arreglo). Idempotente: sin --force solo toca planes
- * con geometría nula. Con --force recalcula todos los no publicados (un plan publicado con geometría no
- * se reescribe: su hoja de ruta está congelada).
+ * propuesta, reordenados o publicados antes de este arreglo) o con una geometría DEGENERADA (colapsada a un
+ * punto, basura). Idempotente: sin --force solo toca planes sin geometría dibujable (nula o degenerada); un
+ * plan publicado con geometría VÁLIDA (dibujable) no se reescribe (su hoja de ruta está congelada), pero una
+ * degenerada SÍ se recalcula aunque esté publicado. Con --force recalcula además los no publicados con
+ * geometría ya válida.
  */
 final class BackfillPlanGeometryCommand extends Command
 {

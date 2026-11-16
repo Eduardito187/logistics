@@ -133,6 +133,45 @@ it('el backfill con --force recalcula los no publicados y respeta los publicados
         ->assertSuccessful();
 });
 
+it('recalcula un plan PUBLICADO con geometría DEGENERADA (puntos iguales) sin --force', function (): void {
+    [$plan] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->published(), 2);
+    // Geometría basura persistida: dos coordenadas IGUALES (colapsada a un punto), como la que vimos en staging.
+    PlanRecord::query()->whereKey($plan->getKey())->toBase()->update([
+        'route_geometry' => json_encode([
+            'type' => 'LineString',
+            'coordinates' => [[-63.169888, -17.756876], [-63.169888, -17.756876]],
+            'distance_meters' => 0,
+            'duration_seconds' => 0,
+        ], JSON_THROW_ON_ERROR),
+    ]);
+
+    // Sin --force: una geometría degenerada se trata como «falta geometría», así que se recalcula aunque el
+    // plan esté PUBLICADO (una hoja de ruta buena sí quedaría congelada).
+    $result = app(PlanGeometryRefresher::class)->backfill(null, false);
+
+    $coords = storedCoordinates($plan);
+    expect($result['updated'])->toBe(1)
+        ->and($coords)->toHaveCount(2)
+        // Dos puntos DISTINTOS = dibujable: ya no es la geometría colapsada.
+        ->and($coords[0])->not->toBe($coords[1])
+        ->and(PlanRecord::query()->whereKey($plan->getKey())->value('status'))->toBe('PUBLISHED');
+});
+
+it('NO reescribe un plan publicado con geometría VÁLIDA (hoja congelada)', function (): void {
+    [$plan] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->published(), 2);
+    // Primera corrida: le calcula una geometría válida (dibujable).
+    app(PlanGeometryRefresher::class)->backfill(null, false);
+    $before = storedCoordinates($plan);
+
+    // Segunda corrida incluso con --force: no la toca (ya es válida y está publicada).
+    $calls = $this->geometryProvider->calls;
+    $result = app(PlanGeometryRefresher::class)->backfill(null, true);
+
+    expect($result['updated'])->toBe(0)
+        ->and(storedCoordinates($plan))->toBe($before)
+        ->and($this->geometryProvider->calls)->toBe($calls);
+});
+
 it('rechaza una fecha inválida', function (): void {
     $this->artisan('logistics:planning:backfill-geometry', ['--date' => 'ayer'])->assertFailed();
 });
