@@ -59,8 +59,11 @@ final readonly class RouteUpdatedObserver implements OutboxObserver
         'planning.plan_published',
         'planning.route_reoptimized',
         'planning.stop_removed_from_plan',
-        // Tripulación: al chofer le asignaron (o cambiaron) el camión.
+        // Tripulación: al chofer le asignaron el camión del día, o se lo cambiaron (reasignación manual con
+        // la ruta ya existente). Ambos avisan al chofer por `route.updated` en su canal personal para que la
+        // app recargue su tripulación/ruta en vivo, sin reabrir.
         'fleet.crew_assembled',
+        'fleet.crew_vehicle_changed',
     ];
 
     /**
