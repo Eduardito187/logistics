@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\App\WatchSummaryController;
 
-/**
- * «N de M» del resumen para reloj: regla acordada con la app (idéntica a su RouteProgress).
- * N = ATENDIDAS + 1, capado a M; ATENDIDAS = entregadas + FALLIDAS (una fallida avanza; reprogramadas no).
- */
+// «N de M» del resumen para reloj: regla acordada con la app (idéntica a su RouteProgress).
+// N = ATENDIDAS + 1, capado a M; ATENDIDAS = entregadas + FALLIDAS (una fallida avanza; reprogramadas no).
 
 it('cuenta la parada actual como entregadas + 1', function (): void {
     // 2 entregadas, 0 fallidas, 6 totales, con pendientes → parada 3.

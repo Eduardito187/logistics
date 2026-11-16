@@ -133,7 +133,7 @@ it('el backfill con --force recalcula los no publicados y respeta los publicados
         ->assertSuccessful();
 });
 
-it('recalcula un plan PUBLICADO con geometría DEGENERADA (puntos iguales) sin --force', function (): void {
+it('recalcula un plan PUBLICADO con geometría DEGENERADA (puntos iguales) con --force', function (): void {
     [$plan] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->published(), 2);
     // Geometría basura persistida: dos coordenadas IGUALES (colapsada a un punto), como la que vimos en staging.
     PlanRecord::query()->whereKey($plan->getKey())->toBase()->update([
@@ -145,9 +145,9 @@ it('recalcula un plan PUBLICADO con geometría DEGENERADA (puntos iguales) sin -
         ], JSON_THROW_ON_ERROR),
     ]);
 
-    // Sin --force: una geometría degenerada se trata como «falta geometría», así que se recalcula aunque el
-    // plan esté PUBLICADO (una hoja de ruta buena sí quedaría congelada).
-    $result = app(PlanGeometryRefresher::class)->backfill(null, false);
+    // --force escanea también los planes con geometría (no solo los nulos); una geometría DEGENERADA se trata
+    // como «falta geometría» y se recalcula aunque el plan esté PUBLICADO (una hoja de ruta buena sí queda congelada).
+    $result = app(PlanGeometryRefresher::class)->backfill(null, true);
 
     $coords = storedCoordinates($plan);
     expect($result['updated'])->toBe(1)
@@ -155,6 +155,23 @@ it('recalcula un plan PUBLICADO con geometría DEGENERADA (puntos iguales) sin -
         // Dos puntos DISTINTOS = dibujable: ya no es la geometría colapsada.
         ->and($coords[0])->not->toBe($coords[1])
         ->and(PlanRecord::query()->whereKey($plan->getKey())->value('status'))->toBe('PUBLISHED');
+});
+
+it('recalcula una geometría DEGENERADA al LEERLA (ensureForVehicleAndDate), aunque esté publicada', function (): void {
+    [$plan] = seedPlanWithGeocodedStops(PlanRecordFactory::new()->published()->onDate(PLAN_DATE), 2);
+    PlanRecord::query()->whereKey($plan->getKey())->toBase()->update([
+        'route_geometry' => json_encode([
+            'type' => 'LineString',
+            'coordinates' => [[-63.169888, -17.756876], [-63.169888, -17.756876]],
+            'distance_meters' => 0,
+            'duration_seconds' => 0,
+        ], JSON_THROW_ON_ERROR),
+    ]);
+
+    // Auto-sanación: al resolver la geometría del camión/día (lo que hace el mapa al abrir la ruta) se recalcula.
+    expect(app(PlanGeometryRefresher::class)->ensureForVehicleAndDate((string) $plan->vehicle_id, PLAN_DATE))->toBeTrue();
+    $coords = storedCoordinates($plan);
+    expect($coords)->toHaveCount(2)->and($coords[0])->not->toBe($coords[1]);
 });
 
 it('NO reescribe un plan publicado con geometría VÁLIDA (hoja congelada)', function (): void {
