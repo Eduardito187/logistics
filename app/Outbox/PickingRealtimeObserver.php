@@ -23,6 +23,7 @@ use Throwable;
  *  - `shipments.shipment_received`        : entró un pedido nuevo a la lista;
  *  - `execution.delivery_opened`          : se asignó el camión = empezó a prepararse (sale de la lista);
  *  - `execution.shipment_prepared`        : se preparó el primer bulto (escaneo de preparación);
+ *  - `execution.unit_prepared`            : cada bulto preparado (escaneo por bulto, en vivo);
  *  - `execution.delivery_vehicle_reassigned` : el pedido pasó a otro camión;
  *  - `labels.labels_emitted`              : se emitieron o reimprimieron las etiquetas del pedido.
  *
@@ -48,6 +49,8 @@ final readonly class PickingRealtimeObserver implements OutboxObserver
         'shipments.shipment_received',
         'execution.delivery_opened',
         'execution.shipment_prepared',
+        // Cada bulto preparado (señal liviana por escaneo): refresca la lista de preparación en vivo.
+        'execution.unit_prepared',
         'execution.delivery_vehicle_reassigned',
         'labels.labels_emitted',
     ];

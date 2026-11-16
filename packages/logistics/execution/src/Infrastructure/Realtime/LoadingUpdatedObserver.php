@@ -35,6 +35,9 @@ final readonly class LoadingUpdatedObserver implements OutboxObserver
     public const EVENTS = [
         // Escaneo de carga validada de un bulto al camión (primer bulto del envío → la entrega pasa a cargada).
         'execution.shipment_loaded',
+        // Cada bulto siguiente cargado (señal liviana por escaneo): refresca el andén en vivo sin esperar al
+        // primero. Trae `shipment_id` y `vehicle_id` en su carga, como los demás hechos de carga.
+        'execution.unit_loaded',
         // Lista de entregas del camión: envío abierto en un camión (asignar vehículo), movido de camión,
         // parada sumada o quitada de su ruta.
         'execution.delivery_opened',

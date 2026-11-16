@@ -39,6 +39,8 @@ const LUR_CITY = 'santa_cruz';
 
 const LUR_LOADED = 'execution.shipment_loaded';
 
+const LUR_UNIT_LOADED = 'execution.unit_loaded';
+
 /** Canal (ya con el prefijo `private-`) de la oficina en el tema `loading`. */
 const LUR_CH_ALL = 'private-loading.all';
 
@@ -229,6 +231,21 @@ it('cada hecho de carga/lista encola la señal, demorada y en la cola de avisos'
             && $job->queue === config('observability.metrics.queues.notifications', 'notifications'),
     );
 })->with(LoadingUpdatedObserver::EVENTS);
+
+it('la carga de un bulto siguiente (execution.unit_loaded) también encola la señal del andén', function (): void {
+    lurEnableSockets();
+    $vehicleId = lurUuid();
+    $shipmentId = lurUuid();
+
+    lurObserve(LUR_UNIT_LOADED, ['vehicle_id' => $vehicleId, 'shipment_id' => $shipmentId]);
+
+    Bus::assertDispatchedTimes(BroadcastLoadingUpdated::class, 1);
+    Bus::assertDispatched(
+        BroadcastLoadingUpdated::class,
+        static fn (BroadcastLoadingUpdated $job): bool => $job->vehicleIds === [$vehicleId] && $job->shipmentId === $shipmentId,
+    );
+    expect(LoadingUpdatedObserver::EVENTS)->toContain(LUR_UNIT_LOADED);
+});
 
 it('un hecho que no toca la carga no encola nada', function (string $eventName): void {
     lurEnableSockets();
