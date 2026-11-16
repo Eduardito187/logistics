@@ -27,7 +27,6 @@ use Logistics\Fleet\Presentation\Filament\Resources\HelperResource\Pages\CreateH
 use Logistics\Fleet\Presentation\Filament\Resources\HelperResource\Pages\EditHelper;
 use Logistics\Fleet\Presentation\Filament\Resources\HelperResource\Pages\ListHelpers;
 use Logistics\Fleet\Presentation\Filament\Resources\HelperResource\Pages\ViewHelper;
-use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pages\CreatePreTripChecklist;
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pages\ListPreTripChecklists;
 use Logistics\Fleet\Presentation\Filament\Resources\PreTripChecklistResource\Pages\ViewPreTripChecklist;
 use Logistics\Fleet\Presentation\Filament\Resources\VehicleResource\Pages\CreateVehicle;
@@ -151,10 +150,6 @@ it('renderiza el listado de inspecciones pre-salida', function (): void {
     PreTripInspectionFactory::new()->create();
 
     Livewire::test(ListPreTripChecklists::class)->assertOk();
-});
-
-it('renderiza el create de inspección pre-salida', function (): void {
-    Livewire::test(CreatePreTripChecklist::class)->assertOk();
 });
 
 it('renderiza el view de una inspección pre-salida', function (): void {

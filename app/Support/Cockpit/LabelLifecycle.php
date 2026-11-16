@@ -59,7 +59,13 @@ final class LabelLifecycle
         $truck = $this->truckAssignment($unit?->shipmentId);
         $scans = $this->scanEvents($unit?->unitId, $truck);
 
-        $items = [...$this->baseEvents($labelId), ...$this->auditEvents($labelId), ...$scans, ...$this->deliveryEvents($unit?->shipmentId)];
+        // La ENTREGA derivada del estado del envío es un RESPALDO: si ya hubo un escaneo de POD (que lleva el
+        // actor —quién entregó—), no se duplica con la línea derivada «Entrega del pedido confirmada». Solo
+        // cuando el POD no dejó escaneo (p. ej. reasignación que orfanó el scan) entra la derivada. Mismo
+        // criterio que «Cargada»: la asignación al camión solo figura si no hubo escaneo de carga.
+        $delivery = $this->deliveryEvents($unit?->shipmentId, $this->hasPodScan($scans));
+
+        $items = [...$this->baseEvents($labelId), ...$this->auditEvents($labelId), ...$scans, ...$delivery];
 
         // Asignar el envío a un camión ES cargarlo (regla de operación): si no hubo escaneo de carga, la
         // asignación aparece como «Cargada» con la placa; si lo hubo, la placa ya va en ese escaneo.
@@ -200,9 +206,13 @@ final class LabelLifecycle
      * scans; el estado de la entrega del envío no sufre ninguno de esos problemas. La entrega es a nivel
      * pedido (una acción «Entregar» por parada), así que un POD cierra todas las unidades/etiquetas del envío.
      *
+     * Con `$hasPodScan` (ya hubo un escaneo de POD en el ciclo de vida) NO se agrega la línea derivada
+     * «Entregada» para no duplicar: manda el escaneo, que además trae el actor. La «En tienda» y la «Fallida»
+     * se mantienen siempre (no las produce ningún escaneo).
+     *
      * @return list<array{at: string, when: string, event: string, label: string, actor: string, detail: string, tone: string}>
      */
-    private function deliveryEvents(?string $shipmentId): array
+    private function deliveryEvents(?string $shipmentId, bool $hasPodScan = false): array
     {
         if ($shipmentId === null) {
             return [];
@@ -238,7 +248,7 @@ final class LabelLifecycle
             ];
         }
 
-        if ($status === 'DELIVERED') {
+        if ($status === 'DELIVERED' && !$hasPodScan) {
             return [...$events, [
                 'at' => $at,
                 'when' => $this->human($at),
@@ -311,6 +321,23 @@ final class LabelLifecycle
     {
         foreach ($scans as $scan) {
             if ($scan['label'] === 'carga') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * ¿Ya hay un escaneo de PRUEBA DE ENTREGA (POD) en la línea de tiempo? Es el único escaneo que se rotula
+     * «Entregada» (ver scanLabel: proof_of_delivery). Sirve para no duplicar con la entrega derivada del envío.
+     *
+     * @param list<array{event: string}> $scans
+     */
+    private function hasPodScan(array $scans): bool
+    {
+        foreach ($scans as $scan) {
+            if ($scan['event'] === 'Entregada') {
                 return true;
             }
         }
