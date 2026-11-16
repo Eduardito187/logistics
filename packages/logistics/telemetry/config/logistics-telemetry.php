@@ -115,8 +115,14 @@ return [
     // línea recta × factor de desvío / velocidad media. El cálculo con OSRM corre SOLO en el comando
     // programado (nunca dentro de un request); la lectura usa lo guardado o el respaldo en línea recta.
     'eta' => [
-        // Host OSRM para las duraciones viales. Vacío = sin OSRM (respaldo en línea recta; sirve en docker nuevo).
-        'osrm_host' => (string) env('TELEMETRY_ETA_OSRM_HOST', ''),
+        // Host OSRM para las duraciones viales Y la geometría del reruteo (posición → próxima parada). Mismo
+        // DEFAULT que Planificación (`OSRM_HOST`, y sin él el OSRM público): así el ruteo por CALLES funciona
+        // de fábrica, sin tocar `.env`, en plan + ETA + reruteo (la línea del mapa no es recta). Un solo
+        // ajuste `OSRM_HOST` cambia el host en todo; `TELEMETRY_ETA_OSRM_HOST` lo fija distinto solo acá; un
+        // host vacío apaga OSRM y cae al respaldo recto. En PRODUCCIÓN apuntar a un OSRM propio (ADR 009), no
+        // al público (manda coordenadas de clientes a un tercero y tiene límites de uso). En los tests se
+        // fuerza vacío (phpunit.xml) para no pegarle a la red.
+        'osrm_host' => (string) env('TELEMETRY_ETA_OSRM_HOST', (string) env('OSRM_HOST', 'https://router.project-osrm.org')),
         'osrm_timeout' => (int) env('TELEMETRY_ETA_OSRM_TIMEOUT', 5),
         // Velocidad media urbana para el respaldo en línea recta (km/h).
         'average_speed_kph' => (float) env('TELEMETRY_ETA_AVERAGE_SPEED_KPH', 25.0),

@@ -1884,6 +1884,39 @@ paths:
           $ref: '#/components/responses/FleetValidationError'
       security:
       - appBearer: []
+  /app/watch/summary:
+    get:
+      tags: [Fleet]
+      summary: Compact day summary for the smartwatch (standalone)
+      description: >-
+        Compact summary for a STANDALONE smartwatch (no phone): next stop, "N of M" progress, unread inbox
+        count and off-route state. Small payload on purpose (saves battery/data on the wrist). Resolves the
+        authenticated crew member (driver by users.driver_id, or helper by users.helper_id) -> their vehicle
+        of the day (crew) -> driver route. "N of M": N = attended + 1 capped to M, where attended = delivered
+        + FAILED stops (a failed stop advances the counter; rescheduled do not); a closed route reports M and
+        next_stop null. No route for the day -> has_route false with null fields (unread is still returned).
+      operationId: appWatchSummary
+      parameters:
+      - name: date
+        in: query
+        required: false
+        description: Day to summarize (YYYY-MM-DD). Defaults to today in America/La_Paz.
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: The compact watch summary for the day
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WatchSummary'
+      security:
+      - appBearer: []
   /app/fleet/my-crew:
     get:
       tags: [Fleet]
@@ -19214,6 +19247,53 @@ components:
             cache:
               type: boolean
               description: Valkey reachable
+    WatchSummary:
+      type: object
+      required: [has_route, vehicle_plate, stop_number, stops_total, stops_remaining, next_stop, off_route, unread_notifications]
+      properties:
+        has_route:
+          type: boolean
+          description: Whether the crew member has a route for the day.
+        vehicle_plate:
+          type: string
+          nullable: true
+          description: Plate of the vehicle of the day (never a UUID). Null if no crew/vehicle.
+        stop_number:
+          type: integer
+          nullable: true
+          description: 'N in "stop N of M": attended (delivered + failed) + 1, capped to stops_total; a closed route reports stops_total. Null when there is no route.'
+        stops_total:
+          type: integer
+          nullable: true
+          description: M - total real stops (item-by-item, stale-hidden). Null when there is no route.
+        stops_remaining:
+          type: integer
+          nullable: true
+          description: Pending stops left. Null when there is no route.
+        next_stop:
+          type: object
+          nullable: true
+          description: The current (next pending) stop, or null when the route has no pending stops.
+          required: [order_reference, customer_name, address, eta_iso]
+          properties:
+            order_reference:
+              type: string
+            customer_name:
+              type: string
+            address:
+              type: string
+            eta_iso:
+              type: string
+              format: date-time
+              nullable: true
+              description: Live/planned ETA in ISO 8601, or null.
+        off_route:
+          type: boolean
+          nullable: true
+          description: Off-route flag from the ETA engine; null when there are no vehicle positions (standalone without GPS) or the engine is unavailable.
+        unread_notifications:
+          type: integer
+          description: Unread inbox messages for the authenticated user.
     MyCrew:
       type: object
       description: >-
