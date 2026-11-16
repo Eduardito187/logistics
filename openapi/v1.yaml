@@ -14014,7 +14014,7 @@ components:
         path: { type: string, description: 'Ruta base del WebSocket en el host de la API, p. ej. /app' }
         channels:
           type: object
-          x-events: 'user: InboxUpdatedEvent, NotificationsUpdatedEvent · fleet: FleetPositionEvent, FleetRemovedEvent · planning: PlanningRunUpdatedEvent, PlansUpdatedEvent · tracking: TrackingUpdatedEvent (además, por pedido, canal private-order.{shipment_id}) · route.updated (canal private-user.{id}): {route_id, vehicle_id, off_route?, rerouted?, stops?:[{shipment_id, eta_at}]}'
+          x-events: 'user: InboxUpdatedEvent, NotificationsUpdatedEvent · fleet: FleetPositionEvent, FleetRemovedEvent · planning: PlanningRunUpdatedEvent, PlansUpdatedEvent · tracking: TrackingUpdatedEvent (además, por pedido, canal private-order.{shipment_id}) · picking: PickingUpdatedEvent · store: StoreUpdatedEvent · operations: DashboardUpdatedEvent, AlertsUpdatedEvent · loading: LoadingUpdatedEvent · route.updated (canal private-user.{id}): {route_id, vehicle_id, off_route?, rerouted?, stops?:[{shipment_id, eta_at}]}'
           description: 'Tema → canales (con prefijo private-) que ESTE usuario puede escuchar. Temas: user (canal personal: inbox.updated, notifications.updated), fleet (fleet.position), planning (planning.run.updated, plans.updated). Tema ausente = sin tiempo real para esa pantalla. Son exactamente los canales que firma POST /app/broadcasting/auth para esa persona; la app no arma nombres.'
           additionalProperties:
             type: array
@@ -14076,6 +14076,44 @@ components:
         event:
           type: string
           description: 'Hecho de origen: tracking.status_changed, tracking.shipment_placed_on_route o tracking.unit_status_changed.'
+    PickingUpdatedEvent:
+      type: object
+      description: 'Señal `picking.updated` (tema picking): cambió la lista de preparación de una ciudad (plan publicado/modificado, pedido nuevo o que salió de la lista, camión asignado, escaneo de preparación, etiquetas emitidas/reimpresas). Señal para volver a pedir la lista. Canales `private-picking.all` / `private-picking.city.<departamento>`. shipment_id null = cambió la lista en general.'
+      properties:
+        shipment_id: { type: [string, 'null'], format: uuid }
+        order_reference:
+          type: [string, 'null']
+          description: 'Referencia del pedido (null si no hay una utilizable).'
+        plan_id: { type: [string, 'null'], format: uuid }
+        vehicle_id: { type: [string, 'null'], format: uuid }
+    StoreUpdatedEvent:
+      type: object
+      description: 'Señal `store.updated` (tema store): cambió lo que ve una tienda (el chofer dejó el pedido, recepción de unidades en el nodo, entrega en mostrador, pedido cancelado/reprogramado del nodo). Canales `private-store.all` / `private-store.node.<uuid>`.'
+      required: [node_id]
+      properties:
+        node_id: { type: string, format: uuid }
+        shipment_id:
+          type: [string, 'null']
+          format: uuid
+          description: 'Pista del envío; null = cambio general del nodo.'
+    LoadingUpdatedEvent:
+      type: object
+      description: 'Señal `loading.updated` (tema loading): cambió la carga del camión o su lista de entregas (escaneo de carga, asignar/desenganchar un envío, armar/editar la ruta). Canales `private-loading.all` / `private-loading.city.<departamento>` / `private-loading.driver.<uuid>`. shipment_id null = la lista del vehículo cambió en general.'
+      required: [vehicle_id]
+      properties:
+        vehicle_id: { type: string, format: uuid }
+        shipment_id: { type: [string, 'null'], format: uuid }
+    AlertsUpdatedEvent:
+      type: object
+      description: 'Señal `alerts.updated` (tema operations): se levantó o reconoció una alerta de flota/telemetría. Señal para volver a pedir las alertas activas. Canales `private-operations.all` / `private-operations.city.<departamento>`.'
+      properties:
+        alert_id: { type: [string, 'null'], format: uuid }
+    DashboardUpdatedEvent:
+      type: object
+      description: 'Señal `dashboard.updated` (tema operations): cambió una métrica del tablero del día (entrega registrada/fallida, ruta iniciada/cerrada, avance de carga). Señal para recalcular el tablero. Canales `private-operations.all` (+ `private-operations.city.<departamento>` si se resuelve la ciudad).'
+      required: [plan_date]
+      properties:
+        plan_date: { type: string, format: date }
     PlanningRunUpdatedEvent:
       type: object
       description: 'Carga del evento `planning.run.updated` (tema planning): cada cambio de estado de la corrida automática (queued, processing, completed, failed).'
@@ -14747,6 +14785,12 @@ components:
               recorded_at:
                 type: string
                 format: date-time
+    LatLngPoint:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
     VehicleEta:
       type: object
       description: Dynamic ETA from the latest position. No live traffic source exists (traffic_aware is always false).
@@ -14757,6 +14801,13 @@ components:
           type: string
           format: date-time
           nullable: true
+        reroute_geometry:
+          type:
+          - array
+          - 'null'
+          description: 'Polilínea (posición actual → próxima parada pendiente) para redibujar la ruta cuando el vehículo está fuera de ruta. null salvo off_route=true.'
+          items:
+            $ref: '#/components/schemas/LatLngPoint'
         shipment_id:
           type: string
           description: Only in the per-shipment endpoint
@@ -17415,6 +17466,13 @@ components:
           format: date-time
           nullable: true
           description: 'Desde cuándo se sostiene el desvío (ISO 8601), o null.'
+        reroute_geometry:
+          type:
+          - array
+          - 'null'
+          description: 'Polilínea (posición actual → próxima parada pendiente) para redibujar la ruta cuando el vehículo está fuera de ruta. null salvo off_route=true.'
+          items:
+            $ref: '#/components/schemas/LatLngPoint'
         started_at:
           type: string
           format: date-time

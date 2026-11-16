@@ -35,6 +35,7 @@ use Logistics\Telemetry\Application\Contract\FleetDirectory;
 use Logistics\Telemetry\Application\Contract\LivePositionHotState;
 use Logistics\Telemetry\Application\Contract\PingFlushScheduler;
 use Logistics\Telemetry\Application\Contract\PingIngestBuffer;
+use Logistics\Telemetry\Application\Contract\RerouteGeometryCache;
 use Logistics\Telemetry\Application\Contract\ShipmentCustodyReader;
 use Logistics\Telemetry\Application\Query\ClassifyPingFixes\ClassifyPingFixes;
 use Logistics\Telemetry\Application\Query\ClassifyPingFixes\ClassifyPingFixesHandler;
@@ -68,6 +69,7 @@ use Logistics\Telemetry\Domain\Contract\LivePositionBroadcaster;
 use Logistics\Telemetry\Domain\Contract\MapMatcher;
 use Logistics\Telemetry\Domain\Contract\PingRepository;
 use Logistics\Telemetry\Domain\Contract\RoadDurationEstimator;
+use Logistics\Telemetry\Domain\Contract\RoadGeometryEstimator;
 use Logistics\Telemetry\Domain\Contract\StopEtaRepository;
 use Logistics\Telemetry\Domain\Contract\StreetStatsRepository;
 use Logistics\Telemetry\Domain\Contract\TripRepository;
@@ -82,6 +84,7 @@ use Logistics\Telemetry\Infrastructure\CrossContext\DbShipmentCustodyReader;
 use Logistics\Telemetry\Infrastructure\Ingest\QueuedPingFlushScheduler;
 use Logistics\Telemetry\Infrastructure\Ingest\RedisPingIngestBuffer;
 use Logistics\Telemetry\Infrastructure\LiveState\BroadcastingLivePositionBroadcaster;
+use Logistics\Telemetry\Infrastructure\LiveState\CacheRerouteGeometry;
 use Logistics\Telemetry\Infrastructure\LiveState\FleetPlateResolver;
 use Logistics\Telemetry\Infrastructure\LiveState\LiveVehicleState;
 use Logistics\Telemetry\Infrastructure\Outbox\BindTripToRouteOnRouteStarted;
@@ -95,6 +98,7 @@ use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentT
 use Logistics\Telemetry\Infrastructure\Persistence\Eloquent\Repository\EloquentVehiclePositionRepository;
 use Logistics\Telemetry\Infrastructure\Routing\OsrmMapMatcher;
 use Logistics\Telemetry\Infrastructure\Routing\OsrmRoadDurationEstimator;
+use Logistics\Telemetry\Infrastructure\Routing\OsrmRoadGeometryEstimator;
 
 /**
  * Registro del bounded context Telemetría: ingesta de GPS, posición en vivo, trips, geocercas, alertas
@@ -156,6 +160,10 @@ final class TelemetryServiceProvider extends ServiceProvider
         $this->app->bind(StopEtaRepository::class, EloquentStopEtaRepository::class);
         // Duraciones viales para ETA (OSRM). Solo lo usa el comando programado; sin host configurado devuelve null.
         $this->app->bind(RoadDurationEstimator::class, OsrmRoadDurationEstimator::class);
+        // Geometría vial del reruteo (OSRM, mismo host). Solo la usa el comando programado; sin host devuelve null.
+        $this->app->bind(RoadGeometryEstimator::class, OsrmRoadGeometryEstimator::class);
+        // Caché (forma primitiva) de la geometría del reruteo en Valkey, con TTL corto; degrada con gracia.
+        $this->app->bind(RerouteGeometryCache::class, CacheRerouteGeometry::class);
 
         // Lecturas cross-context de solo lectura (fleet / execution / planning / shipments) por query builder.
         $this->app->bind(FleetDirectory::class, DbFleetDirectory::class);

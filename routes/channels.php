@@ -30,19 +30,31 @@ Broadcast::channel('user.{id}', static function (User $user, string $id): bool {
 });
 
 /**
- * Canales por TEMA de la app (`fleet` = flota en vivo, `planning` = planes y corrida automática), con
- * alcance por ciudad: `<tema>.all` para quien ve todas las ciudades y `<tema>.city.<código>` para el personal
- * de una ciudad. Quién entra a cuál lo decide UserRealtimeChannels, la misma regla con la que
- * GET /api/v1/app/broadcasting/config le dice a la app a qué suscribirse.
+ * Canales por TEMA de la app, con alcance por DIMENSIÓN (`<tema>.all`, `.city.<código>`, `.node.<uuid>`,
+ * `.driver.<uuid>`, `.carrier.<uuid>`). Quién entra a cuál lo decide `UserRealtimeChannels::mayJoin`, la misma
+ * regla con la que `GET /api/v1/app/broadcasting/config` le dice a la app a qué suscribirse (nunca se
+ * contradicen). Cada persona recibe UN canal por tema según su rol/alcance; el resto se rechaza.
  */
-foreach ([RealtimeChannels::TOPIC_FLEET, RealtimeChannels::TOPIC_PLANNING, RealtimeChannels::TOPIC_TRACKING] as $topic) {
+$realtimeTopics = [
+    RealtimeChannels::TOPIC_FLEET,
+    RealtimeChannels::TOPIC_PLANNING,
+    RealtimeChannels::TOPIC_TRACKING,
+    RealtimeChannels::TOPIC_PICKING,
+    RealtimeChannels::TOPIC_STORE,
+    RealtimeChannels::TOPIC_OPERATIONS,
+    RealtimeChannels::TOPIC_LOADING,
+];
+
+foreach ($realtimeTopics as $topic) {
     Broadcast::channel($topic.'.all', static function (User $user) use ($topic): bool {
-        return UserRealtimeChannels::canJoinAll($user, $topic);
+        return UserRealtimeChannels::mayJoin($user, $topic.'.all');
     });
 
-    Broadcast::channel($topic.'.city.{city}', static function (User $user, string $city) use ($topic): bool {
-        return UserRealtimeChannels::canJoinCity($user, $topic, $city);
-    });
+    foreach (['city', 'node', 'driver', 'carrier'] as $dimension) {
+        Broadcast::channel($topic.'.'.$dimension.'.{value}', static function (User $user, string $value) use ($topic, $dimension): bool {
+            return UserRealtimeChannels::mayJoin($user, $topic.'.'.$dimension.'.'.$value);
+        });
+    }
 }
 
 /**

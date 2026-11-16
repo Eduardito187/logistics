@@ -32,8 +32,13 @@ final readonly class DriverRouteView
      * sostenido), que calcula el motor único de ETA; `offRouteSince` es desde cuándo (ISO 8601) o null.
      * Reemplazan al cálculo local que hacía la app para el cartel "Fuera de ruta".
      *
-     * @param list<RouteStopView>       $stops
-     * @param array<string, mixed>|null $routeGeometry GeoJSON LineString + totales (esquema RouteGeometry) o null
+     * `rerouteGeometry` es la polilínea (lista de `{lat, lng}`) desde la posición ACTUAL del camión hasta su
+     * próxima parada pendiente, que calcula el motor único de ETA, para que la app REDIBUJE la ruta cuando está
+     * fuera de ruta. Solo viaja cuando `offRoute` es true; si no, null (la app dibuja la polilínea planificada).
+     *
+     * @param list<RouteStopView>                      $stops
+     * @param array<string, mixed>|null                $routeGeometry   GeoJSON LineString + totales (esquema RouteGeometry) o null
+     * @param list<array{lat: float, lng: float}>|null $rerouteGeometry polilínea del reruteo (fuera de ruta) o null
      */
     public function __construct(
         public string $id,
@@ -56,6 +61,7 @@ final readonly class DriverRouteView
         public int $rescheduledStops = 0,
         public bool $offRoute = false,
         public ?string $offRouteSince = null,
+        public ?array $rerouteGeometry = null,
     ) {}
 
     /**
@@ -75,6 +81,8 @@ final readonly class DriverRouteView
         $liveEtas = $liveState === null ? [] : $liveState['etas'];
         $offRoute = $liveState !== null && $liveState['off_route'];
         $offRouteSince = $liveState !== null && is_string($liveState['off_route_since']) ? $liveState['off_route_since'] : null;
+        // La geometría del reruteo solo aplica fuera de ruta: así la app no la dibuja cuando el camión ya volvió.
+        $rerouteGeometry = $liveState !== null && $offRoute ? $liveState['reroute_geometry'] : null;
 
         $stops = [];
         foreach ($route->stops() as $stop) {
@@ -103,6 +111,7 @@ final readonly class DriverRouteView
             $route->rescheduledCount(),
             $offRoute,
             $offRouteSince,
+            $rerouteGeometry,
         );
     }
 
@@ -186,6 +195,8 @@ final readonly class DriverRouteView
             // Verdad del backend para el cartel "Fuera de ruta" (antes lo decidía la app en local).
             'off_route' => $this->offRoute,
             'off_route_since' => $this->offRouteSince,
+            // Polilínea para REDIBUJAR la ruta cuando está fuera de ruta (posición actual → próxima parada); si no, null.
+            'reroute_geometry' => $this->rerouteGeometry,
         ];
     }
 }

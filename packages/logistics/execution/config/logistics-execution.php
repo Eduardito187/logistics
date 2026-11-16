@@ -97,5 +97,11 @@ return [
         // ruta cada tanto. El movimiento no cambia la hoja de ruta, solo la ETA viva; la app re-pide la ruta
         // y obtiene ETAs frescas del motor único. Separado de la ventana anti-ráfaga de los cambios de parada.
         'movement_throttle_seconds' => max(1, (int) env('EXECUTION_REALTIME_MOVEMENT_THROTTLE_SECONDS', 20)),
+
+        // Ventana anti-ráfaga en segundos de la señal `loading.updated` (pantalla de carga/andén): varios
+        // cambios seguidos de la carga de un mismo camión se avisan una sola vez, y la señal sale con esa
+        // misma demora para que la app ya re-pida la hoja de carga tras toda la ráfaga. Usa el mismo
+        // interruptor maestro `realtime.enabled` y el mismo transporte de sockets que el resto de las señales.
+        'loading_debounce_seconds' => max(1, (int) env('EXECUTION_REALTIME_LOADING_DEBOUNCE_SECONDS', 2)),
     ],
 ];

@@ -16,7 +16,8 @@ use Throwable;
  * Emite `tracking.updated` para un pedido que cambió, fuera del request (cola `notifications`).
  *
  * Recibe solo el id del envío y el nombre del hecho de origen (todo primitivo) y resuelve ACÁ, al ejecutar,
- * el estado visible vigente, la referencia de la orden y las ciudades del pedido ({@see TrackingSignalReader}).
+ * el estado visible vigente, la referencia de la orden y las dimensiones de alcance del pedido —ciudad, nodo,
+ * chofer y transportista— ({@see TrackingSignalReader}).
  * Así la señal apunta a lo que hay en la base cuando sale, aunque el trabajo haya esperado la ventana.
  *
  *  - Si el seguimiento de ese envío ya no existe, no emite.
@@ -53,7 +54,7 @@ final class BroadcastTrackingUpdated implements ShouldQueue
             }
 
             TrackingUpdated::dispatch(
-                self::channels($this->shipmentId, $snapshot['cities']),
+                self::channels($this->shipmentId, $snapshot),
                 $this->shipmentId,
                 $snapshot['order_reference'],
                 $snapshot['status'],
@@ -65,20 +66,35 @@ final class BroadcastTrackingUpdated implements ShouldQueue
     }
 
     /**
-     * Canales de la señal: el de la ficha del pedido (`order.{shipmentId}`) más los del tema tracking por
-     * cada ciudad del pedido (`tracking.all` siempre, y `tracking.city.{departamento}` por cada código),
-     * sin repetir.
+     * Canales de la señal para que `tracking.updated` llegue a TODOS los roles por su dimensión de alcance:
+     * el de la ficha del pedido (`order.{shipmentId}`) más los del tema tracking que cubren al pedido. El
+     * helper del shared arma `tracking.all` (oficina) + chofer + transportista; a eso se suman, por cada
+     * ciudad (oficina/planificador de esa ciudad) y cada nodo (tienda) de destino y origen, su canal del
+     * tema. Todo deduplicado, preservando el orden; una dimensión ausente se omite.
      *
-     * @param  list<string> $cities
+     * @param  array{cities: list<string>, nodes: list<string>, driver: string | null, carrier: string | null} $snapshot
      * @return list<string>
      */
-    private static function channels(string $shipmentId, array $cities): array
+    private static function channels(string $shipmentId, array $snapshot): array
     {
-        $channels = ['order.'.$shipmentId, RealtimeChannels::all(RealtimeChannels::TOPIC_TRACKING)];
+        $channels = ['order.'.$shipmentId];
 
-        foreach ($cities as $city) {
-            $channel = RealtimeChannels::city(RealtimeChannels::TOPIC_TRACKING, $city);
-            if ($channel !== null && !in_array($channel, $channels, true)) {
+        // Canal general del tema + chofer + transportista del pedido (dimensiones únicas, las arma forEntity).
+        $topic = RealtimeChannels::forEntity(RealtimeChannels::TOPIC_TRACKING, [
+            'driver' => $snapshot['driver'],
+            'carrier' => $snapshot['carrier'],
+        ]);
+
+        // Ciudades (destino/origen) y nodos (destino/origen) del pedido: su canal del tema, uno por valor.
+        foreach ($snapshot['cities'] as $city) {
+            $topic[] = RealtimeChannels::city(RealtimeChannels::TOPIC_TRACKING, $city);
+        }
+        foreach ($snapshot['nodes'] as $node) {
+            $topic[] = RealtimeChannels::node(RealtimeChannels::TOPIC_TRACKING, $node);
+        }
+
+        foreach ($topic as $channel) {
+            if (is_string($channel) && $channel !== '' && !in_array($channel, $channels, true)) {
                 $channels[] = $channel;
             }
         }

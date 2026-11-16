@@ -10,15 +10,25 @@ use stdClass;
 use Throwable;
 
 /**
- * Resuelve, para la señal `tracking.updated`, el estado VIGENTE del pedido, la referencia de su orden y los
- * códigos de ciudad (departamento) a los que corresponde avisar. Solo lectura, por el query builder y con
- * consultas baratas por índice; corre en la cola, nunca en un request.
+ * Resuelve, para la señal `tracking.updated`, el estado VIGENTE del pedido, la referencia de su orden y las
+ * DIMENSIONES de alcance a las que corresponde avisar: ciudades (departamento), nodos (tienda), chofer que lo
+ * lleva hoy y transportista asignado. Solo lectura, por el query builder y con consultas baratas por índice;
+ * corre en la cola, nunca en un request.
  *
- * El estado y la referencia salen del read model propio (`tracking_shipments`); la ciudad del pedido se lee
- * del envío en `shipments` (departamento de destino y de origen), en solo lectura y sin acoplar el dominio
- * de otro contexto (igual que los demás lectores cross-context del package).
+ * El estado y la referencia salen del read model propio (`tracking_shipments`); las dimensiones del pedido se
+ * leen de otros contextos en solo lectura, sin acoplar su dominio (igual que los demás lectores cross-context
+ * del package):
+ *  - ciudad y nodo: del envío en `shipments` (destino y origen).
+ *  - chofer: de la ruta de ejecución vigente que transporta el envío (`execution_driver_route_stops` →
+ *    `execution_driver_routes`), la más reciente.
+ *  - transportista: del viaje de transportista que lleva el envío (`carrier_trip_shipments` → `carrier_trips`),
+ *    el más reciente.
  *
- * @phpstan-type TrackingSnapshot array{status: string, order_reference: string|null, cities: list<string>}
+ * Todo es TOLERANTE: una dimensión que no se puede leer (tabla ausente, dato vacío, forma inválida) se omite;
+ * nunca lanza. Comparar un texto que no es UUID contra una columna `uuid` hace fallar la consulta en
+ * PostgreSQL (22P02), así que se valida la forma antes de usar cada id.
+ *
+ * @phpstan-type TrackingSnapshot array{status: string, order_reference: string | null, cities: list<string>, nodes: list<string>, driver: string | null, carrier: string | null}
  */
 final class TrackingSignalReader
 {
@@ -45,33 +55,37 @@ final class TrackingSignalReader
         }
 
         $orderReference = $row instanceof stdClass && is_string($row->order_reference ?? null) ? trim($row->order_reference) : '';
+        $shipment = $this->shipmentDimensions($id);
 
         return [
             'status' => $status,
             'order_reference' => $orderReference === '' ? null : $orderReference,
-            'cities' => $this->cities($id),
+            'cities' => $shipment['cities'],
+            'nodes' => $shipment['nodes'],
+            'driver' => $this->driver($id),
+            'carrier' => $this->carrier($id),
         ];
     }
 
     /**
-     * Códigos de ciudad (departamento) del envío, el de destino primero: son los que arman los canales del
-     * tema por ciudad. Tolerante: si el envío no se puede leer o no deja un código válido, va vacío (se
-     * avisa solo al canal general, nunca se esconde el cambio).
+     * Ciudades (departamento) y nodos (uuid) del envío, destino primero: arman los canales del tema por ciudad
+     * y por nodo. Una sola lectura de `shipments`. Tolerante: si no se puede leer o no deja valores válidos,
+     * va vacío (el cambio igual llega por el canal general, nunca se esconde).
      *
-     * @return list<string>
+     * @return array{cities: list<string>, nodes: list<string>}
      */
-    private function cities(string $shipmentId): array
+    private function shipmentDimensions(string $shipmentId): array
     {
         try {
             $row = DB::table('shipments')
                 ->where('id', $shipmentId)
-                ->first(['destination_department', 'origin_department']);
+                ->first(['destination_department', 'origin_department', 'destination_node_id', 'origin_node_id']);
         } catch (Throwable) {
-            return [];
+            $row = null;
         }
 
         if (!$row instanceof stdClass) {
-            return [];
+            return ['cities' => [], 'nodes' => []];
         }
 
         $cities = [];
@@ -82,7 +96,54 @@ final class TrackingSignalReader
             }
         }
 
-        return $cities;
+        $nodes = [];
+        foreach ([$row->destination_node_id ?? null, $row->origin_node_id ?? null] as $value) {
+            $node = self::uuid(is_string($value) ? $value : '');
+            if ($node !== null && !in_array($node, $nodes, true)) {
+                $nodes[] = $node;
+            }
+        }
+
+        return ['cities' => $cities, 'nodes' => $nodes];
+    }
+
+    /**
+     * Chofer que lleva el envío HOY: el `driver_id` de la ruta de ejecución más reciente que lo contiene (una
+     * parada por ruta). Tolerante: sin ruta, sin chofer poblado o si la consulta falla, devuelve null.
+     */
+    private function driver(string $shipmentId): ?string
+    {
+        try {
+            $row = DB::table('execution_driver_route_stops as stops')
+                ->join('execution_driver_routes as routes', 'routes.id', '=', 'stops.route_id')
+                ->where('stops.shipment_id', $shipmentId)
+                ->orderByDesc('routes.route_date')
+                ->orderByDesc('routes.updated_at')
+                ->first(['routes.driver_id']);
+        } catch (Throwable) {
+            $row = null;
+        }
+
+        return $row instanceof stdClass ? self::uuid(is_string($row->driver_id ?? null) ? $row->driver_id : '') : null;
+    }
+
+    /**
+     * Transportista que lleva el envío: el `carrier_id` del viaje de transportista más reciente que lo carga.
+     * Tolerante: sin viaje o si la consulta falla, devuelve null (se omite la dimensión).
+     */
+    private function carrier(string $shipmentId): ?string
+    {
+        try {
+            $row = DB::table('carrier_trip_shipments as cargo')
+                ->join('carrier_trips as trips', 'trips.id', '=', 'cargo.trip_id')
+                ->where('cargo.shipment_id', $shipmentId)
+                ->orderByDesc('trips.scheduled_at')
+                ->first(['trips.carrier_id']);
+        } catch (Throwable) {
+            $row = null;
+        }
+
+        return $row instanceof stdClass ? self::uuid(is_string($row->carrier_id ?? null) ? $row->carrier_id : '') : null;
     }
 
     private static function uuid(string $value): ?string

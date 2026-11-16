@@ -6,18 +6,22 @@ use DateTimeImmutable;
 use Logistics\Shared\Domain\Clock\Clock;
 use Logistics\Telemetry\Application\Contract\ActiveRouteReader;
 use Logistics\Telemetry\Application\Contract\FleetDirectory;
+use Logistics\Telemetry\Application\Contract\RerouteGeometryCache;
 use Logistics\Telemetry\Application\Query\GetVehicleEtas\GetVehicleEtas;
 use Logistics\Telemetry\Application\Query\GetVehicleEtas\GetVehicleEtasHandler;
+use Logistics\Telemetry\Application\Service\OffRouteEvaluator;
+use Logistics\Telemetry\Application\Service\RerouteGeometryCalculator;
 use Logistics\Telemetry\Application\Service\StopEtaCalculator;
 use Logistics\Telemetry\Domain\Contract\StopEtaRepository;
 use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
 use Logistics\Telemetry\Domain\Model\VehiclePing;
+use Tests\TestCase;
 
 // El estado "fuera de ruta" que la app muestra como cartel sale del backend: desvío sostenido más allá del
 // mínimo (histéresis que evita el parpadeo), y nunca se afirma con la posición añeja. Se arma con dobles
 // livianos de los puertos; no toca la base, pero el handler lee `config('logistics-telemetry.deviation...')`,
 // así que se arranca la app (TestCase) sin RefreshDatabase para que el helper `config()` esté disponible.
-uses(Tests\TestCase::class);
+uses(TestCase::class);
 
 const VEO_NOW = '2026-11-16T12:00:00+00:00';
 
@@ -154,13 +158,30 @@ function veoStored(): StopEtaRepository
     };
 }
 
+/** Caché de geometría de reruteo vacía (no hay paradas en este test; la geometría no aplica). */
+function veoRerouteCache(): RerouteGeometryCache
+{
+    return new class implements RerouteGeometryCache
+    {
+        public function get(string $vehicleId): ?array
+        {
+            return null;
+        }
+
+        public function put(string $vehicleId, array $geometry): void {}
+
+        public function forget(string $vehicleId): void {}
+    };
+}
+
 /** @return array{off_route: bool, off_route_since: string|null} */
 function veoResolve(int $positionAgeS, ?DateTimeImmutable $offRouteSince): array
 {
     $clock = veoClock();
     $positions = veoPositions($positionAgeS, $offRouteSince);
     $calculator = new StopEtaCalculator($positions, veoRoutes(), $clock);
-    $handler = new GetVehicleEtasHandler($calculator, veoStored(), veoFleet(), $clock, $positions);
+    $reroute = new RerouteGeometryCalculator(veoRerouteCache());
+    $handler = new GetVehicleEtasHandler($calculator, veoStored(), veoFleet(), $clock, $positions, new OffRouteEvaluator($clock), $reroute);
 
     $view = $handler->handle(new GetVehicleEtas(VEO_VEHICLE))->toArray();
 

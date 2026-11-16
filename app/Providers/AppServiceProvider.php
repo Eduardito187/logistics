@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Outbox\DashboardRealtimeObserver;
 use App\Outbox\InboxRealtimeObserver;
+use App\Outbox\PickingRealtimeObserver;
+use App\Outbox\StoreRealtimeObserver;
 use App\Support\Staff\StaffCity;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
+use Logistics\Execution\Infrastructure\Realtime\LoadingUpdatedObserver;
 use Logistics\Execution\Infrastructure\Realtime\RouteUpdatedObserver;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\NodeRecord;
+use Logistics\Telemetry\Infrastructure\Realtime\AlertsUpdatedObserver;
 use Logistics\Tracking\Infrastructure\Realtime\TrackingUpdatedObserver;
 
 class AppServiceProvider extends ServiceProvider
@@ -33,6 +38,39 @@ class AppServiceProvider extends ServiceProvider
         $this->observeInboxRealtime();
         $this->observeRouteRealtime();
         $this->observeTrackingRealtime();
+        $this->observeLoadingRealtime();
+        $this->observeTelemetryAlertsRealtime();
+        $this->observeOperationsRealtime();
+    }
+
+    /**
+     * Tiempo real de la carga del camión: cada hecho que cambia lo que se carga o la lista de entregas del
+     * vehículo avisa `loading.updated` al andén de la ciudad, la oficina y el chofer del camión.
+     */
+    private function observeLoadingRealtime(): void
+    {
+        $this->addOutboxObserver(LoadingUpdatedObserver::class);
+    }
+
+    /**
+     * Tiempo real de las alertas de telemetría: una alerta nueva o reconocida avisa `alerts.updated` al tema
+     * operations (oficina y planificador de su ciudad).
+     */
+    private function observeTelemetryAlertsRealtime(): void
+    {
+        $this->addOutboxObserver(AlertsUpdatedObserver::class);
+    }
+
+    /**
+     * Tiempo real de los tableros operativos: cada hecho que cambia la lista de preparación, la bandeja de una
+     * tienda o una métrica del tablero del día avisa por sockets (`picking.updated` / `store.updated` /
+     * `dashboard.updated`). Observadores del outbox: nunca alteran el despacho ni los reintentos.
+     */
+    private function observeOperationsRealtime(): void
+    {
+        $this->addOutboxObserver(PickingRealtimeObserver::class);
+        $this->addOutboxObserver(StoreRealtimeObserver::class);
+        $this->addOutboxObserver(DashboardRealtimeObserver::class);
     }
 
     /**

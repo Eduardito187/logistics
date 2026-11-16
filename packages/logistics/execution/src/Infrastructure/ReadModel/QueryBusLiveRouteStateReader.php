@@ -54,7 +54,7 @@ final readonly class QueryBusLiveRouteStateReader implements LiveRouteStateReade
     }
 
     /**
-     * @return array{off_route: bool, off_route_since: string|null, position: array{lat: float, lng: float, recorded_at: string}|null, position_stale: bool, etas: array<string, string>}|null
+     * @return array{off_route: bool, off_route_since: string|null, position: array{lat: float, lng: float, recorded_at: string}|null, position_stale: bool, etas: array<string, string>, reroute_geometry: list<array{lat: float, lng: float}>|null}|null
      */
     private function normalizeView(mixed $view): ?array
     {
@@ -71,8 +71,8 @@ final readonly class QueryBusLiveRouteStateReader implements LiveRouteStateReade
      * Traduce la vista primitiva del motor de ETA al shape del puerto: mapa envío→ETA viva y estado de
      * desvío. Solo entra la ETA viva (`eta`), no la planificada.
      *
-     * @param  array<string, mixed>                                                                                                                                                       $data
-     * @return array{off_route: bool, off_route_since: string|null, position: array{lat: float, lng: float, recorded_at: string}|null, position_stale: bool, etas: array<string, string>}
+     * @param  array<string, mixed>                                                                                                                                                                                                                   $data
+     * @return array{off_route: bool, off_route_since: string|null, position: array{lat: float, lng: float, recorded_at: string}|null, position_stale: bool, etas: array<string, string>, reroute_geometry: list<array{lat: float, lng: float}>|null}
      */
     private function normalize(array $data): array
     {
@@ -100,7 +100,31 @@ final readonly class QueryBusLiveRouteStateReader implements LiveRouteStateReade
             'position' => $this->position(is_array($position) ? $position : null),
             'position_stale' => (bool) ($data['position_stale'] ?? false),
             'etas' => $etas,
+            'reroute_geometry' => $this->geometry($data['reroute_geometry'] ?? null),
         ];
+    }
+
+    /**
+     * Normaliza la geometría del reruteo a una lista de puntos `{lat, lng}` numéricos, o null. Un valor ausente,
+     * incompleto o mal formado degrada a null: nunca se devuelve una polilínea a medias.
+     *
+     * @return list<array{lat: float, lng: float}>|null
+     */
+    private function geometry(mixed $geometry): ?array
+    {
+        if (!is_array($geometry) || count($geometry) < 2) {
+            return null;
+        }
+
+        $points = [];
+        foreach ($geometry as $point) {
+            if (!is_array($point) || !is_numeric($point['lat'] ?? null) || !is_numeric($point['lng'] ?? null)) {
+                return null;
+            }
+            $points[] = ['lat' => (float) $point['lat'], 'lng' => (float) $point['lng']];
+        }
+
+        return $points;
     }
 
     /**

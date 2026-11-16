@@ -13,7 +13,11 @@ namespace Logistics\Execution\Application\Contract;
  * Tolerante: si el motor de ETA no está disponible (contexto telemetría ausente, docker nuevo) devuelve
  * null y la hoja de ruta cae a la ETA planificada que ya trae cada parada.
  *
- * @phpstan-type LiveRouteState array{off_route: bool, off_route_since: string|null, position: array{lat: float, lng: float, recorded_at: string}|null, position_stale: bool, etas: array<string, string>}
+ * `reroute_geometry` es la polilínea (lista de `{lat, lng}`) desde la posición actual del camión hasta su
+ * próxima parada pendiente, que calcula el mismo motor y que la app usa para REDIBUJAR la ruta cuando el camión
+ * está fuera de ruta. Null cuando no está fuera de ruta (o el motor no la entregó).
+ *
+ * @phpstan-type LiveRouteState array{off_route: bool, off_route_since: string|null, position: array{lat: float, lng: float, recorded_at: string}|null, position_stale: bool, etas: array<string, string>, reroute_geometry: list<array{lat: float, lng: float}>|null}
  */
 interface LiveRouteStateReader
 {

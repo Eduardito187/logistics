@@ -126,6 +126,9 @@ return [
         'service_minutes' => (int) env('TELEMETRY_ETA_SERVICE_MINUTES', 5),
         // Una posición más vieja que esto no recalcula ETA (el vehículo dejó de reportar).
         'max_position_age_minutes' => (int) env('TELEMETRY_ETA_MAX_POSITION_AGE_MINUTES', 30),
+        // TTL (segundos) de la geometría del reruteo cacheada (posición actual → próxima parada, calculada con
+        // OSRM por el scheduler). Corto, pero mayor que el minuto del scheduler para quedar caliente entre pasadas.
+        'reroute_geometry_ttl_seconds' => (int) env('TELEMETRY_ETA_REROUTE_GEOMETRY_TTL_SECONDS', 90),
     ],
 
     // Horario laboral: movimiento fuera de esta franja → alerta de uso fuera de horario (posible mal uso).

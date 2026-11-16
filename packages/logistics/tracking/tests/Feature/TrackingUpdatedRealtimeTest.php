@@ -21,7 +21,8 @@ use Logistics\Tracking\Infrastructure\Realtime\TrackingUpdatedObserver;
 use Logistics\Tracking\Presentation\Broadcasting\TrackingUpdated;
 
 // Señal de tiempo real del seguimiento del pedido: `tracking.updated` por el canal de la ficha del pedido
-// (`private-order.{shipment_id}`) y por el tema tracking por ciudad, siempre por la cola y con anti-ráfaga.
+// (`private-order.{shipment_id}`) y por el tema tracking en TODAS las dimensiones de alcance del pedido
+// (general, ciudad, nodo, chofer, transportista), siempre por la cola y con anti-ráfaga.
 //
 // El observador del outbox se ejercita con mensajes armados a mano; el trabajo de difusión se intercepta con
 // Bus::fake (qué se encola) y se ejecuta a mano con Event::fake para ver el evento que saldría al socket.
@@ -123,15 +124,75 @@ function turTracking(string $shipmentId, string $status = TUR_DELIVERED, ?string
 }
 
 /**
- * Siembra un envío con sus departamentos de destino y de origen.
+ * Siembra un envío con sus departamentos de destino y de origen y, opcionalmente, sus nodos (tiendas).
  */
-function turShipment(string $shipmentId, string $destination = TUR_DEST_CITY, string $origin = TUR_ORIGIN_CITY): void
-{
+function turShipment(
+    string $shipmentId,
+    string $destination = TUR_DEST_CITY,
+    string $origin = TUR_ORIGIN_CITY,
+    ?string $destinationNode = null,
+    ?string $originNode = null,
+): void {
     ShipmentRecord::factory()->create([
         'id' => $shipmentId,
-        'origin_node_id' => turUuid(),
         'origin_department' => $origin,
         'destination_department' => $destination,
+        'destination_node_id' => $destinationNode,
+        'origin_node_id' => $originNode,
+    ]);
+}
+
+/**
+ * Siembra una ruta de ejecución con una parada del envío, para resolver el chofer que lo lleva hoy.
+ */
+function turRoute(string $shipmentId, string $driverId, string $routeDate = '2026-11-10'): void
+{
+    $routeId = turUuid();
+
+    DB::table('execution_driver_routes')->insert([
+        'id' => $routeId,
+        'vehicle_id' => turUuid(),
+        'driver_id' => $driverId,
+        'route_date' => $routeDate,
+        'status' => 'IN_PROGRESS',
+        'created_at' => TUR_AT,
+        'updated_at' => TUR_AT,
+    ]);
+
+    DB::table('execution_driver_route_stops')->insert([
+        'id' => turUuid(),
+        'route_id' => $routeId,
+        'shipment_id' => $shipmentId,
+        'sequence' => 1,
+        'status' => 'PENDING',
+        'created_at' => TUR_AT,
+        'updated_at' => TUR_AT,
+    ]);
+}
+
+/**
+ * Siembra un viaje de transportista que carga el envío, para resolver el transportista asignado.
+ */
+function turCarrierTrip(string $shipmentId, string $carrierId): void
+{
+    $tripId = turUuid();
+
+    DB::table('carrier_trips')->insert([
+        'id' => $tripId,
+        'carrier_id' => $carrierId,
+        'corridor_from' => 'santa_cruz',
+        'corridor_to' => 'la_paz',
+        'status' => 'IN_PROGRESS',
+        'scheduled_at' => TUR_AT,
+        'created_at' => TUR_AT,
+        'updated_at' => TUR_AT,
+    ]);
+
+    DB::table('carrier_trip_shipments')->insert([
+        'trip_id' => $tripId,
+        'shipment_id' => $shipmentId,
+        'position' => 0,
+        'created_at' => TUR_AT,
     ]);
 }
 
@@ -310,6 +371,55 @@ it('emite tracking.updated a la ficha del pedido y al tema por ciudad con el est
                 'status' => TUR_DELIVERED,
                 'event' => TUR_STATUS_CHANGED,
             ],
+    );
+});
+
+it('emite a TODAS las dimensiones del pedido: ciudad, nodo, chofer y transportista, más la ficha y el general', function (): void {
+    turEnableSockets();
+    $shipmentId = turUuid();
+    $destinationNode = turUuid();
+    $originNode = turUuid();
+    $driverId = turUuid();
+    $carrierId = turUuid();
+    turTracking($shipmentId, TUR_DELIVERED, 'ORD-DIM');
+    turShipment($shipmentId, TUR_DEST_CITY, TUR_ORIGIN_CITY, $destinationNode, $originNode);
+    turRoute($shipmentId, $driverId);
+    turCarrierTrip($shipmentId, $carrierId);
+
+    turRun(new BroadcastTrackingUpdated($shipmentId, TUR_STATUS_CHANGED));
+
+    $expected = [
+        'private-order.'.$shipmentId,
+        'private-tracking.all',
+        'private-tracking.carrier.'.$carrierId,
+        'private-tracking.city.'.TUR_DEST_CITY,
+        'private-tracking.city.'.TUR_ORIGIN_CITY,
+        'private-tracking.driver.'.$driverId,
+        'private-tracking.node.'.$destinationNode,
+        'private-tracking.node.'.$originNode,
+    ];
+    sort($expected);
+
+    Event::assertDispatched(
+        TrackingUpdated::class,
+        static fn (TrackingUpdated $event): bool => turChannels($event) === $expected,
+    );
+});
+
+it('un pedido que solo va por transportista (sin ruta de chofer) emite también a su canal de transportista', function (): void {
+    turEnableSockets();
+    $shipmentId = turUuid();
+    $carrierId = turUuid();
+    turTracking($shipmentId, 'ON_THE_WAY');
+    turShipment($shipmentId, TUR_DEST_CITY, TUR_ORIGIN_CITY);
+    turCarrierTrip($shipmentId, $carrierId);
+
+    turRun(new BroadcastTrackingUpdated($shipmentId, TUR_STATUS_CHANGED));
+
+    Event::assertDispatched(
+        TrackingUpdated::class,
+        static fn (TrackingUpdated $event): bool => in_array('private-tracking.carrier.'.$carrierId, turChannels($event), true)
+            && !in_array('private-tracking.driver.'.$carrierId, turChannels($event), true),
     );
 });
 

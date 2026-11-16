@@ -15,8 +15,11 @@ use Illuminate\Foundation\Events\Dispatchable;
  *
  * Viaja por canales privados con el nombre estable `tracking.updated`:
  *  - `private-order.{shipment_id}`: la ficha de UN pedido (admin o app) escucha su propio envío.
- *  - el tema `tracking` por ciudad (`private-tracking.all` y `private-tracking.city.{departamento}`): el
- *    tablero de seguimiento de la oficina/planificación recibe el cambio de los pedidos de su alcance.
+ *  - el tema `tracking` por cada DIMENSIÓN de alcance que cubre al pedido, para que el cambio llegue a TODOS
+ *    los roles según su consulta: `private-tracking.all` (oficina), `private-tracking.city.{departamento}`
+ *    (oficina/planificador de la ciudad de destino u origen), `private-tracking.node.{uuid}` (la tienda de
+ *    destino u origen), `private-tracking.driver.{uuid}` (el chofer que lo lleva) y
+ *    `private-tracking.carrier.{uuid}` (el transportista asignado). Cada quien se suscribe a uno por tema.
  *
  * Es solo la SEÑAL para que quien mira vuelva a pedir el estado: el detalle (paradas, ETA, productos) nunca
  * viaja por el socket, solo lo imprescindible para decidir si refrescar.
