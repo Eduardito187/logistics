@@ -63,12 +63,15 @@ final readonly class PlanGeometryRefresher
      */
     private function shouldSkip(DeliveryPlan $plan, bool $onlyIfMissing): bool
     {
-        $missing = $plan->geometry() === null;
-        if ($onlyIfMissing && !$missing) {
+        // «Necesita geometría» = no tiene, o la que tiene es DEGENERADA (colapsada a un punto, basura): una
+        // geometría así no es una hoja de ruta válida que proteger, así que se recalcula aunque esté publicada.
+        $geometry = $plan->geometry();
+        $needsGeometry = $geometry === null || !$geometry->isDrawable();
+        if ($onlyIfMissing && !$needsGeometry) {
             return true;
         }
 
-        return $plan->status() === PlanStatus::Published && !$missing;
+        return $plan->status() === PlanStatus::Published && !$needsGeometry;
     }
 
     /**
@@ -95,8 +98,10 @@ final readonly class PlanGeometryRefresher
      */
     private function attachGeometry(DeliveryPlan $plan, RouteGeometry $geometry): bool
     {
+        // Publicado: su hoja está congelada SOLO si la geometría es válida (dibujable). Si falta o es DEGENERADA
+        // (colapsada a un punto), se (re)adjunta sin tocar paradas/orden/ETA. No publicado: se reemplaza siempre.
         if ($plan->status() === PlanStatus::Published) {
-            return $plan->fillMissingRouteGeometry($geometry);
+            return $plan->replaceDegenerateRouteGeometry($geometry);
         }
 
         $plan->attachRouteGeometry($geometry);

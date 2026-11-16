@@ -74,6 +74,28 @@ final readonly class RouteGeometry
     }
 
     /**
+     * ¿Dibuja una línea REAL? Necesita al menos DOS puntos DISTINTOS. Una geometría con todas sus coordenadas
+     * iguales (colapsada a un punto, p. ej. basura persistida) cumple el mínimo de dos puntos de `of()` pero
+     * NO es dibujable: el mapa pintaría un punto. Sirve para decidir si hay que recalcularla.
+     */
+    public function isDrawable(): bool
+    {
+        $first = null;
+        foreach ($this->coordinates as $point) {
+            if ($first === null) {
+                $first = $point;
+
+                continue;
+            }
+            if ($point !== $first) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Forma primitiva para persistir (jsonb) y exponer en APIs y mapas. Es un GeoJSON LineString más los
      * totales del recorrido.
      *
