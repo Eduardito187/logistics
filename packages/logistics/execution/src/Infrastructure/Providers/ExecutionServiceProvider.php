@@ -21,6 +21,10 @@ use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRoute;
 use Logistics\Execution\Application\Command\CloseDriverRoute\CloseDriverRouteHandler;
 use Logistics\Execution\Application\Command\CloseTransferWithShortage\CloseTransferWithShortage;
 use Logistics\Execution\Application\Command\CloseTransferWithShortage\CloseTransferWithShortageHandler;
+use Logistics\Execution\Application\Command\CreateFailureReason\CreateFailureReason;
+use Logistics\Execution\Application\Command\CreateFailureReason\CreateFailureReasonHandler;
+use Logistics\Execution\Application\Command\DeactivateFailureReason\DeactivateFailureReason;
+use Logistics\Execution\Application\Command\DeactivateFailureReason\DeactivateFailureReasonHandler;
 use Logistics\Execution\Application\Command\DetachShipmentFromRoute\DetachShipmentFromRoute;
 use Logistics\Execution\Application\Command\DetachShipmentFromRoute\DetachShipmentFromRouteHandler;
 use Logistics\Execution\Application\Command\MarkShipmentDeparted\MarkShipmentDeparted;
@@ -59,9 +63,12 @@ use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleI
 use Logistics\Execution\Application\Command\ReportVehicleIncident\ReportVehicleIncidentHandler;
 use Logistics\Execution\Application\Command\StartDriverRoute\StartDriverRoute;
 use Logistics\Execution\Application\Command\StartDriverRoute\StartDriverRouteHandler;
+use Logistics\Execution\Application\Command\UpdateFailureReason\UpdateFailureReason;
+use Logistics\Execution\Application\Command\UpdateFailureReason\UpdateFailureReasonHandler;
 use Logistics\Execution\Application\Contract\DeliveryEvidenceReader;
 use Logistics\Execution\Application\Contract\DeliveryReferenceReader;
 use Logistics\Execution\Application\Contract\EvidenceStorage;
+use Logistics\Execution\Application\Contract\FailureReasonCatalog;
 use Logistics\Execution\Application\Contract\LiveRouteStateReader;
 use Logistics\Execution\Application\Contract\NodeReceptionListReader;
 use Logistics\Execution\Application\Contract\NodeReceptionTargetReader;
@@ -90,8 +97,12 @@ use Logistics\Execution\Application\Query\GetNodeReception\GetNodeReception;
 use Logistics\Execution\Application\Query\GetNodeReception\GetNodeReceptionHandler;
 use Logistics\Execution\Application\Query\GetRouteStop\GetRouteStop;
 use Logistics\Execution\Application\Query\GetRouteStop\GetRouteStopHandler;
+use Logistics\Execution\Application\Query\ListActiveFailureReasons\ListActiveFailureReasons;
+use Logistics\Execution\Application\Query\ListActiveFailureReasons\ListActiveFailureReasonsHandler;
 use Logistics\Execution\Application\Query\ListDeliveriesByVehicle\ListDeliveriesByVehicle;
 use Logistics\Execution\Application\Query\ListDeliveriesByVehicle\ListDeliveriesByVehicleHandler;
+use Logistics\Execution\Application\Query\ListFailureReasons\ListFailureReasons;
+use Logistics\Execution\Application\Query\ListFailureReasons\ListFailureReasonsHandler;
 use Logistics\Execution\Application\Query\ListNodeReceptions\ListNodeReceptions;
 use Logistics\Execution\Application\Query\ListNodeReceptions\ListNodeReceptionsHandler;
 use Logistics\Execution\Application\Query\ResolveNodeReceptionTarget\ResolveNodeReceptionTarget;
@@ -102,6 +113,7 @@ use Logistics\Execution\Application\Service\StaleRouteStops;
 use Logistics\Execution\Domain\Contract\DeliveryEvidenceRepository;
 use Logistics\Execution\Domain\Contract\DeliveryIssueRepository;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
+use Logistics\Execution\Domain\Contract\FailureReasonRepository;
 use Logistics\Execution\Domain\Contract\LabelVerificationGateway;
 use Logistics\Execution\Domain\Contract\NodeReceptionRepository;
 use Logistics\Execution\Domain\Contract\VehicleIncidentRepository;
@@ -109,16 +121,19 @@ use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
 use Logistics\Execution\Infrastructure\Console\AdvanceStuckDeliveriesCommand;
 use Logistics\Execution\Infrastructure\Console\OpenMissingDeliveriesCommand;
 use Logistics\Execution\Infrastructure\Console\PruneScanEventsCommand;
+use Logistics\Execution\Infrastructure\Console\SeedFailureReasonsCommand;
 use Logistics\Execution\Infrastructure\Labels\SodiumLabelVerificationGateway;
 use Logistics\Execution\Infrastructure\Labels\StubLabelVerificationGateway;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\DbRouteStopsReconciler;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryEvidenceRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryIssueRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentDeliveryRepository;
+use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentFailureReasonRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentNodeReceptionRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleIncidentRepository;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\EloquentVehicleRouteRepository;
 use Logistics\Execution\Infrastructure\ReadModel\DbDeliveryReferenceReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbFailureReasonCatalog;
 use Logistics\Execution\Infrastructure\ReadModel\DbNodeReceptionListReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbNodeReceptionTargetReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbPlannedRouteStopsProvider;
@@ -186,6 +201,12 @@ final class ExecutionServiceProvider extends ServiceProvider
         GetDriverRoute::class => GetDriverRouteHandler::class,
         ListDeliveriesByVehicle::class => ListDeliveriesByVehicleHandler::class,
         VerifyLabel::class => VerifyLabelHandler::class,
+        // Catálogo configurable de motivos de entrega fallida (CQRS).
+        CreateFailureReason::class => CreateFailureReasonHandler::class,
+        UpdateFailureReason::class => UpdateFailureReasonHandler::class,
+        DeactivateFailureReason::class => DeactivateFailureReasonHandler::class,
+        ListFailureReasons::class => ListFailureReasonsHandler::class,
+        ListActiveFailureReasons::class => ListActiveFailureReasonsHandler::class,
     ];
 
     // ── Bloque field-flow: ciclo de la ruta del día, llegada a parada (KPIs) ──────────────────────────
@@ -218,6 +239,12 @@ final class ExecutionServiceProvider extends ServiceProvider
 
         $this->app->bind(DeliveryRepository::class, EloquentDeliveryRepository::class);
         $this->app->bind(NodeReceptionRepository::class, EloquentNodeReceptionRepository::class);
+        // Catálogo configurable de motivos de entrega fallida: repositorio del agregado (admin) y lector del
+        // catálogo activo (validación del flujo de entrega fallida, memoizado por request).
+        $this->app->bind(FailureReasonRepository::class, EloquentFailureReasonRepository::class);
+        $this->app->bind(FailureReasonCatalog::class, static function ($app): FailureReasonCatalog {
+            return new DbFailureReasonCatalog($app->make('db')->connection());
+        });
         $this->app->bind(VehicleRouteRepository::class, EloquentVehicleRouteRepository::class);
         $this->app->bind(VehicleIncidentRepository::class, EloquentVehicleIncidentRepository::class);
         $this->app->bind(DeliveryIssueRepository::class, EloquentDeliveryIssueRepository::class);
@@ -495,6 +522,8 @@ final class ExecutionServiceProvider extends ServiceProvider
                 PruneScanEventsCommand::class,
                 AdvanceStuckDeliveriesCommand::class,
                 OpenMissingDeliveriesCommand::class,
+                // Siembra idempotente de los 5 motivos de entrega fallida de fábrica en cualquier entorno.
+                SeedFailureReasonsCommand::class,
                 // Saneo de las paradas de más en rutas no cerradas (ruta del día arrastrada de otros días).
                 ReconcileRouteStopsCommand::class,
             ]);

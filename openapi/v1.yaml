@@ -774,6 +774,190 @@ paths:
           $ref: '#/components/responses/OrderScopeForbidden'
       security:
       - appBearer: []
+  /app/config/failure-reasons:
+    get:
+      tags:
+      - execution
+      operationId: listActiveFailureReasons
+      summary: List active delivery-failure reasons (driver picker)
+      responses:
+        '200':
+          description: Active reasons ordered by sort_order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FailureReasonCatalogItem'
+      security:
+      - appBearer: []
+  /app/admin/failure-reasons:
+    get:
+      tags:
+      - execution
+      operationId: listFailureReasons
+      summary: List all delivery-failure reasons (admin)
+      responses:
+        '200':
+          description: All reasons (active and inactive)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FailureReasonCatalogItem'
+      security:
+      - appBearer: []
+    post:
+      tags:
+      - execution
+      operationId: createFailureReason
+      summary: Create a delivery-failure reason (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - label
+              properties:
+                label:
+                  type: string
+                  maxLength: 160
+                code:
+                  type: string
+                  maxLength: 64
+                  nullable: true
+                  description: Optional; derived from label if omitted.
+                active:
+                  type: boolean
+                  default: true
+                requires_photo:
+                  type: boolean
+                  default: false
+                requires_note:
+                  type: boolean
+                  default: false
+                note_label:
+                  type: string
+                  maxLength: 160
+                  nullable: true
+                sort_order:
+                  type: integer
+                  default: 0
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FailureReasonCatalogItem'
+        '409':
+          description: Ya existe un motivo con ese code (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Datos inválidos (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/admin/failure-reasons/{code}:
+    parameters:
+    - name: code
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Reason slug (not a UUID).
+    put:
+      tags:
+      - execution
+      operationId: updateFailureReason
+      summary: Update a delivery-failure reason (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  maxLength: 160
+                active:
+                  type: boolean
+                requires_photo:
+                  type: boolean
+                requires_note:
+                  type: boolean
+                note_label:
+                  type: string
+                  maxLength: 160
+                  nullable: true
+                sort_order:
+                  type: integer
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FailureReasonCatalogItem'
+        '404':
+          description: No existe un motivo con ese code (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Datos inválidos (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+    delete:
+      tags:
+      - execution
+      operationId: deactivateFailureReason
+      summary: Deactivate (soft-delete) a delivery-failure reason (admin)
+      responses:
+        '200':
+          description: Deactivated (soft)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FailureReasonCatalogItem'
+        '404':
+          description: No existe un motivo con ese code (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
   /app/deliveries/{shipmentId}/store-drop:
     post:
       tags:
@@ -18548,9 +18732,9 @@ components:
             Opción A (POD asíncrono): la entrega se cerró pero la foto todavía no subió. Se liga sola cuando
             llega por POST /app/deliveries/photos. La foto sigue siendo obligatoria, solo que puede llegar después.
         failure_reason:
-          allOf:
-          - $ref: '#/components/schemas/FailureReason'
+          type: string
           nullable: true
+          description: 'Code del motivo de no-entrega (del catálogo configurable; ver FailureReasonCatalogItem). Puede ser uno de los 5 de fábrica o un code custom.'
         scans:
           type: array
           items:
@@ -19136,15 +19320,54 @@ components:
         - reason
         properties:
           reason:
-            $ref: '#/components/schemas/FailureReason'
+            type: string
+            maxLength: 64
+            description: Code (slug) de un motivo ACTIVO del catálogo configurable (GET /app/config/failure-reasons). Los 5 de fábrica siguen válidos. Un code fuera del catálogo activo → 422.
+          note:
+            type: string
+            maxLength: 1000
+            nullable: true
+            description: Nota libre; obligatoria si el motivo elegido exige nota (requires_note).
+          photo_path:
+            type: string
+            maxLength: 2048
+            nullable: true
+            description: Referencia de foto (de /app/deliveries/photos); obligatoria si el motivo exige foto (requires_photo).
     FailureReason:
       type: string
+      description: 'Motivos de fábrica de no-entrega. El catálogo real es configurable (ver FailureReasonCatalogItem); este enum documenta los 5 sembrados por defecto. Un envío puede quedar guardado con un code configurable fuera de esta lista.'
       enum:
       - CUSTOMER_ABSENT
       - WRONG_ADDRESS
       - REJECTED
       - DAMAGED
       - OTHER
+    FailureReasonCatalogItem:
+      type: object
+      required:
+      - code
+      - label
+      - active
+      - requires_photo
+      - requires_note
+      - sort_order
+      properties:
+        code:
+          type: string
+          description: Identidad estable (slug en mayúsculas). No es UUID.
+        label:
+          type: string
+        active:
+          type: boolean
+        requires_photo:
+          type: boolean
+        requires_note:
+          type: boolean
+        note_label:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
     FleetDocument:
       type: object
       properties:

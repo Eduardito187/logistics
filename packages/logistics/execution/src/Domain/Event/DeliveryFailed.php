@@ -18,6 +18,7 @@ final readonly class DeliveryFailed extends BaseDomainEvent
         public string $shipmentId,
         public string $reason,
         DateTimeImmutable $occurredAt,
+        public ?string $note = null,
     ) {
         parent::__construct($deliveryId, null, $occurredAt);
     }
@@ -33,6 +34,7 @@ final readonly class DeliveryFailed extends BaseDomainEvent
             'delivery_id' => $this->aggregateId,
             'shipment_id' => $this->shipmentId,
             'reason' => $this->reason,
+            'note' => $this->note,
         ];
     }
 }

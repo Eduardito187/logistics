@@ -23,7 +23,6 @@ use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\MissingUnitDeclaration;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
@@ -63,9 +62,12 @@ final class Delivery extends AggregateRoot
         private DeliveryStatus $status,
         private array $scans,
         private ?ProofOfDelivery $proofOfDelivery,
-        private ?FailureReason $failureReason,
+        private ?string $failureReason,
         private readonly FulfillmentMode $fulfillmentMode,
     ) {}
+
+    /** Nota libre del intento fallido (contexto o lo que exige el motivo elegido); null si no se dio. */
+    private ?string $failureNote = null;
 
     /** Cuándo dejó el chofer el pedido en la tienda (entrega en tienda); null si no aplica o aún no pasó. */
     private ?DateTimeImmutable $storeDroppedAt = null;
@@ -469,7 +471,7 @@ final class Delivery extends AggregateRoot
         DeliveryStatus $status,
         array $scans,
         ?ProofOfDelivery $proofOfDelivery,
-        ?FailureReason $failureReason,
+        ?string $failureReason,
         FulfillmentMode $fulfillmentMode = FulfillmentMode::Owned,
     ): self {
         return new self(
@@ -674,7 +676,8 @@ final class Delivery extends AggregateRoot
      * DeliveryFailed. El escaneo deja la evidencia (GPS, dispositivo, hora) del intento.
      */
     public function recordFailed(
-        FailureReason $reason,
+        string $reason,
+        ?string $note,
         string $unitId,
         GeoPoint $geo,
         DeviceContext $device,
@@ -694,13 +697,18 @@ final class Delivery extends AggregateRoot
 
         $this->appendScan(ScanType::ProofOfDelivery, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
 
+        // El motivo es un code del catálogo CONFIGURABLE (ya no un enum fijo): el dominio lo guarda tal cual;
+        // la validación contra el catálogo activo la hace el handler antes de llegar aquí.
+        $cleanNote = $note !== null && trim($note) !== '' ? trim($note) : null;
         $this->status = DeliveryStatus::Failed;
         $this->failureReason = $reason;
+        $this->failureNote = $cleanNote;
         $this->recordEvent(new DeliveryFailed(
             $this->id->toString(),
             $this->shipmentId,
-            $reason->value,
+            $reason,
             $occurredAt,
+            $cleanNote,
         ));
     }
 
@@ -979,9 +987,22 @@ final class Delivery extends AggregateRoot
             && $this->proofOfDelivery->lacksPhoto();
     }
 
-    public function failureReason(): ?FailureReason
+    public function failureReason(): ?string
     {
         return $this->failureReason;
+    }
+
+    public function failureNote(): ?string
+    {
+        return $this->failureNote;
+    }
+
+    /**
+     * Restaura la nota del fallo al rehidratar desde persistencia (no graba evento).
+     */
+    public function restoreFailureNote(?string $note): void
+    {
+        $this->failureNote = $note !== null && trim($note) !== '' ? trim($note) : null;
     }
 
     public function fulfillmentMode(): FulfillmentMode
