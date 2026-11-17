@@ -179,7 +179,8 @@ dieron 3 reglas al revés y hubo que corregir a 4 agentes:
 | `types_spaces: single` | Uniones en CÓDIGO con espacios: `): array \| Page` (en phpdoc NO). |
 | `increment_style` | **Post**-incremento `$i++`. |
 | `ordered_imports` alpha / `no_unused_imports` | `use` alfabético (case-insensitive, `\` cuenta como espacio); sin imports muertos. |
-| `fully_qualified_strict_types` | Importar en vez de `\FQCN` en código; **también** `{@see \FQCN}` en docblocks dispara (escribir el nombre en texto plano). |
+| `fully_qualified_strict_types` | Si la clase está IMPORTADA, usar el nombre CORTO, nunca `\FQCN`. Trigger más común (mordió 2× el 2026-11-16): `catch (\Throwable)` en un archivo con `use Throwable;` → debe ser `catch (Throwable)`. Vale para hints/`new`/`instanceof`/`catch` y `{@see \FQCN}` en docblock. Regla mental: ¿importado? → corto. |
+| `no_blank_lines_after_phpdoc` | Un `/** … */` NO puede llevar línea en blanco antes del código que sigue. En tests Pest, el comentario a NIVEL DE ARCHIVO (antes del primer `it()`) va con `//`, no con `/** */` (mordió el 2026-11-16: `tests/Unit/*Test.php`). Un docblock solo va PEGADO a la declaración que documenta. |
 | `single_line_empty_body`, `braces_position` | `) {}` en la misma línea. A menudo Pint los lista como **efecto colateral** de otra regla del mismo archivo: si no se encuentra el problema, arreglar la otra regla y listo. |
 | `binary_operator_spaces` | Un espacio alrededor de `=`/`=>`, sin padding de alineación. |
 | `single_quote` | Comillas simples salvo interpolación. |
@@ -210,6 +211,13 @@ docker compose exec -T app ./vendor/bin/phpstan analyse --memory-limit=1G    # 0
 docker compose exec -T app ./vendor/bin/pest                                 # exit 0, reportar N passed
 ```
 No pipear `pest` a `tail -N` en background: trunca el resumen "Tests: N passed". Confiar en exit 0 + cero FAIL.
+
+**La suite NUNCA debe pegarle a un host externo.** Si agregás un default de config que es un host externo
+(`MAP_TILE_URL`, `OSRM_HOST`…), forzalo a un valor seguro en `phpunit.xml` con `<server>` **Y** `<env>`
+`force="true"` (porque `env()` lee $_SERVER antes que $_ENV): p. ej. `OSRM_HOST=""` apaga OSRM → respaldo recto,
+cero red. Un test que quiera probar el camino externo lo sobrescribe por `config()->set(...)` + `Http::fake`. Sin
+esto, el default de prod (p. ej. OSRM público) hace que la ETA/geometría llame a la red en los tests (flaky). Ver
+[[works-on-fresh-docker]].
 
 **Cobertura local: forzar pcov, NUNCA dejar que tome Xdebug (2026-11-13).** El contenedor `app` trae pcov
 Y xdebug; por defecto `pest --coverage` usa **Xdebug**, que es ~10-20× más lento (la suite completa tardó

@@ -23171,6 +23171,12 @@ components:
           type: number
           format: float
           nullable: true
+          description: Velocidad en km/h. Opcional. Si no viene y sí viene speed_mps, el backend convierte (× 3.6).
+        speed_mps:
+          type: number
+          format: float
+          nullable: true
+          description: Velocidad en m/s (lo que manda la app). El backend la convierte a km/h; si vienen ambas, manda speed_kph.
         heading:
           type: integer
           minimum: 0
