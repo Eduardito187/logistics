@@ -11,14 +11,18 @@ use Logistics\Capacity\Domain\CapacityBucket;
 use Logistics\Capacity\Domain\Contract\ActiveHorizonRepository;
 use Logistics\Capacity\Domain\Contract\CapacityRepository;
 use Logistics\Capacity\Domain\Contract\DispatchBlackoutRepository;
+use Logistics\Capacity\Domain\Contract\DispatchBlackoutSlotRepository;
 use Logistics\Capacity\Domain\DispatchBlackoutDay;
+use Logistics\Capacity\Domain\DispatchBlackoutSlot;
 use Logistics\Capacity\Domain\Exception\CapacityException;
 use Logistics\Capacity\Domain\Service\DispatchDayAvailability;
+use Logistics\Capacity\Domain\Service\DispatchSlotAvailability;
 use Logistics\Capacity\Domain\ValueObject\ActiveHorizonId;
 use Logistics\Capacity\Domain\ValueObject\BucketScope;
 use Logistics\Capacity\Domain\ValueObject\CapacityBucketId;
 use Logistics\Capacity\Domain\ValueObject\CapacityUnit;
 use Logistics\Capacity\Domain\ValueObject\DispatchBlackoutDayId;
+use Logistics\Capacity\Domain\ValueObject\DispatchBlackoutSlotId;
 use Logistics\Capacity\Domain\ValueObject\Quantity;
 use Logistics\Capacity\Domain\ValueObject\SlotDate;
 use Logistics\Capacity\Domain\ValueObject\TimeSlot;
@@ -70,6 +74,47 @@ function inMemoryBlackouts(array $blockedDates = []): DispatchBlackoutRepository
 }
 
 /**
+ * Repositorio de franjas bloqueadas en memoria: bloquea globalmente las franjas 'HH:MM-HH:MM' que se le
+ * pasen.
+ *
+ * @param list<string> $blockedSlots
+ */
+function inMemorySlotBlackouts(array $blockedSlots = []): DispatchBlackoutSlotRepository
+{
+    return new class($blockedSlots) implements DispatchBlackoutSlotRepository
+    {
+        /** @param list<string> $blockedSlots */
+        public function __construct(private array $blockedSlots) {}
+
+        public function nextIdentity(): DispatchBlackoutSlotId
+        {
+            return DispatchBlackoutSlotId::generate();
+        }
+
+        public function save(DispatchBlackoutSlot $slot): void {}
+
+        public function remove(DispatchBlackoutSlot $slot): void {}
+
+        public function findByKey(SlotDate $date, TimeSlot $slot, ?string $municipalityId): ?DispatchBlackoutSlot
+        {
+            return in_array($slot->toString(), $this->blockedSlots, true)
+                ? DispatchBlackoutSlot::block(DispatchBlackoutSlotId::generate(), $date, $slot, $municipalityId, 'test')
+                : null;
+        }
+
+        public function isBlocked(SlotDate $date, TimeSlot $slot, ?string $municipalityId): bool
+        {
+            return in_array($slot->toString(), $this->blockedSlots, true);
+        }
+
+        public function listForDate(SlotDate $date, ?string $municipalityId): array
+        {
+            return [];
+        }
+    };
+}
+
+/**
  * Horizonte activo en memoria: null = sin horizonte (no restringe); un string 'Y-m-d' = horizonte hasta
  * esa fecha para cualquier alcance.
  */
@@ -103,15 +148,18 @@ function makeConsumeHandler(
     OutboxStore $outbox,
     ?DispatchBlackoutRepository $blackouts = null,
     ?ActiveHorizonRepository $horizons = null,
+    ?DispatchBlackoutSlotRepository $slotBlackouts = null,
 ): ConsumeCapacityHandler {
     $blackouts ??= inMemoryBlackouts();
     $horizons ??= inMemoryHorizon();
+    $slotBlackouts ??= inMemorySlotBlackouts();
 
     return new ConsumeCapacityHandler(
         $repo,
         new RecordDomainEvents($outbox, capacityFixedClock()),
         new DispatchDayAvailability($blackouts),
         $horizons,
+        new DispatchSlotAvailability($blackouts, $slotBlackouts),
     );
 }
 
@@ -330,6 +378,20 @@ it('rejects consuming on a blacked-out day (holiday or other reason)', function 
 
     expect(fn () => $handler->handle(consumeCommand(1.0)))
         ->toThrow(CapacityException::class, 'bloqueado');
+
+    // No se tocó el cupo: ni lectura con lock ni save.
+    expect($repo->lockedRead)->toBeFalse()
+        ->and($repo->saves)->toBe(0);
+});
+
+it('rejects consuming on a blocked time slot (slot blackout, day still open)', function (): void {
+    $bucket = tenDeliveryBucket();
+    $repo = inMemoryBuckets($bucket);
+    // La franja 09:00-13:00 (la del cupo) está bloqueada, aunque el día no lo esté.
+    $handler = makeConsumeHandler($repo, collectingOutbox(), null, null, inMemorySlotBlackouts(['09:00-13:00']));
+
+    expect(fn () => $handler->handle(consumeCommand(1.0)))
+        ->toThrow(CapacityException::class, 'franja');
 
     // No se tocó el cupo: ni lectura con lock ni save.
     expect($repo->lockedRead)->toBeFalse()

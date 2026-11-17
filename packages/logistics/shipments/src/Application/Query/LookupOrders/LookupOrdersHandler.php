@@ -7,6 +7,7 @@ namespace Logistics\Shipments\Application\Query\LookupOrders;
 use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
+use Logistics\Shipments\Application\Contract\LiveShipmentEtaReader;
 use Logistics\Shipments\Application\Contract\OrderLookupReader;
 use Logistics\Shipments\Application\Contract\ScannedLabelResolver;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
@@ -54,6 +55,7 @@ final class LookupOrdersHandler implements QueryHandler
         private readonly ShipmentProgressReader $progress,
         private readonly DeliveryModeReader $deliveryModes,
         private readonly ShipmentScopeReader $scope,
+        private readonly LiveShipmentEtaReader $liveEtas,
     ) {}
 
     public function handle(Query $query): OrderLookupResult
@@ -137,6 +139,8 @@ final class LookupOrdersHandler implements QueryHandler
         $nodeNames = $this->lookup->nodeNames(self::destinationNodeIds($views));
         // Envíos que quien consulta puede operar (una sola sentencia para el lote, regla única de alcance).
         $operable = $actor === null ? null : array_fill_keys($this->scope->inScope($actor, $ids), true);
+        // ETA viva del motor único (telemetría) para el lote: el mismo número que ve el chofer en su ruta.
+        $liveEtas = $this->liveEtas->etasFor($ids);
 
         $items = [];
         foreach ($views as $view) {
@@ -147,7 +151,7 @@ final class LookupOrdersHandler implements QueryHandler
                 shipment: $view,
                 orderReference: $viewFacts->orderReference,
                 destinationNodeName: $nodeName,
-                tracking: OrderTrackingView::of($view, $viewFacts, $nodeName),
+                tracking: OrderTrackingView::of($view, $viewFacts, $nodeName, $liveEtas[$view->id] ?? null),
                 canProcess: $operable === null || isset($operable[$view->id]),
             );
         }

@@ -83,8 +83,9 @@ use RuntimeException;
  *   make artisan c="db:seed --class=Database\\Seeders\\TodayScenarioSeeder"
  *
  * Qué deja armado para la fecha de hoy (zona America/La_Paz):
- *   1. Usuarios de prueba por rol (chofer, preparador, tienda, transportista, supervisor, planificador) con contraseña
- *      `password123`; el chofer ligado a un conductor de flota y la tienda a su nodo (T-SCZ-01).
+ *   1. Usuarios de prueba por rol (chofer, preparador, tienda, transportista, supervisor, planificador, tripulante) con
+ *      contraseña `password123`; el chofer ligado a un conductor de flota, la tienda a su nodo (T-SCZ-01) y el
+ *      tripulante a un ayudante REAL de la tripulación del día (users.helper_id).
  *   2. Tripulación del día (chofer + 2 ayudantes + camión del CD Santa Cruz + turno) vía AssembleCrew,
  *      y el camión pasa a `in_service`.
  *   3. Envíos de clientes en barrios reales de Santa Cruz (con teléfono +591, referencia, líneas con
@@ -220,6 +221,8 @@ final class TodayScenarioSeeder extends Seeder
         // 2) Tripulación del día + camión en servicio.
         $crew = $this->ensureCrew($driverId, (string) $vehicle->id);
         $this->ensureVehicleInService((string) $vehicle->id);
+        // La cuenta tripulante queda ligada a un ayudante REAL de la tripulación del día (my-crew por helper_id).
+        $this->ensureTripulanteHelperLink($users['tripulante'], $crew);
 
         // 3) Envíos (clientes + recepciones/recojo en tienda) y sus etiquetas.
         $routeShipments = [];
@@ -282,6 +285,8 @@ final class TodayScenarioSeeder extends Seeder
             'supervisor' => ['Supervisor Santa Cruz', Role::Supervisor],
             // Planificador de la ciudad del escenario: arma planes y viajes, reprograma y maneja el calendario.
             'planificador' => ['Planificador Santa Cruz', Role::Planificador],
+            // Tripulante (ayudante del camión): login SOLO LECTURA; se liga abajo a un ayudante de la tripulación.
+            'tripulante' => ['Tripulante Santa Cruz', Role::Tripulante],
         ];
 
         $users = [];
@@ -346,6 +351,7 @@ final class TodayScenarioSeeder extends Seeder
             'transportista' => $scenarioCity,
             'supervisor' => $scenarioCity,
             'planificador' => $scenarioCity,
+            'tripulante' => $scenarioCity,
         ];
 
         foreach ($cities as $key => $city) {
@@ -392,6 +398,30 @@ final class TodayScenarioSeeder extends Seeder
         }
 
         return $existing;
+    }
+
+    /**
+     * Liga la cuenta tripulante (rol ayudante) con el PRIMER ayudante de la tripulación del día, de modo que
+     * `my-crew` y la hoja de ruta del camión le resuelvan por `users.helper_id`. Idempotente: solo escribe
+     * si el vínculo cambia. Si la tripulación no tiene ayudantes, no hace nada (la cuenta queda sin vínculo).
+     */
+    private function ensureTripulanteHelperLink(User $tripulante, CrewModel $crew): void
+    {
+        $raw = $crew->helper_ids;
+        $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
+
+        $first = null;
+        foreach (is_array($decoded) ? $decoded : [] as $helperId) {
+            if (is_string($helperId) && $helperId !== '') {
+                $first = $helperId;
+                break;
+            }
+        }
+
+        if ($first !== null && $tripulante->helper_id !== $first) {
+            $tripulante->helper_id = $first;
+            $tripulante->save();
+        }
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Middleware\EnsureDeviceToken;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Logistics\Fleet\Application\Command\AssembleCrew\AssembleCrew;
 use Logistics\Fleet\Application\Command\RegisterDriver\RegisterDriver;
@@ -101,6 +102,124 @@ it('devuelve el vehículo y la tripulación del chofer autenticado para una fech
         ->assertJsonStructure(['data' => ['crew_id', 'vehicle' => ['plate'], 'shift' => ['starts_at', 'ends_at']]]);
 });
 
+it('no le quita la entrega al chofer a la medianoche: ruta EN CURSO de ayer sigue siendo su asignación', function (): void {
+    $vehicleId = registrarVehiculoMyCrew();
+    $driverId = registrarChoferMyCrew('Chofer Nocturno');
+    $yesterday = (new DateTimeImmutable('yesterday', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
+
+    // Cuadrilla de AYER + ruta EN CURSO de ayer (entrega larga que cruzó la medianoche). HOY no hay cuadrilla.
+    app(CommandBus::class)->dispatch(new AssembleCrew(
+        driverId: $driverId,
+        helperIds: [],
+        vehicleId: $vehicleId,
+        assembledFor: $yesterday,
+    ));
+    DB::table('execution_driver_routes')->insert([
+        'id' => Uuid::generate()->value,
+        'vehicle_id' => $vehicleId,
+        'driver_id' => $driverId,
+        'route_date' => $yesterday,
+        'status' => 'IN_PROGRESS',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    Sanctum::actingAs(User::factory()->create(['driver_id' => $driverId]));
+
+    // Sin ?date (asignación VIGENTE): aunque no hay cuadrilla de HOY, la ruta en curso de ayer sigue siendo suya.
+    $this->getJson('/api/v1/app/fleet/my-crew')
+        ->assertOk()
+        ->assertJsonPath('data.driver.id', $driverId)
+        ->assertJsonPath('data.vehicle.id', $vehicleId)
+        ->assertJsonPath('data.date', $yesterday);
+});
+
+it('la entrega en curso se resuelve por el driver_id de la ruta, no por el camión de una tripulación más nueva', function (): void {
+    // Regresión (staging 2026-11): sin tripulación HOY (se dispara el arrastre), el chofer tiene su entrega EN
+    // CURSO en el camión A (anteayer) y además una tripulación MÁS RECIENTE en el camión B (ayer) cuya ruta
+    // abierta es de OTRO chofer. El barrido viejo por cuadrilla agarraba la más reciente (B) y devolvía la ruta
+    // ajena; el arrastre por `driver_id` de la ruta devuelve SIEMPRE la entrega real del chofer (A).
+    $vehicleA = registrarVehiculoMyCrew();
+    $vehicleB = registrarVehiculoMyCrew();
+    $driverId = registrarChoferMyCrew('Chofer Reasignado');
+    $otherDriverId = registrarChoferMyCrew('Otro Chofer');
+    $dayOld = (new DateTimeImmutable('-2 days', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
+    $dayMid = (new DateTimeImmutable('yesterday', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
+
+    // ANTEAYER: tripulación + entrega EN CURSO del chofer en el camión A (su asignación real).
+    app(CommandBus::class)->dispatch(new AssembleCrew(
+        driverId: $driverId,
+        helperIds: [],
+        vehicleId: $vehicleA,
+        assembledFor: $dayOld,
+    ));
+    DB::table('execution_driver_routes')->insert([
+        'id' => Uuid::generate()->value,
+        'vehicle_id' => $vehicleA,
+        'driver_id' => $driverId,
+        'route_date' => $dayOld,
+        'status' => 'IN_PROGRESS',
+        'created_at' => now()->subDays(2),
+        'updated_at' => now()->subDays(2),
+    ]);
+
+    // AYER: tripulación MÁS RECIENTE del chofer en el camión B, pero la ruta abierta de B es de OTRO chofer.
+    app(CommandBus::class)->dispatch(new AssembleCrew(
+        driverId: $driverId,
+        helperIds: [],
+        vehicleId: $vehicleB,
+        assembledFor: $dayMid,
+    ));
+    DB::table('execution_driver_routes')->insert([
+        'id' => Uuid::generate()->value,
+        'vehicle_id' => $vehicleB,
+        'driver_id' => $otherDriverId,
+        'route_date' => $dayMid,
+        'status' => 'IN_PROGRESS',
+        'created_at' => now()->subDay(),
+        'updated_at' => now()->subDay(),
+    ]);
+
+    Sanctum::actingAs(User::factory()->create(['driver_id' => $driverId]));
+
+    // Sin ?date (no hay tripulación hoy): debe devolver SU entrega en curso (camión A), nunca la ruta ajena de B.
+    $this->getJson('/api/v1/app/fleet/my-crew')
+        ->assertOk()
+        ->assertJsonPath('data.driver.id', $driverId)
+        ->assertJsonPath('data.vehicle.id', $vehicleA)
+        ->assertJsonPath('data.date', $dayOld);
+});
+
+it('con ?date explícito NO arrastra la ruta en curso de otro día (previsualización respeta la fecha)', function (): void {
+    $vehicleId = registrarVehiculoMyCrew();
+    $driverId = registrarChoferMyCrew('Chofer Preview');
+    $yesterday = (new DateTimeImmutable('yesterday', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
+    $tomorrow = (new DateTimeImmutable('tomorrow', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
+
+    app(CommandBus::class)->dispatch(new AssembleCrew(
+        driverId: $driverId,
+        helperIds: [],
+        vehicleId: $vehicleId,
+        assembledFor: $yesterday,
+    ));
+    DB::table('execution_driver_routes')->insert([
+        'id' => Uuid::generate()->value,
+        'vehicle_id' => $vehicleId,
+        'driver_id' => $driverId,
+        'route_date' => $yesterday,
+        'status' => 'IN_PROGRESS',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    Sanctum::actingAs(User::factory()->create(['driver_id' => $driverId]));
+
+    // ?date=mañana EXPLÍCITO: no hay cuadrilla mañana y NO se arrastra la de ayer → 404 (la preview respeta la fecha).
+    $this->getJson('/api/v1/app/fleet/my-crew?date='.$tomorrow)
+        ->assertNotFound()
+        ->assertJsonPath('code', 'not_found');
+});
+
 it('devuelve 404 (RFC 7807) cuando el chofer no tiene asignación para la fecha', function (): void {
     $driverId = registrarChoferMyCrew();
 
@@ -113,6 +232,43 @@ it('devuelve 404 (RFC 7807) cuando el chofer no tiene asignación para la fecha'
 
 it('devuelve 404 cuando la cuenta autenticada no está vinculada a un chofer', function (): void {
     Sanctum::actingAs(User::factory()->create(['driver_id' => null]));
+
+    $this->getJson('/api/v1/app/fleet/my-crew?date=2026-10-15')
+        ->assertNotFound()
+        ->assertJsonPath('code', 'not_found');
+});
+
+it('devuelve la tripulación al AYUDANTE autenticado (rol tripulante, por users.helper_id)', function (): void {
+    $vehicleId = registrarVehiculoMyCrew();
+    $driverId = registrarChoferMyCrew('Juan Pérez');
+    $helperName = 'Ayudante '.uniqid();
+    $helperId = registrarAyudanteMyCrew($helperName);
+
+    app(CommandBus::class)->dispatch(new AssembleCrew(
+        driverId: $driverId,
+        helperIds: [$helperId],
+        vehicleId: $vehicleId,
+        assembledFor: '2026-10-15',
+        shiftStartsAt: '2026-10-15 06:00:00',
+        shiftEndsAt: '2026-10-15 14:00:00',
+    ));
+
+    // El tripulante NO es chofer (driver_id null): se resuelve por su helper_id. La vista es la misma.
+    Sanctum::actingAs(User::factory()->create(['driver_id' => null, 'helper_id' => $helperId]));
+
+    $this->getJson('/api/v1/app/fleet/my-crew?date=2026-10-15')
+        ->assertOk()
+        ->assertJsonPath('data.driver.id', $driverId)
+        ->assertJsonPath('data.vehicle.id', $vehicleId)
+        ->assertJsonPath('data.helpers.0.id', $helperId)
+        ->assertJsonPath('data.helpers.0.name', $helperName)
+        ->assertJsonPath('data.date', '2026-10-15');
+});
+
+it('devuelve 404 al ayudante que no integra ninguna tripulación esa fecha', function (): void {
+    $helperId = registrarAyudanteMyCrew('Ayudante sin tripulación '.uniqid());
+
+    Sanctum::actingAs(User::factory()->create(['driver_id' => null, 'helper_id' => $helperId]));
 
     $this->getJson('/api/v1/app/fleet/my-crew?date=2026-10-15')
         ->assertNotFound()

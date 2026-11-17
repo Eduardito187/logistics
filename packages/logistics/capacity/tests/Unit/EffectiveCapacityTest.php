@@ -9,9 +9,16 @@ use Logistics\Capacity\Application\ReadModel\EffectiveCapacityView;
 use Logistics\Capacity\Domain\CapacityBucket;
 use Logistics\Capacity\Domain\Contract\CapacityRepository;
 use Logistics\Capacity\Domain\Contract\CapacityRuleProvider;
+use Logistics\Capacity\Domain\Contract\DispatchBlackoutRepository;
+use Logistics\Capacity\Domain\Contract\DispatchBlackoutSlotRepository;
+use Logistics\Capacity\Domain\DispatchBlackoutDay;
+use Logistics\Capacity\Domain\DispatchBlackoutSlot;
+use Logistics\Capacity\Domain\Service\DispatchSlotAvailability;
 use Logistics\Capacity\Domain\ValueObject\BucketScope;
 use Logistics\Capacity\Domain\ValueObject\CapacityBucketId;
 use Logistics\Capacity\Domain\ValueObject\CapacityUnit;
+use Logistics\Capacity\Domain\ValueObject\DispatchBlackoutDayId;
+use Logistics\Capacity\Domain\ValueObject\DispatchBlackoutSlotId;
 use Logistics\Capacity\Domain\ValueObject\Quantity;
 use Logistics\Capacity\Domain\ValueObject\SlotDate;
 use Logistics\Capacity\Domain\ValueObject\TimeSlot;
@@ -74,6 +81,71 @@ function ruleProviderReturning(?float $total): CapacityRuleProvider
     };
 }
 
+/**
+ * DispatchSlotAvailability con repos en memoria. Con `$blockedSlot` ('HH:MM-HH:MM') esa franja queda
+ * bloqueada globalmente; null = nada bloqueado. El día nunca se bloquea en este helper.
+ */
+function effectiveSlotAvailability(?string $blockedSlot = null): DispatchSlotAvailability
+{
+    $days = new class implements DispatchBlackoutRepository
+    {
+        public function nextIdentity(): DispatchBlackoutDayId
+        {
+            return DispatchBlackoutDayId::generate();
+        }
+
+        public function save(DispatchBlackoutDay $day): void {}
+
+        public function remove(DispatchBlackoutDay $day): void {}
+
+        public function findByDate(SlotDate $date, ?string $municipalityId): ?DispatchBlackoutDay
+        {
+            return null;
+        }
+
+        public function isBlocked(SlotDate $date, ?string $municipalityId): bool
+        {
+            return false;
+        }
+
+        public function listInRange(SlotDate $from, SlotDate $to, ?string $municipalityId = null): array
+        {
+            return [];
+        }
+    };
+
+    $slots = new class($blockedSlot) implements DispatchBlackoutSlotRepository
+    {
+        public function __construct(private ?string $blockedSlot) {}
+
+        public function nextIdentity(): DispatchBlackoutSlotId
+        {
+            return DispatchBlackoutSlotId::generate();
+        }
+
+        public function save(DispatchBlackoutSlot $slot): void {}
+
+        public function remove(DispatchBlackoutSlot $slot): void {}
+
+        public function findByKey(SlotDate $date, TimeSlot $slot, ?string $municipalityId): ?DispatchBlackoutSlot
+        {
+            return null;
+        }
+
+        public function isBlocked(SlotDate $date, TimeSlot $slot, ?string $municipalityId): bool
+        {
+            return $this->blockedSlot !== null && $slot->toString() === $this->blockedSlot;
+        }
+
+        public function listForDate(SlotDate $date, ?string $municipalityId): array
+        {
+            return [];
+        }
+    };
+
+    return new DispatchSlotAvailability($days, $slots);
+}
+
 function effectiveQuery(): GetEffectiveCapacityQuery
 {
     return new GetEffectiveCapacityQuery(
@@ -99,6 +171,7 @@ it('returns the explicit bucket when one exists (source=bucket)', function (): v
     $handler = new GetEffectiveCapacityHandler(
         inMemoryCapacityRepository($bucket),
         ruleProviderReturning(999.0),
+        effectiveSlotAvailability(),
     );
 
     $view = $handler->handle(effectiveQuery());
@@ -114,6 +187,7 @@ it('falls back to the rule default when there is no bucket (source=rule)', funct
     $handler = new GetEffectiveCapacityHandler(
         inMemoryCapacityRepository(null),
         ruleProviderReturning(120.0),
+        effectiveSlotAvailability(),
     );
 
     $view = $handler->handle(effectiveQuery());
@@ -129,6 +203,32 @@ it('reports zero capacity when neither bucket nor rule applies (source=none)', f
     $handler = new GetEffectiveCapacityHandler(
         inMemoryCapacityRepository(null),
         ruleProviderReturning(null),
+        effectiveSlotAvailability(),
+    );
+
+    $view = $handler->handle(effectiveQuery());
+
+    expect($view->source)->toBe('none')
+        ->and($view->total)->toBe(0.0)
+        ->and($view->available)->toBe(0.0)
+        ->and($view->full)->toBeTrue();
+});
+
+it('reports zero capacity for a blocked time slot even when a bucket exists (source=none)', function (): void {
+    $bucket = CapacityBucket::define(
+        CapacityBucketId::generate(),
+        BucketScope::forNode('11111111-1111-7111-8111-111111111111'),
+        SlotDate::fromString('2026-10-13'),
+        TimeSlot::fromString('09:00-13:00'),
+        CapacityUnit::Deliveries,
+        Quantity::of(100.0),
+    );
+
+    $handler = new GetEffectiveCapacityHandler(
+        inMemoryCapacityRepository($bucket),
+        ruleProviderReturning(999.0),
+        // La franja 09:00-13:00 está bloqueada: no se ofrece cupo sobre ella.
+        effectiveSlotAvailability('09:00-13:00'),
     );
 
     $view = $handler->handle(effectiveQuery());

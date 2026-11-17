@@ -52,7 +52,7 @@ final readonly class OrderTrackingView
      * Arma el seguimiento de un envío desde su vista (con el avance operativo ya adjunto), sus hechos de
      * ruta y el nombre de su nodo destino.
      */
-    public static function of(ShipmentView $shipment, OrderRouteFacts $facts, ?string $destinationNodeName): self
+    public static function of(ShipmentView $shipment, OrderRouteFacts $facts, ?string $destinationNodeName, ?string $liveEtaAt = null): self
     {
         $progress = $shipment->progress ?? ShipmentProgressView::unknown();
         $stage = self::stageOf($shipment->status, $progress, $facts->trackingStatus);
@@ -62,7 +62,8 @@ final readonly class OrderTrackingView
         return new self(
             stage: $stage,
             stopsBefore: $onRoute ? $facts->stopsBefore() : null,
-            etaAt: $onRoute ? $facts->eta() : null,
+            // ETA del motor único: la viva (telemetría) cuando está en ruta y hay posición; si no, la planificada.
+            etaAt: $onRoute ? ($liveEtaAt ?? $facts->eta()) : null,
             vehiclePlate: $progress->plate,
             currentNodeId: $atStore ? $shipment->destinationNodeId : null,
             currentNodeName: $atStore ? $destinationNodeName : null,

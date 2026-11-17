@@ -282,6 +282,24 @@ final class DeliveryPlan extends AggregateRoot
     }
 
     /**
+     * Reemplaza una geometría DEGENERADA (nula, o colapsada a un punto: sin dos coordenadas distintas) por una
+     * nueva, incluso en un plan PUBLICADO. Una geometría colapsada es BASURA, no una hoja de ruta válida que
+     * congelar, por eso se admite reemplazarla sin tocar paradas, orden ni ETA (es solo el trazo del mapa). Si
+     * la geometría actual ya es DIBUJABLE no hace nada (una hoja de ruta buena queda congelada). True si la
+     * reemplazó.
+     */
+    public function replaceDegenerateRouteGeometry(RouteGeometry $geometry): bool
+    {
+        if ($this->geometry !== null && $this->geometry->isDrawable()) {
+            return false;
+        }
+
+        $this->geometry = $geometry;
+
+        return true;
+    }
+
+    /**
      * Recalcula el plan de carga: asigna a cada parada su carril en ORDEN INVERSO de entrega (el último
      * en entregarse se carga primero, al fondo; el primero en entregarse queda más a mano, cerca de la
      * puerta). Los carriles se llenan en bloques de LANE_SIZE bultos. No se puede sobre un plan publicado.

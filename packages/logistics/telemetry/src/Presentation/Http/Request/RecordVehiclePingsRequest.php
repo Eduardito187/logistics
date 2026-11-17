@@ -49,6 +49,9 @@ final class RecordVehiclePingsRequest extends FormRequest
             'lng' => ['required', 'numeric', 'between:-180,180'],
             'recorded_at' => ['required', 'date'],
             'speed_kph' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            // La app manda la velocidad en m/s (`speed_mps`); se acepta y se convierte a km/h en el controller
+            // (si vienen ambos, manda `speed_kph`). Así el cliente no cambia y el resto del backend ve km/h.
+            'speed_mps' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'heading' => ['sometimes', 'nullable', 'integer', 'between:0,359'],
             'accuracy_m' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'ignition' => ['sometimes', 'nullable', 'boolean'],

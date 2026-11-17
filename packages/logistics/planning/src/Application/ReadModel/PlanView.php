@@ -43,6 +43,7 @@ final readonly class PlanView
         public ?array $originNode = null,
         public ?float $distanceKm = null,
         public ?int $durationMinutes = null,
+        public ?string $executionStatus = null,
     ) {}
 
     /**
@@ -56,6 +57,7 @@ final readonly class PlanView
         array $facts = [],
         ?array $originNode = null,
         ?DateTimeZone $timezone = null,
+        ?string $executionStatus = null,
     ): self {
         $total = count($plan->stops());
         $planDate = $plan->date()->toString();
@@ -80,6 +82,7 @@ final readonly class PlanView
             $originNode,
             $geometry === null ? null : round($geometry->distanceMeters / 1000.0, 1),
             $geometry === null ? null : (int) round($geometry->durationSeconds / 60.0),
+            $executionStatus,
         );
     }
 
@@ -100,6 +103,9 @@ final readonly class PlanView
             'distance_km' => $this->distanceKm,
             'duration_minutes' => $this->durationMinutes,
             'status' => $this->status,
+            // Estado de EJECUCIÓN de la ruta del día (enum estable UI): NOT_STARTED|IN_PROGRESS|COMPLETED, o
+            // null si aún no se ensambló la ruta. El estado de ejecución vive en la ruta, no en el Plan.
+            'execution_status' => $this->executionStatus,
             'stops' => array_map(static fn (PlannedStopView $stop): array => $stop->toArray(), $this->stops),
             // Geometría server-side para que el mapa la pinte sin depender del navegador (null si aún no se calculó).
             'route_geometry' => $this->routeGeometry,

@@ -11,7 +11,8 @@ use Logistics\Shared\Application\Query\Query;
  *
  * Todos los parámetros nuevos son opcionales y aditivos (no rompen a quien solo pasa el día):
  *   - `dateTo`    → último día del rango (inclusive); null = solo `planDate`. Acotado a MAX_RANGE_DAYS.
- *   - `status`    → filtra por estado del plan (DRAFT|PROPOSED|PUBLISHED).
+ *   - `statuses`  → filtra por uno o VARIOS estados del plan (DRAFT|PROPOSED|PUBLISHED); [] = todos.
+ *   - `search`    → texto libre (`q`): filtra por placa, nombre del chofer o nombre del nodo de origen.
  *   - `vehicleId` → filtra por camión.
  *   - `limit`/`offset` → si `limit` no es null, el handler devuelve un Page<PlanView> (página + total)
  *     en lugar de list<PlanView>; así Presentation arma el envelope estándar `data` + `meta`.
@@ -28,10 +29,14 @@ final readonly class ListPlansByDate implements Query
      */
     public const array STATUSES = ['DRAFT', 'PROPOSED', 'PUBLISHED'];
 
+    /**
+     * @param list<string> $statuses estados del plan a incluir ([] = todos)
+     */
     public function __construct(
         public string $planDate,
         public ?string $dateTo = null,
-        public ?string $status = null,
+        public array $statuses = [],
+        public ?string $search = null,
         public ?string $vehicleId = null,
         public ?int $limit = null,
         public int $offset = 0,

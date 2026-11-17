@@ -54,7 +54,8 @@ final readonly class OperationalCorridorResolver
                 // El almacén central distribuye como un CD: ofrece última milla (CdToCustomer).
                 NodeType::DistributionCenter, NodeType::CentralWarehouse => CorridorType::CdToCustomer,
                 NodeType::Store => CorridorType::StorePickup,
-                NodeType::PickupPoint => null,
+                // El punto de recojo y el almacén de la transportadora no atienden al cliente por sí mismos.
+                NodeType::PickupPoint, NodeType::CarrierHub => null,
             };
 
             if ($terminal !== null) {

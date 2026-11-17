@@ -10,16 +10,30 @@ use Logistics\Execution\Application\Contract\RouteGeometryReader;
 use Throwable;
 
 /**
- * Lector de la geometría de ruta. Garantiza que SIEMPRE haya línea planificada si la ruta tiene al menos
- * dos puntos, en este orden:
+ * Lector de la geometría de ruta. Garantiza que SIEMPRE haya una línea por CALLES si la ruta tiene al menos
+ * dos puntos y el ruteador está disponible, en este orden:
  *
  * 1. La geometría persistida del plan (`planning_plans.route_geometry`) del mismo camión y día.
  * 2. Si el plan existe pero no tiene geometría, se le pide a Planificación que la calcule y persista (vía
  *    el callback `$ensurePlanGeometry`, que el provider cablea al servicio de aplicación de Planificación;
  *    Ejecución nunca escribe sobre Planning por sí misma) y se vuelve a leer.
- * 3. Si no hay plan o no se pudo calcular: línea RECTA entre las paradas de la ruta del chofer en orden de
- *    secuencia (coordenada de la parada o, si falta, la del envío), con distancia haversine y duración
- *    estimada a velocidad media. Así la app y el admin siempre dibujan algo.
+ * 3. Si no hay plan con geometría, se GENERA la ruta por CALLES con OSRM a partir de las paradas de la ruta
+ *    del chofer en orden de secuencia (callback `$streetGeometryForStops`). Así la ruta nunca sale como una
+ *    recta que atraviesa el mapa de punta a punta por el solo hecho de no tener plan: se rutea por las calles.
+ * 4. ÚLTIMO recurso (solo si el ruteador no está disponible): línea recta entre las paradas, con distancia
+ *    haversine y duración estimada a velocidad media, para que la app y el admin siempre dibujen algo.
+ *
+ * ORIGEN DE LA RUTA: tanto el ruteo por calles como la recta de respaldo arrancan en el PUNTO DE SALIDA del
+ * vehículo (su nodo sede / almacén base, vía `$originForVehicle`), no en la primera parada. Así la polilínea
+ * del chofer —propio o de transportadora— empieza en SU almacén de salida. Esto UNIFICA la asimetría con la
+ * vía del plan (que ya anteponía el depósito). Si la sede no se resuelve, el origen se omite y la ruta mantiene
+ * el comportamiento previo (empieza en la primera parada). Nota: esto solo cambia el DIBUJO; el off-route y el
+ * reruteo se calculan desde la POSICIÓN actual del GPS, así que no se ven afectados.
+ *
+ * FOLLOW-UP (no implementado acá): el admin ve ESTA MISMA geometría persistida (recorrido completo del
+ * vehículo: su sede → todas sus paradas), sin recortes. La concatenación multi-tramo a nivel admin
+ * (origen del envío → hub de la transportadora → … → cliente, cuando existan geometrías POR TRAMO del
+ * itinerario) queda pendiente para una ola posterior; hoy cada vehículo dibuja su propio tramo desde su sede.
  *
  * Devuelve el esquema RouteGeometry (type/coordinates [[lng,lat],...]/distance_meters/duration_seconds).
  */
@@ -29,12 +43,17 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
     private const FALLBACK_SPEED_KMH = 30.0;
 
     /**
-     * @param (Closure(string, string): bool)|null $ensurePlanGeometry calcula y persiste la geometría del
-     *                                                                 plan (vehículo, día); true si la guardó
+     * `$ensurePlanGeometry(vehicleId, date): bool` calcula y persiste la geometría del plan (true si la guardó).
+     * `$streetGeometryForStops(list<[lng,lat]>): ?array` rutea por calles (OSRM) las paradas de la ruta y
+     * devuelve la geometría primitiva, o null. `$originForVehicle(vehicleId): ?[lng,lat]` da el punto de
+     * salida del vehículo (su sede/almacén base) para anteponerlo a las paradas. Todos los cablea el provider;
+     * sin ellos, el lector degrada (sin origen = ruta desde la primera parada, como antes).
      */
     public function __construct(
         private ConnectionInterface $connection,
         private ?Closure $ensurePlanGeometry = null,
+        private ?Closure $streetGeometryForStops = null,
+        private ?Closure $originForVehicle = null,
     ) {}
 
     public function forVehicleAndDate(string $vehicleId, string $routeDate): ?array
@@ -57,11 +76,26 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
                     }
                 }
             } catch (Throwable) {
-                // Se cae a la línea recta.
+                // Se cae a la generación por calles desde las paradas.
             }
         }
 
-        return $this->straightLineFromRouteStops($vehicleId, $routeDate);
+        // Sin plan con geometría: rutear por CALLES las paradas de la ruta (nunca recta por no tener plan).
+        $points = $this->routeStopPoints($vehicleId, $routeDate);
+        if (count($points) >= 2 && $this->streetGeometryForStops !== null) {
+            try {
+                $street = ($this->streetGeometryForStops)($points);
+                if (is_array($street) && isset($street['coordinates']) && is_array($street['coordinates'])
+                    && self::isDrawable($street['coordinates'])) {
+                    /** @var array<string, mixed> $street */
+                    return $street;
+                }
+            } catch (Throwable) {
+                // Se cae a la recta (solo si el ruteador no está disponible).
+            }
+        }
+
+        return $this->straightLineFromPoints($points);
     }
 
     /**
@@ -83,7 +117,10 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
         $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
 
         if (!is_array($decoded) || !isset($decoded['coordinates']) || !is_array($decoded['coordinates'])
-            || count($decoded['coordinates']) < 2) {
+            || !self::isDrawable($decoded['coordinates'])) {
+            // No dibujable: sin dos puntos DISTINTOS (p. ej. una geometría degenerada que quedó persistida con
+            // todas sus coordenadas iguales y distancia 0) la devolvemos como ausente, para caer al recálculo
+            // del plan y, en último caso, a la línea recta entre las paradas reales de la ruta (que sí dibuja).
             return null;
         }
 
@@ -104,12 +141,15 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
     }
 
     /**
-     * Línea recta entre las paradas de la ruta del chofer, en orden de secuencia. Null si no hay al menos
-     * dos puntos con coordenada.
+     * Coordenadas [lng,lat] de la ruta del chofer para dibujar: PUNTO DE SALIDA del vehículo (su sede/almacén
+     * base, si se resuelve) seguido de las paradas en orden de secuencia (coordenada de la parada o, si falta,
+     * la del envío). Anteponer el origen acá hace que AMBOS caminos de respaldo (ruteo por calles y recta)
+     * arranquen en la sede del vehículo, unificando la asimetría con la vía del plan. Lista vacía si no se
+     * pudo leer; sin origen resoluble, la ruta empieza en la primera parada (comportamiento previo intacto).
      *
-     * @return array<string, mixed>|null
+     * @return list<array{0: float, 1: float}>
      */
-    private function straightLineFromRouteStops(string $vehicleId, string $routeDate): ?array
+    private function routeStopPoints(string $vehicleId, string $routeDate): array
     {
         try {
             $rows = $this->connection->table('execution_driver_route_stops as s')
@@ -120,12 +160,14 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
                 ->orderBy('s.sequence')
                 ->get(['s.lat as stop_lat', 's.lng as stop_lng', 'sh.lat as shipment_lat', 'sh.lng as shipment_lng']);
         } catch (Throwable) {
-            return null;
+            return [];
         }
 
-        $coordinates = [];
-        $distance = 0.0;
-        $previous = null;
+        $points = [];
+        $origin = $this->originPoint($vehicleId);
+        if ($origin !== null) {
+            $points[] = $origin;
+        }
         foreach ($rows as $row) {
             $data = (array) $row;
             $lat = $data['stop_lat'] ?? $data['shipment_lat'] ?? null;
@@ -133,25 +175,93 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
             if (!is_numeric($lat) || !is_numeric($lng)) {
                 continue;
             }
+            $points[] = [(float) $lng, (float) $lat];
+        }
 
-            $point = [(float) $lng, (float) $lat];
+        return $points;
+    }
+
+    /**
+     * Punto de salida [lng,lat] del vehículo (su sede/almacén base) vía el callback cableado, o null si no
+     * hay callback o la sede no se resuelve (nunca rompe: ante cualquier fallo, se omite el origen).
+     *
+     * @return array{0: float, 1: float}|null
+     */
+    private function originPoint(string $vehicleId): ?array
+    {
+        if ($this->originForVehicle === null) {
+            return null;
+        }
+
+        try {
+            $origin = ($this->originForVehicle)($vehicleId);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (!is_array($origin) || !isset($origin[0], $origin[1])
+            || !is_numeric($origin[0]) || !is_numeric($origin[1])) {
+            return null;
+        }
+
+        return [(float) $origin[0], (float) $origin[1]];
+    }
+
+    /**
+     * Línea recta entre los puntos [lng,lat] dados (último recurso cuando el ruteador no está disponible).
+     * Null si no hay al menos dos puntos DISTINTOS.
+     *
+     * @param  list<array{0: float, 1: float}> $points
+     * @return array<string, mixed>|null
+     */
+    private function straightLineFromPoints(array $points): ?array
+    {
+        if (!self::isDrawable($points)) {
+            return null;
+        }
+
+        $distance = 0.0;
+        $previous = null;
+        foreach ($points as $point) {
             if ($previous !== null) {
                 $distance += self::haversineMeters($previous, $point);
             }
-            $coordinates[] = $point;
             $previous = $point;
-        }
-
-        if (count($coordinates) < 2) {
-            return null;
         }
 
         return [
             'type' => 'LineString',
-            'coordinates' => $coordinates,
+            'coordinates' => $points,
             'distance_meters' => round($distance, 1),
             'duration_seconds' => round($distance / (self::FALLBACK_SPEED_KMH * 1000.0 / 3600.0), 1),
         ];
+    }
+
+    /**
+     * ¿La lista de coordenadas dibuja una línea de verdad? Exige al menos DOS puntos DISTINTOS: una geometría
+     * con dos o más coordenadas IGUALES (longitud/latitud repetidas) colapsa a un punto y no debe servirse.
+     *
+     * @param array<int|string, mixed> $coordinates lista de pares [lng, lat]
+     */
+    private static function isDrawable(array $coordinates): bool
+    {
+        $first = null;
+        foreach ($coordinates as $pair) {
+            if (!is_array($pair) || !isset($pair[0], $pair[1]) || !is_numeric($pair[0]) || !is_numeric($pair[1])) {
+                continue;
+            }
+            $point = [(float) $pair[0], (float) $pair[1]];
+            if ($first === null) {
+                $first = $point;
+
+                continue;
+            }
+            if ($point !== $first) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

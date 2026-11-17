@@ -89,6 +89,7 @@ $contextMaps = [
     require __DIR__.'/api/shipments.php',
     require __DIR__.'/api/telemetry.php',
     require __DIR__.'/api/tracking.php',
+    require __DIR__.'/api/watch.php',
 ];
 
 /**

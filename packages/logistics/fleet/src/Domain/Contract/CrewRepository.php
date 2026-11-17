@@ -35,8 +35,8 @@ interface CrewRepository
     public function workShiftsForMemberBetween(string $memberId, DateTimeImmutable $from, DateTimeImmutable $to): array;
 
     /**
-     * Tripulación armada para un chofer en una fecha de armado concreta, o null si ese día no tiene
-     * asignación. Es la lectura que usa el chofer para consultar SU vehículo y tripulación del día.
+     * Tripulación VIGENTE de un chofer en una fecha de armado concreta, o null si ese día no tiene
+     * asignación. Un chofer tiene una sola por día; si por datos viejos hubiera más, es la armada más tarde.
      */
     public function findForDriverOn(DriverId $driverId, DateTimeImmutable $date): ?Crew;
 }

@@ -16,8 +16,17 @@ namespace Logistics\Telemetry\Application\ReadModel;
 final readonly class VehicleEtaView
 {
     /**
-     * @param PositionItem|null $position
-     * @param list<StopEtaItem> $stops
+     * `offRoute` es la verdad del backend sobre si el camión está FUERA de su ruta planificada (desvío
+     * sostenido más allá del umbral + histéresis de la config de telemetría); `offRouteSince` es desde
+     * cuándo (ISO 8601) o null. Son el estado que la app muestra como cartel "Fuera de ruta".
+     *
+     * `rerouteGeometry` es la polilínea (lista de `{lat, lng}`) desde la posición ACTUAL del camión hasta su
+     * próxima parada pendiente, para que la app REDIBUJE la ruta cuando está fuera de ruta. Solo viaja cuando
+     * `offRoute` es true; si no, null.
+     *
+     * @param PositionItem|null                        $position
+     * @param list<StopEtaItem>                        $stops
+     * @param list<array{lat: float, lng: float}>|null $rerouteGeometry
      */
     public function __construct(
         public string $vehicleId,
@@ -26,6 +35,9 @@ final readonly class VehicleEtaView
         public bool $positionStale,
         public string $generatedAt,
         public array $stops,
+        public bool $offRoute = false,
+        public ?string $offRouteSince = null,
+        public ?array $rerouteGeometry = null,
     ) {}
 
     /**
@@ -40,11 +52,14 @@ final readonly class VehicleEtaView
             $this->positionStale,
             $this->generatedAt,
             array_values(array_filter($this->stops, static fn (array $s): bool => $s['shipment_id'] === $shipmentId)),
+            $this->offRoute,
+            $this->offRouteSince,
+            $this->rerouteGeometry,
         );
     }
 
     /**
-     * @return array{vehicle_id: string, plate: string|null, traffic_aware: bool, position: PositionItem|null, position_stale: bool, generated_at: string, stops: list<StopEtaItem>}
+     * @return array{vehicle_id: string, plate: string|null, traffic_aware: bool, position: PositionItem|null, position_stale: bool, off_route: bool, off_route_since: string|null, reroute_geometry: list<array{lat: float, lng: float}>|null, generated_at: string, stops: list<StopEtaItem>}
      */
     public function toArray(): array
     {
@@ -54,6 +69,10 @@ final readonly class VehicleEtaView
             'traffic_aware' => false,
             'position' => $this->position,
             'position_stale' => $this->positionStale,
+            'off_route' => $this->offRoute,
+            'off_route_since' => $this->offRouteSince,
+            // Polilínea del reruteo (posición actual → próxima parada) cuando está fuera de ruta; si no, null.
+            'reroute_geometry' => $this->rerouteGeometry,
             'generated_at' => $this->generatedAt,
             'stops' => $this->stops,
         ];

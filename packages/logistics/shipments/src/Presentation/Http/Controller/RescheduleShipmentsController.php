@@ -10,7 +10,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Logistics\Access\Application\Command\RecordAuditEntry\RecordAuditEntry;
 use Logistics\Capacity\Application\Query\CheckDispatchDay\CheckDispatchDayQuery;
+use Logistics\Capacity\Application\Query\CheckDispatchSlot\CheckDispatchSlotQuery;
 use Logistics\Capacity\Application\ReadModel\DispatchDayAvailabilityView;
+use Logistics\Capacity\Application\ReadModel\DispatchSlotAvailabilityView;
 use Logistics\Notifications\Application\Command\QueueNotification\QueueNotification;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
@@ -143,7 +145,7 @@ final readonly class RescheduleShipmentsController
      * Rechazos previos a tocar nada: alcance ambiguo o vacío, alcance que el rol no puede usar, o fecha
      * bloqueada en el calendario.
      *
-     * @param array{scope: array<string, mixed>, new_date: string} $data
+     * @param array{scope: array<string, mixed>, new_date: string, window_start: string, window_end: string} $data
      */
     private function problemFor(Request $request, array $data, bool $applying): ?JsonResponse
     {
@@ -174,6 +176,28 @@ final readonly class RescheduleShipmentsController
             return $this->problem(
                 'date_blocked',
                 'The new date is blocked in the delivery calendar'.($reason !== '' ? ': '.$reason : '.'),
+                422,
+            );
+        }
+
+        // Una FRANJA bloqueada tampoco admite reprogramación (alcance global: la reprogramación masiva no
+        // resuelve municipio). La franja se arma con las ventanas validadas (`H:i-H:i`).
+        try {
+            $slot = $this->queryBus->ask(new CheckDispatchSlotQuery(
+                $data['new_date'],
+                $data['window_start'].'-'.$data['window_end'],
+                null,
+            ));
+        } catch (Throwable) {
+            $slot = null;
+        }
+
+        if ($slot instanceof DispatchSlotAvailabilityView && $slot->blocked) {
+            $reason = (string) $slot->reason;
+
+            return $this->problem(
+                'slot_blocked',
+                'The new time slot is blocked in the delivery calendar'.($reason !== '' ? ': '.$reason : '.'),
                 422,
             );
         }

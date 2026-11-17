@@ -18,7 +18,8 @@ use Logistics\Shared\Domain\ValueObject\Uuid;
  * N salidas por día: la inspección pre-salida va ligada a CADA salida (ruta). Con `route_id` la salida
  * admite una sola inspección válida (la segunda → 409 pre_trip_checklist_already_recorded); otra salida
  * del mismo camión el mismo día se inspecciona de nuevo; una inspección con falla crítica se puede repetir
- * tras la reparación. Además un chofer puede tener en el día tripulaciones con camiones distintos.
+ * tras la reparación. Un chofer tiene UNA sola tripulación por día: reasignarlo a otro camión reemplaza a
+ * la anterior (sus salidas son varias RUTAS del mismo camión, no varias tripulaciones).
  * Corre contra PostgreSQL (logistics_test).
  */
 beforeEach(function (): void {
@@ -104,17 +105,16 @@ it('una inspección con falla crítica no ocupa la salida: se puede repetir tras
     expect(DB::table('fleet_pre_trip_checklists')->where('route_id', $routeId)->count())->toBe(2);
 });
 
-it('un chofer puede tener en el día tripulaciones con camiones distintos (dos salidas de la misma jornada)', function (): void {
+it('un chofer tiene una sola tripulación por día: reasignarlo a otro camión reemplaza a la anterior', function (): void {
     $driverId = Uuid::generate()->value;
+    $lastVehicle = Uuid::generate()->value;
     $bus = app(CommandBus::class);
 
-    $bus->dispatch(new AssembleCrew($driverId, [], Uuid::generate()->value, PTC_ONCE_DAY, PTC_ONCE_DAY.' 06:00:00', PTC_ONCE_DAY.' 10:00:00'));
-    $bus->dispatch(new AssembleCrew($driverId, [], Uuid::generate()->value, PTC_ONCE_DAY, PTC_ONCE_DAY.' 12:00:00', PTC_ONCE_DAY.' 15:00:00'));
-    // Y sin turno fijado tampoco hay unicidad chofer/día.
-    $bus->dispatch(new AssembleCrew($driverId, [], Uuid::generate()->value, PTC_ONCE_DAY));
+    $bus->dispatch(new AssembleCrew($driverId, [], Uuid::generate()->value, PTC_ONCE_DAY, PTC_ONCE_DAY.'T06:00:00+00:00', PTC_ONCE_DAY.'T10:00:00+00:00'));
+    $bus->dispatch(new AssembleCrew($driverId, [], $lastVehicle, PTC_ONCE_DAY, PTC_ONCE_DAY.'T12:00:00+00:00', PTC_ONCE_DAY.'T15:00:00+00:00'));
 
     $crews = DB::table('fleet_crews')->where('driver_id', $driverId)->whereDate('assembled_for', PTC_ONCE_DAY);
 
-    expect($crews->count())->toBe(3)
-        ->and($crews->distinct()->count('vehicle_id'))->toBe(3);
+    expect($crews->count())->toBe(1)
+        ->and($crews->value('vehicle_id'))->toBe($lastVehicle);
 });

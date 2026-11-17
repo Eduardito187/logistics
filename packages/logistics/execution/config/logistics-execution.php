@@ -81,4 +81,27 @@ return [
     'scan_batch' => [
         'max_items' => (int) env('EXECUTION_SCAN_BATCH_MAX_ITEMS', 200),
     ],
+
+    // Tiempo real de la hoja de ruta del chofer: señal `route.updated` por el canal privado de cada persona
+    // de la tripulación (`private-user.{id}`) cuando cambia su ruta. Funciona sin ninguna variable: solo
+    // emite si hay un transporte de sockets (`BROADCAST_CONNECTION` distinto de null/log).
+    'realtime' => [
+        // Interruptor propio de esta señal (el resto del tiempo real no se toca).
+        'enabled' => (bool) env('EXECUTION_REALTIME_ENABLED', true),
+
+        // Ventana anti-ráfaga en segundos: varios cambios seguidos de una misma ruta se avisan una sola vez,
+        // y la señal sale con esa misma demora para que la ruta ya incluya toda la ráfaga.
+        'debounce_seconds' => max(1, (int) env('EXECUTION_REALTIME_DEBOUNCE_SECONDS', 2)),
+
+        // Throttle (segundos) del aviso por MOVIMIENTO del camión: a lo sumo una señal `route.updated` por
+        // ruta cada tanto. El movimiento no cambia la hoja de ruta, solo la ETA viva; la app re-pide la ruta
+        // y obtiene ETAs frescas del motor único. Separado de la ventana anti-ráfaga de los cambios de parada.
+        'movement_throttle_seconds' => max(1, (int) env('EXECUTION_REALTIME_MOVEMENT_THROTTLE_SECONDS', 20)),
+
+        // Ventana anti-ráfaga en segundos de la señal `loading.updated` (pantalla de carga/andén): varios
+        // cambios seguidos de la carga de un mismo camión se avisan una sola vez, y la señal sale con esa
+        // misma demora para que la app ya re-pida la hoja de carga tras toda la ráfaga. Usa el mismo
+        // interruptor maestro `realtime.enabled` y el mismo transporte de sockets que el resto de las señales.
+        'loading_debounce_seconds' => max(1, (int) env('EXECUTION_REALTIME_LOADING_DEBOUNCE_SECONDS', 2)),
+    ],
 ];

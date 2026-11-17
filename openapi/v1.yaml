@@ -774,6 +774,190 @@ paths:
           $ref: '#/components/responses/OrderScopeForbidden'
       security:
       - appBearer: []
+  /app/config/failure-reasons:
+    get:
+      tags:
+      - execution
+      operationId: listActiveFailureReasons
+      summary: List active delivery-failure reasons (driver picker)
+      responses:
+        '200':
+          description: Active reasons ordered by sort_order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FailureReasonCatalogItem'
+      security:
+      - appBearer: []
+  /app/admin/failure-reasons:
+    get:
+      tags:
+      - execution
+      operationId: listFailureReasons
+      summary: List all delivery-failure reasons (admin)
+      responses:
+        '200':
+          description: All reasons (active and inactive)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FailureReasonCatalogItem'
+      security:
+      - appBearer: []
+    post:
+      tags:
+      - execution
+      operationId: createFailureReason
+      summary: Create a delivery-failure reason (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - label
+              properties:
+                label:
+                  type: string
+                  maxLength: 160
+                code:
+                  type: string
+                  maxLength: 64
+                  nullable: true
+                  description: Optional; derived from label if omitted.
+                active:
+                  type: boolean
+                  default: true
+                requires_photo:
+                  type: boolean
+                  default: false
+                requires_note:
+                  type: boolean
+                  default: false
+                note_label:
+                  type: string
+                  maxLength: 160
+                  nullable: true
+                sort_order:
+                  type: integer
+                  default: 0
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FailureReasonCatalogItem'
+        '409':
+          description: Ya existe un motivo con ese code (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Datos inválidos (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/admin/failure-reasons/{code}:
+    parameters:
+    - name: code
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Reason slug (not a UUID).
+    put:
+      tags:
+      - execution
+      operationId: updateFailureReason
+      summary: Update a delivery-failure reason (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  maxLength: 160
+                active:
+                  type: boolean
+                requires_photo:
+                  type: boolean
+                requires_note:
+                  type: boolean
+                note_label:
+                  type: string
+                  maxLength: 160
+                  nullable: true
+                sort_order:
+                  type: integer
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FailureReasonCatalogItem'
+        '404':
+          description: No existe un motivo con ese code (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Datos inválidos (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+    delete:
+      tags:
+      - execution
+      operationId: deactivateFailureReason
+      summary: Deactivate (soft-delete) a delivery-failure reason (admin)
+      responses:
+        '200':
+          description: Deactivated (soft)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FailureReasonCatalogItem'
+        '404':
+          description: No existe un motivo con ese code (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
   /app/deliveries/{shipmentId}/store-drop:
     post:
       tags:
@@ -840,6 +1024,67 @@ paths:
           description: >-
             No aplica: el envío es a domicilio (code not_a_store_drop), la tienda no es la del envío (code
             wrong_store), la entrega ya está cerrada o no hay entrega ni ruta para el envío.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          $ref: '#/components/responses/OrderScopeForbidden'
+      security:
+      - appBearer: []
+  /app/deliveries/{shipmentId}/carrier-handoff:
+    post:
+      tags:
+      - execution
+      operationId: recordCarrierHandoff
+      summary: Hand a shipment over to the carrier at its warehouse (outsourced flow)
+      description: |
+        HANDOFF a la transportadora (flujo tercerizado): nuestro lado deja la carga en el almacén del tercero
+        (nodo carrier_hub). Cierra el tramo propio del envío y lo marca «entregado a la transportadora»
+        (HANDED_TO_CARRIER). NO entrega al cliente: el envío sigue abierto y lo completa la transportadora. El
+        actor (dispositivo/usuario) sale del token, nunca del cuerpo. Idempotente por Idempotency-Key.
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - carrier_hub_node_id
+              properties:
+                carrier_hub_node_id:
+                  type: string
+                  format: uuid
+                  description: Nodo (carrier_hub) donde se deja la carga.
+                carrier_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Transportadora que recibe la carga. Opcional.
+                occurred_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Momento del handoff. Si se omite, la hora del servidor.
+                lat:
+                  type: number
+                  nullable: true
+                lng:
+                  type: number
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '404':
+          description: El envío no existe (code shipment_not_found)
           content:
             application/json:
               schema:
@@ -1637,7 +1882,7 @@ paths:
               $ref: '#/components/schemas/AssembleCrewRequest'
       responses:
         '201':
-          description: Crew assembled
+          description: Crew assembled (outcome created)
           content:
             application/json:
               schema:
@@ -1645,6 +1890,21 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/FleetAssembleCrewData'
+        '200':
+          description: Crew replaced or unchanged (un chofer = un camión por día; reasignar reemplaza)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FleetAssembleCrewData'
+        '409':
+          description: 'El camión ya pertenece a otro chofer ese día; reintentar con replace:true para reemplazar'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '422':
           $ref: '#/components/responses/FleetValidationError'
       security:
@@ -1703,6 +1963,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AcceptedEnvelope'
+        '409':
+          description: 'El camión ya pertenece a otro chofer ese día; reintentar con replace:true'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '422':
           $ref: '#/components/responses/DomainError'
       security:
@@ -1863,15 +2129,50 @@ paths:
           $ref: '#/components/responses/FleetValidationError'
       security:
       - appBearer: []
+  /app/watch/summary:
+    get:
+      tags: [Fleet]
+      summary: Compact day summary for the smartwatch (standalone)
+      description: >-
+        Compact summary for a STANDALONE smartwatch (no phone): next stop, "N of M" progress, unread inbox
+        count and off-route state. Small payload on purpose (saves battery/data on the wrist). Resolves the
+        authenticated crew member (driver by users.driver_id, or helper by users.helper_id) -> their vehicle
+        of the day (crew) -> driver route. "N of M": N = attended + 1 capped to M, where attended = delivered
+        + FAILED stops (a failed stop advances the counter; rescheduled do not); a closed route reports M and
+        next_stop null. No route for the day -> has_route false with null fields (unread is still returned).
+      operationId: appWatchSummary
+      parameters:
+      - name: date
+        in: query
+        required: false
+        description: Day to summarize (YYYY-MM-DD). Defaults to today in America/La_Paz.
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: The compact watch summary for the day
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WatchSummary'
+      security:
+      - appBearer: []
   /app/fleet/my-crew:
     get:
       tags: [Fleet]
-      summary: Get the authenticated driver's crew assignment for a date
+      summary: Get the authenticated crew member's assignment for a date
       description: >-
         Returns the vehicle (truck) and crew (driver + helpers) the admin assembled for the
-        AUTHENTICATED driver on a date. The driver does not pick the vehicle; it is assigned. The
-        account→driver link is `users.driver_id` (a by-value reference to fleet_drivers.id). Responds
-        404 (RFC 7807) when the authenticated account is not linked to a driver, or has no crew
+        AUTHENTICATED crew member on a date. Works for both the driver and a helper (role
+        `tripulante`): the driver is resolved by `users.driver_id`, a helper by `users.helper_id`
+        (both by-value references to fleet_drivers.id / fleet_helpers.id). The response shape is the
+        same in either case. Neither picks the vehicle; it is assigned. Responds 404 (RFC 7807) when
+        the authenticated account is linked to neither a driver nor a helper, or has no crew
         assembled for the date.
       operationId: fleetGetMyCrew
       parameters:
@@ -1896,7 +2197,7 @@ paths:
                   data:
                     $ref: '#/components/schemas/MyCrew'
         '404':
-          description: The account is not a driver, or has no assignment for the date
+          description: The account is neither a driver nor a helper, or has no assignment for the date
           content:
             application/problem+json:
               schema:
@@ -2282,6 +2583,12 @@ paths:
                     $ref: '#/components/schemas/FleetChangeVehicleStatusData'
         '422':
           $ref: '#/components/responses/FleetValidationError'
+        '403':
+          description: 'Insufficient role: changing vehicle status is office-only (supervisor/admin).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/fleetops/fuel-prices:
@@ -4250,12 +4557,24 @@ paths:
       - name: status
         in: query
         required: false
+        description: 'Filter by one or MORE plan statuses. Repeat (status[]=DRAFT&status[]=PUBLISHED) or CSV (status=DRAFT,PUBLISHED).'
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - DRAFT
+            - PROPOSED
+            - PUBLISHED
+      - name: q
+        in: query
+        required: false
+        description: Free-text search over the truck plate, the driver name, the origin node name, and —per stop— the order reference and the customer name.
         schema:
           type: string
-          enum:
-          - DRAFT
-          - PROPOSED
-          - PUBLISHED
+          maxLength: 120
       - name: vehicle_id
         in: query
         required: false
@@ -5097,8 +5416,14 @@ paths:
         in: query
         required: false
         description: >-
-          true = only assigned shipments (PLANNED / IN_EXECUTION) whose delivery has no PREPARATION scan yet
-          (includes labels emitted but not prepared). Accepts true/false/1/0. Not applied to meta.count_by_status.
+          true = deja solo los pedidos asignados en planificación (PLANNED / IN_EXECUTION) que TODAVÍA NO
+          tienen una entrega de ejecución abierta: los pendientes de preparar / de asignación de vehículo
+          (incluye los que solo tienen etiquetas emitidas). Al asignarles un vehículo se abre la entrega
+          (= preparado) y SALEN de esta lista. false o ausente = sin filtro. Se combina en AND con los demás
+          filtros y con el alcance por rol, e implica status ∈ {PLANNED, IN_EXECUTION}: no combinar con
+          status=received (daría vacío). La paginación (total, cursor y has_more / next_page) respeta este
+          filtro; solo meta.count_by_status lo ignora (los contadores por estado se calculan sobre el universo
+          sin el filtro de estado). Accepts true/false/1/0.
         schema:
           type: boolean
       - name: source
@@ -5377,6 +5702,12 @@ paths:
                       $ref: '#/components/schemas/Delivery'
                   meta:
                     $ref: '#/components/schemas/ListMeta'
+        '403':
+          description: 'Not office and not a crew member of this vehicle for the relevant day (out_of_scope_assignment).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/vehicles/{vehicleId}/route/start:
@@ -5411,6 +5742,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '403':
+          description: 'Not office and not a crew member of this vehicle for the relevant day (out_of_scope_assignment).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /app/vehicles/{vehicleId}/route/close:
@@ -5441,6 +5778,12 @@ paths:
                     $ref: '#/components/schemas/DriverRouteLifecycle'
         '422':
           description: No route for the vehicle/day, or closing odometer below the starting one
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: 'Not office and not a crew member of this vehicle for the relevant day (out_of_scope_assignment).'
           content:
             application/problem+json:
               schema:
@@ -5528,6 +5871,12 @@ paths:
           description: The vehicle has no open route / the route does not exist.
         '422':
           $ref: '#/components/responses/BusinessRuleError'
+        '403':
+          description: 'Not office and not a crew member of this vehicle for the relevant day (out_of_scope_assignment).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /channels/capacity/available:
@@ -7903,6 +8252,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExecutionError'
+        '403':
+          description: 'Not office and not a crew member of this vehicle for the relevant day (out_of_scope_assignment).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
     post:
@@ -7982,6 +8337,12 @@ paths:
                     $ref: '#/components/schemas/DriverRoute'
         '422':
           $ref: '#/components/responses/ExecutionValidationError'
+        '403':
+          description: 'Not office and not a crew member of this vehicle for the relevant day (out_of_scope_assignment).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
       security:
       - appBearer: []
   /channels/delivery-slots:
@@ -12211,6 +12572,106 @@ paths:
                     $ref: '#/components/schemas/GetDeliveryCalendarData'
       security:
       - appBearer: []
+  /app/delivery-calendar/day:
+    get:
+      tags:
+      - capacity
+      operationId: appGetDeliveryCalendarDay
+      summary: Delivery calendar for a single day (time slots)
+      description: 'Admin/supervisor/planificador. Bloqueo de día + sus franjas horarias con cupo, consumo, unidad y bloqueo por franja. Sin municipality_id es el consolidado GLOBAL (suma por time_slot+unit de todos los municipios).'
+      parameters:
+      - { name: date, in: query, required: true, schema: { type: string, format: date } }
+      - name: municipality_id
+        in: query
+        required: false
+        schema: { type: [string, 'null'], format: uuid }
+      responses:
+        '200':
+          description: The day with its slots
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/DeliveryCalendarDay' }
+        '422':
+          description: Validation error (unknown municipality)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+      security:
+      - appBearer: []
+  /app/delivery-calendar/blocked-slots:
+    post:
+      tags:
+      - capacity
+      operationId: appBlockDeliverySlot
+      summary: Block a single delivery time slot (not the whole day)
+      description: 'Admin/supervisor/planificador. Bloquea SOLO esa franja; no se ofrece al cliente ni admite reprogramación. Idempotente. Ruta separada de /blocked (día entero) a propósito.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, time_slot, reason]
+              properties:
+                date: { type: string, format: date }
+                time_slot: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$', example: '08:00-12:00' }
+                reason: { type: string, maxLength: 255 }
+                municipality_id: { type: [string, 'null'], format: uuid, description: 'null = bloqueo global de la franja (todas las tiendas).' }
+      responses:
+        '202':
+          description: Slot block accepted (idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, example: accepted }
+                      date: { type: string, format: date }
+                      time_slot: { type: string }
+                      municipality_id: { type: [string, 'null'], format: uuid }
+                      blocked: { type: boolean }
+        '422':
+          description: Invalid time_slot or unknown municipality
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+      security:
+      - appBearer: []
+    delete:
+      tags:
+      - capacity
+      operationId: appUnblockDeliverySlot
+      summary: Remove a delivery time-slot block (idempotent)
+      description: 'Admin/supervisor/planificador. Quita el bloqueo de esa franja; 204 aunque no existiera.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, time_slot]
+              properties:
+                date: { type: string, format: date }
+                time_slot: { type: string }
+                municipality_id: { type: [string, 'null'], format: uuid }
+      responses:
+        '204':
+          description: Removed (idempotent)
+        '422':
+          description: Validation error
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+      security:
+      - appBearer: []
   /app/delivery-calendar/blocked:
     post:
       tags:
@@ -13085,6 +13546,10 @@ components:
         status:
           type: string
           example: ok
+        outcome:
+          type: string
+          enum: [created, replaced, unchanged]
+          description: 'created = tripulación nueva; replaced = reemplazó a la anterior (camión cambiado); unchanged = ya estaba igual (idempotente).'
         driver_id:
           type: string
           format: uuid
@@ -13094,6 +13559,28 @@ components:
         assembled_for:
           type: string
           format: date
+        crew_id:
+          type: string
+          format: uuid
+        vehicle_plate:
+          type:
+          - string
+          - 'null'
+        previous_vehicle_plate:
+          type:
+          - string
+          - 'null'
+          description: 'Placa del camión que tenía antes, cuando outcome = replaced.'
+        helpers:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              name:
+                type:
+                - string
+                - 'null'
     FleetSetHelperAvailabilityData:
       type: object
       properties:
@@ -13393,6 +13880,8 @@ components:
               within_horizon: { type: boolean, description: 'Hay cupos activados hasta esa fecha' }
               active_until: { type: string, format: date, nullable: true }
               available: { type: boolean, description: 'No bloqueado y dentro del horizonte activo' }
+              capacity_total: { type: number, description: 'Cupo total de entregas del día (consolidado o por municipio).' }
+              capacity_used: { type: number, description: 'Cupo de entregas ya usado ese día.' }
         blocked:
           type: array
           description: Bloqueos del rango (feriados, cierres)
@@ -13823,7 +14312,7 @@ components:
         path: { type: string, description: 'Ruta base del WebSocket en el host de la API, p. ej. /app' }
         channels:
           type: object
-          x-events: 'user: InboxUpdatedEvent, NotificationsUpdatedEvent · fleet: FleetPositionEvent, FleetRemovedEvent · planning: PlanningRunUpdatedEvent, PlansUpdatedEvent'
+          x-events: 'user: InboxUpdatedEvent, NotificationsUpdatedEvent · fleet: FleetPositionEvent, FleetRemovedEvent · planning: PlanningRunUpdatedEvent, PlansUpdatedEvent · tracking: TrackingUpdatedEvent (además, por pedido, canal private-order.{shipment_id}) · picking: PickingUpdatedEvent · store: StoreUpdatedEvent · operations: DashboardUpdatedEvent, AlertsUpdatedEvent · loading: LoadingUpdatedEvent · route.updated (canal private-user.{id}): {route_id, vehicle_id, off_route?, rerouted?, stops?:[{shipment_id, eta_at}]}'
           description: 'Tema → canales (con prefijo private-) que ESTE usuario puede escuchar. Temas: user (canal personal: inbox.updated, notifications.updated), fleet (fleet.position), planning (planning.run.updated, plans.updated). Tema ausente = sin tiempo real para esa pantalla. Son exactamente los canales que firma POST /app/broadcasting/auth para esa persona; la app no arma nombres.'
           additionalProperties:
             type: array
@@ -13864,6 +14353,65 @@ components:
       - vehicle_id
       properties:
         vehicle_id: { type: string, format: uuid }
+    TrackingUpdatedEvent:
+      type: object
+      description: 'Señal `tracking.updated`: el seguimiento de un pedido cambió (estado visible —incluidos cancelado, reprogramado y devuelto—, avance por producto o la ruta que lo transporta). Es una señal para volver a pedir el estado. Viaja por `private-order.{shipment_id}` y por el tema `tracking` (`private-tracking.all` / `private-tracking.city.<departamento>`).'
+      required:
+      - shipment_id
+      - status
+      - event
+      properties:
+        shipment_id: { type: string, format: uuid }
+        order_reference:
+          type:
+          - string
+          - 'null'
+          description: 'Referencia del pedido (agrupa hermanos de multishipping); null si no hay una utilizable.'
+        status:
+          type: string
+          description: 'Estado visible vigente al emitir la señal.'
+          enum: [PENDING, PROCESSING, IN_PROGRESS, LOADED, ON_THE_WAY, HANDED_TO_CARRIER, DELIVERED, FAILED, CANCELLED, RESCHEDULED, RETURNED]
+        event:
+          type: string
+          description: 'Hecho de origen: tracking.status_changed, tracking.shipment_placed_on_route o tracking.unit_status_changed.'
+    PickingUpdatedEvent:
+      type: object
+      description: 'Señal `picking.updated` (tema picking): cambió la lista de preparación de una ciudad (plan publicado/modificado, pedido nuevo o que salió de la lista, camión asignado, escaneo de preparación, etiquetas emitidas/reimpresas). Señal para volver a pedir la lista. Canales `private-picking.all` / `private-picking.city.<departamento>`. shipment_id null = cambió la lista en general.'
+      properties:
+        shipment_id: { type: [string, 'null'], format: uuid }
+        order_reference:
+          type: [string, 'null']
+          description: 'Referencia del pedido (null si no hay una utilizable).'
+        plan_id: { type: [string, 'null'], format: uuid }
+        vehicle_id: { type: [string, 'null'], format: uuid }
+    StoreUpdatedEvent:
+      type: object
+      description: 'Señal `store.updated` (tema store): cambió lo que ve una tienda (el chofer dejó el pedido, recepción de unidades en el nodo, entrega en mostrador, pedido cancelado/reprogramado del nodo). Canales `private-store.all` / `private-store.node.<uuid>`.'
+      required: [node_id]
+      properties:
+        node_id: { type: string, format: uuid }
+        shipment_id:
+          type: [string, 'null']
+          format: uuid
+          description: 'Pista del envío; null = cambio general del nodo.'
+    LoadingUpdatedEvent:
+      type: object
+      description: 'Señal `loading.updated` (tema loading): cambió la carga del camión o su lista de entregas (escaneo de carga, asignar/desenganchar un envío, armar/editar la ruta). Canales `private-loading.all` / `private-loading.city.<departamento>` / `private-loading.driver.<uuid>`. shipment_id null = la lista del vehículo cambió en general.'
+      required: [vehicle_id]
+      properties:
+        vehicle_id: { type: string, format: uuid }
+        shipment_id: { type: [string, 'null'], format: uuid }
+    AlertsUpdatedEvent:
+      type: object
+      description: 'Señal `alerts.updated` (tema operations): se levantó o reconoció una alerta de flota/telemetría. Señal para volver a pedir las alertas activas. Canales `private-operations.all` / `private-operations.city.<departamento>`.'
+      properties:
+        alert_id: { type: [string, 'null'], format: uuid }
+    DashboardUpdatedEvent:
+      type: object
+      description: 'Señal `dashboard.updated` (tema operations): cambió una métrica del tablero del día (entrega registrada/fallida, ruta iniciada/cerrada, avance de carga). Señal para recalcular el tablero. Canales `private-operations.all` (+ `private-operations.city.<departamento>` si se resuelve la ciudad).'
+      required: [plan_date]
+      properties:
+        plan_date: { type: string, format: date }
     PlanningRunUpdatedEvent:
       type: object
       description: 'Carga del evento `planning.run.updated` (tema planning): cada cambio de estado de la corrida automática (queued, processing, completed, failed).'
@@ -14535,10 +15083,29 @@ components:
               recorded_at:
                 type: string
                 format: date-time
+    LatLngPoint:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
     VehicleEta:
       type: object
       description: Dynamic ETA from the latest position. No live traffic source exists (traffic_aware is always false).
       properties:
+        off_route:
+          type: boolean
+        off_route_since:
+          type: string
+          format: date-time
+          nullable: true
+        reroute_geometry:
+          type:
+          - array
+          - 'null'
+          description: 'Polilínea (posición actual → próxima parada pendiente) para redibujar la ruta cuando el vehículo está fuera de ruta. null salvo off_route=true.'
+          items:
+            $ref: '#/components/schemas/LatLngPoint'
         shipment_id:
           type: string
           description: Only in the per-shipment endpoint
@@ -17189,6 +17756,21 @@ components:
       - stops_remaining
       - stops
       properties:
+        off_route:
+          type: boolean
+          description: 'Verdad del backend (motor único de ETA) sobre si el camión está fuera de su ruta planificada por desvío sostenido. Reemplaza el cálculo local de la app para el cartel "Fuera de ruta".'
+        off_route_since:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Desde cuándo se sostiene el desvío (ISO 8601), o null.'
+        reroute_geometry:
+          type:
+          - array
+          - 'null'
+          description: 'Polilínea (posición actual → próxima parada pendiente) para redibujar la ruta cuando el vehículo está fuera de ruta. null salvo off_route=true.'
+          items:
+            $ref: '#/components/schemas/LatLngPoint'
         started_at:
           type: string
           format: date-time
@@ -17506,6 +18088,26 @@ components:
               description: Código estable legible por máquina
             message:
               type: string
+    DeliveryCalendarDay:
+      type: object
+      required: [date, blocked, reason, slots]
+      properties:
+        date: { type: string, format: date }
+        blocked: { type: boolean, description: 'Bloqueo de día entero (feriado u otro motivo).' }
+        reason: { type: [string, 'null'] }
+        slots:
+          type: array
+          items: { $ref: '#/components/schemas/DeliveryCalendarSlot' }
+    DeliveryCalendarSlot:
+      type: object
+      required: [time_slot, capacity, used, unit, blocked, reason]
+      properties:
+        time_slot: { type: string, example: '08:00-12:00' }
+        capacity: { type: [number, 'null'], description: 'Cupo definido; null si no hay bucket para la franja.' }
+        used: { type: number }
+        unit: { type: string, enum: [deliveries, weight, volume, appointments] }
+        blocked: { type: boolean, description: 'true si la franja está bloqueada o lo está el día entero.' }
+        reason: { type: [string, 'null'] }
     AssembleCrewRequest:
       type: object
       required:
@@ -17518,6 +18120,7 @@ components:
           format: uuid
         helper_ids:
           type: array
+          description: 'Ausente = conserva los ayudantes de la tripulación anterior; una lista (aun vacía) los reemplaza.'
           items:
             type: string
             format: uuid
@@ -17527,6 +18130,19 @@ components:
         assembled_for:
           type: string
           format: date
+        shift_starts_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        shift_ends_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        replace:
+          type: boolean
+          description: 'Confirma quitarle el camión al chofer que ya lo tiene ese día (ante un 409).'
     Assignment:
       type: object
       required:
@@ -18116,9 +18732,9 @@ components:
             Opción A (POD asíncrono): la entrega se cerró pero la foto todavía no subió. Se liga sola cuando
             llega por POST /app/deliveries/photos. La foto sigue siendo obligatoria, solo que puede llegar después.
         failure_reason:
-          allOf:
-          - $ref: '#/components/schemas/FailureReason'
+          type: string
           nullable: true
+          description: 'Code del motivo de no-entrega (del catálogo configurable; ver FailureReasonCatalogItem). Puede ser uno de los 5 de fábrica o un code custom.'
         scans:
           type: array
           items:
@@ -18704,15 +19320,63 @@ components:
         - reason
         properties:
           reason:
-            $ref: '#/components/schemas/FailureReason'
+            type: string
+            maxLength: 64
+            description: Code (slug) de un motivo ACTIVO del catálogo configurable (GET /app/config/failure-reasons). Los 5 de fábrica siguen válidos. Un code fuera del catálogo activo → 422.
+          note:
+            type: string
+            maxLength: 1000
+            nullable: true
+            description: Nota libre; obligatoria si el motivo elegido exige nota (requires_note), validada en el backend.
+          photo_path:
+            type: string
+            maxLength: 2048
+            nullable: true
+            description: Referencia de foto (de /app/deliveries/photos), si ya se subió. Opcional.
+          has_photo:
+            type: boolean
+            default: false
+            description: >-
+              La foto de la fallida se sube por una cola APARTE, offline-first (POST /app/deliveries/photos,
+              ligada por shipment_id), así que al registrar la fallida puede no estar subida todavía. Por eso la
+              exigencia de foto (requires_photo) NO se valida contra el archivo: se da por cumplida si vino
+              `photo_path` O si la app marca `has_photo=true` (ya la encoló). Si el motivo exige foto y no llega
+              ni `photo_path` ni `has_photo=true` → 422.
     FailureReason:
       type: string
+      description: 'Motivos de fábrica de no-entrega. El catálogo real es configurable (ver FailureReasonCatalogItem); este enum documenta los 5 sembrados por defecto. Un envío puede quedar guardado con un code configurable fuera de esta lista.'
       enum:
       - CUSTOMER_ABSENT
       - WRONG_ADDRESS
       - REJECTED
       - DAMAGED
       - OTHER
+    FailureReasonCatalogItem:
+      type: object
+      required:
+      - code
+      - label
+      - active
+      - requires_photo
+      - requires_note
+      - sort_order
+      properties:
+        code:
+          type: string
+          description: Identidad estable (slug en mayúsculas). No es UUID.
+        label:
+          type: string
+        active:
+          type: boolean
+        requires_photo:
+          type: boolean
+        requires_note:
+          type: boolean
+        note_label:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
     FleetDocument:
       type: object
       properties:
@@ -18888,6 +19552,53 @@ components:
             cache:
               type: boolean
               description: Valkey reachable
+    WatchSummary:
+      type: object
+      required: [has_route, vehicle_plate, stop_number, stops_total, stops_remaining, next_stop, off_route, unread_notifications]
+      properties:
+        has_route:
+          type: boolean
+          description: Whether the crew member has a route for the day.
+        vehicle_plate:
+          type: string
+          nullable: true
+          description: Plate of the vehicle of the day (never a UUID). Null if no crew/vehicle.
+        stop_number:
+          type: integer
+          nullable: true
+          description: 'N in "stop N of M": attended (delivered + failed) + 1, capped to stops_total; a closed route reports stops_total. Null when there is no route.'
+        stops_total:
+          type: integer
+          nullable: true
+          description: M - total real stops (item-by-item, stale-hidden). Null when there is no route.
+        stops_remaining:
+          type: integer
+          nullable: true
+          description: Pending stops left. Null when there is no route.
+        next_stop:
+          type: object
+          nullable: true
+          description: The current (next pending) stop, or null when the route has no pending stops.
+          required: [order_reference, customer_name, address, eta_iso]
+          properties:
+            order_reference:
+              type: string
+            customer_name:
+              type: string
+            address:
+              type: string
+            eta_iso:
+              type: string
+              format: date-time
+              nullable: true
+              description: Live/planned ETA in ISO 8601, or null.
+        off_route:
+          type: boolean
+          nullable: true
+          description: Off-route flag from the ETA engine; null when there are no vehicle positions (standalone without GPS) or the engine is unavailable.
+        unread_notifications:
+          type: integer
+          description: Unread inbox messages for the authenticated user.
     MyCrew:
       type: object
       description: >-
@@ -19646,6 +20357,8 @@ components:
       - distribution_center
       - store
       - pickup_point
+      - central_warehouse
+      - carrier_hub
     OperationalCorridor:
       type: object
       description: |
@@ -19984,6 +20697,17 @@ components:
           format: uuid
         status:
           $ref: '#/components/schemas/PlanStatus'
+        execution_status:
+          type: string
+          nullable: true
+          enum:
+          - NOT_STARTED
+          - IN_PROGRESS
+          - COMPLETED
+          description: >-
+            Execution state of the plan's route of the day (stable UI enum): NOT_STARTED (route assembled but
+            not started), IN_PROGRESS (en route, or suspended) or COMPLETED (closed). Null when the route has
+            not been assembled yet. The execution state lives in the driver route, not in the plan itself.
         stops:
           type: array
           items:
@@ -22028,6 +22752,7 @@ components:
       - signature
       - photo
       - document
+      - with_shortage
       properties:
         signature:
           type: boolean
@@ -22038,6 +22763,14 @@ components:
         document:
           type: boolean
           description: Hay una foto del documento de identidad del cliente (evidencia de tipo id_document).
+        with_shortage:
+          type: boolean
+          description: 'El envío entregado se cerró con faltante (traspaso conciliado con diferencias o cerrado a mano por oficina). false en entregas normales.'
+        missing_count:
+          type:
+          - integer
+          - 'null'
+          description: 'Cuántos productos faltaron (para el tag «Entregado con faltante (N)»). null si no hubo faltante o no se conoce la cantidad; el detalle se ve por el reporte de discrepancias.'
     ShipmentLine:
       type: object
       required:
@@ -22445,6 +23178,28 @@ components:
           type: string
           format: date-time
           description: Instante del reporte en ISO 8601
+        speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+          minimum: 0
+          description: 'Velocidad instantánea en m/s. Opcional; si falta, el backend la deriva de dos posiciones seguidas.'
+        heading_deg:
+          type:
+          - number
+          - 'null'
+          format: double
+          minimum: 0
+          maximum: 360
+          description: 'Rumbo en grados desde el norte (0..360). Opcional; si falta, se deriva del desplazamiento.'
+        accuracy_m:
+          type:
+          - number
+          - 'null'
+          format: double
+          minimum: 0
+          description: 'Precisión horizontal del GPS en metros. Opcional.'
     UnloadScanRequest:
       allOf:
       - $ref: '#/components/schemas/GeoScanBase'
@@ -22564,13 +23319,15 @@ components:
       description: >-
         Estado visible del pedido de cara al cliente (ciclo de vida del seguimiento). Flujo:
         PENDING → PROCESSING → IN_PROGRESS → LOADED → ON_THE_WAY → DELIVERED; con CANCELLED,
-        RESCHEDULED (reprogramada), FAILED (intento fallido) y RETURNED (devuelta).
+        RESCHEDULED (reprogramada), FAILED (intento fallido), RETURNED (devuelta) y
+        HANDED_TO_CARRIER (entregado a la transportadora, en el flujo tercerizado).
       enum:
       - PENDING
       - PROCESSING
       - IN_PROGRESS
       - LOADED
       - ON_THE_WAY
+      - HANDED_TO_CARRIER
       - DELIVERED
       - FAILED
       - RESCHEDULED
@@ -22734,6 +23491,12 @@ components:
           type: number
           format: float
           nullable: true
+          description: Velocidad en km/h. Opcional. Si no viene y sí viene speed_mps, el backend convierte (× 3.6).
+        speed_mps:
+          type: number
+          format: float
+          nullable: true
+          description: Velocidad en m/s (lo que manda la app). El backend la convierte a km/h; si vienen ambas, manda speed_kph.
         heading:
           type: integer
           minimum: 0

@@ -10,10 +10,13 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\Factory as HttpClient;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
+use Logistics\Network\Application\Contract\ItineraryPlanner;
 use Logistics\Shared\Application\HandlerRegistry;
 use Logistics\Shared\Application\Query\QueryBus;
 use Logistics\Shipments\Application\Command\AdvanceShipmentStatus\AdvanceShipmentStatus;
 use Logistics\Shipments\Application\Command\AdvanceShipmentStatus\AdvanceShipmentStatusHandler;
+use Logistics\Shipments\Application\Command\BuildShipmentItinerary\BuildShipmentItinerary;
+use Logistics\Shipments\Application\Command\BuildShipmentItinerary\BuildShipmentItineraryHandler;
 use Logistics\Shipments\Application\Command\CancelShipment\CancelShipment;
 use Logistics\Shipments\Application\Command\CancelShipment\CancelShipmentHandler;
 use Logistics\Shipments\Application\Command\GeocodeShipmentAddress\GeocodeShipmentAddress;
@@ -27,14 +30,18 @@ use Logistics\Shipments\Application\Command\SetDeliverySlot\SetDeliverySlotHandl
 use Logistics\Shipments\Application\Contract\CatalogMeasurementsReader;
 use Logistics\Shipments\Application\Contract\DailyKpisReader;
 use Logistics\Shipments\Application\Contract\DeliveryModeReader;
+use Logistics\Shipments\Application\Contract\ItineraryRouter;
+use Logistics\Shipments\Application\Contract\LiveShipmentEtaReader;
 use Logistics\Shipments\Application\Contract\MagentoOrderReader;
 use Logistics\Shipments\Application\Contract\NetworkNodeLookup;
 use Logistics\Shipments\Application\Contract\OrderLookupReader;
 use Logistics\Shipments\Application\Contract\ReturnsWarehouseResolver;
 use Logistics\Shipments\Application\Contract\ScannedLabelResolver;
 use Logistics\Shipments\Application\Contract\ShipmentDeliveryEvidenceReader;
+use Logistics\Shipments\Application\Contract\ShipmentLegReader;
 use Logistics\Shipments\Application\Contract\ShipmentListReader;
 use Logistics\Shipments\Application\Contract\ShipmentProgressReader;
+use Logistics\Shipments\Application\Contract\ShipmentRoutingFactsReader;
 use Logistics\Shipments\Application\Contract\ShipmentScopeReader;
 use Logistics\Shipments\Application\Contract\ShipmentSpreadsheetParser;
 use Logistics\Shipments\Application\Contract\ShipmentSummaryReader;
@@ -59,12 +66,16 @@ use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByC
 use Logistics\Shipments\Application\Query\ListShipmentsByCursor\ListShipmentsByCursorHandler;
 use Logistics\Shipments\Application\Query\LookupOrders\LookupOrders;
 use Logistics\Shipments\Application\Query\LookupOrders\LookupOrdersHandler;
+use Logistics\Shipments\Application\Service\OutsourcingDecision;
 use Logistics\Shipments\Domain\Contract\AddressConfidenceScorer;
 use Logistics\Shipments\Domain\Contract\Geocoder;
+use Logistics\Shipments\Domain\Contract\ShipmentLegRepository;
 use Logistics\Shipments\Domain\Contract\ShipmentRepository;
 use Logistics\Shipments\Infrastructure\Console\BackfillShipmentCityCommand;
+use Logistics\Shipments\Infrastructure\Console\BackfillShipmentLegsCommand;
 use Logistics\Shipments\Infrastructure\Console\BackfillShipmentLineMeasurementsCommand;
 use Logistics\Shipments\Infrastructure\Console\BackfillShipmentScopeCommand;
+use Logistics\Shipments\Infrastructure\Console\RebuildShipmentItinerariesCommand;
 use Logistics\Shipments\Infrastructure\Console\SyncShipmentStatusCommand;
 use Logistics\Shipments\Infrastructure\Geocoding\CachingGeocoder;
 use Logistics\Shipments\Infrastructure\Geocoding\GeocodeScoring;
@@ -75,6 +86,7 @@ use Logistics\Shipments\Infrastructure\Ingestion\CsvShipmentSpreadsheetParser;
 use Logistics\Shipments\Infrastructure\Ingestion\DelegatingShipmentSpreadsheetParser;
 use Logistics\Shipments\Infrastructure\Magento\HttpMagentoOrderReader;
 use Logistics\Shipments\Infrastructure\Magento\NullMagentoOrderReader;
+use Logistics\Shipments\Infrastructure\Persistence\Eloquent\EloquentShipmentLegRepository;
 use Logistics\Shipments\Infrastructure\Persistence\Eloquent\EloquentShipmentRepository;
 use Logistics\Shipments\Infrastructure\ReadModel\CatalogTablesMeasurementsReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbDailyKpisReader;
@@ -82,11 +94,15 @@ use Logistics\Shipments\Infrastructure\ReadModel\DbDeliveryModeReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbNetworkNodeLookup;
 use Logistics\Shipments\Infrastructure\ReadModel\DbOrderLookupReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentDeliveryEvidenceReader;
+use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentLegReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentListReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentProgressReader;
+use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentRoutingFactsReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentScopeReader;
 use Logistics\Shipments\Infrastructure\ReadModel\DbShipmentSummaryReader;
+use Logistics\Shipments\Infrastructure\ReadModel\NetworkItineraryRouter;
 use Logistics\Shipments\Infrastructure\ReadModel\NetworkReturnsWarehouseResolver;
+use Logistics\Shipments\Infrastructure\ReadModel\QueryBusLiveShipmentEtaReader;
 use Logistics\Shipments\Infrastructure\ReadModel\QueryBusScannedLabelResolver;
 use Logistics\Shipments\Infrastructure\ReadModel\ShortReadCache;
 use Logistics\Shipments\Presentation\Console\PullMagentoOrdersCommand;
@@ -98,6 +114,8 @@ use Logistics\Shipments\Presentation\Http\Middleware\EnsureOrderScope;
  *
  * Se registra explícitamente en bootstrap/providers.php (el package está en dont-discover)
  * para que el orden de registro lo controle siempre el proyecto.
+ *
+ * @phpstan-type OutsourcingMap array<string, array{carrier_id: string, carrier_hub_node_id: string|null}>
  */
 final class ShipmentsServiceProvider extends ServiceProvider
 {
@@ -108,6 +126,7 @@ final class ShipmentsServiceProvider extends ServiceProvider
      */
     private const HANDLERS = [
         ReceiveShipment::class => ReceiveShipmentHandler::class,
+        BuildShipmentItinerary::class => BuildShipmentItineraryHandler::class,
         CancelShipment::class => CancelShipmentHandler::class,
         AdvanceShipmentStatus::class => AdvanceShipmentStatusHandler::class,
         SetDeliverySlot::class => SetDeliverySlotHandler::class,
@@ -130,6 +149,32 @@ final class ShipmentsServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../../../config/logistics-shipments.php', 'logistics-shipments');
 
         $this->app->bind(ShipmentRepository::class, EloquentShipmentRepository::class);
+
+        // Tramos del envío (modelo hub-and-spoke, cimiento): repositorio del agregado ShipmentItinerary y
+        // lado de lectura SQL de sus tramos (lo consumirán las olas de ruteo/UI/mapas).
+        $this->app->bind(ShipmentLegRepository::class, EloquentShipmentLegRepository::class);
+        $this->app->bind(ShipmentLegReader::class, function ($app): ShipmentLegReader {
+            return new DbShipmentLegReader($app->make(ConnectionInterface::class));
+        });
+
+        // Construcción del itinerario (decisión propia/tercerizado + ruteo de la red):
+        //  - ItineraryRouter: puerta propia de shipments que DELEGA en el planificador de la red (`network`),
+        //    para no acoplar la aplicación de shipments al contrato concreto de otro contexto.
+        //  - OutsourcingDecision: política que lee el mapa `outsourcing` (departamento destino → terceriza).
+        //  - ShipmentRoutingFactsReader: lado de lectura de los extremos del envío que alimentan el router.
+        $this->app->bind(ItineraryRouter::class, function ($app): ItineraryRouter {
+            return new NetworkItineraryRouter($app->make(ItineraryPlanner::class));
+        });
+        $this->app->singleton(OutsourcingDecision::class, function ($app): OutsourcingDecision {
+            /** @var Config $config */
+            $config = $app->make(Config::class);
+            $raw = $config->get('logistics-shipments.outsourcing', []);
+
+            return new OutsourcingDecision(self::outsourcingMap(is_array($raw) ? $raw : []));
+        });
+        $this->app->bind(ShipmentRoutingFactsReader::class, function ($app): ShipmentRoutingFactsReader {
+            return new DbShipmentRoutingFactsReader($app->make(ConnectionInterface::class));
+        });
 
         // Lado de lectura (CQRS) del listado de envíos: implementación SQL que empuja los filtros a la
         // base y no reconstruye el agregado (ver ShipmentListReader).
@@ -164,6 +209,10 @@ final class ShipmentsServiceProvider extends ServiceProvider
 
         // Alcance por rol (ciudad / tienda / asignación): regla única que usan el listado, `can_process` de
         // la consulta de pedidos y la guarda de escrituras (middleware `order.scope`).
+        $this->app->bind(LiveShipmentEtaReader::class, function ($app): LiveShipmentEtaReader {
+            return new QueryBusLiveShipmentEtaReader($app->make(QueryBus::class));
+        });
+
         $this->app->bind(ShipmentScopeReader::class, function ($app): ShipmentScopeReader {
             return new DbShipmentScopeReader($app->make(ConnectionInterface::class));
         });
@@ -364,9 +413,42 @@ final class ShipmentsServiceProvider extends ServiceProvider
                 BackfillShipmentLineMeasurementsCommand::class,
                 BackfillShipmentCityCommand::class,
                 BackfillShipmentScopeCommand::class,
+                BackfillShipmentLegsCommand::class,
+                RebuildShipmentItinerariesCommand::class,
                 SyncShipmentStatusCommand::class,
             ]);
         }
+    }
+
+    /**
+     * Normaliza el mapa `outsourcing` de config al shape que consume {@see OutsourcingDecision}: descarta
+     * entradas sin departamento o sin `carrier_id`, y deja `carrier_hub_node_id` en null si falta.
+     *
+     * @param  array<array-key, mixed> $raw
+     * @return OutsourcingMap
+     */
+    private static function outsourcingMap(array $raw): array
+    {
+        $map = [];
+        foreach ($raw as $department => $entry) {
+            if (!is_string($department) || !is_array($entry)) {
+                continue;
+            }
+
+            $key = strtolower(trim($department));
+            $carrierId = is_string($entry['carrier_id'] ?? null) ? trim($entry['carrier_id']) : '';
+            if ($key === '' || $carrierId === '') {
+                continue;
+            }
+
+            $hub = is_string($entry['carrier_hub_node_id'] ?? null) ? trim($entry['carrier_hub_node_id']) : '';
+            $map[$key] = [
+                'carrier_id' => $carrierId,
+                'carrier_hub_node_id' => $hub !== '' ? $hub : null,
+            ];
+        }
+
+        return $map;
     }
 
     /**

@@ -15,6 +15,8 @@ use Logistics\Tracking\Application\Command\AdvanceTracking\AdvanceTracking;
 use Logistics\Tracking\Application\Command\AdvanceTracking\AdvanceTrackingHandler;
 use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentToTracking;
 use Logistics\Tracking\Application\Command\BindShipmentToTracking\BindShipmentToTrackingHandler;
+use Logistics\Tracking\Application\Command\CorrectShipmentVisibleState\CorrectShipmentVisibleState;
+use Logistics\Tracking\Application\Command\CorrectShipmentVisibleState\CorrectShipmentVisibleStateHandler;
 use Logistics\Tracking\Application\Command\MarkRatingRequested\MarkRatingRequested;
 use Logistics\Tracking\Application\Command\MarkRatingRequested\MarkRatingRequestedHandler;
 use Logistics\Tracking\Application\Command\MarkShipmentAtStore\MarkShipmentAtStore;
@@ -248,6 +250,7 @@ final class TrackingServiceProvider extends ServiceProvider
         $registry->register(OpenTracking::class, OpenTrackingHandler::class);
         $registry->register(BindShipmentToTracking::class, BindShipmentToTrackingHandler::class);
         $registry->register(AdvanceTracking::class, AdvanceTrackingHandler::class);
+        $registry->register(CorrectShipmentVisibleState::class, CorrectShipmentVisibleStateHandler::class);
         $registry->register(ProjectExecutionEvent::class, ProjectExecutionEventHandler::class);
         $registry->register(ProjectUnitExecutionEvent::class, ProjectUnitExecutionEventHandler::class);
         $registry->register(PlaceShipmentOnRoute::class, PlaceShipmentOnRouteHandler::class);

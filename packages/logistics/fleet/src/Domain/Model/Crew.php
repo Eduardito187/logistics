@@ -6,8 +6,11 @@ namespace Logistics\Fleet\Domain\Model;
 
 use DateTimeImmutable;
 use Logistics\Fleet\Domain\Event\CrewAssembled;
+use Logistics\Fleet\Domain\Event\CrewDisbanded;
+use Logistics\Fleet\Domain\Event\CrewVehicleChanged;
 use Logistics\Fleet\Domain\Exception\FleetException;
 use Logistics\Fleet\Domain\ValueObject\CrewId;
+use Logistics\Fleet\Domain\ValueObject\CrewRetirementReason;
 use Logistics\Fleet\Domain\ValueObject\DriverId;
 use Logistics\Fleet\Domain\ValueObject\VehicleId;
 use Logistics\Fleet\Domain\ValueObject\WorkShift;
@@ -20,6 +23,9 @@ use Logistics\Shared\Domain\Aggregate\AggregateRoot;
  * con qué camión. Una tripulación sin chofer o sin vehículo no tiene sentido y se rechaza al armarla.
  * Opcionalmente lleva el turno de trabajo (horas de salida y regreso): cuando se fija, la asignación se
  * valida contra las reglas de turnos y descansos (ver CrewShiftScheduler).
+ *
+ * Regla del día: un chofer tiene un solo camión por día y un camión una sola tripulación por día. Cambiarle
+ * el camión a un chofer no suma otra tripulación: la nueva REEMPLAZA a la anterior (ver assembleReplacing).
  */
 final class Crew extends AggregateRoot
 {
@@ -67,6 +73,78 @@ final class Crew extends AggregateRoot
         ));
 
         return $crew;
+    }
+
+    /**
+     * Arma la tripulación que REEMPLAZA a otra que queda sin efecto. Si es el mismo chofer con otro camión,
+     * el hecho es «camión cambiado» (con el anterior y el nuevo); en cualquier otro caso (mismos camión y
+     * chofer con otros ayudantes o turno, o cambio de chofer) es un armado común.
+     *
+     * @param list<string> $helperIds
+     */
+    public static function assembleReplacing(
+        self $previous,
+        CrewId $id,
+        DriverId $driverId,
+        array $helperIds,
+        VehicleId $vehicleId,
+        DateTimeImmutable $assembledFor,
+        ?WorkShift $shift = null,
+    ): self {
+        $crew = self::assemble($id, $driverId, $helperIds, $vehicleId, $assembledFor, $shift);
+
+        if (!$previous->driverId->equals($driverId) || $previous->vehicleId->equals($vehicleId)) {
+            return $crew;
+        }
+
+        // Mismo chofer, otro camión: el armado se cuenta como cambio, no como asignación nueva.
+        $crew->releaseEvents();
+        $crew->recordEvent(new CrewVehicleChanged(
+            $id->toString(),
+            $previous->id->toString(),
+            $driverId->toString(),
+            $previous->vehicleId->toString(),
+            $vehicleId->toString(),
+            $crew->helperIds,
+            $assembledFor->format('Y-m-d'),
+            $shift?->toArray(),
+        ));
+
+        return $crew;
+    }
+
+    /**
+     * ¿Esta tripulación ya es exactamente la pedida (mismo camión, mismos ayudantes, mismo turno)? Si lo es,
+     * volver a armarla no cambia nada.
+     *
+     * @param list<string> $helperIds
+     */
+    public function holdsSameAssignment(VehicleId $vehicleId, array $helperIds, ?WorkShift $shift): bool
+    {
+        $mine = $this->helperIds;
+        $theirs = array_values(array_unique($helperIds));
+        sort($mine);
+        sort($theirs);
+
+        return $this->vehicleId->equals($vehicleId)
+            && $mine === $theirs
+            // El turno se compara por instante: la misma hora puede venir escrita con otro desfase.
+            && $this->shift?->startsAt->getTimestamp() === $shift?->startsAt->getTimestamp()
+            && $this->shift?->endsAt->getTimestamp() === $shift?->endsAt->getTimestamp();
+    }
+
+    /**
+     * Deja constancia de que la tripulación quedó sin efecto sin que su chofer pase a otra.
+     */
+    public function disband(CrewRetirementReason $reason): void
+    {
+        $this->recordEvent(new CrewDisbanded(
+            $this->id->toString(),
+            $this->driverId->toString(),
+            $this->vehicleId->toString(),
+            $this->assembledFor->format('Y-m-d'),
+            $reason->value,
+        ));
     }
 
     /**

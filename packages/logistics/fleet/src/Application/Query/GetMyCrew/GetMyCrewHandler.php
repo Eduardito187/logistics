@@ -16,17 +16,28 @@ use Logistics\Shared\Application\Query\Query;
 use Logistics\Shared\Application\Query\QueryHandler;
 
 /**
- * Resuelve la asignación VIGENTE de un chofer en una fecha y la devuelve como proyección de lectura.
+ * Resuelve la asignación VIGENTE de un TRIPULANTE (chofer o ayudante) en una fecha y la devuelve como
+ * proyección de lectura. El chofer se resuelve por su `driverId`; el ayudante, por su `helperId` (figura en
+ * los `helper_ids` de la tripulación). En ambos casos la vista es la misma.
  *
- * El chofer puede salir varias veces el mismo día, con el mismo camión o con otro: tiene una tripulación
- * por cada camión que le asignaron. La que se devuelve es la de su SALIDA VIGENTE:
+ * Un chofer tiene UN camión por día (una sola tripulación vigente; cambiarle el camión reemplaza la
+ * anterior), y con ese camión puede salir varias veces. Se devuelve su tripulación con la ruta de su
+ * SALIDA VIGENTE:
  *
- *   1. la tripulación del camión cuya ruta está abierta (en curso antes que planificada);
- *   2. si no hay ninguna ruta abierta, la tripulación más reciente del día (con la última ruta de ese
- *      camión en la fecha, si existe).
+ *   1. la ruta abierta de su camión (en curso antes que planificada);
+ *   2. si no hay ninguna ruta abierta, la última ruta de ese camión en la fecha, si existe.
  *
- * Sin tripulación en la fecha devuelve null (el controller lo traduce a 404). El vehículo, el chofer y
- * cada ayudante se enriquecen con sus datos legibles (placa, nombre) contra sus repositorios.
+ * Tolerancia a datos viejos: si quedara más de una tripulación del chofer en el día (antes del saneo
+ * `logistics:fleet:reconcile-crews`), manda la de ruta abierta y, sin rutas, la armada más tarde; nunca
+ * la primera que aparezca.
+ *
+ * Asignación VIGENTE y MEDIANOCHE: cuando se pide la asignación actual (`allowOpenCarryover`), si no hay
+ * tripulación en la fecha pero el chofer tiene una ruta EN CURSO de otro día (una entrega que cruzó la
+ * medianoche o larga a otra ciudad/país), se devuelve la tripulación de ESA ruta abierta hasta que se cierre:
+ * la asignación la rige el ESTADO de la ruta, no el calendario. Nunca se le quita una entrega en curso.
+ *
+ * Sin tripulación en la fecha (ni ruta abierta que arrastre) devuelve null (el controller lo traduce a 404).
+ * El vehículo, el chofer y cada ayudante se enriquecen con sus datos legibles (placa, nombre).
  *
  * @phpstan-import-type CrewRow from CrewDirectory
  * @phpstan-import-type DepartureRoute from DepartureRouteReader
@@ -41,6 +52,16 @@ final readonly class GetMyCrewHandler implements QueryHandler
     /** Estados de una ruta abierta, en orden de prioridad: la que ya salió manda sobre la planificada. */
     private const array OPEN_STATUSES = ['IN_PROGRESS', 'PLANNED'];
 
+    /**
+     * Estados de una ruta que SIGUE siendo la asignación vigente del chofer aunque haya cambiado el día: una
+     * entrega EN CURSO (o pausada) no se le quita al cruzar la medianoche. Una ruta sólo PLANIFICADA de un día
+     * pasado NO arrastra (nunca arrancó): es stock viejo, no una entrega en curso.
+     */
+    private const array CARRYOVER_STATUSES = ['IN_PROGRESS', 'SUSPENDED'];
+
+    /** Tripulaciones recientes del chofer (varios días) que se miran para encontrar su ruta abierta. */
+    private const int RECENT_CREWS = 10;
+
     public function __construct(
         private CrewRepository $crews,
         private VehicleRepository $vehicles,
@@ -54,14 +75,25 @@ final readonly class GetMyCrewHandler implements QueryHandler
     {
         assert($query instanceof GetMyCrew);
 
-        $rows = $this->mostRecentFirst(
-            $this->directory->list($query->date, null, $query->driverId, self::MAX_CREWS_PER_DAY, 0)['items'],
-        );
+        $date = $query->date;
+        $rows = $this->mostRecentFirst($this->viewerCrews($query, $date));
+
+        // Entrega que cruzó la medianoche (o larga a otra ciudad/país): si no hay tripulación en la fecha
+        // vigente pero el chofer tiene una ruta EN CURSO de otro día, su asignación NO se le quita — se usa la
+        // tripulación de esa ruta abierta, con su fecha, hasta que la ruta se cierre.
+        if ($rows === [] && $query->allowOpenCarryover) {
+            [$carryRows, $carryDate] = $this->openAssignment($query);
+            if ($carryRows !== [] && $carryDate !== null) {
+                $rows = $this->mostRecentFirst($carryRows);
+                $date = $carryDate;
+            }
+        }
+
         if ($rows === []) {
             return null;
         }
 
-        $routes = $this->routesOfDriver($query, $rows);
+        $routes = $this->routesOfViewer($date, $rows);
         [$row, $route] = $this->currentDeparture($rows, $routes);
 
         $crew = $this->crews->findById(CrewId::fromString($row['id']));
@@ -86,19 +118,118 @@ final readonly class GetMyCrewHandler implements QueryHandler
     }
 
     /**
-     * Rutas del día de los camiones del chofer. Si la ruta tiene chofer grabado y es OTRO, no es su salida
-     * (dos choferes pueden compartir el camión en el día); sin chofer grabado vale el vínculo por camión.
+     * Tripulaciones del día que ve el solicitante: las del CHOFER (filtro por `driver_id`) o, si la cuenta
+     * es un AYUDANTE, aquellas en las que figura (filtro por `helper_ids`). Devuelve [] si no trae ningún
+     * vínculo utilizable.
+     *
+     * @return list<CrewRow>
+     */
+    private function viewerCrews(GetMyCrew $query, string $date): array
+    {
+        if ($query->driverId !== null && $query->driverId !== '') {
+            return $this->directory->list($date, null, $query->driverId, self::MAX_CREWS_PER_DAY, 0)['items'];
+        }
+
+        if ($query->helperId !== null && $query->helperId !== '') {
+            return $this->directory->listForHelper($date, $query->helperId, self::MAX_CREWS_PER_DAY, 0)['items'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Asignación VIGENTE por RUTA ABIERTA (no por calendario). Así una entrega en curso que cruzó la
+     * medianoche —o larga a otra ciudad/país— sigue siendo del chofer hasta que la ruta se cierre.
+     *
+     * CHOFER: la entrega en curso se resuelve por el `driver_id` DIRECTO de la ruta (fuente de verdad), NO
+     * por el camión de una tripulación reciente. El barrido por camión fallaba de dos formas: una tripulación
+     * más nueva reasignada a otro camión ganaba primero y tapaba la entrega real, y un camión compartido podía
+     * tener abierta la ruta de OTRO chofer. Con el `driver_id` directo se toma SIEMPRE la ruta en curso de ESE
+     * chofer y se reconstruye su tripulación del día del camión de esa ruta.
+     *
+     * AYUDANTE: la ruta no graba al ayudante, así que se mantiene el barrido por sus tripulaciones recientes
+     * (la primera cuyo camión tenga ruta en curso manda).
+     *
+     * Sin ninguna ruta en curso, devuelve `[[], null]` (cae al `null` = sin asignación en la fecha).
+     *
+     * @return array{0: list<CrewRow>, 1: string|null}
+     */
+    private function openAssignment(GetMyCrew $query): array
+    {
+        if ($query->driverId !== null && $query->driverId !== '') {
+            $open = $this->routes->openForDriver($query->driverId);
+            if ($open === null) {
+                return [[], null];
+            }
+
+            $day = $open['route_date'];
+            $crews = $this->directory->list($day, null, $query->driverId, self::MAX_CREWS_PER_DAY, 0)['items'];
+            $sameVehicle = array_values(array_filter(
+                $crews,
+                static fn (array $c): bool => $c['vehicle_id'] === $open['vehicle_id'],
+            ));
+
+            return $sameVehicle !== [] ? [$sameVehicle, $day] : [[], null];
+        }
+
+        $recent = $this->recentCrews($query);
+        foreach ($recent as $crew) {
+            $hasOpen = array_filter(
+                $this->routes->onDate($crew['assembled_for'], [$crew['vehicle_id']]),
+                static fn (array $route): bool => $route['vehicle_id'] === $crew['vehicle_id']
+                    && in_array($route['status'], self::CARRYOVER_STATUSES, true),
+            );
+            if ($hasOpen === []) {
+                continue;
+            }
+
+            $day = $crew['assembled_for'];
+            $sameDay = array_values(array_filter(
+                $recent,
+                static fn (array $c): bool => $c['assembled_for'] === $day,
+            ));
+
+            return [$sameDay, $day];
+        }
+
+        return [[], null];
+    }
+
+    /**
+     * Tripulaciones recientes del solicitante (cualquier fecha, más reciente primero), acotadas a RECENT_CREWS.
+     *
+     * @return list<CrewRow>
+     */
+    private function recentCrews(GetMyCrew $query): array
+    {
+        if ($query->driverId !== null && $query->driverId !== '') {
+            return $this->directory->list(null, null, $query->driverId, self::RECENT_CREWS, 0)['items'];
+        }
+
+        if ($query->helperId !== null && $query->helperId !== '') {
+            return $this->directory->listForHelper(null, $query->helperId, self::RECENT_CREWS, 0)['items'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Rutas del día de los camiones de las tripulaciones del solicitante. Si la ruta tiene chofer grabado y
+     * no es el de NINGUNA de esas tripulaciones, no es su salida (dos choferes pueden compartir el camión en
+     * el día); sin chofer grabado vale el vínculo por camión. Vale igual para el chofer (un solo driver_id
+     * en sus filas) y para el ayudante (el driver_id del chofer de su tripulación).
      *
      * @param  list<CrewRow>        $rows
      * @return list<DepartureRoute>
      */
-    private function routesOfDriver(GetMyCrew $query, array $rows): array
+    private function routesOfViewer(string $date, array $rows): array
     {
         $vehicleIds = array_values(array_unique(array_column($rows, 'vehicle_id')));
+        $driverIds = array_values(array_unique(array_column($rows, 'driver_id')));
 
         return array_values(array_filter(
-            $this->routes->onDate($query->date, $vehicleIds),
-            static fn (array $route): bool => $route['driver_id'] === null || $route['driver_id'] === $query->driverId,
+            $this->routes->onDate($date, $vehicleIds),
+            static fn (array $route): bool => $route['driver_id'] === null || in_array($route['driver_id'], $driverIds, true),
         ));
     }
 
@@ -137,8 +268,8 @@ final readonly class GetMyCrewHandler implements QueryHandler
 
     /**
      * Ordena las tripulaciones del día de la más reciente a la más vieja: por inicio de turno cuando lo
-     * tienen (las que no fijaron turno van después) y, a igualdad, conserva el orden del directorio (id
-     * UUID v7 descendente = la armada más tarde primero).
+     * tienen (las que no fijaron turno van después) y, a igualdad, conserva el orden del directorio (la
+     * armada más tarde primero).
      *
      * @param  list<CrewRow> $rows
      * @return list<CrewRow>

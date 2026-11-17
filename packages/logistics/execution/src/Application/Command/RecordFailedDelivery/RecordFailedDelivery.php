@@ -10,7 +10,15 @@ use Logistics\Shared\Application\Command\Command;
  * Registra un intento de entrega fallido con su motivo tipificado y cierra la entrega como fallida.
  *
  * Idempotente por idempotencyKey. La entrega del envío ya debe existir (cargada o en tránsito).
- * El motivo (reason) es el value de FailureReason.
+ * El motivo (reason) es un code del catálogo CONFIGURABLE de motivos (ya no un enum fijo); se valida
+ * contra el catálogo ACTIVO en el handler. `note` es la nota libre opcional (obligatoria si el motivo la
+ * exige) y `photoPath` la referencia de la foto subida.
+ *
+ * `hasPhoto`: la app sube la foto de la fallida por una cola APARTE, offline-first (POST /app/deliveries/photos,
+ * ligada por shipment_id), así que al registrar la fallida la foto puede no estar todavía. Por eso la exigencia
+ * de foto (requires_photo) NO se valida contra el archivo: se da por cumplida si vino `photoPath` O si la app
+ * marca `hasPhoto=true` (encoló la foto; la app bloquea en pantalla si el motivo exige foto y no la hay). Así la
+ * validación del backend no rompe el offline-first.
  */
 final readonly class RecordFailedDelivery implements Command
 {
@@ -24,5 +32,8 @@ final readonly class RecordFailedDelivery implements Command
         public string $userId,
         public string $occurredAt,
         public string $idempotencyKey,
+        public ?string $note = null,
+        public ?string $photoPath = null,
+        public bool $hasPhoto = false,
     ) {}
 }

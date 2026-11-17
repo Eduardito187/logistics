@@ -119,6 +119,27 @@ completa verde). Los agentes siguen SIN correr nada; el coordinador es el único
   tenía Soketi (protocolo Pusher) andando; el push FCM del aviso también existía. Brief: "verificá primero
   si ya existe y reportalo con archivo:línea; no agregues dependencias si hay algo utilizable".
 
+## Olas grandes multi-package (aprendido en la tanda de sockets 2026-11-16)
+
+- **Fundación compartida PRIMERO, y la hace el coordinador**, no un agente: si varios temas/eventos usan un
+  archivo común (ej. `RealtimeChannels` del shared, `UserRealtimeChannels`/`channels.php` del host), el
+  coordinador lo construye y deja verde ANTES de lanzar los agentes de emisión. Dos agentes editando el mismo
+  shared/host = merge hell. Los agentes reciben la API ya disponible y solo la consumen.
+- **Particionar por PACKAGE disjunto** para paralelizar sin chocar: un agente por package (tracking /
+  execution / telemetry) + el coordinador hace los observadores cross-context del HOST (`app/Outbox`,
+  `app/Events`). Los agentes devuelven el FQCN del observador + snippet; el coordinador registra en
+  `AppServiceProvider` (archivo compartido → un solo dueño).
+- **Secuenciar, no paralelizar, dos trabajos que tocan el MISMO package** (p. ej. dos frentes en execution):
+  el dueño avisó que dos agentes en los mismos puntos chocan al mergear. Correlos uno tras otro.
+- **El dueño corre la suite completa** (memoria `owner-runs-full-suite`): NO lanzar `pest` completo; gates
+  acotados (pint/phpstan/tests de lo tocado), guardar en memoria, avisar solo cuando todo esté verde.
+- **Gotcha del contenedor** (memoria `container-nullable-dependency-gotcha`): dep de handler resuelto por el
+  contenedor = REQUERIDA, nunca `?Tipo = null` (recibe null, la lógica no corre). Ponerlo en el brief.
+- **UUIDv7 en seeds de test**: `substr($id, -8)` para un code/plate único (el prefijo `0,8` es la marca de
+  tiempo → dos filas del mismo ms colisionan en un índice único). Ponerlo en el brief.
+- **Agregar una clave a un ReadModel** rompe tests que afirman el shape exacto (`toBe([...])`): el coordinador
+  los busca y actualiza al integrar (una cadena `->and()->toBe()` esconde los fallos siguientes tras el primero).
+
 - Git Bash en Windows tira `fatal error - add_item … errno 1` al azar: reintentar o usar PowerShell.
 - `.git` con objetos vacíos tras una operación cortada → memoria `git-empty-objects-repair`.
 - Scripts masivos de un agente (alineación, imports) pueden tocar archivos de otro: limitarlos a SU territorio.

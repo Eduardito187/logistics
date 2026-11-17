@@ -26,6 +26,19 @@ it('concede habilidades por rol, con comodín para el administrador', function (
         ->and(Role::Supervisor->abilities())->toContain(Ability::PLANNING_WRITE);
 });
 
+it('da al rol tripulante SOLO habilidades de lectura (ninguna :write)', function (): void {
+    $abilities = Role::Tripulante->abilities();
+
+    expect($abilities)
+        ->toContain(Ability::SHIPMENTS_READ, Ability::PLANNING_READ, Ability::EXECUTION_READ)
+        ->toContain(Ability::TRACKING_READ, Ability::NETWORK_READ, Ability::NOTIFICATIONS_READ)
+        ->not->toContain(Ability::WILDCARD);
+
+    foreach ($abilities as $ability) {
+        expect($ability)->not->toEndWith(':write');
+    }
+});
+
 it('arma las opciones de select valor => etiqueta', function (): void {
     $options = Role::options();
 

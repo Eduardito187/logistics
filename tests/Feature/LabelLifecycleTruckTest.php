@@ -91,6 +91,57 @@ it('asignar el envío a un camión aparece como Cargada con la placa', function 
         ->and($timeline[0]['when'])->toBe('11/11/2026 09:15');
 })->with(['UTC', 'America/La_Paz']);
 
+it('no duplica «Entregada»: con escaneo de POD manda el escaneo (con actor) y no la entrega derivada', function (): void {
+    // Escaneo de PRUEBA DE ENTREGA del bulto (lleva el actor: quién entregó).
+    DB::table('execution_scan_events')->insert([
+        'id' => (string) Str::uuid7(),
+        'delivery_id' => (string) Str::uuid7(),
+        'unit_id' => LLT_UNIT,
+        'type' => 'PROOF_OF_DELIVERY',
+        'lat' => -17.78,
+        'lng' => -63.18,
+        'device_id' => 'device-test',
+        'user_id' => '1',
+        'occurred_at' => '2026-11-11 15:06:00-04',
+        'idempotency_key' => (string) Str::uuid7(),
+    ]);
+    // Entrega del ENVÍO en estado DELIVERED: sin el guardia duplicaría la línea «Entregada».
+    DB::table('execution_deliveries')->insert([
+        'id' => (string) Str::uuid7(),
+        'shipment_id' => LLT_SHIPMENT,
+        'status' => 'DELIVERED',
+        'pod_captured_at' => '2026-11-11 15:06:00-04',
+        'created_at' => '2026-11-11 15:06:00',
+        'updated_at' => '2026-11-11 15:06:00',
+    ]);
+
+    $timeline = app(LabelLifecycle::class)->timeline(LLT_LABEL);
+    $delivered = array_values(array_filter($timeline, static fn (array $e): bool => $e['event'] === 'Entregada'));
+
+    // Una sola «Entregada», y es el ESCANEO (label 'escaneo', con actor), no la derivada (label 'entrega', actor '—').
+    expect($delivered)->toHaveCount(1)
+        ->and($delivered[0]['label'])->toBe('escaneo')
+        ->and($delivered[0]['actor'])->not->toBe('—');
+});
+
+it('sin escaneo de POD, la entrega derivada del envío SÍ aparece (respaldo)', function (): void {
+    DB::table('execution_deliveries')->insert([
+        'id' => (string) Str::uuid7(),
+        'shipment_id' => LLT_SHIPMENT,
+        'status' => 'DELIVERED',
+        'pod_captured_at' => '2026-11-11 15:06:00-04',
+        'created_at' => '2026-11-11 15:06:00',
+        'updated_at' => '2026-11-11 15:06:00',
+    ]);
+
+    $timeline = app(LabelLifecycle::class)->timeline(LLT_LABEL);
+    $delivered = array_values(array_filter($timeline, static fn (array $e): bool => $e['event'] === 'Entregada'));
+
+    expect($delivered)->toHaveCount(1)
+        ->and($delivered[0]['label'])->toBe('entrega')
+        ->and($delivered[0]['detail'])->toBe('Entrega del pedido confirmada');
+});
+
 it('con escaneo de carga, la placa va en el escaneo y no se duplica la carga', function (): void {
     DB::table('execution_scan_events')->insert([
         'id' => (string) Str::uuid7(),

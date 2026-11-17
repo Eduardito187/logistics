@@ -39,6 +39,8 @@ use Logistics\Planning\Application\Command\SetShipmentRequirement\SetShipmentReq
 use Logistics\Planning\Application\Command\SetVehicleRestrictions\SetVehicleRestrictions;
 use Logistics\Planning\Application\Command\SetVehicleRestrictions\SetVehicleRestrictionsHandler;
 use Logistics\Planning\Application\Contract\PlanCrewLabels;
+use Logistics\Planning\Application\Contract\PlanExecutionStatusReader;
+use Logistics\Planning\Application\Contract\RouteOriginLocator;
 use Logistics\Planning\Application\Contract\ShipmentPlanningFactsReader;
 use Logistics\Planning\Application\Contract\TripCandidateReader;
 use Logistics\Planning\Application\Contract\TripVehicleReader;
@@ -93,6 +95,7 @@ use Logistics\Planning\Infrastructure\Adapter\FleetCrewShiftRulesProvider;
 use Logistics\Planning\Infrastructure\Adapter\FleetVehicleAvailabilityProvider;
 use Logistics\Planning\Infrastructure\Adapter\NetworkNodeOriginLocator;
 use Logistics\Planning\Infrastructure\Adapter\ShipmentLoadReader;
+use Logistics\Planning\Infrastructure\Adapter\VehicleHomeBaseOriginLocator;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\BroadcastingAutoPlanRunRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\BroadcastingPlanRepository;
@@ -102,6 +105,7 @@ use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentPlanRepositor
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\EloquentReplanBacklogRepository;
 use Logistics\Planning\Infrastructure\Queue\QueuedDailyPlanDispatcher;
 use Logistics\Planning\Infrastructure\ReadModel\DbPlanCrewLabels;
+use Logistics\Planning\Infrastructure\ReadModel\DbPlanExecutionStatusReader;
 use Logistics\Planning\Infrastructure\ReadModel\DbShipmentPlanningFactsReader;
 use Logistics\Planning\Infrastructure\ReadModel\DbTripCandidateReader;
 use Logistics\Planning\Infrastructure\ReadModel\DbTripVehicleReader;
@@ -193,6 +197,7 @@ final class PlanningServiceProvider extends ServiceProvider
         // Read-side del plan sin identificadores internos y del asistente de viajes: datos legibles y
         // ubicación de los envíos, el camión con su base, y los candidatos por cercanía (todo en lote).
         $this->app->bind(ShipmentPlanningFactsReader::class, DbShipmentPlanningFactsReader::class);
+        $this->app->bind(PlanExecutionStatusReader::class, DbPlanExecutionStatusReader::class);
         $this->app->bind(TripVehicleReader::class, DbTripVehicleReader::class);
         $this->app->bind(TripCandidateReader::class, DbTripCandidateReader::class);
 
@@ -300,6 +305,11 @@ final class PlanningServiceProvider extends ServiceProvider
 
         // Resolución del nodo CD de origen (contexto Red) para usarlo de depósito en la matriz/geometría.
         $this->app->bind(PlanningOriginLocator::class, NetworkNodeOriginLocator::class);
+
+        // Punto de salida POR VEHÍCULO: su sede/almacén base (su carrier_hub si es de transportadora), leído
+        // de Flota. El refrescador de geometría lo PREFIERE sobre el depósito global, para que la polilínea
+        // del plan arranque donde arranca ese camión.
+        $this->app->bind(RouteOriginLocator::class, VehicleHomeBaseOriginLocator::class);
 
         // Coordenadas de los envíos (contexto Envíos) para recalcular la geometría de un plan existente.
         $this->app->bind(ShipmentCoordinatesProvider::class, EloquentShipmentCoordinatesProvider::class);

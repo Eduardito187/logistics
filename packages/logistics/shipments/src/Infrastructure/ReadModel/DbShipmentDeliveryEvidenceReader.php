@@ -18,7 +18,10 @@ use Throwable;
  *    documento del cliente. La evidencia de daños (`damage`) no es evidencia de la entrega: no cuenta;
  *  - execution_deliveries → las fotos ligadas a la prueba de entrega (`pod_photo_path`, `pod_photo_paths`,
  *    `pod_photo_url`) cuentan como foto. `pod_confirmation` es el marcador de confirmación (QR o texto), no
- *    un archivo de firma: no cuenta como firma.
+ *    un archivo de firma: no cuenta como firma. De la MISMA fila sale el cierre con faltante
+ *    (`closed_with_shortage`) y cuántos productos faltaron (tamaño de `store_drop_missing_units`), para el
+ *    tag «Entregado con faltante (N)». La lista de productos faltantes NO se expone: se ve por el reporte de
+ *    discrepancias.
  *
  * Costo fijo por página: DOS consultas por lote de ids (whereIn), nunca una por envío. Cada fuente va
  * aislada en su try/catch: si una tabla no está disponible, sus indicadores quedan en false.
@@ -55,16 +58,17 @@ final readonly class DbShipmentDeliveryEvidenceReader implements ShipmentDeliver
         $result = [];
         foreach (array_chunk($ids, self::BATCH) as $batch) {
             $flags = $this->captured($batch);
-            foreach ($this->withLinkedPhoto($batch) as $shipmentId) {
-                $flags[$shipmentId]['photo'] = true;
-            }
+            $closure = $this->deliveryClosure($batch);
 
             foreach ($batch as $id) {
                 $key = strtolower($id);
                 $result[$id] = ShipmentDeliveryEvidenceView::delivered(
                     signature: $flags[$key]['signature'] ?? false,
-                    photo: $flags[$key]['photo'] ?? false,
+                    // Foto: evidencia de tipo `pod` (captured) O foto ligada a la prueba de entrega (closure).
+                    photo: ($flags[$key]['photo'] ?? false) || ($closure[$key]['photo'] ?? false),
                     document: $flags[$key]['document'] ?? false,
+                    withShortage: $closure[$key]['with_shortage'] ?? false,
+                    missingCount: $closure[$key]['missing_count'] ?? null,
                 );
             }
         }
@@ -103,22 +107,28 @@ final readonly class DbShipmentDeliveryEvidenceReader implements ShipmentDeliver
     }
 
     /**
-     * Envíos cuya prueba de entrega tiene al menos una foto ligada (ruta propia, lista de rutas o URL externa).
+     * Cierre de la entrega por envío, desde la fila de `execution_deliveries`: si tiene una foto ligada a la
+     * prueba de entrega, si se cerró con faltante y cuántos productos faltaron. Una sola consulta por lote.
      *
-     * @param  list<string> $ids
-     * @return list<string>
+     * `with_shortage` sale de `closed_with_shortage` (lo encienden el cierre de un traspaso conciliado con
+     * diferencias y el cierre manual de oficina; en una entrega normal queda en false). `missing_count` es el
+     * tamaño de `store_drop_missing_units` (productos que el chofer declaró como faltantes); null si no hubo
+     * faltante o no se conoce la cantidad.
+     *
+     * @param  list<string>                                                                      $ids
+     * @return array<string, array{photo: bool, with_shortage: bool, missing_count: int | null}>
      */
-    private function withLinkedPhoto(array $ids): array
+    private function deliveryClosure(array $ids): array
     {
         try {
             $rows = $this->connection->table('execution_deliveries')
                 ->whereIn('shipment_id', $ids)
-                ->get(['shipment_id', 'pod_photo_path', 'pod_photo_paths', 'pod_photo_url']);
+                ->get(['shipment_id', 'pod_photo_path', 'pod_photo_paths', 'pod_photo_url', 'closed_with_shortage', 'store_drop_missing_units']);
         } catch (Throwable) {
             return [];
         }
 
-        $withPhoto = [];
+        $closure = [];
         foreach ($rows as $row) {
             $shipmentId = self::str($row->shipment_id ?? null);
             if ($shipmentId === null) {
@@ -128,12 +138,18 @@ final readonly class DbShipmentDeliveryEvidenceReader implements ShipmentDeliver
             $hasPhoto = self::str($row->pod_photo_path ?? null) !== null
                 || self::str($row->pod_photo_url ?? null) !== null
                 || self::hasPaths($row->pod_photo_paths ?? null);
-            if ($hasPhoto) {
-                $withPhoto[] = strtolower($shipmentId);
-            }
+            $withShortage = self::truthy($row->closed_with_shortage ?? null);
+            $missing = self::countPaths($row->store_drop_missing_units ?? null);
+
+            $closure[strtolower($shipmentId)] = [
+                'photo' => $hasPhoto,
+                'with_shortage' => $withShortage,
+                // Sin faltantes declarados no se informa cantidad (null), aunque el cierre venga con faltante.
+                'missing_count' => $missing > 0 ? $missing : null,
+            ];
         }
 
-        return $withPhoto;
+        return $closure;
     }
 
     /** ¿La columna jsonb de rutas de fotos trae al menos una ruta no vacía? */
@@ -151,6 +167,31 @@ final readonly class DbShipmentDeliveryEvidenceReader implements ShipmentDeliver
         }
 
         return false;
+    }
+
+    /** Cuántas entradas válidas trae la columna jsonb de faltantes (`[{unit_id, reason}]`). */
+    private static function countPaths(mixed $raw): int
+    {
+        $items = is_string($raw) ? json_decode($raw, true) : $raw;
+        if (!is_array($items)) {
+            return 0;
+        }
+
+        $count = 0;
+        foreach ($items as $item) {
+            $unitId = is_array($item) ? ($item['unit_id'] ?? null) : null;
+            if (is_string($unitId) && trim($unitId) !== '') {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /** Interpreta el booleano de la base (bool, entero o texto de PostgreSQL). */
+    private static function truthy(mixed $value): bool
+    {
+        return in_array($value, [true, 1, '1', 't', 'true'], true);
     }
 
     /** Normaliza a string no vacío o null. */

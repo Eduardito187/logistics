@@ -52,8 +52,11 @@ return [
             // Tripulaciones por fecha / vehículo / chofer (qué camión tiene cada chofer). Paginada.
             Route::get('crews', [CrewController::class, 'index'])->name('crews.index');
 
-            // Habilitar / inhabilitar / mandar a mantenimiento un vehículo.
+            // Habilitar / inhabilitar / mandar a mantenimiento un vehículo. Escritura de ESTADO de flota:
+            // es de oficina (supervisor / admin), no de cualquier chofer, igual que send-to-maintenance y
+            // clear-fitness de abajo.
             Route::patch('vehicles/{vehicleId}/status', [VehicleController::class, 'changeStatus'])
+                ->middleware('role:supervisor,admin')
                 ->name('vehicles.change-status');
 
             // Mandar a mantenimiento AHORA: abre la orden y cambia el estado en una sola llamada.
@@ -72,11 +75,17 @@ return [
             Route::patch('helpers/{helperId}/availability', [HelperController::class, 'setAvailability'])
                 ->name('helpers.set-availability');
 
-            // Armar la tripulación del día (chofer + ayudantes + vehículo).
-            Route::post('crews', [CrewController::class, 'store'])->name('crews.store');
-            // Cambiar o quitar una tripulación ya armada.
-            Route::put('crews/{crewId}', [CrewController::class, 'update'])->whereUuid('crewId')->name('crews.update');
-            Route::delete('crews/{crewId}', [CrewController::class, 'destroy'])->whereUuid('crewId')->name('crews.destroy');
+            // Escritura de tripulaciones: la tripulación del día (chofer + ayudantes + camión) la asignan
+            // SOLO planificador, chofer, admin o supervisor (oficina). Un camión = una tripulación por día;
+            // armar para un chofer que ya tiene camión ese día REEMPLAZA de forma atómica. El resto de roles
+            // (preparador, tienda, transportista) no asigna tripulaciones.
+            Route::middleware('role:planificador,chofer,admin,supervisor')->group(function (): void {
+                // Armar la tripulación del día (chofer + ayudantes + vehículo).
+                Route::post('crews', [CrewController::class, 'store'])->name('crews.store');
+                // Cambiar o quitar una tripulación ya armada.
+                Route::put('crews/{crewId}', [CrewController::class, 'update'])->whereUuid('crewId')->name('crews.update');
+                Route::delete('crews/{crewId}', [CrewController::class, 'destroy'])->whereUuid('crewId')->name('crews.destroy');
+            });
 
             // Registrar el checklist pre-salida ejecutado por el chofer antes de salir a ruta.
             Route::post('pre-trip-checklists', [PreTripChecklistController::class, 'store'])

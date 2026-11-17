@@ -82,13 +82,39 @@ public function managementLinks(): array
 - `recordUrl` en el Resource para que la tabla abra el hub.
 - Notas CRM: `use App\Filament\Concerns\HasEntityNotes;` + `noteSubjectType()` + `<x-cockpit.notes>`.
 
-## Receta C — Agrupar el menú
+## Receta C — Agrupar / anidar el menú
 
-- **`getNavigationParentItem()` NO existe** en esta versión de Filament (verificado). NO se puede anidar
-  ítems; usar **grupos de navegación separados** en `AdminPanelProvider`:
-  `NavigationGroup::make(__('Integrations'))->collapsed()`.
-- `getNavigationGroup(): string { return __('Operations'); }` en cada Resource.
+- `getNavigationGroup(): string { return __('Operations'); }` en cada Resource agrupa en el menú.
+- **`getNavigationParentItem()` SÍ existe y funciona** en esta versión de Filament v4 (CORRECCIÓN 2026-11-16:
+  una nota vieja decía que no — era falsa; `OutboxMessageResource` e impresoras de red ya lo usan). Anida un
+  Resource BAJO otro ítem del menú (p. ej. «Configuration») en vez de dejarlo suelto:
+  ```php
+  public static function getNavigationGroup(): string { return __('Administration'); }
+  public static function getNavigationParentItem(): string { return __('Configuration'); } // cuelga de «Configuration»
+  public static function getNavigationSort(): int { return 63; }
+  ```
+  Patrón de la **sección Configuración** (outbox, versiones de config, impresoras de red, plantillas de
+  checklist): todas con grupo `Administration` + parent `Configuration`. Para mover una config nueva ahí,
+  copiar esos 3 métodos. El parent se matchea por su etiqueta de navegación.
+- `NavigationGroup::make(__('X'))->collapsed()` en `AdminPanelProvider` sigue sirviendo para ordenar/colapsar grupos.
 - Instaladores (`filament:install`) reescriben `bootstrap/providers.php` → revisar y restaurar el orden.
+
+## Receta D — Resource dependiente de SOLO LECTURA (se crea desde fuera del admin)
+
+Cuando un registro dependiente lo genera otra fuente (la app del chofer, un comando, SAP) y el admin solo lo
+CONSULTA — p. ej. el checklist pre-salida se REALIZA desde el camión (ConductPreTripChecklist), no en el admin:
+
+1. Fuera del menú (`shouldRegisterNavigation(): false`) + enlazado desde el hub del padre (Receta A).
+2. **Sin alta ni edición en el admin:**
+   - `public static function canCreate(): bool { return false; }`
+   - Quitar `'create'` de `getPages()` y **borrar** la página `Create…` (archivo) + su import.
+   - Quitar el `CreateAction` del header de la página `List…`.
+   - Borrar el `form()` muerto y `defaultChecklistRows()`/helpers que solo servían al create, + sus imports
+     (si no, Pint marca `no_unused_imports`). `table()` deja solo `ViewAction` (o `recordActions([])`).
+3. **Vista de detalle clara** (`infolist`): secciones legibles — QUIÉN lo hizo (chofer, vía relación, nunca
+   UUID), EN QUÉ entidad, CUÁNDO, RESULTADO (badge), y el detalle (ítems con ✓/✗ como lista `->listWithLineBreaks()->bulleted()`).
+4. **Ajustar el test de cobertura** que renderizaba el create borrado (`CoverageResourcesRenderTest`): quitar el
+   `Livewire::test(Create…)` + su import, o el gate de cobertura rompe.
 
 ## Gotchas de Blade / Alpine / Livewire en el admin (vistos en producción de dev, 2026-11-11)
 

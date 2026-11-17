@@ -44,7 +44,7 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
 
         $headers = $this->connection->table('shipments')
             ->whereIn('id', $ids)
-            ->get(['id', 'customer_phone', 'address_reference', 'customer_name', 'destination_node_id', 'source']);
+            ->get(['id', 'customer_phone', 'address_reference', 'customer_name', 'destination_node_id', 'source', 'lat', 'lng']);
 
         $lines = $this->connection->table('shipment_lines')
             ->whereIn('shipment_id', $ids)
@@ -66,6 +66,9 @@ final readonly class DbStopEnrichmentReader implements StopEnrichmentReader
                 'unit_ids' => $unitIdsByShipment[$shipmentId] ?? [],
                 'units_total' => count($unitIdsByShipment[$shipmentId] ?? []),
                 'destination' => $this->resolveDestination($header, $nodesById),
+                // Coordenadas del destino del envío: respaldo de la parada cuando la suya quedó vacía.
+                'lat' => is_numeric($header->lat ?? null) ? (float) $header->lat : null,
+                'lng' => is_numeric($header->lng ?? null) ? (float) $header->lng : null,
             ];
         }
 

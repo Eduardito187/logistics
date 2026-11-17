@@ -8,12 +8,13 @@ use Logistics\Execution\Domain\Event\ShipmentDelivered;
 use Logistics\Execution\Domain\Event\ShipmentDeparted;
 use Logistics\Execution\Domain\Event\ShipmentLoaded;
 use Logistics\Execution\Domain\Event\ShipmentPrepared;
+use Logistics\Execution\Domain\Event\UnitLoaded;
+use Logistics\Execution\Domain\Event\UnitPrepared;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\Model\Delivery;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
 
@@ -64,15 +65,20 @@ it('runs the prepare -> load -> proof-of-delivery sequence recording an event pe
 
     $events = $delivery->releaseEvents();
 
+    // Cada escaneo emite su señal liviana por bulto (Unit*) y, en el primer bulto, además el hito del envío
+    // (Shipment*): preparación → UnitPrepared + ShipmentPrepared; carga → UnitLoaded + ShipmentLoaded; POD →
+    // ShipmentDelivered.
     expect($delivery->status())->toBe(DeliveryStatus::Delivered)
         ->and($delivery->scans())->toHaveCount(3)
-        ->and($events)->toHaveCount(3)
-        ->and($events[0])->toBeInstanceOf(ShipmentPrepared::class)
-        ->and($events[1])->toBeInstanceOf(ShipmentLoaded::class)
-        ->and($events[2])->toBeInstanceOf(ShipmentDelivered::class);
+        ->and($events)->toHaveCount(5)
+        ->and($events[0])->toBeInstanceOf(UnitPrepared::class)
+        ->and($events[1])->toBeInstanceOf(ShipmentPrepared::class)
+        ->and($events[2])->toBeInstanceOf(UnitLoaded::class)
+        ->and($events[3])->toBeInstanceOf(ShipmentLoaded::class)
+        ->and($events[4])->toBeInstanceOf(ShipmentDelivered::class);
 
     /** @var ShipmentDelivered $delivered */
-    $delivered = $events[2];
+    $delivered = $events[4];
     expect($delivered->eventName())->toBe('execution.shipment_delivered')
         ->and($delivered->payload()['confirmation'])->toBe('QR-OK-123')
         ->and($delivery->proofOfDelivery()?->confirmation)->toBe('QR-OK-123');
@@ -86,10 +92,53 @@ it('allows several preparation scans but records ShipmentPrepared only on the fi
 
     $events = $delivery->releaseEvents();
 
+    // Cada escaneo emite su UnitPrepared (uno por bulto); ShipmentPrepared sale SOLO en el primero: para dos
+    // bultos son [UnitPrepared, ShipmentPrepared, UnitPrepared].
+    $prepared = array_filter($events, static fn (object $event): bool => $event instanceof ShipmentPrepared);
+    $units = array_filter($events, static fn (object $event): bool => $event instanceof UnitPrepared);
+
     expect($delivery->scans())->toHaveCount(2)
         ->and($delivery->status())->toBe(DeliveryStatus::Prepared)
-        ->and($events)->toHaveCount(1)
-        ->and($events[0])->toBeInstanceOf(ShipmentPrepared::class);
+        ->and($events)->toHaveCount(3)
+        ->and($prepared)->toHaveCount(1)
+        ->and($units)->toHaveCount(2)
+        ->and($events[0])->toBeInstanceOf(UnitPrepared::class)
+        ->and($events[1])->toBeInstanceOf(ShipmentPrepared::class)
+        ->and($events[2])->toBeInstanceOf(UnitPrepared::class);
+});
+
+it('emits one UnitPrepared per scanned unit and ShipmentPrepared only on the first', function (): void {
+    $delivery = newDelivery();
+
+    foreach (['u-1', 'u-2', 'u-3'] as $index => $unit) {
+        $delivery->recordPreparationScan($unit, geo(), device(), at("2026-10-13T08:0{$index}:00+00:00"), 'k-prep-'.$unit);
+    }
+
+    $events = $delivery->releaseEvents();
+    $units = array_filter($events, static fn (object $event): bool => $event instanceof UnitPrepared);
+    $prepared = array_filter($events, static fn (object $event): bool => $event instanceof ShipmentPrepared);
+
+    expect($units)->toHaveCount(3)
+        ->and($prepared)->toHaveCount(1)
+        ->and($events)->toHaveCount(4);
+});
+
+it('emits one UnitLoaded per scanned unit and ShipmentLoaded only on the first', function (): void {
+    $delivery = newDelivery();
+    $delivery->recordPreparationScan('u-1', geo(), device(), at('2026-10-13T08:00:00+00:00'), 'k-prep');
+    $delivery->releaseEvents();
+
+    foreach (['u-1', 'u-2', 'u-3'] as $index => $unit) {
+        $delivery->recordLoadScan($unit, geo(), device(), at("2026-10-13T09:0{$index}:00+00:00"), 'k-load-'.$unit);
+    }
+
+    $events = $delivery->releaseEvents();
+    $units = array_filter($events, static fn (object $event): bool => $event instanceof UnitLoaded);
+    $loaded = array_filter($events, static fn (object $event): bool => $event instanceof ShipmentLoaded);
+
+    expect($units)->toHaveCount(3)
+        ->and($loaded)->toHaveCount(1)
+        ->and($events)->toHaveCount(4);
 });
 
 it('is idempotent by idempotency key: a repeated scan neither duplicates nor re-emits', function (): void {
@@ -111,18 +160,21 @@ it('records a failed delivery with its typed reason', function (): void {
     $delivery->recordLoadScan('u-1', geo(), device(), at('2026-10-13T09:00:00+00:00'), 'k-load');
     $delivery->releaseEvents();
 
-    $delivery->recordFailed(FailureReason::CustomerAbsent, 'u-1', geo(), device(), at('2026-10-13T12:00:00+00:00'), 'k-fail');
+    // El motivo es ahora un code del catálogo configurable (string), no un enum fijo; la nota es opcional.
+    $delivery->recordFailed('CUSTOMER_ABSENT', 'customer not at home', 'u-1', geo(), device(), at('2026-10-13T12:00:00+00:00'), 'k-fail');
 
     $events = $delivery->releaseEvents();
 
     expect($delivery->status())->toBe(DeliveryStatus::Failed)
-        ->and($delivery->failureReason())->toBe(FailureReason::CustomerAbsent)
+        ->and($delivery->failureReason())->toBe('CUSTOMER_ABSENT')
+        ->and($delivery->failureNote())->toBe('customer not at home')
         ->and($events)->toHaveCount(1)
         ->and($events[0])->toBeInstanceOf(DeliveryFailed::class);
 
     /** @var DeliveryFailed $failed */
     $failed = $events[0];
-    expect($failed->payload()['reason'])->toBe('CUSTOMER_ABSENT');
+    expect($failed->payload()['reason'])->toBe('CUSTOMER_ABSENT')
+        ->and($failed->payload()['note'])->toBe('customer not at home');
 });
 
 it('records a node reception and moves the delivery to InTransit', function (): void {
