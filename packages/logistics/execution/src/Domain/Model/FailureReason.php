@@ -6,6 +6,7 @@ namespace Logistics\Execution\Domain\Model;
 
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\FailureReasonCode;
+use Logistics\Execution\Domain\ValueObject\FailureReasonId;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 
 /**

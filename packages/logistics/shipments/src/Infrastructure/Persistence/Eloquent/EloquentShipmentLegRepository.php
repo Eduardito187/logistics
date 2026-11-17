@@ -13,10 +13,10 @@ use Logistics\Shipments\Domain\ValueObject\ShipmentLegId;
 /**
  * Implementación Eloquent del repositorio de tramos (el agregado {@see ShipmentItinerary}).
  *
- * save() es un upsert transaccional: sincroniza los tramos del itinerario por id (upsert de los presentes
- * + borrado de los que ya no están), sin borrar y reinsertar todo. Así un tramo que ya existía conserva su
- * fila —y su id— a través de cualquier guardado. El orden de carga lo garantiza el único (shipment_id, seq)
- * y el ORDER BY `seq` de la lectura.
+ * save() es un upsert transaccional por la clave natural (shipment_id, seq): sincroniza los tramos del
+ * itinerario sin borrar y reinsertar todo. Un tramo que ya existía en esa posición conserva su fila —y su
+ * id—, aunque el agregado se haya rearmado con ids nuevos (el planner regenera ids al replanificar). Así la
+ * reconstrucción nunca choca con el único (shipment_id, seq). El ORDER BY `seq` de la lectura da el orden.
  */
 final class EloquentShipmentLegRepository implements ShipmentLegRepository
 {
@@ -33,16 +33,28 @@ final class EloquentShipmentLegRepository implements ShipmentLegRepository
     public function save(ShipmentItinerary $itinerary): void
     {
         $this->connections->connection()->transaction(function () use ($itinerary): void {
-            $keptIds = [];
+            $shipmentId = $itinerary->shipmentId()->toString();
+            $keptSeqs = [];
             foreach ($itinerary->legs() as $leg) {
                 $row = $this->mapper->toLegRow($itinerary, $leg);
-                ShipmentLegRecord::query()->updateOrCreate(['id' => $row['id']], $row);
-                $keptIds[] = $row['id'];
+                // Upsert por (shipment_id, seq): si ese tramo ya existe conserva su fila y su id (no se
+                // reinserta con un id nuevo, que chocaría con el único antes de poder borrar el viejo).
+                $existing = ShipmentLegRecord::query()
+                    ->where('shipment_id', $shipmentId)
+                    ->where('seq', $row['seq'])
+                    ->first();
+                if ($existing !== null) {
+                    unset($row['id']);
+                    $existing->update($row);
+                } else {
+                    ShipmentLegRecord::query()->create($row);
+                }
+                $keptSeqs[] = $row['seq'];
             }
 
-            $query = ShipmentLegRecord::query()->where('shipment_id', $itinerary->shipmentId()->toString());
-            if ($keptIds !== []) {
-                $query->whereNotIn('id', $keptIds);
+            $query = ShipmentLegRecord::query()->where('shipment_id', $shipmentId);
+            if ($keptSeqs !== []) {
+                $query->whereNotIn('seq', $keptSeqs);
             }
             $query->delete();
         });

@@ -6,6 +6,7 @@ namespace Logistics\Execution\Infrastructure\ReadModel;
 
 use Illuminate\Database\ConnectionInterface;
 use Logistics\Execution\Application\Contract\FailureReasonCatalog;
+use Logistics\Execution\Domain\ValueObject\FailureReason as FactoryFailureReason;
 
 /**
  * Lector del catálogo de motivos de entrega fallida contra la tabla `execution_failure_reasons` (read-only).
@@ -29,9 +30,17 @@ final class DbFailureReasonCatalog implements FailureReasonCatalog
 
     public function isActive(string $code): bool
     {
-        $entry = $this->catalog()[$this->normalize($code)] ?? null;
+        $normalized = $this->normalize($code);
+        $entry = $this->catalog()[$normalized] ?? null;
 
-        return $entry !== null && $entry['active'];
+        // Si el catálogo tiene el motivo, manda su bandera `active`.
+        if ($entry !== null) {
+            return $entry['active'];
+        }
+
+        // Fallback: los 5 motivos de fábrica valen aunque la tabla no esté sembrada (tests con base limpia,
+        // deploy antes del seeder). Un motivo configurado y luego desactivado sí cae en la rama de arriba.
+        return FactoryFailureReason::tryFrom($normalized) !== null;
     }
 
     public function requirements(string $code): array

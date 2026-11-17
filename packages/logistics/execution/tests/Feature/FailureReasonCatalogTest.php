@@ -33,7 +33,7 @@ it('crea un motivo derivando el code de la etiqueta y lo lista', function (): vo
     app(CommandBus::class)->dispatch(new CreateFailureReason(label: 'Customer absent'));
 
     /** @var list<FailureReasonView> $all */
-    $all = app(QueryBus::class)->ask(new ListFailureReasons());
+    $all = app(QueryBus::class)->ask(new ListFailureReasons);
 
     expect($all)->toHaveCount(1)
         ->and($all[0]->code)->toBe('CUSTOMER_ABSENT')
@@ -56,9 +56,9 @@ it('edita y desactiva un motivo (soft delete), y el listado activo lo excluye', 
     $bus->dispatch(new DeactivateFailureReason('DAMAGED'));
 
     /** @var list<FailureReasonView> $active */
-    $active = app(QueryBus::class)->ask(new ListActiveFailureReasons());
+    $active = app(QueryBus::class)->ask(new ListActiveFailureReasons);
     /** @var list<FailureReasonView> $all */
-    $all = app(QueryBus::class)->ask(new ListFailureReasons());
+    $all = app(QueryBus::class)->ask(new ListFailureReasons);
 
     expect($active)->toHaveCount(0)
         ->and($all)->toHaveCount(1)

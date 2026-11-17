@@ -9,6 +9,7 @@ use Logistics\Shipments\Domain\Contract\ShipmentRepository;
 use Logistics\Shipments\Domain\Model\Shipment;
 use Logistics\Shipments\Domain\Model\ShipmentItinerary;
 use Logistics\Shipments\Domain\Model\ShipmentLeg;
+use Logistics\Shipments\Domain\Model\ShipmentLine;
 use Logistics\Shipments\Domain\ValueObject\Address;
 use Logistics\Shipments\Domain\ValueObject\AddressConfidence;
 use Logistics\Shipments\Domain\ValueObject\Customer;
