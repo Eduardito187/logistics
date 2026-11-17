@@ -163,7 +163,8 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
      * Línea recta entre los puntos [lng,lat] dados (último recurso cuando el ruteador no está disponible).
      * Null si no hay al menos dos puntos DISTINTOS.
      *
-     * @param list<array{0: float, 1: float}> $points
+     * @param  list<array{0: float, 1: float}> $points
+     * @return array<string, mixed>|null
      */
     private function straightLineFromPoints(array $points): ?array
     {

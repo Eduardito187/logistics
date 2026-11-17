@@ -16,6 +16,8 @@ use Throwable;
  * Entra y sale en PRIMITIVOS (pares [lng, lat]); no acopla Ejecución al dominio de Planificación. Tolerante:
  * ante cualquier fallo del ruteador (host vacío, timeout, respuesta no-Ok, cuerpo mal formado) devuelve null
  * y el lector decide el último recurso (la recta entre paradas). Nunca lanza.
+ *
+ * @phpstan-type StreetGeometry array{type: string, coordinates: list<array{float, float}>, distance_meters: float, duration_seconds: float}
  */
 final readonly class OsrmStreetGeometry
 {
@@ -30,7 +32,8 @@ final readonly class OsrmStreetGeometry
      * Geometría por calles (GeoJSON LineString + distancia/duración) del recorrido que pasa por los puntos en
      * orden, o null si no se pudo calcular (menos de dos puntos, OSRM apagado/no disponible o respuesta inválida).
      *
-     * @param list<array{0: float, 1: float}> $points pares [lng, lat] en orden de reparto
+     * @param  list<array{0: float, 1: float}> $points pares [lng, lat] en orden de reparto
+     * @return StreetGeometry|null
      */
     public function forPoints(array $points): ?array
     {
@@ -46,7 +49,8 @@ final readonly class OsrmStreetGeometry
     }
 
     /**
-     * @param list<array{0: float, 1: float}> $points
+     * @param  list<array{0: float, 1: float}> $points
+     * @return StreetGeometry|null
      */
     private function fromOsrm(array $points): ?array
     {
