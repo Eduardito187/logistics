@@ -36,7 +36,7 @@ final class OrderHub
      *   order: array<string, mixed>|null,
      *   payment: array{method: string, status: string, amount_cents: int|null, currency: string|null, gateway_ref: string|null}|null,
      *   invoice: array{number: string|null, status: string, total_cents: int, issued_at: string|null}|null,
-     *   shipments: list<array{id: string, reference: string, status: string}>,
+     *   shipments: list<array{id: string, label: string, reference: string|null, status: string}>,
      * }
      */
     public function overview(string $orderId): array
@@ -162,10 +162,11 @@ final class OrderHub
 
     /**
      * Envíos nacidos de este pedido (puente OMS→logística, ADR 018): `shipments.order_reference = orderId`.
-     * En multishipping la orden se reparte en varios envíos (uno por destino). Devuelve id (para enlazar a
-     * la ficha 360 del envío) + referencia legible (nº de envío) + estado. Lectura directa tolerante.
+     * En multishipping la orden se reparte en varios envíos (uno por destino). Devuelve id (SOLO para enlazar
+     * a la ficha 360 del envío, nunca se muestra) + la DIRECCIÓN de entrega como etiqueta legible + su
+     * referencia (indicaciones) + estado. Nunca expone el UUID como texto. Lectura directa tolerante.
      *
-     * @return list<array{id: string, reference: string, status: string}>
+     * @return list<array{id: string, label: string, reference: string|null, status: string}>
      */
     private function shipments(string $orderId): array
     {
@@ -174,12 +175,19 @@ final class OrderHub
                 ->where('order_reference', $orderId)
                 ->orderBy('external_id')
                 ->limit(20)
-                ->get(['id', 'external_id', 'status'])
-                ->map(static fn ($r): array => [
-                    'id' => (string) $r->id,
-                    'reference' => (string) $r->external_id,
-                    'status' => (string) $r->status,
-                ])
+                ->get(['id', 'status', 'customer_name', 'address_text', 'address_reference'])
+                ->map(static function ($r): array {
+                    $address = is_string($r->address_text) && trim($r->address_text) !== '' ? trim($r->address_text) : null;
+                    $name = is_string($r->customer_name) && trim($r->customer_name) !== '' ? trim($r->customer_name) : null;
+                    $reference = is_string($r->address_reference) && trim($r->address_reference) !== '' ? trim($r->address_reference) : null;
+
+                    return [
+                        'id' => (string) $r->id,
+                        'label' => $address ?? $name ?? 'Envío',
+                        'reference' => $reference,
+                        'status' => (string) $r->status,
+                    ];
+                })
                 ->all());
         } catch (Throwable) {
             return [];

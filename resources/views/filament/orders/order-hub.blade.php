@@ -225,7 +225,8 @@
                             <div class="ck-event">
                                 <span class="ck-event__ic"></span>
                                 <span class="ck-event__tx">
-                                    <a href="{{ \Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource::getUrl('view', ['record' => $sh['id']]) }}" wire:navigate class="ck-link">{{ $sh['reference'] }}</a>
+                                    <a href="{{ \Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource::getUrl('view', ['record' => $sh['id']]) }}" wire:navigate class="ck-link">{{ $sh['label'] }}</a>
+                                    @if($sh['reference'])<span class="ck-event__meta"> · {{ $sh['reference'] }}</span>@endif
                                 </span>
                                 <span class="ck-pill {{ $shTone ? 'ck-pill--'.$shTone : '' }}">{{ $shLbl }}</span>
                             </div>
