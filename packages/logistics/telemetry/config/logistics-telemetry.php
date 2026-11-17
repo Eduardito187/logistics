@@ -26,6 +26,12 @@ return [
         // Cola del job que drena el buffer (la consume el worker dedicado del supervisor).
         'queue' => (string) env('TELEMETRY_INGEST_QUEUE', 'telemetry'),
 
+        // Puente de la posición POR ENVÍO (`POST /app/tracking/shipments/{id}/position`) hacia esta ingesta:
+        // resuelve el vehículo que custodia el envío y mete la lectura por el mismo camino que
+        // `/app/telemetry/pings`, para que el desvío de ruta y el reruteo funcionen aunque la app mande el GPS
+        // por envío. Encendido por defecto (no requiere `.env`); es un interruptor de apagado de emergencia.
+        'bridge_shipment_position' => (bool) env('TELEMETRY_BRIDGE_SHIPMENT_POSITION', true),
+
         'buffer' => [
             // Conexión Redis/Valkey del buffer (config/database.php → redis.<nombre>). La `default` es la
             // de colas y locks: durable (AOF) y sin evicción, a diferencia de la de caché.
