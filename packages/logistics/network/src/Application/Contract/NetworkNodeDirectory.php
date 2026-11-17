@@ -23,10 +23,8 @@ interface NetworkNodeDirectory
 
     /**
      * Nodo que concentra la distribución de un departamento: el primer centro de distribución o almacén
-     * central ACTIVO de ese departamento, por código. Null si el departamento no tiene ninguno.
-     *
-     * @param  string      $department código o nombre del departamento (se normaliza)
-     * @return string|null             id del nodo hub, o null
+     * central ACTIVO de ese departamento, por su código (se normaliza). Devuelve el id del nodo hub, o null
+     * si el departamento no tiene ninguno.
      */
     public function hubOfDepartment(string $department): ?string;
 

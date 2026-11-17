@@ -17,6 +17,7 @@ use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Outbox\Domain\Contract\OutboxStore;
 use Logistics\Outbox\Domain\OutboxMessage;
 use Logistics\Shared\Domain\Clock\Clock;
+use Logistics\Shared\Domain\Event\DomainEvent;
 
 // HANDOFF a la transportadora: NUESTRO lado deja la carga en el almacén del tercero (carrier_hub). Cierra el
 // tramo de flota propia (execution.shipment_leg_closed) y declara el pase (execution.shipment_handed_to_carrier);
@@ -46,7 +47,7 @@ function hofDevice(): DeviceContext
     return DeviceContext::of('device-01', 'user-07');
 }
 
-/** @param list<\Logistics\Shared\Domain\Event\DomainEvent> $events */
+/** @param list<DomainEvent> $events */
 function hofNames(array $events): array
 {
     return array_map(static fn ($event): string => $event->eventName(), $events);
