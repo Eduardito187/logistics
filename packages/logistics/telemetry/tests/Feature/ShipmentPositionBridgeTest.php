@@ -7,12 +7,11 @@ use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Telemetry\Application\Command\RecordVehiclePings\RecordVehiclePings;
 use Logistics\Telemetry\Application\Contract\ShipmentCustodyReader;
 use Logistics\Telemetry\Application\Ingest\ShipmentPositionBridge;
-use Tests\TestCase;
 
 // El puente mete la posición por envío en la ingesta de telemetría del vehículo que custodia el envío, para
 // que el motor de desvío/reruteo funcione aunque la app mande el GPS por envío. Se verifica contra un
-// CommandBus que registra lo despachado (modo sync), sin tocar la base.
-uses(TestCase::class);
+// CommandBus que registra lo despachado (modo sync), sin tocar la base. El TestCase y RefreshDatabase los
+// aplica tests/Pest.php a toda la carpeta Feature (no se declara uses(TestCase) acá para no doble-bindear).
 
 /** Vehículo y envío de prueba (ids con forma de uuid, no se consultan contra la base). */
 const SPB_VEHICLE = '01a137b3-049a-756f-bfae-d3aa1be6d47c';

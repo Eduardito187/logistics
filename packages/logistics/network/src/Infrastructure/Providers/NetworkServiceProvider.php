@@ -19,7 +19,6 @@ use Logistics\Network\Application\Command\RemoveLeg\RemoveLegHandler;
 use Logistics\Network\Application\Contract\CityCatalogReader;
 use Logistics\Network\Application\Contract\ItineraryPlanner;
 use Logistics\Network\Application\Contract\NetworkNodeDirectory;
-use Logistics\Network\Application\Service\RoutedItineraryPlanner;
 use Logistics\Network\Application\Query\FindLeg\FindLegHandler;
 use Logistics\Network\Application\Query\FindLeg\FindLegQuery;
 use Logistics\Network\Application\Query\FindNode\FindNodeHandler;
@@ -34,6 +33,7 @@ use Logistics\Network\Application\Query\ListReceivingDocks\ListReceivingDocksHan
 use Logistics\Network\Application\Query\ListReceivingDocks\ListReceivingDocksQuery;
 use Logistics\Network\Application\Query\OperationalCorridorsByDepartment\OperationalCorridorsByDepartmentHandler;
 use Logistics\Network\Application\Query\OperationalCorridorsByDepartment\OperationalCorridorsByDepartmentQuery;
+use Logistics\Network\Application\Service\RoutedItineraryPlanner;
 use Logistics\Network\Domain\Contract\LegRepository;
 use Logistics\Network\Domain\Contract\NodeRepository;
 use Logistics\Network\Domain\Contract\ReceivingDockRepository;

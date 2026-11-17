@@ -11,7 +11,7 @@ namespace Logistics\Shipments\Application\Contract;
  * extraer `network` a un servicio no obliga a tocar el dominio ni la aplicación de shipments.
  *
  * Devuelve el MISMO shape de legs que el planificador de la red (ya normalizado): el `haulage_mode` de cada
- * tramo es 'own_fleet' | 'third_party' (no el modo a nivel envío), listo para mapearse a {@see \Logistics\Shipments\Domain\Model\ShipmentLeg}.
+ * tramo es 'own_fleet' | 'third_party' (no el modo a nivel envío), listo para mapearse a ShipmentLeg.
  */
 interface ItineraryRouter
 {

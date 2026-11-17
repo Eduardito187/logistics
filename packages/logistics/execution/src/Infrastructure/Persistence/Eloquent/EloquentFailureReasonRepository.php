@@ -17,7 +17,7 @@ use Logistics\Execution\Domain\ValueObject\FailureReasonId;
 final class EloquentFailureReasonRepository implements FailureReasonRepository
 {
     public function __construct(
-        private readonly FailureReasonMapper $mapper = new FailureReasonMapper(),
+        private readonly FailureReasonMapper $mapper = new FailureReasonMapper,
     ) {}
 
     public function nextIdentity(): FailureReasonId

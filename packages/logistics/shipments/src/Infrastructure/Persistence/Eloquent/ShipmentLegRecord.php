@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  * Fila de la tabla `shipment_legs`. PK uuid string no incremental (UUID v7 generado por el dominio).
  *
  * Es detalle de Infrastructure: nunca cruza hacia Application ni Domain. El mapeo a/desde el agregado
- * {@see \Logistics\Shipments\Domain\Model\ShipmentItinerary} lo hace {@see ShipmentLegMapper}.
+ * ShipmentItinerary lo hace ShipmentLegMapper.
  *
  * NOTA: `departed_at`/`arrived_at` NO se castean a `datetime` a propósito. El cast de Eloquent escribe el
  * timestamptz sin offset y desfasa la hora (gotcha conocido del proyecto); el mapper lee/escribe el valor

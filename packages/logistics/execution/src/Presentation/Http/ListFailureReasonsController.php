@@ -17,7 +17,7 @@ final class ListFailureReasonsController extends ExecutionController
     public function __invoke(): JsonResponse
     {
         /** @var list<FailureReasonView> $views */
-        $views = $this->queryBus->ask(new ListFailureReasons());
+        $views = $this->queryBus->ask(new ListFailureReasons);
 
         return new JsonResponse([
             'data' => array_map(static fn (FailureReasonView $view): array => $view->toArray(), $views),

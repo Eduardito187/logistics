@@ -24,7 +24,7 @@ trait ResolvesFailureReasonView
         $normalized = FailureReasonCode::fromString($code)->value;
 
         /** @var list<FailureReasonView> $views */
-        $views = $queryBus->ask(new ListFailureReasons());
+        $views = $queryBus->ask(new ListFailureReasons);
         foreach ($views as $view) {
             if ($view->code === $normalized) {
                 return $view->toArray();
