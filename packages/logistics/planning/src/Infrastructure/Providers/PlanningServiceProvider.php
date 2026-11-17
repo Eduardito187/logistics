@@ -40,6 +40,7 @@ use Logistics\Planning\Application\Command\SetVehicleRestrictions\SetVehicleRest
 use Logistics\Planning\Application\Command\SetVehicleRestrictions\SetVehicleRestrictionsHandler;
 use Logistics\Planning\Application\Contract\PlanCrewLabels;
 use Logistics\Planning\Application\Contract\PlanExecutionStatusReader;
+use Logistics\Planning\Application\Contract\RouteOriginLocator;
 use Logistics\Planning\Application\Contract\ShipmentPlanningFactsReader;
 use Logistics\Planning\Application\Contract\TripCandidateReader;
 use Logistics\Planning\Application\Contract\TripVehicleReader;
@@ -94,6 +95,7 @@ use Logistics\Planning\Infrastructure\Adapter\FleetCrewShiftRulesProvider;
 use Logistics\Planning\Infrastructure\Adapter\FleetVehicleAvailabilityProvider;
 use Logistics\Planning\Infrastructure\Adapter\NetworkNodeOriginLocator;
 use Logistics\Planning\Infrastructure\Adapter\ShipmentLoadReader;
+use Logistics\Planning\Infrastructure\Adapter\VehicleHomeBaseOriginLocator;
 use Logistics\Planning\Infrastructure\Outbox\VehicleIncidentReplanningDispatcher;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\BroadcastingAutoPlanRunRepository;
 use Logistics\Planning\Infrastructure\Persistence\Eloquent\BroadcastingPlanRepository;
@@ -303,6 +305,11 @@ final class PlanningServiceProvider extends ServiceProvider
 
         // Resolución del nodo CD de origen (contexto Red) para usarlo de depósito en la matriz/geometría.
         $this->app->bind(PlanningOriginLocator::class, NetworkNodeOriginLocator::class);
+
+        // Punto de salida POR VEHÍCULO: su sede/almacén base (su carrier_hub si es de transportadora), leído
+        // de Flota. El refrescador de geometría lo PREFIERE sobre el depósito global, para que la polilínea
+        // del plan arranque donde arranca ese camión.
+        $this->app->bind(RouteOriginLocator::class, VehicleHomeBaseOriginLocator::class);
 
         // Coordenadas de los envíos (contexto Envíos) para recalcular la geometría de un plan existente.
         $this->app->bind(ShipmentCoordinatesProvider::class, EloquentShipmentCoordinatesProvider::class);

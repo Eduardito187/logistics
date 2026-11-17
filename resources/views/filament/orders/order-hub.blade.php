@@ -63,7 +63,7 @@
                     <div style="min-width:0">
                         <div class="ck-hub__title">{{ $o['customer_name'] }}</div>
                         <div class="ck-hub__sub">
-                            Pedido · {{ $o['items'] }} {{ $o['items'] === 1 ? 'ítem' : 'ítems' }} · {{ $money($o['total_cents'], $currency) }}
+                            @if($h['code'])<span class="ck-mono">Pedido Nº {{ $h['code'] }}</span> · @endif{{ $o['items'] }} {{ $o['items'] === 1 ? 'ítem' : 'ítems' }} · {{ $money($o['total_cents'], $currency) }}
                         </div>
                         <div class="ck-hub__pills">
                             <span class="ck-pill {{ $statusTone ? 'ck-pill--'.$statusTone : '' }}">{{ $statusLabel }}</span>
@@ -225,7 +225,8 @@
                             <div class="ck-event">
                                 <span class="ck-event__ic"></span>
                                 <span class="ck-event__tx">
-                                    <a href="{{ \Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource::getUrl('view', ['record' => $sh['id']]) }}" wire:navigate class="ck-link">{{ $sh['reference'] }}</a>
+                                    @if($sh['code'])<span class="ck-event__meta ck-mono">Nº {{ $sh['code'] }} · </span>@endif<a href="{{ \Logistics\Shipments\Presentation\Filament\Resources\ShipmentResource::getUrl('view', ['record' => $sh['id']]) }}" wire:navigate class="ck-link">{{ $sh['label'] }}</a>
+                                    @if($sh['reference'])<span class="ck-event__meta"> · {{ $sh['reference'] }}</span>@endif
                                 </span>
                                 <span class="ck-pill {{ $shTone ? 'ck-pill--'.$shTone : '' }}">{{ $shLbl }}</span>
                             </div>

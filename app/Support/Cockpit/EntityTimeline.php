@@ -42,6 +42,7 @@ final class EntityTimeline
         'planning.plan_published' => 'Plan publicado',
         'tracking.shipment_placed_on_route' => 'Puesto en ruta',
         'tracking.status_changed' => 'Cambio de estado de seguimiento',
+        'tracking.shipment_corrected' => 'Corrección manual de estado',
         'tracking.tracking_opened' => 'Seguimiento abierto',
         'tracking.unit_status_changed' => 'Cambio de estado de producto',
         'tracking.unit_tracking_opened' => 'Seguimiento de producto abierto',

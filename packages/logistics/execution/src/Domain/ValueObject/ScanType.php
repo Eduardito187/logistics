@@ -30,6 +30,13 @@ enum ScanType: string
     case NodeReception = 'NODE_RECEPTION';
 
     /**
+     * Entrega a la transportadora (handoff): NUESTRO lado dejó la carga en el almacén de la transportadora
+     * (nodo `carrier_hub`). Cierra el tramo de flota propia; NO es la entrega final (el envío sigue en manos
+     * del tercero).
+     */
+    case Handoff = 'HANDOFF';
+
+    /**
      * Punto GPS de tránsito (breadcrumb): posición del vehículo en ruta entre paradas. No es un hito de
      * la máquina de estados —no mueve la entrega ni graba evento de negocio—, solo telemetría del
      * recorrido real para el mapa. Se registra en secuencia creciente mientras el camión se desplaza.

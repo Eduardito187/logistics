@@ -36,6 +36,13 @@ enum VisibleStatus: string
     /** En camino: el camión salió hacia el destino (absorbe "llegando"). */
     case OnTheWay = 'ON_THE_WAY';
 
+    /**
+     * Entregado a la transportadora: la carga salió del origen en manos de un transportista (viaje de
+     * larga distancia entre corredores). NO es terminal: desde acá el pedido sigue hasta «en camino» en el
+     * destino, se entrega, falla, se reprograma o se anula. Lo dispara `carriers.carrier_trip_started`.
+     */
+    case HandedToCarrier = 'HANDED_TO_CARRIER';
+
     /** Entregado al cliente. */
     case Delivered = 'DELIVERED';
 
@@ -73,10 +80,11 @@ enum VisibleStatus: string
     {
         return match ($this) {
             self::Pending => [self::Processing, self::Cancelled],
-            self::Processing => [self::InProgress, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
-            self::InProgress => [self::Loaded, self::OnTheWay, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
-            self::Loaded => [self::OnTheWay, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
-            self::OnTheWay => [self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
+            self::Processing => [self::InProgress, self::HandedToCarrier, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
+            self::InProgress => [self::Loaded, self::OnTheWay, self::HandedToCarrier, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
+            self::Loaded => [self::OnTheWay, self::HandedToCarrier, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
+            self::OnTheWay => [self::HandedToCarrier, self::Delivered, self::Failed, self::Cancelled, self::Rescheduled],
+            self::HandedToCarrier => [self::OnTheWay, self::Delivered, self::Failed, self::Rescheduled, self::Cancelled],
             self::Failed => [self::OnTheWay, self::Delivered, self::Rescheduled, self::Cancelled],
             self::Rescheduled => [self::Processing, self::Delivered, self::Failed],
             self::Delivered => [self::Returned],
@@ -117,5 +125,26 @@ enum VisibleStatus: string
     public function isTerminal(): bool
     {
         return $this === self::Cancelled || $this === self::Returned;
+    }
+
+    /**
+     * Etiqueta corta del estado, de cara al CLIENTE. Va en ESPAÑOL a propósito: es copy orientado al
+     * cliente boliviano (la página pública de rastreo y los avisos), NO texto de admin.
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Pending => 'Pendiente de pago',
+            self::Processing => 'En preparación',
+            self::InProgress => 'En preparación',
+            self::Loaded => 'Cargado en el camión',
+            self::OnTheWay => 'En camino',
+            self::HandedToCarrier => 'Entregado a la transportadora',
+            self::Delivered => 'Entregado',
+            self::Failed => 'Entrega fallida',
+            self::Cancelled => 'Anulado',
+            self::Rescheduled => 'Reprogramado',
+            self::Returned => 'Devuelto',
+        };
     }
 }

@@ -8,6 +8,7 @@ use DateInterval;
 use DateTimeImmutable;
 use Logistics\Shared\Domain\Aggregate\AggregateRoot;
 use Logistics\Tracking\Domain\Event\ShipmentPlacedOnRoute;
+use Logistics\Tracking\Domain\Event\ShipmentTrackingCorrected;
 use Logistics\Tracking\Domain\Event\TrackingOpened;
 use Logistics\Tracking\Domain\Event\TrackingShipmentBound;
 use Logistics\Tracking\Domain\Event\TrackingStatusChanged;
@@ -252,6 +253,34 @@ final class ShipmentTracking extends AggregateRoot
     public function markReturned(): void
     {
         $this->applyStatus(VisibleStatus::Returned);
+    }
+
+    /**
+     * Graba el hecho de AUDITORÍA de una corrección MANUAL del estado visible (bitácora/timeline del hub).
+     * NO cambia el estado: el avance real ya lo aplicó {@see applyStatus()} (vía AdvanceTracking); acá solo
+     * se deja el rastro de quién corrigió, desde/hacia qué estado, por qué, cuándo y si se avisa al cliente.
+     */
+    public function recordCorrection(
+        VisibleStatus $from,
+        VisibleStatus $to,
+        string $reason,
+        string $actorId,
+        string $actorName,
+        DateTimeImmutable $at,
+        bool $notifyCustomer,
+    ): void {
+        $this->recordEvent(new ShipmentTrackingCorrected(
+            $this->id->toString(),
+            $this->shipmentId,
+            $from->value,
+            $to->value,
+            $reason,
+            $actorId,
+            $actorName,
+            $at->format(DateTimeImmutable::ATOM),
+            $notifyCustomer,
+            $this->orderReference,
+        ));
     }
 
     /**

@@ -9,7 +9,7 @@ use Logistics\Shared\Domain\Enum\CaseInsensitiveEnum;
 /**
  * Tipo de nodo de la red logística.
  *
- * Más adelante pueden sumarse lockers o agentes; por ahora son estos cuatro (ver README del package).
+ * Más adelante pueden sumarse lockers o agentes; por ahora son estos cinco (ver README del package).
  */
 enum NodeType: string
 {
@@ -32,6 +32,13 @@ enum NodeType: string
     case CentralWarehouse = 'central_warehouse';
 
     /**
+     * Almacén de una transportadora: el punto donde nuestra flota propia DEJA la carga para que un
+     * tercero haga el tramo largo (modelo tercerizado). Es un hub de handoff: recibe nuestra mercadería
+     * (inbound) y desde él continúa el tramo third_party. No ofrece corredor terminal por sí mismo.
+     */
+    case CarrierHub = 'carrier_hub';
+
+    /**
      * Etiqueta legible en inglés para el admin y la consola.
      */
     public function label(): string
@@ -41,14 +48,17 @@ enum NodeType: string
             self::Store => 'Store',
             self::PickupPoint => 'Pickup point',
             self::CentralWarehouse => 'Central warehouse',
+            self::CarrierHub => 'Carrier hub',
         };
     }
 
     /**
-     * Un almacén central recibe de proveedores: es el único tipo que habilita andenes de recepción.
+     * ¿El nodo recibe carga como un hub? El almacén central recibe de proveedores y el almacén de la
+     * transportadora recibe nuestro handoff; ambos habilitan andenes de recepción. El CD, la tienda y
+     * el punto de recojo no.
      */
     public function receivesInbound(): bool
     {
-        return $this === self::CentralWarehouse;
+        return $this === self::CentralWarehouse || $this === self::CarrierHub;
     }
 }

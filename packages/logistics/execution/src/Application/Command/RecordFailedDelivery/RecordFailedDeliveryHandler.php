@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Logistics\Execution\Application\Command\RecordFailedDelivery;
 
 use DateTimeImmutable;
+use Logistics\Execution\Application\Contract\FailureReasonCatalog;
 use Logistics\Execution\Application\Service\RouteDeliveryOpener;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
 use Logistics\Execution\Domain\Contract\VehicleRouteRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Outbox\Application\RecordDomainEvents;
 use Logistics\Shared\Application\Command\Command;
@@ -33,6 +33,7 @@ final class RecordFailedDeliveryHandler implements CommandHandler
         private readonly VehicleRouteRepository $routes,
         private readonly RecordDomainEvents $recordEvents,
         private readonly RouteDeliveryOpener $opener,
+        private readonly FailureReasonCatalog $catalog,
     ) {}
 
     public function handle(Command $command): void
@@ -43,6 +44,28 @@ final class RecordFailedDeliveryHandler implements CommandHandler
 
         $occurredAt = new DateTimeImmutable($command->occurredAt);
 
+        // El motivo debe pertenecer al catálogo CONFIGURABLE y estar ACTIVO (los 5 de fábrica lo están por el
+        // seeder). Un code desconocido o desactivado es una regla de negocio → 422 (no un 500 por enum).
+        $reason = trim($command->reason);
+        if (!$this->catalog->isActive($reason)) {
+            throw ExecutionException::because("motivo de entrega fallida no válido o inactivo: {$reason}");
+        }
+
+        // Exigencias del motivo elegido: foto y/o nota obligatorias (configurables por el admin).
+        $requirements = $this->catalog->requirements($reason);
+        $note = $command->note !== null && trim($command->note) !== '' ? trim($command->note) : null;
+        $photoPath = $command->photoPath !== null && trim($command->photoPath) !== '' ? trim($command->photoPath) : null;
+
+        if ($requirements['requires_note'] && $note === null) {
+            throw ExecutionException::because("el motivo {$reason} exige una nota");
+        }
+        // La foto viaja por una cola APARTE (offline-first): puede no estar subida al registrar la fallida. Por
+        // eso la exigencia se da por cumplida con `photoPath` O con la señal `hasPhoto` de la app (que encoló la
+        // foto). Nunca se bloquea por el archivo en sí, para no romper el registro sin señal.
+        if ($requirements['requires_photo'] && $photoPath === null && !$command->hasPhoto) {
+            throw ExecutionException::because("el motivo {$reason} exige una foto");
+        }
+
         // Si el envío está en la ruta de un camión pero su entrega nunca se abrió (ruta armada desde el
         // plan publicado), se abre con ese camión para poder registrar el intento. Sin ruta, error claro.
         $delivery = $this->opener->forShipment($command->shipmentId, $occurredAt);
@@ -51,7 +74,8 @@ final class RecordFailedDeliveryHandler implements CommandHandler
         }
 
         $delivery->recordFailed(
-            FailureReason::from($command->reason),
+            $reason,
+            $note,
             $command->unitId,
             GeoPoint::of($command->lat, $command->lng),
             DeviceContext::of($command->deviceId, $command->userId),
