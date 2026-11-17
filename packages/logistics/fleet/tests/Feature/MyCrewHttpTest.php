@@ -135,58 +135,59 @@ it('no le quita la entrega al chofer a la medianoche: ruta EN CURSO de ayer sigu
 });
 
 it('la entrega en curso se resuelve por el driver_id de la ruta, no por el camión de una tripulación más nueva', function (): void {
-    // Regresión (staging 2026-11): el chofer tiene su entrega EN CURSO en el camión A (ayer), pero una
-    // tripulación MÁS NUEVA suya quedó en el camión B (hoy), y el camión B tiene abierta la ruta de OTRO
-    // chofer. El barrido por camión agarraba la ruta ajena de B y tapaba/perdía la entrega real del chofer.
+    // Regresión (staging 2026-11): sin tripulación HOY (se dispara el arrastre), el chofer tiene su entrega EN
+    // CURSO en el camión A (anteayer) y además una tripulación MÁS RECIENTE en el camión B (ayer) cuya ruta
+    // abierta es de OTRO chofer. El barrido viejo por cuadrilla agarraba la más reciente (B) y devolvía la ruta
+    // ajena; el arrastre por `driver_id` de la ruta devuelve SIEMPRE la entrega real del chofer (A).
     $vehicleA = registrarVehiculoMyCrew();
     $vehicleB = registrarVehiculoMyCrew();
     $driverId = registrarChoferMyCrew('Chofer Reasignado');
     $otherDriverId = registrarChoferMyCrew('Otro Chofer');
-    $yesterday = (new DateTimeImmutable('yesterday', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
-    $today = (new DateTimeImmutable('today', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
+    $dayOld = (new DateTimeImmutable('-2 days', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
+    $dayMid = (new DateTimeImmutable('yesterday', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
 
-    // AYER: tripulación + entrega EN CURSO del chofer en el camión A (su asignación real).
+    // ANTEAYER: tripulación + entrega EN CURSO del chofer en el camión A (su asignación real).
     app(CommandBus::class)->dispatch(new AssembleCrew(
         driverId: $driverId,
         helperIds: [],
         vehicleId: $vehicleA,
-        assembledFor: $yesterday,
+        assembledFor: $dayOld,
     ));
     DB::table('execution_driver_routes')->insert([
         'id' => Uuid::generate()->value,
         'vehicle_id' => $vehicleA,
         'driver_id' => $driverId,
-        'route_date' => $yesterday,
+        'route_date' => $dayOld,
         'status' => 'IN_PROGRESS',
-        'created_at' => now()->subDay(),
-        'updated_at' => now()->subDay(),
+        'created_at' => now()->subDays(2),
+        'updated_at' => now()->subDays(2),
     ]);
 
-    // HOY: tripulación MÁS NUEVA del chofer en el camión B, pero la ruta abierta de B es de OTRO chofer.
+    // AYER: tripulación MÁS RECIENTE del chofer en el camión B, pero la ruta abierta de B es de OTRO chofer.
     app(CommandBus::class)->dispatch(new AssembleCrew(
         driverId: $driverId,
         helperIds: [],
         vehicleId: $vehicleB,
-        assembledFor: $today,
+        assembledFor: $dayMid,
     ));
     DB::table('execution_driver_routes')->insert([
         'id' => Uuid::generate()->value,
         'vehicle_id' => $vehicleB,
         'driver_id' => $otherDriverId,
-        'route_date' => $today,
+        'route_date' => $dayMid,
         'status' => 'IN_PROGRESS',
-        'created_at' => now(),
-        'updated_at' => now(),
+        'created_at' => now()->subDay(),
+        'updated_at' => now()->subDay(),
     ]);
 
     Sanctum::actingAs(User::factory()->create(['driver_id' => $driverId]));
 
-    // Sin ?date: debe devolver SU entrega en curso (camión A, ayer), nunca la ruta ajena del camión B.
+    // Sin ?date (no hay tripulación hoy): debe devolver SU entrega en curso (camión A), nunca la ruta ajena de B.
     $this->getJson('/api/v1/app/fleet/my-crew')
         ->assertOk()
         ->assertJsonPath('data.driver.id', $driverId)
         ->assertJsonPath('data.vehicle.id', $vehicleA)
-        ->assertJsonPath('data.date', $yesterday);
+        ->assertJsonPath('data.date', $dayOld);
 });
 
 it('con ?date explícito NO arrastra la ruta en curso de otro día (previsualización respeta la fecha)', function (): void {
