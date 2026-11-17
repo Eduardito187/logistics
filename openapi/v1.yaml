@@ -4326,7 +4326,7 @@ paths:
       - name: q
         in: query
         required: false
-        description: Free-text search over the truck plate, the driver name and the origin node name.
+        description: Free-text search over the truck plate, the driver name, the origin node name, and —per stop— the order reference and the customer name.
         schema:
           type: string
           maxLength: 120

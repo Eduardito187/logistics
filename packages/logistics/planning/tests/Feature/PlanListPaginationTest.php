@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDate;
 use Logistics\Planning\Application\ReadModel\PlanView;
+use Logistics\Planning\Database\Factories\PlannedStopRecordFactory;
 use Logistics\Planning\Database\Factories\PlanRecordFactory;
 use Logistics\Planning\Domain\ValueObject\PlanStatus;
 use Logistics\Shared\Application\Query\QueryBus;
@@ -134,6 +135,28 @@ it('filtra por texto q (placa del camión)', function (): void {
     $this->getJson('/api/v1/app/plans?date=2031-03-10&q=zzz-no-existe')
         ->assertOk()
         ->assertJsonCount(0, 'data');
+});
+
+it('q también matchea el número de pedido y el cliente de las paradas', function (): void {
+    $plan = PlanRecordFactory::new()->onDate(PLAN_PAGINATION_DATE)->create();
+    PlannedStopRecordFactory::new()->create([
+        'plan_id' => $plan->getKey(),
+        'order_reference' => 'PED-ZX9',
+        'customer_name' => 'Mariana Testigo',
+        'sequence' => 1,
+    ]);
+    PlanRecordFactory::new()->onDate(PLAN_PAGINATION_DATE)->create(); // otro plan sin esa parada
+
+    // Por número de pedido.
+    $this->getJson('/api/v1/app/plans?date=2031-03-10&q=PED-ZX9')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', (string) $plan->getKey());
+
+    // Por nombre del cliente.
+    $this->getJson('/api/v1/app/plans?date=2031-03-10&q=mariana')
+        ->assertOk()
+        ->assertJsonCount(1, 'data');
 });
 
 it('enriquece cada plan con execution_status de su ruta del día', function (): void {

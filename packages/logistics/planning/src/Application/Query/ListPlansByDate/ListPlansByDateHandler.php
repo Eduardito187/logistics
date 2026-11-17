@@ -90,8 +90,9 @@ final readonly class ListPlansByDateHandler implements QueryHandler
     }
 
     /**
-     * Filtra los planes por texto libre contra la placa del camión, el nombre del chofer y el nombre del nodo
-     * de origen (acento/caja indiferentes a nivel de inclusión de substring).
+     * Filtra los planes por texto libre contra la placa del camión, el nombre del chofer, el nombre del nodo
+     * de origen y —por parada— el número de pedido y el nombre del cliente (el dueño busca mucho por
+     * pedido/cliente). Inclusión de substring, caja indiferente.
      *
      * @param  list<PlanView> $views
      * @return list<PlanView>
@@ -101,11 +102,17 @@ final readonly class ListPlansByDateHandler implements QueryHandler
         $needle = mb_strtolower($search);
 
         return array_values(array_filter($views, static function (PlanView $view) use ($needle): bool {
-            $haystack = mb_strtolower(implode(' ', array_filter([
+            $parts = [
                 $view->plate,
                 $view->driverName,
                 is_array($view->originNode) && isset($view->originNode['name']) ? (string) $view->originNode['name'] : null,
-            ])));
+            ];
+            foreach ($view->stops as $stop) {
+                $parts[] = $stop->orderReference;
+                $parts[] = $stop->customerName;
+            }
+
+            $haystack = mb_strtolower(implode(' ', array_filter($parts)));
 
             return $haystack !== '' && str_contains($haystack, $needle);
         }));
