@@ -55,8 +55,11 @@ final readonly class MyCrewController
             )->withInstance($request->getRequestUri())->toResponse($request);
         }
 
+        // Sin `?date` explícito se pide la asignación VIGENTE: una entrega EN CURSO que cruzó la medianoche no
+        // se le quita al chofer (ver GetMyCrewHandler). Con una fecha explícita (p. ej. previsualizar un día
+        // futuro) se respeta esa fecha exacta, sin arrastre.
         /** @var MyCrewView|null $crew */
-        $crew = $this->queryBus->ask(new GetMyCrew($driverId, $date, $helperId));
+        $crew = $this->queryBus->ask(new GetMyCrew($driverId, $date, $helperId, allowOpenCarryover: !$request->filled('date')));
 
         if ($crew === null) {
             return ProblemDetails::fromCode(

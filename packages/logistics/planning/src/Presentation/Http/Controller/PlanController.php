@@ -12,7 +12,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Logistics\Planning\Application\Command\DeletePlan\DeletePlan;
 use Logistics\Planning\Application\Command\PublishPlan\PublishPlan;
@@ -66,17 +65,24 @@ final class PlanController extends PlanningController
      * Aditivo (auditoría app #20): rango `date_from`/`date_to` (máx. 31 días, en lugar de `date`), filtros
      * `status` y `vehicle_id`, y paginación estándar opt-in (`page`/`per_page` o `cursor`, ver ApiPagination).
      * Sin parámetros de página la respuesta es la histórica: lista completa + meta {date, count}.
+     *
+     * Filtros server-side (listado de planes de la app): `status` acepta UNO o VARIOS (CSV `DRAFT,PUBLISHED`
+     * o repetido `status[]=`), y `q` es texto libre contra placa / chofer / nodo de origen. Cada plan trae
+     * además `execution_status` (NOT_STARTED|IN_PROGRESS|COMPLETED|null) de su ruta del día.
      */
     public function index(Request $request): JsonResponse
     {
-        /** @var array{date?: string|null, date_from?: string|null, date_to?: string|null, status?: string|null, vehicle_id?: string|null} $validated */
+        /** @var array{date?: string|null, date_from?: string|null, date_to?: string|null, vehicle_id?: string|null, q?: string|null} $validated */
         $validated = $request->validate([
             'date' => ['required_without:date_from', 'nullable', 'string', 'date_format:Y-m-d'],
             'date_from' => ['required_without:date', 'required_with:date_to', 'nullable', 'string', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'string', 'date_format:Y-m-d', 'after_or_equal:date_from'],
-            'status' => ['nullable', 'string', Rule::in(ListPlansByDate::STATUSES)],
             'vehicle_id' => ['nullable', 'uuid'],
+            'q' => ['nullable', 'string', 'max:120'],
         ]);
+
+        // `status` se acepta como CSV o repetido (uno o varios estados), así que se valida y normaliza aparte.
+        $statuses = $this->parseStatuses($request->input('status'));
 
         // `date` (día suelto) tiene prioridad por compatibilidad; si no viene, manda el rango.
         $date = $validated['date'] ?? null;
@@ -95,7 +101,8 @@ final class PlanController extends PlanningController
         $result = $this->queryBus->ask(new ListPlansByDate(
             planDate: $from,
             dateTo: $to,
-            status: $validated['status'] ?? null,
+            statuses: $statuses,
+            search: isset($validated['q']) && $validated['q'] !== '' ? $validated['q'] : null,
             vehicleId: $validated['vehicle_id'] ?? null,
             limit: $paginate ? ApiPagination::limit($request) : null,
             offset: $paginate ? ApiPagination::offset($request) : 0,
@@ -116,6 +123,37 @@ final class PlanController extends PlanningController
             array_map(static fn (PlanView $plan): array => $plan->toArray(), $plans),
             $rangeMeta + ['count' => count($plans)],
         );
+    }
+
+    /**
+     * Normaliza el filtro `status` (CSV `DRAFT,PUBLISHED` o repetido `status[]=`) a una lista de estados
+     * válidos, sin duplicados. Vacío = sin filtro. Un estado desconocido responde 422.
+     *
+     * @return list<string>
+     */
+    private function parseStatuses(mixed $raw): array
+    {
+        if ($raw === null || $raw === '' || $raw === []) {
+            return [];
+        }
+
+        $values = is_array($raw) ? $raw : explode(',', (string) $raw);
+
+        $out = [];
+        foreach ($values as $value) {
+            $status = strtoupper(trim((string) $value));
+            if ($status === '') {
+                continue;
+            }
+            if (!in_array($status, ListPlansByDate::STATUSES, true)) {
+                throw ValidationException::withMessages([
+                    'status' => ['The selected status is invalid: '.$status.'.'],
+                ]);
+            }
+            $out[$status] = true;
+        }
+
+        return array_keys($out);
     }
 
     /**
