@@ -59,8 +59,9 @@ final class EnsureVehicleCrew
 
     /**
      * ¿Esta petición puede ver / operar el vehículo del path? Oficina siempre; cualquier otro rol solo si es
-     * tripulante de ese vehículo el día relevante. Sin usuario de la app pasa (la autenticación es otra capa
-     * de la puerta, no asunto de esta guarda).
+     * tripulante de ese vehículo (tripulación del día) o CHOFER de un viaje (ruta) de ese vehículo —la
+     * asignación es por viaje, no por jornada—. Sin usuario de la app pasa (la autenticación es otra capa de
+     * la puerta, no asunto de esta guarda).
      */
     private function passes(Request $request, mixed $user): bool
     {
@@ -73,10 +74,97 @@ final class EnsureVehicleCrew
 
         $vehicleId = $this->routeText($request, 'vehicleId');
         $linkIds = $this->userLinkIds($user);
+        if ($vehicleId === null || $linkIds === []) {
+            return false;
+        }
 
-        return $vehicleId !== null
-            && $linkIds !== []
-            && $this->isCrewMember($vehicleId, $linkIds, $this->relevantDate($request));
+        // Pertenencia por TRIPULACIÓN del día (chofer o ayudante en `fleet_crews` de esa fecha).
+        if ($this->isCrewMember($vehicleId, $linkIds, $this->relevantDate($request))) {
+            return true;
+        }
+
+        // Pertenencia por VIAJE (la asignación es POR VIAJE, no por día): el camión, el chofer y la tripulación
+        // se asignan por salida/ruta, no por jornada. Un chofer puede llevar el camión A en un viaje y el B en
+        // el siguiente el mismo día; su pertenencia a un camión la define que sea el CHOFER de una ruta (viaje)
+        // de ESE camión —abierta, o del día relevante—, leída directo de `execution_driver_routes.driver_id`,
+        // sin pasar por la tripulación del día. Así nunca se le dice "este camión no es tuyo" en un viaje suyo.
+        if ($this->hasDriverTrip($vehicleId, $linkIds, $request)) {
+            return true;
+        }
+
+        // Carryover de MEDIANOCHE para el AYUDANTE (la ruta no graba al ayudante): sin `?date` explícito, si el
+        // camión tiene una ruta EN CURSO/pausada, el ayudante de la tripulación de ESE día sigue perteneciendo
+        // aunque hoy no tenga tripulación. La pertenencia la rige el ESTADO de la ruta, no el calendario.
+        if (!$this->hasExplicitDate($request)) {
+            $openDay = $this->openRouteDate($vehicleId);
+
+            return $openDay !== null && $this->isCrewMember($vehicleId, $linkIds, $openDay);
+        }
+
+        return false;
+    }
+
+    /**
+     * ¿El usuario es el CHOFER de un VIAJE (ruta) de ese vehículo? La asignación es por viaje: basta con ser el
+     * `driver_id` de una ruta de ese camión que esté ABIERTA (en curso/pausada) o, con `?date` explícito, la de
+     * esa fecha. Consulta de solo lectura sobre `execution_driver_routes`. (El ayudante no se graba en la ruta;
+     * su pertenencia sale de la tripulación, no de aquí.)
+     *
+     * @param list<string> $linkIds vínculos de la cuenta, en forma de UUID (el `driver_id` es el que matchea)
+     */
+    private function hasDriverTrip(string $vehicleId, array $linkIds, Request $request): bool
+    {
+        $date = $this->relevantDate($request);
+
+        try {
+            $query = DB::table('execution_driver_routes')
+                ->where('vehicle_id', $vehicleId)
+                ->whereIn('driver_id', $linkIds);
+
+            if ($this->hasExplicitDate($request)) {
+                $query->whereDate('route_date', $date);
+            } else {
+                $query->where(static function ($inner) use ($date): void {
+                    $inner->whereIn('status', ['IN_PROGRESS', 'SUSPENDED'])
+                        ->orWhereDate('route_date', $date);
+                });
+            }
+
+            return $query->exists();
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * ¿La petición fijó explícitamente un día por `?date`? En ese caso (previsualizar un día concreto) la
+     * pertenencia es estricta a esa fecha y NO aplica el arrastre de la ruta en curso.
+     */
+    private function hasExplicitDate(Request $request): bool
+    {
+        $raw = $request->query('date');
+
+        return is_string($raw) && preg_match('/^\d{4}-\d{2}-\d{2}/', trim($raw)) === 1;
+    }
+
+    /**
+     * Fecha de la ruta EN CURSO (o pausada) más reciente de ese vehículo, cualquier día, o null si no tiene
+     * ninguna abierta (o si Ejecución no está disponible). Consulta de solo lectura sobre `execution_driver_routes`.
+     */
+    private function openRouteDate(string $vehicleId): ?string
+    {
+        try {
+            $date = DB::table('execution_driver_routes')
+                ->where('vehicle_id', $vehicleId)
+                ->whereIn('status', ['IN_PROGRESS', 'SUSPENDED'])
+                ->orderByRaw('route_date DESC NULLS LAST')
+                ->orderByDesc('id')
+                ->value('route_date');
+        } catch (Throwable) {
+            return null;
+        }
+
+        return is_string($date) && $date !== '' ? substr($date, 0, 10) : null;
     }
 
     /**

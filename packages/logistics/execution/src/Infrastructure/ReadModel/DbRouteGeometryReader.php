@@ -10,16 +10,18 @@ use Logistics\Execution\Application\Contract\RouteGeometryReader;
 use Throwable;
 
 /**
- * Lector de la geometría de ruta. Garantiza que SIEMPRE haya línea planificada si la ruta tiene al menos
- * dos puntos, en este orden:
+ * Lector de la geometría de ruta. Garantiza que SIEMPRE haya una línea por CALLES si la ruta tiene al menos
+ * dos puntos y el ruteador está disponible, en este orden:
  *
  * 1. La geometría persistida del plan (`planning_plans.route_geometry`) del mismo camión y día.
  * 2. Si el plan existe pero no tiene geometría, se le pide a Planificación que la calcule y persista (vía
  *    el callback `$ensurePlanGeometry`, que el provider cablea al servicio de aplicación de Planificación;
  *    Ejecución nunca escribe sobre Planning por sí misma) y se vuelve a leer.
- * 3. Si no hay plan o no se pudo calcular: línea RECTA entre las paradas de la ruta del chofer en orden de
- *    secuencia (coordenada de la parada o, si falta, la del envío), con distancia haversine y duración
- *    estimada a velocidad media. Así la app y el admin siempre dibujan algo.
+ * 3. Si no hay plan con geometría, se GENERA la ruta por CALLES con OSRM a partir de las paradas de la ruta
+ *    del chofer en orden de secuencia (callback `$streetGeometryForStops`). Así la ruta nunca sale en línea
+ *    recta "por encima de todo" por el simple hecho de no tener un plan: se rutea por las calles reales.
+ * 4. ÚLTIMO recurso (solo si el ruteador no está disponible): línea recta entre las paradas, con distancia
+ *    haversine y duración estimada a velocidad media, para que la app y el admin siempre dibujen algo.
  *
  * Devuelve el esquema RouteGeometry (type/coordinates [[lng,lat],...]/distance_meters/duration_seconds).
  */
@@ -29,12 +31,15 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
     private const FALLBACK_SPEED_KMH = 30.0;
 
     /**
-     * @param (Closure(string, string): bool)|null $ensurePlanGeometry calcula y persiste la geometría del
-     *                                                                 plan (vehículo, día); true si la guardó
+     * @param (Closure(string, string): bool)|null                              $ensurePlanGeometry     calcula
+     *        y persiste la geometría del plan (vehículo, día); true si la guardó
+     * @param (Closure(list<array{0: float, 1: float}>): (array<string, mixed>|null))|null $streetGeometryForStops
+     *        rutea por calles (OSRM) los puntos [lng,lat] en orden y devuelve la geometría primitiva, o null
      */
     public function __construct(
         private ConnectionInterface $connection,
         private ?Closure $ensurePlanGeometry = null,
+        private ?Closure $streetGeometryForStops = null,
     ) {}
 
     public function forVehicleAndDate(string $vehicleId, string $routeDate): ?array
@@ -57,11 +62,26 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
                     }
                 }
             } catch (Throwable) {
-                // Se cae a la línea recta.
+                // Se cae a la generación por calles desde las paradas.
             }
         }
 
-        return $this->straightLineFromRouteStops($vehicleId, $routeDate);
+        // Sin plan con geometría: rutear por CALLES las paradas de la ruta (nunca recta por no tener plan).
+        $points = $this->routeStopPoints($vehicleId, $routeDate);
+        if (count($points) >= 2 && $this->streetGeometryForStops !== null) {
+            try {
+                $street = ($this->streetGeometryForStops)($points);
+                if (is_array($street) && isset($street['coordinates']) && is_array($street['coordinates'])
+                    && self::isDrawable($street['coordinates'])) {
+                    /** @var array<string, mixed> $street */
+                    return $street;
+                }
+            } catch (Throwable) {
+                // Se cae a la recta (solo si el ruteador no está disponible).
+            }
+        }
+
+        return $this->straightLineFromPoints($points);
     }
 
     /**
@@ -107,12 +127,12 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
     }
 
     /**
-     * Línea recta entre las paradas de la ruta del chofer, en orden de secuencia. Null si no hay al menos
-     * dos puntos con coordenada.
+     * Coordenadas [lng,lat] de las paradas de la ruta del chofer, en orden de secuencia (coordenada de la
+     * parada o, si falta, la del envío). Lista vacía si no se pudo leer.
      *
-     * @return array<string, mixed>|null
+     * @return list<array{0: float, 1: float}>
      */
-    private function straightLineFromRouteStops(string $vehicleId, string $routeDate): ?array
+    private function routeStopPoints(string $vehicleId, string $routeDate): array
     {
         try {
             $rows = $this->connection->table('execution_driver_route_stops as s')
@@ -123,12 +143,10 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
                 ->orderBy('s.sequence')
                 ->get(['s.lat as stop_lat', 's.lng as stop_lng', 'sh.lat as shipment_lat', 'sh.lng as shipment_lng']);
         } catch (Throwable) {
-            return null;
+            return [];
         }
 
-        $coordinates = [];
-        $distance = 0.0;
-        $previous = null;
+        $points = [];
         foreach ($rows as $row) {
             $data = (array) $row;
             $lat = $data['stop_lat'] ?? $data['shipment_lat'] ?? null;
@@ -136,22 +154,37 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
             if (!is_numeric($lat) || !is_numeric($lng)) {
                 continue;
             }
+            $points[] = [(float) $lng, (float) $lat];
+        }
 
-            $point = [(float) $lng, (float) $lat];
+        return $points;
+    }
+
+    /**
+     * Línea recta entre los puntos [lng,lat] dados (último recurso cuando el ruteador no está disponible).
+     * Null si no hay al menos dos puntos DISTINTOS.
+     *
+     * @param  list<array{0: float, 1: float}> $points
+     * @return array<string, mixed>|null
+     */
+    private function straightLineFromPoints(array $points): ?array
+    {
+        if (!self::isDrawable($points)) {
+            return null;
+        }
+
+        $distance = 0.0;
+        $previous = null;
+        foreach ($points as $point) {
             if ($previous !== null) {
                 $distance += self::haversineMeters($previous, $point);
             }
-            $coordinates[] = $point;
             $previous = $point;
-        }
-
-        if (!self::isDrawable($coordinates)) {
-            return null;
         }
 
         return [
             'type' => 'LineString',
-            'coordinates' => $coordinates,
+            'coordinates' => $points,
             'distance_meters' => round($distance, 1),
             'duration_seconds' => round($distance / (self::FALLBACK_SPEED_KMH * 1000.0 / 3600.0), 1),
         ];

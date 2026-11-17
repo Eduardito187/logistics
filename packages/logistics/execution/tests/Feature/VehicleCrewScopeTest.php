@@ -217,6 +217,28 @@ it('bloquea con 403 al tripulante de ayer cuando pide la ruta de hoy', function 
         ->assertJsonPath('code', VCS_FORBIDDEN_CODE);
 });
 
+it('arrastra la pertenencia por la ruta EN CURSO: el tripulante opera su vehículo sin ?date aunque hoy no tenga tripulación', function (): void {
+    $vehicle = Uuid::generate()->value;
+    $driver = Uuid::generate()->value;
+    // Tripulación + ruta de AYER, puesta EN CURSO (entrega que cruzó la medianoche). HOY no hay tripulación.
+    vcsSeedCrew($vehicle, $driver, Uuid::generate()->value, VCS_PREV_DATE);
+    vcsAssembleRoute($vehicle, VCS_PREV_DATE);
+    DB::table('execution_driver_routes')->where('vehicle_id', $vehicle)->whereDate('route_date', VCS_PREV_DATE)
+        ->update(['status' => 'IN_PROGRESS']);
+
+    vcsActingAs(Role::Chofer, $driver);
+
+    // SIN ?date (asignación VIGENTE): la ruta en curso de ayer lo habilita a operar su vehículo hoy.
+    test()->getJson("/api/v1/app/vehicles/{$vehicle}/route")
+        ->assertOk()
+        ->assertJsonPath('data.vehicle_id', $vehicle);
+
+    // Con ?date explícito a un día sin tripulación (previsualizar) NO arrastra: sigue 403.
+    test()->getJson("/api/v1/app/vehicles/{$vehicle}/route?date=".VCS_DATE)
+        ->assertStatus(403)
+        ->assertJsonPath('code', VCS_FORBIDDEN_CODE);
+});
+
 it('rechaza con 403 un vehicleId sin forma de UUID sin tocar la base (sin 22P02)', function (): void {
     vcsActingAs(Role::Chofer, Uuid::generate()->value);
 
