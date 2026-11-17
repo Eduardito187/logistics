@@ -23,6 +23,8 @@ final class FailedDeliveryRequest extends ScanRequest
             'reason' => ['required', 'string', 'max:64'],
             'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'photo_path' => ['sometimes', 'nullable', 'string', 'max:2048'],
+            // La foto se sube por una cola aparte (offline-first); la app marca que ya la encoló.
+            'has_photo' => ['sometimes', 'boolean'],
         ]);
     }
 }

@@ -59,7 +59,10 @@ final class RecordFailedDeliveryHandler implements CommandHandler
         if ($requirements['requires_note'] && $note === null) {
             throw ExecutionException::because("el motivo {$reason} exige una nota");
         }
-        if ($requirements['requires_photo'] && $photoPath === null) {
+        // La foto viaja por una cola APARTE (offline-first): puede no estar subida al registrar la fallida. Por
+        // eso la exigencia se da por cumplida con `photoPath` O con la señal `hasPhoto` de la app (que encoló la
+        // foto). Nunca se bloquea por el archivo en sí, para no romper el registro sin señal.
+        if ($requirements['requires_photo'] && $photoPath === null && !$command->hasPhoto) {
             throw ExecutionException::because("el motivo {$reason} exige una foto");
         }
 

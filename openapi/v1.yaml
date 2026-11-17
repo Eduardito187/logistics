@@ -19327,12 +19327,21 @@ components:
             type: string
             maxLength: 1000
             nullable: true
-            description: Nota libre; obligatoria si el motivo elegido exige nota (requires_note).
+            description: Nota libre; obligatoria si el motivo elegido exige nota (requires_note), validada en el backend.
           photo_path:
             type: string
             maxLength: 2048
             nullable: true
-            description: Referencia de foto (de /app/deliveries/photos); obligatoria si el motivo exige foto (requires_photo).
+            description: Referencia de foto (de /app/deliveries/photos), si ya se subió. Opcional.
+          has_photo:
+            type: boolean
+            default: false
+            description: >-
+              La foto de la fallida se sube por una cola APARTE, offline-first (POST /app/deliveries/photos,
+              ligada por shipment_id), así que al registrar la fallida puede no estar subida todavía. Por eso la
+              exigencia de foto (requires_photo) NO se valida contra el archivo: se da por cumplida si vino
+              `photo_path` O si la app marca `has_photo=true` (ya la encoló). Si el motivo exige foto y no llega
+              ni `photo_path` ni `has_photo=true` → 422.
     FailureReason:
       type: string
       description: 'Motivos de fábrica de no-entrega. El catálogo real es configurable (ver FailureReasonCatalogItem); este enum documenta los 5 sembrados por defecto. Un envío puede quedar guardado con un code configurable fuera de esta lista.'

@@ -97,6 +97,7 @@ final class ScanCommandFactory
             idempotencyKey: $key,
             note: $note !== '' ? $note : null,
             photoPath: $photoPath !== '' ? $photoPath : null,
+            hasPhoto: (bool) ($data['has_photo'] ?? false),
         );
     }
 
