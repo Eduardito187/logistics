@@ -92,7 +92,7 @@ final readonly class DbShipmentItineraryReader implements ShipmentItineraryReade
      * Tramos del envío ordenados por `seq` (recorrido). Lista vacía si el id no es UUID, si el envío no tiene
      * itinerario o si la consulta falla.
      *
-     * @return list<object>
+     * @return list<\stdClass>
      */
     private function legs(string $shipmentId): array
     {

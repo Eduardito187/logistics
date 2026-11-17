@@ -100,6 +100,6 @@ final class ShipmentItinerary extends AggregateRoot
 
         usort($legs, static fn (ShipmentLeg $a, ShipmentLeg $b): int => $a->seq() <=> $b->seq());
 
-        return array_values($legs);
+        return $legs;
     }
 }

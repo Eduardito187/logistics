@@ -47,7 +47,7 @@ final class RecordCarrierHandoffHandler implements CommandHandler
         }
 
         $openLeg = $this->itinerary?->nextOpenLeg($command->shipmentId);
-        $legSeq = $openLeg?->seq ?? 0;
+        $legSeq = $openLeg->seq ?? 0;
         $carrierId = $command->carrierId ?? $openLeg?->carrierId;
 
         $delivery->recordCarrierHandoff(

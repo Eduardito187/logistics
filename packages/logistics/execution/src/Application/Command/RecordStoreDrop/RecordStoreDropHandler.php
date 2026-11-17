@@ -169,7 +169,7 @@ final class RecordStoreDropHandler implements CommandHandler
 
         // El tramo que se cierra es el que el envío venía recorriendo (el primer tramo abierto); su seq viaja
         // en el hecho para que shipments lo pase a `closed` y arranque el siguiente.
-        $seq = $this->itinerary->nextOpenLeg($shipmentId)?->seq ?? 0;
+        $seq = $this->itinerary->nextOpenLeg($shipmentId)->seq ?? 0;
         $delivery->closeLegAtHub($seq, $nodeId, $occurredAt);
 
         return true;
