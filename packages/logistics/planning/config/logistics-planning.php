@@ -8,7 +8,16 @@ return [
     // el optimizador de rutas para el orden óptimo de paradas y las ETA, y el mapa de Ejecución para la
     // geometría de la ruta por calles. Por defecto, el servidor público de demo (solo para desarrollo;
     // en producción debe apuntar a una instancia propia). Sin barra final.
-    'osrm_host' => env('OSRM_HOST', 'https://router.project-osrm.org'),
+    //
+    // Resuelve a un host usable cuando `OSRM_HOST` está AUSENTE o puesto en `null` (el caso que degradaba
+    // staging a líneas rectas): un entorno sin la variable NO debe depender del `.env` para rutear por calles.
+    // Se respeta el string VACÍO explícito ("") como "OSRM apagado" (los tests lo fuerzan así en phpunit.xml
+    // para no pegarle a la red); `env()` devuelve null si la variable falta o es `null`, y "" si es `=`.
+    'osrm_host' => (static function (): string {
+        $host = env('OSRM_HOST');
+
+        return is_string($host) ? rtrim(trim($host), '/') : 'https://router.project-osrm.org';
+    })(),
 
     // Tope de espera (segundos) de cada llamada a OSRM desde el backend. Pasado el tope, el optimizador
     // degrada al orden de entrada en vez de bloquear la generación del plan.
