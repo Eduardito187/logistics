@@ -251,8 +251,12 @@ abstract class AbstractRecordVehiclePingsController extends ApiController
             'recorded_at' => (string) $row['recorded_at'],
         ];
 
+        // Velocidad: se prefiere km/h; si solo vino en m/s (lo que manda la app) se convierte (× 3.6). Así el
+        // comando y el resto del backend ven SIEMPRE `speed_kph`, sin que el cliente tenga que cambiar.
         if (isset($row['speed_kph'])) {
             $ping['speed_kph'] = (float) $row['speed_kph'];
+        } elseif (isset($row['speed_mps'])) {
+            $ping['speed_kph'] = (float) $row['speed_mps'] * 3.6;
         }
         if (isset($row['heading'])) {
             $ping['heading'] = (int) $row['heading'];

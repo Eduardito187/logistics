@@ -34,6 +34,7 @@ use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatc
 use Logistics\Shipments\Infrastructure\Dispatch\ShipmentStatusProgressionDispatcher;
 use Logistics\Telemetry\Infrastructure\Outbox\BindTripToRouteOnRouteStarted;
 use Logistics\Telemetry\Infrastructure\Outbox\BroadcastFleetRemovedOnVehicleRetired;
+use Logistics\Telemetry\Infrastructure\Outbox\RefreshRerouteOnDeviation;
 use Logistics\Tracking\Infrastructure\Outbox\AtStoreOnStoreDrop;
 use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
 use Logistics\Tracking\Infrastructure\Outbox\CancelOnOrderCancelled;
@@ -209,6 +210,9 @@ return [
         'labels.labels_emitted' => InProgressOnLabelsEmitted::class,
         // Lote de telemetría → posición del camión en el seguimiento de cada envío a bordo.
         'telemetry.vehicle_position_reported' => TruckPositionOnVehicleReport::class,
+        // Inicio de desvío: recalcula YA (async) la geometría del reruteo por calles, sin esperar el minuto
+        // del scheduler, para que el mapa pase de la recta al trazo por calles apenas el camión se desvía.
+        'telemetry.vehicle_deviation_started' => RefreshRerouteOnDeviation::class,
         'returns.return_initiated' => ReturnedOnReturnInitiated::class,
     ],
 
