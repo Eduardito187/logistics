@@ -15,6 +15,11 @@ use Logistics\Shared\Application\Query\Query;
  *
  * Se pasa uno de los dos vínculos (el que tenga la cuenta); el otro queda null. Si ambos vienen null, el
  * handler devuelve null (sin asignación).
+ *
+ * `allowOpenCarryover`: true solo cuando se pide la asignación VIGENTE (sin `?date` explícito). En ese caso,
+ * si no hay tripulación en `date` pero el chofer tiene una ruta EN CURSO de otro día (una entrega que cruzó
+ * la medianoche o larga a otra ciudad/país), NO se le quita: se usa la tripulación de esa ruta abierta hasta
+ * que se cierre. Con una fecha explícita (p. ej. previsualizar un día futuro) queda false: esa fecha exacta.
  */
 final readonly class GetMyCrew implements Query
 {
@@ -22,5 +27,6 @@ final readonly class GetMyCrew implements Query
         public ?string $driverId,
         public string $date,
         public ?string $helperId = null,
+        public bool $allowOpenCarryover = false,
     ) {}
 }

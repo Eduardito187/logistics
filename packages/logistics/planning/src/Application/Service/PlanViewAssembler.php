@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Logistics\Planning\Application\Service;
 
 use Logistics\Planning\Application\Contract\PlanCrewLabels;
+use Logistics\Planning\Application\Contract\PlanExecutionStatusReader;
 use Logistics\Planning\Application\Contract\ShipmentPlanningFactsReader;
 use Logistics\Planning\Application\Contract\TripVehicleReader;
 use Logistics\Planning\Application\ReadModel\PlanView;
@@ -26,6 +27,7 @@ final readonly class PlanViewAssembler
         private ShipmentPlanningFactsReader $shipments,
         private TripVehicleReader $vehicles,
         private TripBuilderSettings $settings,
+        private PlanExecutionStatusReader $executionStatuses,
     ) {}
 
     /**
@@ -56,6 +58,8 @@ final readonly class PlanViewAssembler
         $drivers = $this->labels->driverNamesFor(array_values($slots));
         $vehicles = $this->vehicles->vehiclesFor($vehicleIds);
         $facts = $shipmentIds === [] ? [] : $this->shipments->factsFor(array_map('strval', array_keys($shipmentIds)));
+        // Estado de EJECUCIÓN de la ruta del día de cada plan (cross-context, en lote): «en curso»/«cerrada».
+        $executionStatuses = $this->executionStatuses->statusesFor(array_values($slots));
         $timezone = $this->settings->timeZone();
 
         return array_map(
@@ -66,6 +70,7 @@ final readonly class PlanViewAssembler
                 $facts,
                 ($vehicles[strtolower($plan->vehicleId())] ?? null)?->originNode(),
                 $timezone,
+                $executionStatuses[$plan->vehicleId().'|'.$plan->date()->toString()] ?? null,
             ),
             $plans,
         );

@@ -31,8 +31,13 @@ use Logistics\Shared\Application\Query\QueryHandler;
  * `logistics:fleet:reconcile-crews`), manda la de ruta abierta y, sin rutas, la armada más tarde; nunca
  * la primera que aparezca.
  *
- * Sin tripulación en la fecha devuelve null (el controller lo traduce a 404). El vehículo, el chofer y
- * cada ayudante se enriquecen con sus datos legibles (placa, nombre) contra sus repositorios.
+ * Asignación VIGENTE y MEDIANOCHE: cuando se pide la asignación actual (`allowOpenCarryover`), si no hay
+ * tripulación en la fecha pero el chofer tiene una ruta EN CURSO de otro día (una entrega que cruzó la
+ * medianoche o larga a otra ciudad/país), se devuelve la tripulación de ESA ruta abierta hasta que se cierre:
+ * la asignación la rige el ESTADO de la ruta, no el calendario. Nunca se le quita una entrega en curso.
+ *
+ * Sin tripulación en la fecha (ni ruta abierta que arrastre) devuelve null (el controller lo traduce a 404).
+ * El vehículo, el chofer y cada ayudante se enriquecen con sus datos legibles (placa, nombre).
  *
  * @phpstan-import-type CrewRow from CrewDirectory
  * @phpstan-import-type DepartureRoute from DepartureRouteReader
@@ -47,6 +52,16 @@ final readonly class GetMyCrewHandler implements QueryHandler
     /** Estados de una ruta abierta, en orden de prioridad: la que ya salió manda sobre la planificada. */
     private const array OPEN_STATUSES = ['IN_PROGRESS', 'PLANNED'];
 
+    /**
+     * Estados de una ruta que SIGUE siendo la asignación vigente del chofer aunque haya cambiado el día: una
+     * entrega EN CURSO (o pausada) no se le quita al cruzar la medianoche. Una ruta sólo PLANIFICADA de un día
+     * pasado NO arrastra (nunca arrancó): es stock viejo, no una entrega en curso.
+     */
+    private const array CARRYOVER_STATUSES = ['IN_PROGRESS', 'SUSPENDED'];
+
+    /** Tripulaciones recientes del chofer (varios días) que se miran para encontrar su ruta abierta. */
+    private const int RECENT_CREWS = 10;
+
     public function __construct(
         private CrewRepository $crews,
         private VehicleRepository $vehicles,
@@ -60,12 +75,25 @@ final readonly class GetMyCrewHandler implements QueryHandler
     {
         assert($query instanceof GetMyCrew);
 
-        $rows = $this->mostRecentFirst($this->viewerCrews($query));
+        $date = $query->date;
+        $rows = $this->mostRecentFirst($this->viewerCrews($query, $date));
+
+        // Entrega que cruzó la medianoche (o larga a otra ciudad/país): si no hay tripulación en la fecha
+        // vigente pero el chofer tiene una ruta EN CURSO de otro día, su asignación NO se le quita — se usa la
+        // tripulación de esa ruta abierta, con su fecha, hasta que la ruta se cierre.
+        if ($rows === [] && $query->allowOpenCarryover) {
+            [$carryRows, $carryDate] = $this->openAssignment($query);
+            if ($carryRows !== [] && $carryDate !== null) {
+                $rows = $this->mostRecentFirst($carryRows);
+                $date = $carryDate;
+            }
+        }
+
         if ($rows === []) {
             return null;
         }
 
-        $routes = $this->routesOfViewer($query->date, $rows);
+        $routes = $this->routesOfViewer($date, $rows);
         [$row, $route] = $this->currentDeparture($rows, $routes);
 
         $crew = $this->crews->findById(CrewId::fromString($row['id']));
@@ -96,14 +124,67 @@ final readonly class GetMyCrewHandler implements QueryHandler
      *
      * @return list<CrewRow>
      */
-    private function viewerCrews(GetMyCrew $query): array
+    private function viewerCrews(GetMyCrew $query, string $date): array
     {
         if ($query->driverId !== null && $query->driverId !== '') {
-            return $this->directory->list($query->date, null, $query->driverId, self::MAX_CREWS_PER_DAY, 0)['items'];
+            return $this->directory->list($date, null, $query->driverId, self::MAX_CREWS_PER_DAY, 0)['items'];
         }
 
         if ($query->helperId !== null && $query->helperId !== '') {
-            return $this->directory->listForHelper($query->date, $query->helperId, self::MAX_CREWS_PER_DAY, 0)['items'];
+            return $this->directory->listForHelper($date, $query->helperId, self::MAX_CREWS_PER_DAY, 0)['items'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Asignación VIGENTE por RUTA ABIERTA (no por calendario): entre las tripulaciones RECIENTES del
+     * solicitante (varios días, más reciente primero), encuentra la más reciente cuyo camión tenga una ruta
+     * EN CURSO y devuelve TODAS las tripulaciones de ESE día junto con su fecha. Así una entrega en curso que
+     * cruzó la medianoche —o larga a otra ciudad/país— sigue siendo del chofer hasta que la ruta se cierre.
+     * Sin ninguna ruta en curso, devuelve `[[], null]` (cae al `null` = sin asignación en la fecha).
+     *
+     * @return array{0: list<CrewRow>, 1: string|null}
+     */
+    private function openAssignment(GetMyCrew $query): array
+    {
+        $recent = $this->recentCrews($query);
+
+        foreach ($recent as $crew) {
+            $open = array_filter(
+                $this->routes->onDate($crew['assembled_for'], [$crew['vehicle_id']]),
+                static fn (array $route): bool => $route['vehicle_id'] === $crew['vehicle_id']
+                    && in_array($route['status'], self::CARRYOVER_STATUSES, true),
+            );
+            if ($open === []) {
+                continue;
+            }
+
+            $day = $crew['assembled_for'];
+            $sameDay = array_values(array_filter(
+                $recent,
+                static fn (array $c): bool => $c['assembled_for'] === $day,
+            ));
+
+            return [$sameDay, $day];
+        }
+
+        return [[], null];
+    }
+
+    /**
+     * Tripulaciones recientes del solicitante (cualquier fecha, más reciente primero), acotadas a RECENT_CREWS.
+     *
+     * @return list<CrewRow>
+     */
+    private function recentCrews(GetMyCrew $query): array
+    {
+        if ($query->driverId !== null && $query->driverId !== '') {
+            return $this->directory->list(null, null, $query->driverId, self::RECENT_CREWS, 0)['items'];
+        }
+
+        if ($query->helperId !== null && $query->helperId !== '') {
+            return $this->directory->listForHelper(null, $query->helperId, self::RECENT_CREWS, 0)['items'];
         }
 
         return [];

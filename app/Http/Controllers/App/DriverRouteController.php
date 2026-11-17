@@ -47,6 +47,9 @@ final class DriverRouteController
         $plate = DB::table('fleet_vehicles')->where('id', $route->vehicle_id)->value('plate');
         $stops = $this->stops((string) $route->id);
         $delivered = count(array_filter($stops, static fn (array $s): bool => $s['done']));
+        // El trazo del mapa sale del plan del DÍA DE LA RUTA (que puede ser el de ayer si la entrega sigue en
+        // curso), no de hoy; si no, una ruta que cruzó la medianoche quedaría sin línea.
+        $routeDate = $this->routeDateOf($route, $today);
 
         return Inertia::render(self::VIEW, [
             'hasRoute' => true,
@@ -55,7 +58,7 @@ final class DriverRouteController
             'status' => is_string($route->status) ? $route->status : '',
             'stops' => $stops,
             'summary' => ['total' => count($stops), 'delivered' => $delivered, 'pending' => count($stops) - $delivered],
-            'routeLine' => $this->routeLine((string) $route->vehicle_id, $today),
+            'routeLine' => $this->routeLine((string) $route->vehicle_id, $routeDate),
         ]);
     }
 
@@ -75,17 +78,18 @@ final class DriverRouteController
         $today = (new DateTimeImmutable('today'))->format('Y-m-d');
         $route = $this->findRoute($driverId, $today);
         if ($route === null) {
-            return back()->with('error', 'No tenés una ruta asignada para hoy.');
+            return back()->with('error', 'No tenés una ruta asignada.');
         }
 
         $now = (new DateTimeImmutable('now'))->format(DATE_ATOM);
 
-        // Abre la ruta del día (started_at/estado) con el mismo comando que la API de la app; idempotente.
+        // Abre la ruta de SU día (el de la ruta, que puede ser el de ayer si la entrega cruzó la medianoche),
+        // con el mismo comando que la API de la app; idempotente.
         try {
             $this->bus->dispatch(new StartDriverRoute(
                 vehicleId: (string) $route->vehicle_id,
                 occurredAt: $now,
-                routeDate: $today,
+                routeDate: $this->routeDateOf($route, $today),
             ));
         } catch (Throwable) {
             // Ruta suspendida o ya cerrada: igual se intenta marcar la salida de cada envío abajo.
@@ -109,14 +113,36 @@ final class DriverRouteController
         return back()->with('success', 'Ruta iniciada. Tus pedidos están en camino.');
     }
 
-    /** Ruta del día del chofer (la más reciente), o null si no tiene una publicada para hoy. */
+    /**
+     * Ruta VIGENTE del chofer, regida por el ESTADO y no por el calendario: una entrega EN CURSO (o pausada)
+     * que cruzó la medianoche —o larga a otra ciudad/país— NO se le quita. Primero su ruta ABIERTA de
+     * cualquier día; si no tiene ninguna abierta, la ruta de HOY. Null si no hay ninguna.
+     */
     private function findRoute(string $driverId, string $today): ?\stdClass
     {
+        $open = DB::table('execution_driver_routes')
+            ->where('driver_id', $driverId)
+            ->whereIn('status', ['IN_PROGRESS', 'SUSPENDED'])
+            ->orderByDesc('route_date')
+            ->orderByDesc('updated_at')
+            ->first(['id', 'vehicle_id', 'status', 'route_date']);
+        if ($open !== null) {
+            return $open;
+        }
+
         return DB::table('execution_driver_routes')
             ->where('driver_id', $driverId)
             ->whereDate('route_date', $today)
             ->orderByDesc('updated_at')
-            ->first(['id', 'vehicle_id', 'status']);
+            ->first(['id', 'vehicle_id', 'status', 'route_date']);
+    }
+
+    /** Fecha (Y-m-d) de la ruta resuelta, o HOY si la fila no la trae. */
+    private function routeDateOf(\stdClass $route, string $today): string
+    {
+        $raw = $route->route_date ?? null;
+
+        return is_string($raw) && $raw !== '' ? substr($raw, 0, 10) : $today;
     }
 
     /**
