@@ -22,8 +22,5 @@
     },
     "optionalDependencies": {
         "@laravel/multiplex": "^0.4.1"
-    },
-    "overrides": {
-        "picomatch": "^4.0.3"
     }
 }

@@ -19,33 +19,20 @@ namespace Logistics\Network\Application\Contract;
  *
  * El acarreo (`haulage_mode`) de CADA tramo es 'own_fleet' o 'third_party' (no el modo a nivel envío):
  * así lo consume shipments sin traducción.
+ *
+ * @phpstan-type ItineraryLegRow array{seq: int, from_node_id: string, to_node_id: string|null, from_department: string|null, to_department: string|null, haulage_mode: string, carrier_id: string|null}
  */
 interface ItineraryPlanner
 {
     /**
-     * Arma la secuencia de tramos de un envío.
+     * Arma la secuencia de tramos de un envío. El último tramo termina en `to_node_id = $destinationNodeId`
+     * cuando el destino es un nodo de la red (tienda, punto de recojo), o en `to_node_id = null` cuando es una
+     * entrega a domicilio (cliente por geolocalización, `$customerGeo`). `$haulageMode` es la decisión de
+     * planning ('own_fleet' | 'outsourced'); `$carrierId`/`$carrierHubNodeId` solo aplican a tercerizado (si el
+     * hub es null se resuelve por el directorio de la red).
      *
-     * El último tramo termina en `to_node_id = $destinationNodeId` cuando el destino es un nodo de la red
-     * (tienda, punto de recojo), o en `to_node_id = null` cuando es una entrega a domicilio (cliente por
-     * geolocalización, `$customerGeo`).
-     *
-     * @param  string                $originNodeId          id del nodo de origen (un CD/almacén)
-     * @param  string|null           $destinationNodeId     id del nodo destino, o null si es a domicilio
-     * @param  string                $destinationDepartment código o nombre del departamento destino
      * @param  array{lat: float, lng: float}|null $customerGeo coordenadas del cliente (entrega a domicilio)
-     * @param  string                $haulageMode           'own_fleet' | 'outsourced' (decisión de planning)
-     * @param  string|null           $carrierId             id de la transportadora cuando es tercerizado
-     * @param  string|null           $carrierHubNodeId      almacén de la transportadora ya elegido (opcional);
-     *                                                       si es null se resuelve por el directorio
-     * @return list<array{
-     *     seq: int,
-     *     from_node_id: string,
-     *     to_node_id: string|null,
-     *     from_department: string|null,
-     *     to_department: string|null,
-     *     haulage_mode: string,
-     *     carrier_id: string|null
-     * }>
+     * @return list<ItineraryLegRow>
      */
     public function planLegs(
         string $originNodeId,

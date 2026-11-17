@@ -12,6 +12,7 @@ use Logistics\Execution\Application\ReadModel\FailureReasonView;
 use Logistics\Execution\Database\Seeders\FailureReasonSeeder;
 use Logistics\Execution\Domain\Contract\FailureReasonRepository;
 use Logistics\Execution\Domain\Exception\ExecutionException;
+use Logistics\Execution\Domain\ValueObject\FailureReasonCode;
 use Logistics\Execution\Infrastructure\Persistence\Eloquent\FailureReasonRecord;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Application\Query\QueryBus;
@@ -111,7 +112,7 @@ it('acepta la forma primitiva del repositorio', function (): void {
     app(CommandBus::class)->dispatch(new CreateFailureReason(label: 'Other', code: 'OTHER'));
 
     $reason = app(FailureReasonRepository::class)->findByCode(
-        \Logistics\Execution\Domain\ValueObject\FailureReasonCode::fromString('OTHER'),
+        FailureReasonCode::fromString('OTHER'),
     );
 
     expect($reason)->not->toBeNull()

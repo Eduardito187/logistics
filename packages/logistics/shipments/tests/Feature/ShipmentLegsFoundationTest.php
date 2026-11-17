@@ -17,7 +17,6 @@ use Logistics\Shipments\Domain\ValueObject\LegStatus;
 use Logistics\Shipments\Domain\ValueObject\OrderSource;
 use Logistics\Shipments\Domain\ValueObject\ProductName;
 use Logistics\Shipments\Domain\ValueObject\ShipmentId;
-use Logistics\Shipments\Domain\ValueObject\ShipmentLegId;
 use Logistics\Shipments\Domain\ValueObject\ShipmentLineId;
 use Logistics\Shipments\Domain\ValueObject\Sku;
 use Logistics\Shipments\Domain\ValueObject\SourceReference;

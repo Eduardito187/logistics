@@ -114,6 +114,8 @@ use Logistics\Shipments\Presentation\Http\Middleware\EnsureOrderScope;
  *
  * Se registra explícitamente en bootstrap/providers.php (el package está en dont-discover)
  * para que el orden de registro lo controle siempre el proyecto.
+ *
+ * @phpstan-type OutsourcingMap array<string, array{carrier_id: string, carrier_hub_node_id: string|null}>
  */
 final class ShipmentsServiceProvider extends ServiceProvider
 {
@@ -422,8 +424,8 @@ final class ShipmentsServiceProvider extends ServiceProvider
      * Normaliza el mapa `outsourcing` de config al shape que consume {@see OutsourcingDecision}: descarta
      * entradas sin departamento o sin `carrier_id`, y deja `carrier_hub_node_id` en null si falta.
      *
-     * @param  array<array-key, mixed>                                                      $raw
-     * @return array<string, array{carrier_id: string, carrier_hub_node_id: string|null}>
+     * @param  array<array-key, mixed> $raw
+     * @return OutsourcingMap
      */
     private static function outsourcingMap(array $raw): array
     {

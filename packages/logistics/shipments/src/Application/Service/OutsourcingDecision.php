@@ -13,12 +13,13 @@ namespace Logistics\Shipments\Application\Service;
  *
  * El departamento de ORIGEN se recibe por si en el futuro la decisión depende del par origen→destino; hoy
  * la regla solo mira el destino. La config fina estilo Magento (/admin/configuration) es un follow-up.
+ *
+ * @phpstan-type OutsourcingMap array<string, array{carrier_id: string, carrier_hub_node_id: string|null}>
  */
 final readonly class OutsourcingDecision
 {
     /**
-     * @param array<string, array{carrier_id: string, carrier_hub_node_id: string|null}> $byDestinationDepartment
-     *        mapa departamento destino (normalizado) → datos de la transportadora
+     * @param OutsourcingMap $byDestinationDepartment mapa departamento destino (normalizado) → transportadora
      */
     public function __construct(
         private array $byDestinationDepartment,

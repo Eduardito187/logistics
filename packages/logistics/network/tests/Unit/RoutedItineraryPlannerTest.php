@@ -14,8 +14,7 @@ function itineraryDirectory(
     array $hubOfDepartment = [],
     ?string $carrierHub = null,
 ): NetworkNodeDirectory {
-    return new class($departmentOf, $hubOfDepartment, $carrierHub) implements NetworkNodeDirectory
-    {
+    return new class($departmentOf, $hubOfDepartment, $carrierHub) implements NetworkNodeDirectory {
         /**
          * @param array<string, string> $departmentOf     id de nodo → código de departamento
          * @param array<string, string> $hubOfDepartment  código de departamento → id de nodo hub

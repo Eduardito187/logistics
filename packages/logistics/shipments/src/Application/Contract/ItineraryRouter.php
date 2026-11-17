@@ -12,30 +12,19 @@ namespace Logistics\Shipments\Application\Contract;
  *
  * Devuelve el MISMO shape de legs que el planificador de la red (ya normalizado): el `haulage_mode` de cada
  * tramo es 'own_fleet' | 'third_party' (no el modo a nivel envío), listo para mapearse a ShipmentLeg.
+ *
+ * @phpstan-type LegRow array{seq: int, from_node_id: string, to_node_id: string|null, from_department: string|null, to_department: string|null, haulage_mode: string, carrier_id: string|null}
  */
 interface ItineraryRouter
 {
     /**
      * Arma la secuencia de tramos de un envío. El último tramo termina en `to_node_id = $destinationNodeId`
-     * cuando el destino es un nodo de la red (tienda, punto de recojo), o en `to_node_id = null` cuando es
-     * una entrega a domicilio (cliente por geolocalización, `$customerGeo`).
+     * cuando el destino es un nodo de la red (tienda, punto de recojo), o en `to_node_id = null` cuando es una
+     * entrega a domicilio (cliente por geolocalización, `$customerGeo`). `$haulageMode` es la decisión de la
+     * política ('own_fleet' | 'outsourced'); `$carrierId`/`$carrierHubNodeId` solo aplican a tercerizado.
      *
-     * @param  string                              $originNodeId          id del nodo de origen (un CD/almacén)
-     * @param  string|null                         $destinationNodeId     id del nodo destino, o null si es a domicilio
-     * @param  string                              $destinationDepartment código o nombre del departamento destino
-     * @param  array{lat: float, lng: float}|null  $customerGeo           coordenadas del cliente (entrega a domicilio)
-     * @param  string                              $haulageMode           'own_fleet' | 'outsourced' (decisión de la política)
-     * @param  string|null                         $carrierId             id de la transportadora cuando es tercerizado
-     * @param  string|null                         $carrierHubNodeId      almacén de la transportadora ya elegido (opcional)
-     * @return list<array{
-     *     seq: int,
-     *     from_node_id: string,
-     *     to_node_id: string|null,
-     *     from_department: string|null,
-     *     to_department: string|null,
-     *     haulage_mode: string,
-     *     carrier_id: string|null
-     * }>
+     * @param  array{lat: float, lng: float}|null $customerGeo coordenadas del cliente (entrega a domicilio)
+     * @return list<LegRow>
      */
     public function planLegs(
         string $originNodeId,
