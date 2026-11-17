@@ -18,6 +18,7 @@ use Logistics\Telemetry\Domain\Contract\LivePositionBroadcaster;
 use Logistics\Telemetry\Domain\Contract\PingRepository;
 use Logistics\Telemetry\Domain\Contract\TripRepository;
 use Logistics\Telemetry\Domain\Contract\VehiclePositionRepository;
+use Logistics\Telemetry\Domain\Event\VehicleDeviationStarted;
 use Logistics\Telemetry\Domain\Event\VehiclePositionReported;
 use Logistics\Telemetry\Domain\Exception\TelemetryException;
 use Logistics\Telemetry\Domain\Model\TelemetryAlert;
@@ -418,6 +419,16 @@ final readonly class RecordVehiclePingsHandler implements CommandHandler
         // Solo se escribe si cambió (la mayoría de los lotes no excede ni se desvía: sin UPDATE extra).
         if ($speedingSince != $state['speeding_since'] || $offRouteSince != $state['off_route_since']) {
             $this->positions->saveWatchState($vehicleId, $speedingSince, $offRouteSince);
+        }
+
+        // INICIO del desvío (off_route_since pasó de null a tener valor): emite un hecho para que el outbox
+        // recalcule YA, async, la geometría del reruteo por calles (sin OSRM en el request), y el mapa no
+        // espere el barrido del minuto. Solo en la TRANSICIÓN, no en cada ping, para no inundar.
+        if ($state['off_route_since'] === null && $offRouteSince !== null) {
+            $this->recordEvents->record(
+                [new VehicleDeviationStarted($vehicleId, $vehicleId, $offRouteSince->format(DateTimeImmutable::ATOM))],
+                'telemetry.deviation',
+            );
         }
 
         if ($speedingAlert !== null) {

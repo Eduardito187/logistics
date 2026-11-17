@@ -321,7 +321,19 @@ it('raises a route deviation alert with its outbox event when the loaded vehicle
     ])->assertStatus(202);
 
     expect(AlertRecord::query()->where('vehicle_id', $vehicleId)->where('type', 'route_deviation')->count())->toBe(1)
-        ->and(DB::table('outbox_messages')->where('event_name', 'telemetry.vehicle_route_deviated')->where('payload->vehicle_id', $vehicleId)->exists())->toBeTrue();
+        ->and(DB::table('outbox_messages')->where('event_name', 'telemetry.vehicle_route_deviated')->where('payload->vehicle_id', $vehicleId)->exists())->toBeTrue()
+        // Al INICIO del desvío se emite el hecho que dispara el recálculo async del reruteo por calles.
+        ->and(DB::table('outbox_messages')->where('event_name', 'telemetry.vehicle_deviation_started')->where('payload->vehicle_id', $vehicleId)->exists())->toBeTrue();
+});
+
+it('acepta speed_mps y lo convierte a km/h (la app manda la velocidad en m/s)', function (): void {
+    $vehicleId = Uuid::generate()->value;
+    // 10 m/s = 36 km/h. La app manda speed_mps + accuracy_m; el backend lo normaliza a speed_kph.
+    tbtPost($this, $vehicleId, [
+        ['lat' => -16.5, 'lng' => -68.1, 'recorded_at' => tbtAt(TBT_TWO_MINUTES_AGO), 'speed_mps' => 10.0, 'accuracy_m' => 5.0],
+    ])->assertStatus(202);
+
+    expect((float) PingRecord::query()->where('vehicle_id', $vehicleId)->value('speed_kph'))->toEqualWithDelta(36.0, 0.001);
 });
 
 it('raises a speeding alert only when the excess is sustained', function (): void {
