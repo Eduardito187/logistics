@@ -774,6 +774,190 @@ paths:
           $ref: '#/components/responses/OrderScopeForbidden'
       security:
       - appBearer: []
+  /app/config/failure-reasons:
+    get:
+      tags:
+      - execution
+      operationId: listActiveFailureReasons
+      summary: List active delivery-failure reasons (driver picker)
+      responses:
+        '200':
+          description: Active reasons ordered by sort_order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FailureReasonCatalogItem'
+      security:
+      - appBearer: []
+  /app/admin/failure-reasons:
+    get:
+      tags:
+      - execution
+      operationId: listFailureReasons
+      summary: List all delivery-failure reasons (admin)
+      responses:
+        '200':
+          description: All reasons (active and inactive)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FailureReasonCatalogItem'
+      security:
+      - appBearer: []
+    post:
+      tags:
+      - execution
+      operationId: createFailureReason
+      summary: Create a delivery-failure reason (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - label
+              properties:
+                label:
+                  type: string
+                  maxLength: 160
+                code:
+                  type: string
+                  maxLength: 64
+                  nullable: true
+                  description: Optional; derived from label if omitted.
+                active:
+                  type: boolean
+                  default: true
+                requires_photo:
+                  type: boolean
+                  default: false
+                requires_note:
+                  type: boolean
+                  default: false
+                note_label:
+                  type: string
+                  maxLength: 160
+                  nullable: true
+                sort_order:
+                  type: integer
+                  default: 0
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FailureReasonCatalogItem'
+        '409':
+          description: Ya existe un motivo con ese code (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Datos inválidos (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+  /app/admin/failure-reasons/{code}:
+    parameters:
+    - name: code
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Reason slug (not a UUID).
+    put:
+      tags:
+      - execution
+      operationId: updateFailureReason
+      summary: Update a delivery-failure reason (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  maxLength: 160
+                active:
+                  type: boolean
+                requires_photo:
+                  type: boolean
+                requires_note:
+                  type: boolean
+                note_label:
+                  type: string
+                  maxLength: 160
+                  nullable: true
+                sort_order:
+                  type: integer
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FailureReasonCatalogItem'
+        '404':
+          description: No existe un motivo con ese code (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Datos inválidos (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
+    delete:
+      tags:
+      - execution
+      operationId: deactivateFailureReason
+      summary: Deactivate (soft-delete) a delivery-failure reason (admin)
+      responses:
+        '200':
+          description: Deactivated (soft)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FailureReasonCatalogItem'
+        '404':
+          description: No existe un motivo con ese code (problem+json)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - appBearer: []
   /app/deliveries/{shipmentId}/store-drop:
     post:
       tags:
@@ -840,6 +1024,67 @@ paths:
           description: >-
             No aplica: el envío es a domicilio (code not_a_store_drop), la tienda no es la del envío (code
             wrong_store), la entrega ya está cerrada o no hay entrega ni ruta para el envío.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          $ref: '#/components/responses/OrderScopeForbidden'
+      security:
+      - appBearer: []
+  /app/deliveries/{shipmentId}/carrier-handoff:
+    post:
+      tags:
+      - execution
+      operationId: recordCarrierHandoff
+      summary: Hand a shipment over to the carrier at its warehouse (outsourced flow)
+      description: |
+        HANDOFF a la transportadora (flujo tercerizado): nuestro lado deja la carga en el almacén del tercero
+        (nodo carrier_hub). Cierra el tramo propio del envío y lo marca «entregado a la transportadora»
+        (HANDED_TO_CARRIER). NO entrega al cliente: el envío sigue abierto y lo completa la transportadora. El
+        actor (dispositivo/usuario) sale del token, nunca del cuerpo. Idempotente por Idempotency-Key.
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - carrier_hub_node_id
+              properties:
+                carrier_hub_node_id:
+                  type: string
+                  format: uuid
+                  description: Nodo (carrier_hub) donde se deja la carga.
+                carrier_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Transportadora que recibe la carga. Opcional.
+                occurred_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Momento del handoff. Si se omite, la hora del servidor.
+                lat:
+                  type: number
+                  nullable: true
+                lng:
+                  type: number
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '404':
+          description: El envío no existe (code shipment_not_found)
           content:
             application/json:
               schema:
@@ -14125,7 +14370,7 @@ components:
         status:
           type: string
           description: 'Estado visible vigente al emitir la señal.'
-          enum: [PENDING, PROCESSING, IN_PROGRESS, LOADED, ON_THE_WAY, DELIVERED, FAILED, CANCELLED, RESCHEDULED, RETURNED]
+          enum: [PENDING, PROCESSING, IN_PROGRESS, LOADED, ON_THE_WAY, HANDED_TO_CARRIER, DELIVERED, FAILED, CANCELLED, RESCHEDULED, RETURNED]
         event:
           type: string
           description: 'Hecho de origen: tracking.status_changed, tracking.shipment_placed_on_route o tracking.unit_status_changed.'
@@ -18487,9 +18732,9 @@ components:
             Opción A (POD asíncrono): la entrega se cerró pero la foto todavía no subió. Se liga sola cuando
             llega por POST /app/deliveries/photos. La foto sigue siendo obligatoria, solo que puede llegar después.
         failure_reason:
-          allOf:
-          - $ref: '#/components/schemas/FailureReason'
+          type: string
           nullable: true
+          description: 'Code del motivo de no-entrega (del catálogo configurable; ver FailureReasonCatalogItem). Puede ser uno de los 5 de fábrica o un code custom.'
         scans:
           type: array
           items:
@@ -19075,15 +19320,63 @@ components:
         - reason
         properties:
           reason:
-            $ref: '#/components/schemas/FailureReason'
+            type: string
+            maxLength: 64
+            description: Code (slug) de un motivo ACTIVO del catálogo configurable (GET /app/config/failure-reasons). Los 5 de fábrica siguen válidos. Un code fuera del catálogo activo → 422.
+          note:
+            type: string
+            maxLength: 1000
+            nullable: true
+            description: Nota libre; obligatoria si el motivo elegido exige nota (requires_note), validada en el backend.
+          photo_path:
+            type: string
+            maxLength: 2048
+            nullable: true
+            description: Referencia de foto (de /app/deliveries/photos), si ya se subió. Opcional.
+          has_photo:
+            type: boolean
+            default: false
+            description: >-
+              La foto de la fallida se sube por una cola APARTE, offline-first (POST /app/deliveries/photos,
+              ligada por shipment_id), así que al registrar la fallida puede no estar subida todavía. Por eso la
+              exigencia de foto (requires_photo) NO se valida contra el archivo: se da por cumplida si vino
+              `photo_path` O si la app marca `has_photo=true` (ya la encoló). Si el motivo exige foto y no llega
+              ni `photo_path` ni `has_photo=true` → 422.
     FailureReason:
       type: string
+      description: 'Motivos de fábrica de no-entrega. El catálogo real es configurable (ver FailureReasonCatalogItem); este enum documenta los 5 sembrados por defecto. Un envío puede quedar guardado con un code configurable fuera de esta lista.'
       enum:
       - CUSTOMER_ABSENT
       - WRONG_ADDRESS
       - REJECTED
       - DAMAGED
       - OTHER
+    FailureReasonCatalogItem:
+      type: object
+      required:
+      - code
+      - label
+      - active
+      - requires_photo
+      - requires_note
+      - sort_order
+      properties:
+        code:
+          type: string
+          description: Identidad estable (slug en mayúsculas). No es UUID.
+        label:
+          type: string
+        active:
+          type: boolean
+        requires_photo:
+          type: boolean
+        requires_note:
+          type: boolean
+        note_label:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
     FleetDocument:
       type: object
       properties:
@@ -20064,6 +20357,8 @@ components:
       - distribution_center
       - store
       - pickup_point
+      - central_warehouse
+      - carrier_hub
     OperationalCorridor:
       type: object
       description: |
@@ -23024,13 +23319,15 @@ components:
       description: >-
         Estado visible del pedido de cara al cliente (ciclo de vida del seguimiento). Flujo:
         PENDING → PROCESSING → IN_PROGRESS → LOADED → ON_THE_WAY → DELIVERED; con CANCELLED,
-        RESCHEDULED (reprogramada), FAILED (intento fallido) y RETURNED (devuelta).
+        RESCHEDULED (reprogramada), FAILED (intento fallido), RETURNED (devuelta) y
+        HANDED_TO_CARRIER (entregado a la transportadora, en el flujo tercerizado).
       enum:
       - PENDING
       - PROCESSING
       - IN_PROGRESS
       - LOADED
       - ON_THE_WAY
+      - HANDED_TO_CARRIER
       - DELIVERED
       - FAILED
       - RESCHEDULED

@@ -73,6 +73,40 @@ return [
         ],
     ],
 
+    // Tercerización por DEPARTAMENTO DESTINO (modelo propia vs. tercerizado). Mapa:
+    //   departamento_destino (código `network_nodes.department`: 'santa_cruz', 'la_paz', …)
+    //     → ['mode' => 'outsourced', 'carrier_id' => <uuid>, 'carrier_hub_node_id' => <uuid>|null]
+    //
+    // Un departamento marcado como tercerizado NECESITA `carrier_id` (la transportadora); `carrier_hub_node_id`
+    // (el almacén de handoff de la transportadora) es opcional: si es null, lo resuelve el directorio de la
+    // red. Un departamento que NO está en el mapa va por flota propia ('own_fleet'), que es el DEFAULT. Por
+    // eso el mapa nace VACÍO: sin configurar nada, todo el país es flota propia y nada se terceriza por error.
+    //
+    // Override por env (caso común): `SHIPMENTS_OUTSOURCING` con "depto:carrier_id[:carrier_hub_node_id]" por
+    // entrada, separadas por coma. Ej.: "tarija:11111111-...:22222222-...,pando:33333333-...". Para reglas
+    // más finas se edita este array directamente; la config fina estilo Magento (/admin/configuration) es un
+    // follow-up.
+    'outsourcing' => (static function (string $raw): array {
+        $map = [];
+        foreach (explode(',', $raw) as $entry) {
+            $parts = array_map('trim', explode(':', $entry));
+            $department = strtolower($parts[0] ?? '');
+            $carrierId = $parts[1] ?? '';
+            if ($department === '' || $carrierId === '') {
+                continue;
+            }
+
+            $hub = trim($parts[2] ?? '');
+            $map[$department] = [
+                'mode' => 'outsourced',
+                'carrier_id' => $carrierId,
+                'carrier_hub_node_id' => $hub !== '' ? $hub : null,
+            ];
+        }
+
+        return $map;
+    })((string) env('SHIPMENTS_OUTSOURCING', '')),
+
     // Devoluciones (ADR 020): al cancelar una orden ya cargada o entregada, el reactor
     // OrderCancelledFulfillmentDispatcher dispara una devolución (returns.InitiateReturn), que exige un
     // almacén central de retorno. El envío del comercio no trae nodo destino poblado, así que se usa

@@ -15,7 +15,6 @@ use Logistics\Execution\Domain\Model\Delivery;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
 
@@ -161,18 +160,21 @@ it('records a failed delivery with its typed reason', function (): void {
     $delivery->recordLoadScan('u-1', geo(), device(), at('2026-10-13T09:00:00+00:00'), 'k-load');
     $delivery->releaseEvents();
 
-    $delivery->recordFailed(FailureReason::CustomerAbsent, 'u-1', geo(), device(), at('2026-10-13T12:00:00+00:00'), 'k-fail');
+    // El motivo es ahora un code del catálogo configurable (string), no un enum fijo; la nota es opcional.
+    $delivery->recordFailed('CUSTOMER_ABSENT', 'customer not at home', 'u-1', geo(), device(), at('2026-10-13T12:00:00+00:00'), 'k-fail');
 
     $events = $delivery->releaseEvents();
 
     expect($delivery->status())->toBe(DeliveryStatus::Failed)
-        ->and($delivery->failureReason())->toBe(FailureReason::CustomerAbsent)
+        ->and($delivery->failureReason())->toBe('CUSTOMER_ABSENT')
+        ->and($delivery->failureNote())->toBe('customer not at home')
         ->and($events)->toHaveCount(1)
         ->and($events[0])->toBeInstanceOf(DeliveryFailed::class);
 
     /** @var DeliveryFailed $failed */
     $failed = $events[0];
-    expect($failed->payload()['reason'])->toBe('CUSTOMER_ABSENT');
+    expect($failed->payload()['reason'])->toBe('CUSTOMER_ABSENT')
+        ->and($failed->payload()['note'])->toBe('customer not at home');
 });
 
 it('records a node reception and moves the delivery to InTransit', function (): void {

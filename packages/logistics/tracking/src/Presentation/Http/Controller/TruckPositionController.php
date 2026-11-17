@@ -7,9 +7,11 @@ namespace Logistics\Tracking\Presentation\Http\Controller;
 use Illuminate\Http\JsonResponse;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Domain\Exception\DomainException;
+use Logistics\Telemetry\Application\Ingest\ShipmentPositionBridge;
 use Logistics\Tracking\Application\Command\UpdateTruckPosition\UpdateTruckPosition;
 use Logistics\Tracking\Presentation\Http\ApiResponder;
 use Logistics\Tracking\Presentation\Http\Request\UpdateTruckPositionRequest;
+use Throwable;
 
 /**
  * Ingesta de posición GPS en vivo del camión que lleva un envío.
@@ -22,6 +24,11 @@ use Logistics\Tracking\Presentation\Http\Request\UpdateTruckPositionRequest;
  * negocio del dominio (coordenada fuera de rango, seguimiento inexistente) se traduce a 422.
  *
  * Presentation habla con Application vía el CommandBus; nunca toca Infrastructure ni el dominio.
+ *
+ * Además de actualizar la miga de pan del envío (contexto tracking), PUENTEA la posición a la ingesta de
+ * telemetría del vehículo que lo custodia (ShipmentPositionBridge), para que el motor de desvío de ruta y
+ * reruteo funcione aunque la app mande el GPS por envío. El puente es best-effort: un fallo suyo nunca
+ * tumba el 202 del seguimiento (que es el dato crítico del chofer).
  */
 final class TruckPositionController
 {
@@ -29,6 +36,7 @@ final class TruckPositionController
 
     public function __construct(
         private readonly CommandBus $commandBus,
+        private readonly ShipmentPositionBridge $telemetryBridge,
     ) {}
 
     public function store(UpdateTruckPositionRequest $request, string $shipmentId): JsonResponse
@@ -45,6 +53,21 @@ final class TruckPositionController
             ));
         } catch (DomainException $exception) {
             return $this->error('position_rejected', $exception->getMessage(), 422);
+        }
+
+        try {
+            $this->telemetryBridge->bridge(
+                shipmentId: $shipmentId,
+                latitude: $request->latitude(),
+                longitude: $request->longitude(),
+                reportedAt: $request->reportedAt(),
+                speedMps: $request->speedMps(),
+                headingDeg: $request->headingDeg(),
+                accuracyM: $request->accuracyM(),
+            );
+        } catch (Throwable $exception) {
+            // El puente a telemetría es best-effort: nunca debe tumbar el acuse del seguimiento.
+            report($exception);
         }
 
         return $this->data(['shipment_id' => $shipmentId, 'accepted' => true], 202);

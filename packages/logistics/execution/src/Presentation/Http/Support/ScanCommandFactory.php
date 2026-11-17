@@ -82,6 +82,9 @@ final class ScanCommandFactory
      */
     public static function failed(array $data, string $deviceId, string $userId, string $key): RecordFailedDelivery
     {
+        $note = self::str($data, 'note');
+        $photoPath = self::str($data, 'photo_path');
+
         return new RecordFailedDelivery(
             shipmentId: self::str($data, 'shipment_id'),
             unitId: self::str($data, 'unit_id'),
@@ -92,6 +95,9 @@ final class ScanCommandFactory
             userId: $userId,
             occurredAt: self::str($data, 'occurred_at'),
             idempotencyKey: $key,
+            note: $note !== '' ? $note : null,
+            photoPath: $photoPath !== '' ? $photoPath : null,
+            hasPhoto: (bool) ($data['has_photo'] ?? false),
         );
     }
 

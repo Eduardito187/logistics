@@ -8,17 +8,22 @@ use Logistics\Execution\Presentation\Http\AssignOrderVehicleController;
 use Logistics\Execution\Presentation\Http\AssignShelfLocationController;
 use Logistics\Execution\Presentation\Http\CaptureDeliveryEvidenceController;
 use Logistics\Execution\Presentation\Http\CloseTransferWithShortageController;
+use Logistics\Execution\Presentation\Http\CreateFailureReasonController;
+use Logistics\Execution\Presentation\Http\DeactivateFailureReasonController;
 use Logistics\Execution\Presentation\Http\DriverRouteLifecycleController;
 use Logistics\Execution\Presentation\Http\GetDeliveryEvidenceController;
 use Logistics\Execution\Presentation\Http\GetDeliveryStateController;
 use Logistics\Execution\Presentation\Http\GetDriverRouteController;
 use Logistics\Execution\Presentation\Http\GetNodeReceptionController;
+use Logistics\Execution\Presentation\Http\ListActiveFailureReasonsController;
+use Logistics\Execution\Presentation\Http\ListFailureReasonsController;
 use Logistics\Execution\Presentation\Http\ListNodeReceptionsController;
 use Logistics\Execution\Presentation\Http\ListVehicleDeliveriesController;
 use Logistics\Execution\Presentation\Http\MarkStopArrivedController;
 use Logistics\Execution\Presentation\Http\OpenNodeReceptionController;
 use Logistics\Execution\Presentation\Http\ReceiveUnitAtNodeController;
 use Logistics\Execution\Presentation\Http\ReconcileNodeReceptionController;
+use Logistics\Execution\Presentation\Http\RecordCarrierHandoffController;
 use Logistics\Execution\Presentation\Http\RecordEvidenceValidationController;
 use Logistics\Execution\Presentation\Http\RecordFailedDeliveryController;
 use Logistics\Execution\Presentation\Http\RecordLoadScanController;
@@ -30,6 +35,7 @@ use Logistics\Execution\Presentation\Http\RecordStoreDropController;
 use Logistics\Execution\Presentation\Http\RecordUnloadScanController;
 use Logistics\Execution\Presentation\Http\ReportDeliveryIssueController;
 use Logistics\Execution\Presentation\Http\ReportVehicleIncidentController;
+use Logistics\Execution\Presentation\Http\UpdateFailureReasonController;
 use Logistics\Execution\Presentation\Http\UploadDeliveryPhotoController;
 use Logistics\Execution\Presentation\Http\VerifyLabelController;
 
@@ -154,6 +160,12 @@ return [
                 ->whereUuid('shipmentId')
                 ->middleware('order.scope')
                 ->name('store-drop');
+            // Handoff a la transportadora (flujo tercerizado): nuestro lado deja la carga en el almacén del
+            // tercero (carrier_hub). Cierra el tramo propio y marca «entregado a la transportadora»; NO entrega.
+            Route::post('deliveries/{shipmentId}/carrier-handoff', RecordCarrierHandoffController::class)
+                ->whereUuid('shipmentId')
+                ->middleware('order.scope')
+                ->name('carrier-handoff');
             // Cierre manual de OFICINA de un traspaso que quedó en curso con faltantes (la tienda nunca
             // concilió): queda entregado con `with_shortage`. Solo admin y supervisor; motivo obligatorio.
             Route::post('deliveries/{shipmentId}/close-transfer', CloseTransferWithShortageController::class)
@@ -190,6 +202,25 @@ return [
                 ->name('evidence.capture');
             Route::get('deliveries/{shipmentId}/evidence', GetDeliveryEvidenceController::class)
                 ->name('evidence.show');
+
+            // Catálogo CONFIGURABLE de motivos de "no se pudo entregar".
+            // Lectura para el chofer: solo los motivos ACTIVOS, ordenados. Sin gating especial de rol
+            // (cualquier usuario app autenticado); la app lo consume al marcar una entrega como fallida.
+            Route::get('config/failure-reasons', ListActiveFailureReasonsController::class)
+                ->name('config.failure-reasons.index');
+
+            // Administración del catálogo: gateada a oficina (admin / planificador). El `code` de la ruta es
+            // el slug del motivo (NUNCA el UUID). DELETE = desactivar (soft).
+            Route::middleware('role:admin,planificador')->group(function (): void {
+                Route::get('admin/failure-reasons', ListFailureReasonsController::class)
+                    ->name('admin.failure-reasons.index');
+                Route::post('admin/failure-reasons', CreateFailureReasonController::class)
+                    ->name('admin.failure-reasons.store');
+                Route::put('admin/failure-reasons/{code}', UpdateFailureReasonController::class)
+                    ->name('admin.failure-reasons.update');
+                Route::delete('admin/failure-reasons/{code}', DeactivateFailureReasonController::class)
+                    ->name('admin.failure-reasons.deactivate');
+            });
         });
     },
 

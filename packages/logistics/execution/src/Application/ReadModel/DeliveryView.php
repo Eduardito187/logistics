@@ -76,7 +76,7 @@ final readonly class DeliveryView
             $proof?->confirmation,
             $proof?->photoUrl,
             $proof?->photoPath,
-            $delivery->failureReason()?->value,
+            $delivery->failureReason(),
             $scans,
             $reference['order_reference'] ?? null,
             $reference['customer_name'] ?? null,

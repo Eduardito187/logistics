@@ -10,7 +10,6 @@ use Logistics\Execution\Domain\Model\ScanEvent;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\MissingUnitDeclaration;
 use Logistics\Execution\Domain\ValueObject\MissingUnitReason;
@@ -45,7 +44,7 @@ final class DeliveryMapper
             // Vínculo con las evidencias ya subidas por la app (POD en lote): null si no hay.
             'pod_photo_paths' => $proof !== null && $proof->photoPaths !== [] ? $proof->photoPaths : null,
             'pod_evidence_ids' => $proof !== null && $proof->evidenceIds !== [] ? $proof->evidenceIds : null,
-            'failure_reason' => $delivery->failureReason()?->value,
+            'failure_reason' => $delivery->failureReason(),
             // Dimensión de fulfillment: solo el modo (dato para reportes/liquidaciones). Las columnas
             // dropship_handling / *_confirmation_key quedan en la tabla sin uso (no se borran: regla aditiva).
             'fulfillment_mode' => $delivery->fulfillmentMode()->value,
@@ -63,6 +62,12 @@ final class DeliveryMapper
                 static fn (MissingUnitDeclaration $declaration): array => $declaration->toArray(),
                 $missing,
             );
+        }
+
+        // Nota del fallo: la columna solo se escribe cuando hay nota, para que el guardado de siempre no
+        // dependa de ella (tolerante si la migración aditiva todavía no corrió).
+        if ($delivery->failureNote() !== null) {
+            $row['failure_note'] = $delivery->failureNote();
         }
 
         // Cierre con faltantes de un traspaso: igual criterio, las columnas solo se escriben cuando ocurrió.
@@ -136,9 +141,13 @@ final class DeliveryMapper
             DeliveryStatus::fromLoose($record->status),
             $scans,
             $proof,
-            $record->failure_reason !== null ? FailureReason::from($record->failure_reason) : null,
+            $record->failure_reason,
             FulfillmentMode::fromLoose($record->fulfillment_mode),
         );
+
+        // Nota del fallo (columna ausente si la migración aditiva todavía no corrió: queda null).
+        $failureNote = $record->getAttribute('failure_note');
+        $delivery->restoreFailureNote(is_string($failureNote) && $failureNote !== '' ? $failureNote : null);
 
         $droppedAt = $record->getAttribute('store_dropped_at');
         $dropNode = $record->getAttribute('store_drop_node_id');

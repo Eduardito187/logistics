@@ -12,6 +12,8 @@ use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
 use Logistics\Execution\Domain\Event\ShipmentDeparted;
 use Logistics\Execution\Domain\Event\ShipmentDroppedAtStore;
+use Logistics\Execution\Domain\Event\ShipmentHandedToCarrier;
+use Logistics\Execution\Domain\Event\ShipmentLegClosed;
 use Logistics\Execution\Domain\Event\ShipmentLoaded;
 use Logistics\Execution\Domain\Event\ShipmentPrepared;
 use Logistics\Execution\Domain\Event\ShipmentUnloaded;
@@ -21,7 +23,6 @@ use Logistics\Execution\Domain\Exception\ExecutionException;
 use Logistics\Execution\Domain\ValueObject\DeliveryId;
 use Logistics\Execution\Domain\ValueObject\DeliveryStatus;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\MissingUnitDeclaration;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
@@ -61,9 +62,12 @@ final class Delivery extends AggregateRoot
         private DeliveryStatus $status,
         private array $scans,
         private ?ProofOfDelivery $proofOfDelivery,
-        private ?FailureReason $failureReason,
+        private ?string $failureReason,
         private readonly FulfillmentMode $fulfillmentMode,
     ) {}
+
+    /** Nota libre del intento fallido (contexto o lo que exige el motivo elegido); null si no se dio. */
+    private ?string $failureNote = null;
 
     /** Cuándo dejó el chofer el pedido en la tienda (entrega en tienda); null si no aplica o aún no pasó. */
     private ?DateTimeImmutable $storeDroppedAt = null;
@@ -467,7 +471,7 @@ final class Delivery extends AggregateRoot
         DeliveryStatus $status,
         array $scans,
         ?ProofOfDelivery $proofOfDelivery,
-        ?FailureReason $failureReason,
+        ?string $failureReason,
         FulfillmentMode $fulfillmentMode = FulfillmentMode::Owned,
     ): self {
         return new self(
@@ -672,7 +676,8 @@ final class Delivery extends AggregateRoot
      * DeliveryFailed. El escaneo deja la evidencia (GPS, dispositivo, hora) del intento.
      */
     public function recordFailed(
-        FailureReason $reason,
+        string $reason,
+        ?string $note,
         string $unitId,
         GeoPoint $geo,
         DeviceContext $device,
@@ -692,13 +697,18 @@ final class Delivery extends AggregateRoot
 
         $this->appendScan(ScanType::ProofOfDelivery, $unitId, $geo, $device, $occurredAt, $idempotencyKey);
 
+        // El motivo es un code del catálogo CONFIGURABLE (ya no un enum fijo): el dominio lo guarda tal cual;
+        // la validación contra el catálogo activo la hace el handler antes de llegar aquí.
+        $cleanNote = $note !== null && trim($note) !== '' ? trim($note) : null;
         $this->status = DeliveryStatus::Failed;
         $this->failureReason = $reason;
+        $this->failureNote = $cleanNote;
         $this->recordEvent(new DeliveryFailed(
             $this->id->toString(),
             $this->shipmentId,
-            $reason->value,
+            $reason,
             $occurredAt,
+            $cleanNote,
         ));
     }
 
@@ -768,6 +778,93 @@ final class Delivery extends AggregateRoot
             $this->shipmentId,
             $nodeId,
             $unitId,
+            $occurredAt,
+        ));
+    }
+
+    /**
+     * CIERRE DE UN TRAMO en un nodo INTERMEDIO del itinerario multi-tramo: llegar a un `to_node_id` que no es
+     * el destino final NO es la entrega. Cierra el tramo (graba ShipmentLegClosed) y deja la entrega ABIERTA
+     * para que siga el próximo tramo. Quién decide que el nodo es intermedio es la capa de aplicación (lee el
+     * itinerario); el agregado solo cuida su invariante: no toca una entrega ya cerrada.
+     *
+     * `$seq` es la posición del tramo cerrado (tabla shipment_legs); informativo para el consumidor.
+     */
+    public function closeLegAtHub(int $seq, string $nodeId, DateTimeImmutable $occurredAt): void
+    {
+        $nodeId = trim($nodeId);
+        if ($nodeId === '') {
+            throw ExecutionException::because('el cierre de tramo requiere el nodo');
+        }
+
+        // Entrega ya resuelta: no hay tramo que cerrar (idempotente, sin reemitir).
+        if ($this->status === DeliveryStatus::Delivered || $this->status === DeliveryStatus::Failed) {
+            return;
+        }
+
+        $this->recordEvent(new ShipmentLegClosed(
+            $this->id->toString(),
+            $this->shipmentId,
+            $seq,
+            $nodeId,
+            $occurredAt,
+        ));
+    }
+
+    /**
+     * HANDOFF a la transportadora: NUESTRO lado dejó la carga en el almacén de la transportadora (nodo
+     * `carrier_hub`). Decisión del dueño: el "entregado a transportadora" se marca con este escaneo propio,
+     * NO cuando el tercero arranca. Efecto: cierra el tramo de flota propia (ShipmentLegClosed) y declara que
+     * la carga pasó a manos del tercero (ShipmentHandedToCarrier). NO marca la entrega como Delivered: el
+     * envío sigue su recorrido con la transportadora.
+     *
+     * Idempotente por idempotencyKey (reintento offline no duplica) y también a nivel de ESTADO: sobre una
+     * entrega ya cerrada (entregada o fallida) es un no-op que no reemite nada. `$legSeq` es el tramo de flota
+     * propia que se cierra; `$carrierId` puede ser null si el tramo todavía no tiene transportadora.
+     */
+    public function recordCarrierHandoff(
+        string $carrierHubNodeId,
+        ?string $carrierId,
+        int $legSeq,
+        ?GeoPoint $geo,
+        DeviceContext $device,
+        DateTimeImmutable $occurredAt,
+        string $idempotencyKey,
+    ): void {
+        if ($this->isDuplicate($idempotencyKey)) {
+            return;
+        }
+
+        $carrierHubNodeId = trim($carrierHubNodeId);
+        if ($carrierHubNodeId === '') {
+            throw ExecutionException::because('la entrega a la transportadora requiere el almacén de la transportadora (nodo)');
+        }
+
+        // Entrega ya resuelta: el envío no se puede volver a entregar a la transportadora (idempotente).
+        if ($this->status === DeliveryStatus::Delivered || $this->status === DeliveryStatus::Failed) {
+            return;
+        }
+
+        $carrierId = $carrierId !== null && trim($carrierId) !== '' ? trim($carrierId) : null;
+
+        // Escaneo inmutable del handoff (append-only). El bulto de referencia es el propio envío: se entrega el
+        // envío completo a la transportadora, no un bulto suelto.
+        $this->appendScan(ScanType::Handoff, $this->shipmentId, $geo, $device, $occurredAt, $idempotencyKey);
+
+        // Cierra el tramo de flota propia...
+        $this->recordEvent(new ShipmentLegClosed(
+            $this->id->toString(),
+            $this->shipmentId,
+            $legSeq,
+            $carrierHubNodeId,
+            $occurredAt,
+        ));
+        // ...y declara el pase al tercero. El envío sigue abierto (no es Delivered).
+        $this->recordEvent(new ShipmentHandedToCarrier(
+            $this->id->toString(),
+            $this->shipmentId,
+            $carrierId,
+            $carrierHubNodeId,
             $occurredAt,
         ));
     }
@@ -890,9 +987,22 @@ final class Delivery extends AggregateRoot
             && $this->proofOfDelivery->lacksPhoto();
     }
 
-    public function failureReason(): ?FailureReason
+    public function failureReason(): ?string
     {
         return $this->failureReason;
+    }
+
+    public function failureNote(): ?string
+    {
+        return $this->failureNote;
+    }
+
+    /**
+     * Restaura la nota del fallo al rehidratar desde persistencia (no graba evento).
+     */
+    public function restoreFailureNote(?string $note): void
+    {
+        $this->failureNote = $note !== null && trim($note) !== '' ? trim($note) : null;
     }
 
     public function fulfillmentMode(): FulfillmentMode

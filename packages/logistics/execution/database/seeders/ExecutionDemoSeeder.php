@@ -13,7 +13,6 @@ use Logistics\Execution\Domain\Model\Delivery;
 use Logistics\Execution\Domain\Model\RouteStop;
 use Logistics\Execution\Domain\Model\VehicleRoute;
 use Logistics\Execution\Domain\ValueObject\DeviceContext;
-use Logistics\Execution\Domain\ValueObject\FailureReason;
 use Logistics\Execution\Domain\ValueObject\GeoPoint;
 use Logistics\Execution\Domain\ValueObject\ProofOfDelivery;
 use Logistics\Execution\Domain\ValueObject\RouteDate;
@@ -59,6 +58,10 @@ final class ExecutionDemoSeeder extends Seeder
 
     public function run(): void
     {
+        // Catálogo configurable de motivos de entrega fallida: siempre primero e idempotente, para que el
+        // flujo de entrega fallida (y el app) tengan los 5 motivos de fábrica en cualquier base de demo.
+        $this->call(FailureReasonSeeder::class);
+
         // Idempotente: si ya hay entregas de demo sembradas, no se vuelve a sembrar la muestra (las
         // entregas de muestra usan shipment_id único y un segundo run rompería esa restricción). El
         // contexto Ejecución es dueño exclusivo de execution_deliveries, así que basta con que la tabla
@@ -488,7 +491,7 @@ final class ExecutionDemoSeeder extends Seeder
 
         $delivery->recordPreparationScan($unit, $this->geo(), $this->device(), $this->at('08:10'), Uuid::generate()->value);
         $delivery->recordLoadScan($unit, $this->geo(), $this->device(), $this->at('08:25'), Uuid::generate()->value);
-        $delivery->recordFailed(FailureReason::CustomerAbsent, $unit, $this->geo(), $this->device(), $this->at('12:40'), Uuid::generate()->value);
+        $delivery->recordFailed('CUSTOMER_ABSENT', null, $unit, $this->geo(), $this->device(), $this->at('12:40'), Uuid::generate()->value);
 
         return $delivery;
     }

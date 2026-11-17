@@ -19,7 +19,8 @@ Cada nodo lleva su `Department` (uno de los nueve de Bolivia); es opcional (un n
 
 Aditivo (roadmap marketplace §5). `NodeType::CentralWarehouse` marca un nodo como **almacén central**:
 recibe mercadería de proveedores (inbound/ASN), la etiqueta y la distribuye como un CD (aguas abajo se
-comporta como `DistributionCenter`: ofrece última milla). Es el único tipo con `receivesInbound() === true`.
+comporta como `DistributionCenter`: ofrece última milla). Junto con `NodeType::CarrierHub` (almacén de
+una transportadora, ver ruteo) son los tipos con `receivesInbound() === true` (habilitan andenes).
 No requiere cambio de esquema en los nodos: reutiliza la columna `type` existente; los nodos previos
 quedan en su tipo actual.
 
@@ -32,6 +33,23 @@ inbound), que toma esta capacidad como tope de referencia.
 - Comando `RegisterReceivingDock(warehouseId, code, name, appointmentsPerSlot)` → registra el andén
   (valida que el nodo exista y sea almacén central; rechaza códigos duplicados dentro del almacén).
 - Consulta `ListReceivingDocks(warehouseId)` → `list<ReceivingDockView>`.
+
+### Ruteo de tramos (insumo de planning)
+
+`ItineraryPlanner::planLegs(...)` (Application/Contract, implementación `RoutedItineraryPlanner`) convierte
+un (origen, destino, modo de acarreo) en la **secuencia de tramos** del envío, siguiendo el modelo Dismac:
+
+- **Propia, mismo departamento** → 1 tramo: origen → destino, `own_fleet`.
+- **Propia, interdepartamental** → 2 tramos: origen → hub del departamento destino (`own_fleet`), y hub
+  destino → destino final (`own_fleet`).
+- **Tercerizado** → 2 tramos: origen → almacén de la transportadora (`own_fleet`, handoff nuestro), y
+  almacén transportadora → destino final (`third_party`, con `carrier_id`).
+
+El modo a nivel envío entra como `'own_fleet' | 'outsourced'` (lo decide planning). El `haulage_mode` de
+CADA tramo es `'own_fleet'` o `'third_party'` (lo consume shipments sin traducir). El último tramo termina
+en el nodo destino, o en `to_node_id = null` si es entrega a domicilio. La resolución de departamentos y
+hubs la hace `NetworkNodeDirectory` (lector tolerante sobre `network_nodes`): si falta un hub intermedio o
+el almacén de la transportadora, el ruteo degrada a un tramo directo en vez de romper.
 
 ## No es responsable de
 

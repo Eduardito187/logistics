@@ -23,6 +23,18 @@ use Throwable;
  * 4. ÚLTIMO recurso (solo si el ruteador no está disponible): línea recta entre las paradas, con distancia
  *    haversine y duración estimada a velocidad media, para que la app y el admin siempre dibujen algo.
  *
+ * ORIGEN DE LA RUTA: tanto el ruteo por calles como la recta de respaldo arrancan en el PUNTO DE SALIDA del
+ * vehículo (su nodo sede / almacén base, vía `$originForVehicle`), no en la primera parada. Así la polilínea
+ * del chofer —propio o de transportadora— empieza en SU almacén de salida. Esto UNIFICA la asimetría con la
+ * vía del plan (que ya anteponía el depósito). Si la sede no se resuelve, el origen se omite y la ruta mantiene
+ * el comportamiento previo (empieza en la primera parada). Nota: esto solo cambia el DIBUJO; el off-route y el
+ * reruteo se calculan desde la POSICIÓN actual del GPS, así que no se ven afectados.
+ *
+ * FOLLOW-UP (no implementado acá): el admin ve ESTA MISMA geometría persistida (recorrido completo del
+ * vehículo: su sede → todas sus paradas), sin recortes. La concatenación multi-tramo a nivel admin
+ * (origen del envío → hub de la transportadora → … → cliente, cuando existan geometrías POR TRAMO del
+ * itinerario) queda pendiente para una ola posterior; hoy cada vehículo dibuja su propio tramo desde su sede.
+ *
  * Devuelve el esquema RouteGeometry (type/coordinates [[lng,lat],...]/distance_meters/duration_seconds).
  */
 final readonly class DbRouteGeometryReader implements RouteGeometryReader
@@ -33,12 +45,15 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
     /**
      * `$ensurePlanGeometry(vehicleId, date): bool` calcula y persiste la geometría del plan (true si la guardó).
      * `$streetGeometryForStops(list<[lng,lat]>): ?array` rutea por calles (OSRM) las paradas de la ruta y
-     * devuelve la geometría primitiva, o null. Ambos los cablea el provider; sin ellos, el lector degrada.
+     * devuelve la geometría primitiva, o null. `$originForVehicle(vehicleId): ?[lng,lat]` da el punto de
+     * salida del vehículo (su sede/almacén base) para anteponerlo a las paradas. Todos los cablea el provider;
+     * sin ellos, el lector degrada (sin origen = ruta desde la primera parada, como antes).
      */
     public function __construct(
         private ConnectionInterface $connection,
         private ?Closure $ensurePlanGeometry = null,
         private ?Closure $streetGeometryForStops = null,
+        private ?Closure $originForVehicle = null,
     ) {}
 
     public function forVehicleAndDate(string $vehicleId, string $routeDate): ?array
@@ -126,8 +141,11 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
     }
 
     /**
-     * Coordenadas [lng,lat] de las paradas de la ruta del chofer, en orden de secuencia (coordenada de la
-     * parada o, si falta, la del envío). Lista vacía si no se pudo leer.
+     * Coordenadas [lng,lat] de la ruta del chofer para dibujar: PUNTO DE SALIDA del vehículo (su sede/almacén
+     * base, si se resuelve) seguido de las paradas en orden de secuencia (coordenada de la parada o, si falta,
+     * la del envío). Anteponer el origen acá hace que AMBOS caminos de respaldo (ruteo por calles y recta)
+     * arranquen en la sede del vehículo, unificando la asimetría con la vía del plan. Lista vacía si no se
+     * pudo leer; sin origen resoluble, la ruta empieza en la primera parada (comportamiento previo intacto).
      *
      * @return list<array{0: float, 1: float}>
      */
@@ -146,6 +164,10 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
         }
 
         $points = [];
+        $origin = $this->originPoint($vehicleId);
+        if ($origin !== null) {
+            $points[] = $origin;
+        }
         foreach ($rows as $row) {
             $data = (array) $row;
             $lat = $data['stop_lat'] ?? $data['shipment_lat'] ?? null;
@@ -157,6 +179,32 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
         }
 
         return $points;
+    }
+
+    /**
+     * Punto de salida [lng,lat] del vehículo (su sede/almacén base) vía el callback cableado, o null si no
+     * hay callback o la sede no se resuelve (nunca rompe: ante cualquier fallo, se omite el origen).
+     *
+     * @return array{0: float, 1: float}|null
+     */
+    private function originPoint(string $vehicleId): ?array
+    {
+        if ($this->originForVehicle === null) {
+            return null;
+        }
+
+        try {
+            $origin = ($this->originForVehicle)($vehicleId);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (!is_array($origin) || !isset($origin[0], $origin[1])
+            || !is_numeric($origin[0]) || !is_numeric($origin[1])) {
+            return null;
+        }
+
+        return [(float) $origin[0], (float) $origin[1]];
     }
 
     /**

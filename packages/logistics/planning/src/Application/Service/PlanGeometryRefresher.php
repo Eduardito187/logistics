@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Planning\Application\Service;
 
+use Logistics\Planning\Application\Contract\RouteOriginLocator;
 use Logistics\Planning\Domain\Contract\AutoPlanSettingsProvider;
 use Logistics\Planning\Domain\Contract\PlanningOriginLocator;
 use Logistics\Planning\Domain\Contract\PlanRepository;
@@ -20,10 +21,12 @@ use Throwable;
 
 /**
  * Servicio de aplicación REUTILIZABLE que (re)calcula la geometría por calles de un plan a partir de su
- * estado actual: depósito (nodo CD de origen configurado) seguido de las paradas en orden de secuencia con
- * coordenada (las no geocodificadas se omiten). Sin depósito resoluble, la línea arranca en la primera
- * parada. Lo usan los comandos que arman o cambian paradas (publicar, reordenar, asignar, mover, proponer),
- * el backfill y la lectura de la ruta en Ejecución cuando el plan todavía no tiene geometría.
+ * estado actual: PUNTO DE SALIDA del vehículo (su sede/almacén base; para una transportadora, su carrier_hub)
+ * seguido de las paradas en orden de secuencia con coordenada (las no geocodificadas se omiten). Si la sede
+ * del vehículo no se resuelve, se cae al depósito GLOBAL (nodo CD de origen configurado), y sin ninguno de los
+ * dos la línea arranca en la primera parada. Lo usan los comandos que arman o cambian paradas (publicar,
+ * reordenar, asignar, mover, proponer), el backfill y la lectura de la ruta en Ejecución cuando el plan
+ * todavía no tiene geometría.
  *
  * Nunca rompe al llamador: si el proveedor o la lectura de coordenadas fallan, no adjunta nada (el
  * proveedor OSRM ya degrada a línea recta por su cuenta). Vive en Application: solo orquesta contratos.
@@ -36,6 +39,7 @@ final readonly class PlanGeometryRefresher
         private ShipmentCoordinatesProvider $coordinates,
         private PlanningOriginLocator $originLocator,
         private AutoPlanSettingsProvider $settings,
+        private RouteOriginLocator $routeOrigin,
     ) {}
 
     /**
@@ -163,8 +167,8 @@ final readonly class PlanGeometryRefresher
     }
 
     /**
-     * Depósito + paradas con coordenada en orden de secuencia. Con una sola parada y sin depósito no hay
-     * línea posible (se devuelve vacío).
+     * Origen (sede del vehículo o, si no se resuelve, depósito global) + paradas con coordenada en orden de
+     * secuencia. Con una sola parada y sin origen no hay línea posible (se devuelve vacío).
      *
      * @return list<GeoPoint>
      */
@@ -190,9 +194,19 @@ final readonly class PlanGeometryRefresher
         return count($points) >= 2 ? $points : [];
     }
 
+    /**
+     * Punto de salida del plan: PREFIERE la sede/almacén base del vehículo (para una transportadora, su
+     * carrier_hub), de modo que la línea arranque donde arranca ese camión. Si la sede no se resuelve, cae al
+     * depósito GLOBAL (nodo CD de origen configurado) para no cambiar el comportamiento previo. Nunca lanza.
+     */
     private function depotFor(DeliveryPlan $plan): ?GeoPoint
     {
         try {
+            $vehicleOrigin = $this->routeOrigin->originFor($plan->vehicleId());
+            if ($vehicleOrigin !== null) {
+                return $vehicleOrigin;
+            }
+
             $originNodeId = $this->settings->parametersFor($plan->date(), PlanStrategy::Optimization, [])->originNodeId;
 
             return $this->originLocator->locate($originNodeId);

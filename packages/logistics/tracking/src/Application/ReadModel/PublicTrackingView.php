@@ -133,6 +133,7 @@ final readonly class PublicTrackingView
             VisibleStatus::Processing => 'Pago confirmado. Estamos preparando tu pedido.',
             VisibleStatus::InProgress => 'Tu pedido está en preparación y pronto saldrá en ruta.',
             VisibleStatus::Loaded => 'Tu pedido ya está cargado en el camión.',
+            VisibleStatus::HandedToCarrier => 'Tu pedido fue entregado a la transportadora para su envío al destino.',
             VisibleStatus::OnTheWay => self::onTheWayMessage($remainingStops),
             VisibleStatus::Delivered => 'Tu pedido fue entregado.',
             VisibleStatus::Failed => 'No pudimos entregar tu pedido. Nos pondremos en contacto contigo.',

@@ -6,6 +6,7 @@ namespace Logistics\Execution\Application\Command\RecordStoreDrop;
 
 use DateTimeImmutable;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
+use Logistics\Execution\Application\Contract\ShipmentItineraryReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitIdsReader;
 use Logistics\Execution\Application\Contract\TransferDestinationReader;
 use Logistics\Execution\Domain\Contract\DeliveryRepository;
@@ -52,6 +53,7 @@ final class RecordStoreDropHandler implements CommandHandler
         private readonly RecordDomainEvents $recordEvents,
         private readonly ?ShipmentUnitIdsReader $units = null,
         private readonly ?TransferDestinationReader $transfers = null,
+        private readonly ?ShipmentItineraryReader $itinerary = null,
     ) {}
 
     public function handle(Command $command): void
@@ -81,7 +83,14 @@ final class RecordStoreDropHandler implements CommandHandler
         }
 
         $delivery->dropAtStore($command->nodeId, $occurredAt, $command->photoPath, $missingUnits);
-        $this->closeTransferAtDestination($delivery, $command, $occurredAt);
+
+        // Correctitud multi-tramo: si el nodo es un HUB INTERMEDIO del itinerario (un `to_node_id` que no es
+        // el destino final), dejar la carga ahí cierra el TRAMO y el envío sigue; NO es la entrega. Solo si no
+        // es intermedio se intenta cerrar la entrega en su destino final (comportamiento histórico, intacto
+        // para los envíos de un solo tramo, que no tienen itinerario).
+        if (!$this->closeLegAtIntermediateHub($delivery, $command->shipmentId, $command->nodeId, $occurredAt)) {
+            $this->closeTransferAtDestination($delivery, $command, $occurredAt);
+        }
 
         $this->deliveries->save($delivery);
         $this->recordEvents->record($delivery->releaseEvents(), 'execution.delivery');
@@ -141,6 +150,29 @@ final class RecordStoreDropHandler implements CommandHandler
             $reconciled,
             $shortage,
         );
+    }
+
+    /**
+     * Si el nodo donde quedó la carga es un HUB INTERMEDIO del itinerario multi-tramo, cierra el TRAMO
+     * (graba execution.shipment_leg_closed) y deja la entrega ABIERTA: el envío sigue por el próximo tramo.
+     * Devuelve true cuando era un nodo intermedio (y no hay que intentar cerrar la entrega); false cuando no
+     * hay itinerario, el nodo es el destino final o el nodo es ajeno al itinerario.
+     *
+     * Sin lector de itinerario (o para un envío de un solo tramo) devuelve siempre false: comportamiento
+     * histórico intacto.
+     */
+    private function closeLegAtIntermediateHub(Delivery $delivery, string $shipmentId, string $nodeId, DateTimeImmutable $occurredAt): bool
+    {
+        if ($this->itinerary === null || !$this->itinerary->isIntermediateHub($shipmentId, $nodeId)) {
+            return false;
+        }
+
+        // El tramo que se cierra es el que el envío venía recorriendo (el primer tramo abierto); su seq viaja
+        // en el hecho para que shipments lo pase a `closed` y arranque el siguiente.
+        $seq = $this->itinerary->nextOpenLeg($shipmentId)->seq ?? 0;
+        $delivery->closeLegAtHub($seq, $nodeId, $occurredAt);
+
+        return true;
     }
 
     /**
