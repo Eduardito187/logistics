@@ -18,6 +18,9 @@ uses(TestCase::class);
 /** Dos paradas reales de Santa Cruz, en pares [lng, lat] (formato GeoJSON). */
 const OSG_POINTS = [[-63.1712, -17.7465], [-63.1966, -17.7633]];
 
+/** Host OSRM de prueba (interceptado por Http::fake). */
+const OSG_HOST = 'http://osrm.test';
+
 function osgService(string $host): OsrmStreetGeometry
 {
     return new OsrmStreetGeometry(app(HttpClientFactory::class), $host, 5);
@@ -35,7 +38,7 @@ it('rutea por calles: parsea la geometría geojson de OSRM a una LineString prim
         ]),
     ]);
 
-    $geometry = osgService('http://osrm.test')->forPoints(OSG_POINTS);
+    $geometry = osgService(OSG_HOST)->forPoints(OSG_POINTS);
 
     expect($geometry)->toBe([
         'type' => 'LineString',
@@ -55,12 +58,12 @@ it('devuelve null con el host vacío (OSRM apagado) sin pegarle a la red', funct
 
 it('devuelve null (y no lanza) ante un fallo del ruteador o una respuesta no-Ok', function (): void {
     Http::fake(['osrm.test/*' => Http::response('boom', 500)]);
-    expect(osgService('http://osrm.test')->forPoints(OSG_POINTS))->toBeNull();
+    expect(osgService(OSG_HOST)->forPoints(OSG_POINTS))->toBeNull();
 
     Http::fake(['osrm.test/*' => Http::response(['code' => 'NoRoute', 'routes' => []])]);
-    expect(osgService('http://osrm.test')->forPoints(OSG_POINTS))->toBeNull();
+    expect(osgService(OSG_HOST)->forPoints(OSG_POINTS))->toBeNull();
 });
 
 it('devuelve null con menos de dos puntos', function (): void {
-    expect(osgService('http://osrm.test')->forPoints([[-63.1712, -17.7465]]))->toBeNull();
+    expect(osgService(OSG_HOST)->forPoints([[-63.1712, -17.7465]]))->toBeNull();
 });

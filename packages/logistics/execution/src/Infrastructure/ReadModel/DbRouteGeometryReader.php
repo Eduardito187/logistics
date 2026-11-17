@@ -18,8 +18,8 @@ use Throwable;
  *    el callback `$ensurePlanGeometry`, que el provider cablea al servicio de aplicación de Planificación;
  *    Ejecución nunca escribe sobre Planning por sí misma) y se vuelve a leer.
  * 3. Si no hay plan con geometría, se GENERA la ruta por CALLES con OSRM a partir de las paradas de la ruta
- *    del chofer en orden de secuencia (callback `$streetGeometryForStops`). Así la ruta nunca sale en línea
- *    recta "por encima de todo" por el simple hecho de no tener un plan: se rutea por las calles reales.
+ *    del chofer en orden de secuencia (callback `$streetGeometryForStops`). Así la ruta nunca sale como una
+ *    recta que atraviesa el mapa de punta a punta por el solo hecho de no tener plan: se rutea por las calles.
  * 4. ÚLTIMO recurso (solo si el ruteador no está disponible): línea recta entre las paradas, con distancia
  *    haversine y duración estimada a velocidad media, para que la app y el admin siempre dibujen algo.
  *
@@ -31,10 +31,9 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
     private const FALLBACK_SPEED_KMH = 30.0;
 
     /**
-     * @param (Closure(string, string): bool)|null                              $ensurePlanGeometry     calcula
-     *        y persiste la geometría del plan (vehículo, día); true si la guardó
-     * @param (Closure(list<array{0: float, 1: float}>): (array<string, mixed>|null))|null $streetGeometryForStops
-     *        rutea por calles (OSRM) los puntos [lng,lat] en orden y devuelve la geometría primitiva, o null
+     * `$ensurePlanGeometry(vehicleId, date): bool` calcula y persiste la geometría del plan (true si la guardó).
+     * `$streetGeometryForStops(list<[lng,lat]>): ?array` rutea por calles (OSRM) las paradas de la ruta y
+     * devuelve la geometría primitiva, o null. Ambos los cablea el provider; sin ellos, el lector degrada.
      */
     public function __construct(
         private ConnectionInterface $connection,
@@ -164,8 +163,7 @@ final readonly class DbRouteGeometryReader implements RouteGeometryReader
      * Línea recta entre los puntos [lng,lat] dados (último recurso cuando el ruteador no está disponible).
      * Null si no hay al menos dos puntos DISTINTOS.
      *
-     * @param  list<array{0: float, 1: float}> $points
-     * @return array<string, mixed>|null
+     * @param list<array{0: float, 1: float}> $points
      */
     private function straightLineFromPoints(array $points): ?array
     {
