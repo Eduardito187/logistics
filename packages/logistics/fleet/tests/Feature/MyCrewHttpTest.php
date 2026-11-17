@@ -134,6 +134,61 @@ it('no le quita la entrega al chofer a la medianoche: ruta EN CURSO de ayer sigu
         ->assertJsonPath('data.date', $yesterday);
 });
 
+it('la entrega en curso se resuelve por el driver_id de la ruta, no por el camión de una tripulación más nueva', function (): void {
+    // Regresión (staging 2026-11): el chofer tiene su entrega EN CURSO en el camión A (ayer), pero una
+    // tripulación MÁS NUEVA suya quedó en el camión B (hoy), y el camión B tiene abierta la ruta de OTRO
+    // chofer. El barrido por camión agarraba la ruta ajena de B y tapaba/perdía la entrega real del chofer.
+    $vehicleA = registrarVehiculoMyCrew();
+    $vehicleB = registrarVehiculoMyCrew();
+    $driverId = registrarChoferMyCrew('Chofer Reasignado');
+    $otherDriverId = registrarChoferMyCrew('Otro Chofer');
+    $yesterday = (new DateTimeImmutable('yesterday', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
+    $today = (new DateTimeImmutable('today', new DateTimeZone('America/La_Paz')))->format('Y-m-d');
+
+    // AYER: tripulación + entrega EN CURSO del chofer en el camión A (su asignación real).
+    app(CommandBus::class)->dispatch(new AssembleCrew(
+        driverId: $driverId,
+        helperIds: [],
+        vehicleId: $vehicleA,
+        assembledFor: $yesterday,
+    ));
+    DB::table('execution_driver_routes')->insert([
+        'id' => Uuid::generate()->value,
+        'vehicle_id' => $vehicleA,
+        'driver_id' => $driverId,
+        'route_date' => $yesterday,
+        'status' => 'IN_PROGRESS',
+        'created_at' => now()->subDay(),
+        'updated_at' => now()->subDay(),
+    ]);
+
+    // HOY: tripulación MÁS NUEVA del chofer en el camión B, pero la ruta abierta de B es de OTRO chofer.
+    app(CommandBus::class)->dispatch(new AssembleCrew(
+        driverId: $driverId,
+        helperIds: [],
+        vehicleId: $vehicleB,
+        assembledFor: $today,
+    ));
+    DB::table('execution_driver_routes')->insert([
+        'id' => Uuid::generate()->value,
+        'vehicle_id' => $vehicleB,
+        'driver_id' => $otherDriverId,
+        'route_date' => $today,
+        'status' => 'IN_PROGRESS',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    Sanctum::actingAs(User::factory()->create(['driver_id' => $driverId]));
+
+    // Sin ?date: debe devolver SU entrega en curso (camión A, ayer), nunca la ruta ajena del camión B.
+    $this->getJson('/api/v1/app/fleet/my-crew')
+        ->assertOk()
+        ->assertJsonPath('data.driver.id', $driverId)
+        ->assertJsonPath('data.vehicle.id', $vehicleA)
+        ->assertJsonPath('data.date', $yesterday);
+});
+
 it('con ?date explícito NO arrastra la ruta en curso de otro día (previsualización respeta la fecha)', function (): void {
     $vehicleId = registrarVehiculoMyCrew();
     $driverId = registrarChoferMyCrew('Chofer Preview');

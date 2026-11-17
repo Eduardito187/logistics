@@ -138,25 +138,48 @@ final readonly class GetMyCrewHandler implements QueryHandler
     }
 
     /**
-     * Asignación VIGENTE por RUTA ABIERTA (no por calendario): entre las tripulaciones RECIENTES del
-     * solicitante (varios días, más reciente primero), encuentra la más reciente cuyo camión tenga una ruta
-     * EN CURSO y devuelve TODAS las tripulaciones de ESE día junto con su fecha. Así una entrega en curso que
-     * cruzó la medianoche —o larga a otra ciudad/país— sigue siendo del chofer hasta que la ruta se cierre.
+     * Asignación VIGENTE por RUTA ABIERTA (no por calendario). Así una entrega en curso que cruzó la
+     * medianoche —o larga a otra ciudad/país— sigue siendo del chofer hasta que la ruta se cierre.
+     *
+     * CHOFER: la entrega en curso se resuelve por el `driver_id` DIRECTO de la ruta (fuente de verdad), NO
+     * por el camión de una tripulación reciente. El barrido por camión fallaba de dos formas: una tripulación
+     * más nueva reasignada a otro camión ganaba primero y tapaba la entrega real, y un camión compartido podía
+     * tener abierta la ruta de OTRO chofer. Con el `driver_id` directo se toma SIEMPRE la ruta en curso de ESE
+     * chofer y se reconstruye su tripulación del día del camión de esa ruta.
+     *
+     * AYUDANTE: la ruta no graba al ayudante, así que se mantiene el barrido por sus tripulaciones recientes
+     * (la primera cuyo camión tenga ruta en curso manda).
+     *
      * Sin ninguna ruta en curso, devuelve `[[], null]` (cae al `null` = sin asignación en la fecha).
      *
      * @return array{0: list<CrewRow>, 1: string|null}
      */
     private function openAssignment(GetMyCrew $query): array
     {
-        $recent = $this->recentCrews($query);
+        if ($query->driverId !== null && $query->driverId !== '') {
+            $open = $this->routes->openForDriver($query->driverId);
+            if ($open === null) {
+                return [[], null];
+            }
 
+            $day = $open['route_date'];
+            $crews = $this->directory->list($day, null, $query->driverId, self::MAX_CREWS_PER_DAY, 0)['items'];
+            $sameVehicle = array_values(array_filter(
+                $crews,
+                static fn (array $c): bool => $c['vehicle_id'] === $open['vehicle_id'],
+            ));
+
+            return $sameVehicle !== [] ? [$sameVehicle, $day] : [[], null];
+        }
+
+        $recent = $this->recentCrews($query);
         foreach ($recent as $crew) {
-            $open = array_filter(
+            $hasOpen = array_filter(
                 $this->routes->onDate($crew['assembled_for'], [$crew['vehicle_id']]),
                 static fn (array $route): bool => $route['vehicle_id'] === $crew['vehicle_id']
                     && in_array($route['status'], self::CARRYOVER_STATUSES, true),
             );
-            if ($open === []) {
+            if ($hasOpen === []) {
                 continue;
             }
 

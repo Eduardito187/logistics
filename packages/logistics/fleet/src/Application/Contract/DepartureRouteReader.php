@@ -12,6 +12,7 @@ namespace Logistics\Fleet\Application\Contract;
  * Flota no se acopla al dominio de Ejecución: pregunta en primitivos y recibe primitivos.
  *
  * @phpstan-type DepartureRoute array{route_id: string, vehicle_id: string, status: string, driver_id: string|null}
+ * @phpstan-type OpenDriverRoute array{route_id: string, vehicle_id: string, status: string, driver_id: string, route_date: string}
  */
 interface DepartureRouteReader
 {
@@ -23,4 +24,15 @@ interface DepartureRouteReader
      * @return list<DepartureRoute>
      */
     public function onDate(string $date, array $vehicleIds): array;
+
+    /**
+     * Entrega EN CURSO (o pausada) de ESE chofer, resuelta por su `driver_id` DIRECTO en la ruta —NO por el
+     * camión de una tripulación—, la más reciente sin importar el día. Es la asignación vigente que no se le
+     * quita al cruzar la medianoche (entrega larga, a otra ciudad o país). Trae la fecha de la ruta para
+     * reconstruir la tripulación de ese día. Devuelve null si el chofer no tiene ninguna ruta abierta (o si
+     * Ejecución no está disponible).
+     *
+     * @return OpenDriverRoute|null
+     */
+    public function openForDriver(string $driverId): ?array;
 }

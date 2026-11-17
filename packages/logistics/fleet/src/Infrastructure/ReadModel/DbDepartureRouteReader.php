@@ -15,9 +15,13 @@ use Throwable;
  * responde vacío y `my-crew` cae a la tripulación más reciente del día.
  *
  * @phpstan-import-type DepartureRoute from DepartureRouteReader
+ * @phpstan-import-type OpenDriverRoute from DepartureRouteReader
  */
 final readonly class DbDepartureRouteReader implements DepartureRouteReader
 {
+    /** Estados de una ruta que sigue siendo la asignación vigente del chofer aunque cambie el día. */
+    private const array OPEN_STATUSES = ['IN_PROGRESS', 'SUSPENDED'];
+
     public function __construct(
         private ConnectionResolverInterface $connections,
     ) {}
@@ -57,5 +61,36 @@ final readonly class DbDepartureRouteReader implements DepartureRouteReader
         }
 
         return $routes;
+    }
+
+    public function openForDriver(string $driverId): ?array
+    {
+        if ($driverId === '') {
+            return null;
+        }
+
+        try {
+            $row = $this->connections->connection()->table('execution_driver_routes')
+                ->where('driver_id', $driverId)
+                ->whereIn('status', self::OPEN_STATUSES)
+                ->orderByRaw('route_date DESC NULLS LAST')
+                ->orderByRaw('created_at DESC NULLS LAST')
+                ->orderByDesc('id')
+                ->first(['id', 'vehicle_id', 'status', 'driver_id', 'route_date']);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (!$row instanceof stdClass) {
+            return null;
+        }
+
+        return [
+            'route_id' => (string) $row->id,
+            'vehicle_id' => (string) $row->vehicle_id,
+            'status' => strtoupper((string) $row->status),
+            'driver_id' => $driverId,
+            'route_date' => substr((string) $row->route_date, 0, 10),
+        ];
     }
 }
