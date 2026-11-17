@@ -848,6 +848,67 @@ paths:
           $ref: '#/components/responses/OrderScopeForbidden'
       security:
       - appBearer: []
+  /app/deliveries/{shipmentId}/carrier-handoff:
+    post:
+      tags:
+      - execution
+      operationId: recordCarrierHandoff
+      summary: Hand a shipment over to the carrier at its warehouse (outsourced flow)
+      description: |
+        HANDOFF a la transportadora (flujo tercerizado): nuestro lado deja la carga en el almacén del tercero
+        (nodo carrier_hub). Cierra el tramo propio del envío y lo marca «entregado a la transportadora»
+        (HANDED_TO_CARRIER). NO entrega al cliente: el envío sigue abierto y lo completa la transportadora. El
+        actor (dispositivo/usuario) sale del token, nunca del cuerpo. Idempotente por Idempotency-Key.
+      parameters:
+      - name: shipmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - carrier_hub_node_id
+              properties:
+                carrier_hub_node_id:
+                  type: string
+                  format: uuid
+                  description: Nodo (carrier_hub) donde se deja la carga.
+                carrier_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Transportadora que recibe la carga. Opcional.
+                occurred_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Momento del handoff. Si se omite, la hora del servidor.
+                lat:
+                  type: number
+                  nullable: true
+                lng:
+                  type: number
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryState'
+        '404':
+          description: El envío no existe (code shipment_not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          $ref: '#/components/responses/OrderScopeForbidden'
+      security:
+      - appBearer: []
   /app/deliveries/{shipmentId}/close-transfer:
     post:
       tags:
@@ -14125,7 +14186,7 @@ components:
         status:
           type: string
           description: 'Estado visible vigente al emitir la señal.'
-          enum: [PENDING, PROCESSING, IN_PROGRESS, LOADED, ON_THE_WAY, DELIVERED, FAILED, CANCELLED, RESCHEDULED, RETURNED]
+          enum: [PENDING, PROCESSING, IN_PROGRESS, LOADED, ON_THE_WAY, HANDED_TO_CARRIER, DELIVERED, FAILED, CANCELLED, RESCHEDULED, RETURNED]
         event:
           type: string
           description: 'Hecho de origen: tracking.status_changed, tracking.shipment_placed_on_route o tracking.unit_status_changed.'
@@ -20064,6 +20125,8 @@ components:
       - distribution_center
       - store
       - pickup_point
+      - central_warehouse
+      - carrier_hub
     OperationalCorridor:
       type: object
       description: |
@@ -23024,13 +23087,15 @@ components:
       description: >-
         Estado visible del pedido de cara al cliente (ciclo de vida del seguimiento). Flujo:
         PENDING → PROCESSING → IN_PROGRESS → LOADED → ON_THE_WAY → DELIVERED; con CANCELLED,
-        RESCHEDULED (reprogramada), FAILED (intento fallido) y RETURNED (devuelta).
+        RESCHEDULED (reprogramada), FAILED (intento fallido), RETURNED (devuelta) y
+        HANDED_TO_CARRIER (entregado a la transportadora, en el flujo tercerizado).
       enum:
       - PENDING
       - PROCESSING
       - IN_PROGRESS
       - LOADED
       - ON_THE_WAY
+      - HANDED_TO_CARRIER
       - DELIVERED
       - FAILED
       - RESCHEDULED

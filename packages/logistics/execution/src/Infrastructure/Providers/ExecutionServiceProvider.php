@@ -35,6 +35,8 @@ use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNode;
 use Logistics\Execution\Application\Command\ReceiveUnitAtNode\ReceiveUnitAtNodeHandler;
 use Logistics\Execution\Application\Command\ReconcileNodeReception\ReconcileNodeReception;
 use Logistics\Execution\Application\Command\ReconcileNodeReception\ReconcileNodeReceptionHandler;
+use Logistics\Execution\Application\Command\RecordCarrierHandoff\RecordCarrierHandoff;
+use Logistics\Execution\Application\Command\RecordCarrierHandoff\RecordCarrierHandoffHandler;
 use Logistics\Execution\Application\Command\RecordEvidenceValidation\RecordEvidenceValidation;
 use Logistics\Execution\Application\Command\RecordEvidenceValidation\RecordEvidenceValidationHandler;
 use Logistics\Execution\Application\Command\RecordFailedDelivery\RecordFailedDelivery;
@@ -65,9 +67,11 @@ use Logistics\Execution\Application\Contract\NodeReceptionListReader;
 use Logistics\Execution\Application\Contract\NodeReceptionTargetReader;
 use Logistics\Execution\Application\Contract\PlannedRouteStopsProvider;
 use Logistics\Execution\Application\Contract\RouteGeometryReader;
+use Logistics\Execution\Application\Contract\RouteOriginLocator;
 use Logistics\Execution\Application\Contract\RouteStopsReconciler;
 use Logistics\Execution\Application\Contract\ScanBatchLedger;
 use Logistics\Execution\Application\Contract\ShipmentFulfillmentReader;
+use Logistics\Execution\Application\Contract\ShipmentItineraryReader;
 use Logistics\Execution\Application\Contract\ShipmentRouteFactsReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitIdsReader;
 use Logistics\Execution\Application\Contract\ShipmentUnitProductReader;
@@ -119,8 +123,10 @@ use Logistics\Execution\Infrastructure\ReadModel\DbNodeReceptionListReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbNodeReceptionTargetReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbPlannedRouteStopsProvider;
 use Logistics\Execution\Infrastructure\ReadModel\DbRouteGeometryReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbRouteOriginLocator;
 use Logistics\Execution\Infrastructure\ReadModel\DbScanBatchLedger;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentFulfillmentReader;
+use Logistics\Execution\Infrastructure\ReadModel\DbShipmentItineraryReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentRouteFactsReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitIdsReader;
 use Logistics\Execution\Infrastructure\ReadModel\DbShipmentUnitProductReader;
@@ -160,6 +166,7 @@ final class ExecutionServiceProvider extends ServiceProvider
         RecordUnloadScan::class => RecordUnloadScanHandler::class,
         RecordProofOfDelivery::class => RecordProofOfDeliveryHandler::class,
         RecordStoreDrop::class => RecordStoreDropHandler::class,
+        RecordCarrierHandoff::class => RecordCarrierHandoffHandler::class,
         CloseTransferWithShortage::class => CloseTransferWithShortageHandler::class,
         AttachDeliveryPhotos::class => AttachDeliveryPhotosHandler::class,
         RecordFailedDelivery::class => RecordFailedDeliveryHandler::class,
@@ -260,6 +267,12 @@ final class ExecutionServiceProvider extends ServiceProvider
             return new DbVehicleFitnessReader($app->make('db')->connection());
         });
         // ── fin bloque field-flow ──
+        // Punto de salida de la ruta = sede/almacén base del vehículo (su carrier_hub si es de transportadora),
+        // leído de fleet_vehicles → network_nodes. Anteponerlo a las paradas hace que la polilínea del chofer
+        // arranque en SU almacén, no en el origen del envío.
+        $this->app->bind(RouteOriginLocator::class, static function ($app): RouteOriginLocator {
+            return new DbRouteOriginLocator($app->make('db')->connection());
+        });
         $this->app->bind(RouteGeometryReader::class, static function ($app): RouteGeometryReader {
             // Si el plan existe sin geometría, se le pide a Planificación (su servicio de aplicación) que la
             // calcule y persista; Ejecución no escribe sobre Planning por sí misma.
@@ -287,7 +300,19 @@ final class ExecutionServiceProvider extends ServiceProvider
                 return $osrm->forPoints($points);
             };
 
-            return new DbRouteGeometryReader($app->make('db')->connection(), $ensure, $streetForStops);
+            // Punto de salida del vehículo (sede/almacén base) para anteponer a las paradas en el respaldo
+            // (ruteo por calles y recta), unificando la asimetría con la vía del plan.
+            $origin = $app->make(RouteOriginLocator::class);
+            $originForVehicle = static function (string $vehicleId) use ($origin): ?array {
+                return $origin->originFor($vehicleId);
+            };
+
+            return new DbRouteGeometryReader(
+                $app->make('db')->connection(),
+                $ensure,
+                $streetForStops,
+                $originForVehicle,
+            );
         });
 
         // Estado en vivo de la ruta (ETA viva + "fuera de ruta") desde el motor único de ETA de telemetría,
@@ -306,6 +331,35 @@ final class ExecutionServiceProvider extends ServiceProvider
         // entrega en tienda de un traspaso en su nodo destino cierra la entrega (no hay cliente que firme).
         $this->app->bind(TransferDestinationReader::class, static function ($app): TransferDestinationReader {
             return new QueryBusTransferDestinationReader($app->make(QueryBus::class));
+        });
+
+        // Itinerario multi-tramo del envío (tabla shipment_legs, read-only): distingue un HUB INTERMEDIO del
+        // DESTINO FINAL para que dejar la carga en un nodo de paso cierre el tramo (no la entrega).
+        $this->app->bind(ShipmentItineraryReader::class, static function ($app): ShipmentItineraryReader {
+            return new DbShipmentItineraryReader($app->make('db')->connection());
+        });
+
+        // La entrega en tienda / handoff arman el handler EXPLÍCITAMENTE para inyectar sus lectores: una
+        // dependencia nullable del contenedor (?Tipo $x = null) llega NULL aunque sea resoluble, así que acá
+        // se pasan a mano (gotcha container-nullable-dependency). Sin esto, la guarda multi-tramo (itinerario)
+        // y el cierre de traspaso (destino/bultos) quedarían inertes.
+        $this->app->bind(RecordStoreDropHandler::class, static function ($app): RecordStoreDropHandler {
+            return new RecordStoreDropHandler(
+                $app->make(DeliveryRepository::class),
+                $app->make(VehicleRouteRepository::class),
+                $app->make(ShipmentFulfillmentReader::class),
+                $app->make(RecordDomainEvents::class),
+                $app->make(ShipmentUnitIdsReader::class),
+                $app->make(TransferDestinationReader::class),
+                $app->make(ShipmentItineraryReader::class),
+            );
+        });
+        $this->app->bind(RecordCarrierHandoffHandler::class, static function ($app): RecordCarrierHandoffHandler {
+            return new RecordCarrierHandoffHandler(
+                $app->make(DeliveryRepository::class),
+                $app->make(RecordDomainEvents::class),
+                $app->make(ShipmentItineraryReader::class),
+            );
         });
 
         // Producto de cada bulto (foto, nombre, SKU, N de M) para la recepción en nodo: lectura en lote de

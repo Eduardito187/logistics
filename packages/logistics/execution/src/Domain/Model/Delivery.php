@@ -12,6 +12,8 @@ use Logistics\Execution\Domain\Event\NodeReceptionRecorded;
 use Logistics\Execution\Domain\Event\ShipmentDelivered;
 use Logistics\Execution\Domain\Event\ShipmentDeparted;
 use Logistics\Execution\Domain\Event\ShipmentDroppedAtStore;
+use Logistics\Execution\Domain\Event\ShipmentHandedToCarrier;
+use Logistics\Execution\Domain\Event\ShipmentLegClosed;
 use Logistics\Execution\Domain\Event\ShipmentLoaded;
 use Logistics\Execution\Domain\Event\ShipmentPrepared;
 use Logistics\Execution\Domain\Event\ShipmentUnloaded;
@@ -768,6 +770,93 @@ final class Delivery extends AggregateRoot
             $this->shipmentId,
             $nodeId,
             $unitId,
+            $occurredAt,
+        ));
+    }
+
+    /**
+     * CIERRE DE UN TRAMO en un nodo INTERMEDIO del itinerario multi-tramo: llegar a un `to_node_id` que no es
+     * el destino final NO es la entrega. Cierra el tramo (graba ShipmentLegClosed) y deja la entrega ABIERTA
+     * para que siga el próximo tramo. Quién decide que el nodo es intermedio es la capa de aplicación (lee el
+     * itinerario); el agregado solo cuida su invariante: no toca una entrega ya cerrada.
+     *
+     * `$seq` es la posición del tramo cerrado (tabla shipment_legs); informativo para el consumidor.
+     */
+    public function closeLegAtHub(int $seq, string $nodeId, DateTimeImmutable $occurredAt): void
+    {
+        $nodeId = trim($nodeId);
+        if ($nodeId === '') {
+            throw ExecutionException::because('el cierre de tramo requiere el nodo');
+        }
+
+        // Entrega ya resuelta: no hay tramo que cerrar (idempotente, sin reemitir).
+        if ($this->status === DeliveryStatus::Delivered || $this->status === DeliveryStatus::Failed) {
+            return;
+        }
+
+        $this->recordEvent(new ShipmentLegClosed(
+            $this->id->toString(),
+            $this->shipmentId,
+            $seq,
+            $nodeId,
+            $occurredAt,
+        ));
+    }
+
+    /**
+     * HANDOFF a la transportadora: NUESTRO lado dejó la carga en el almacén de la transportadora (nodo
+     * `carrier_hub`). Decisión del dueño: el "entregado a transportadora" se marca con este escaneo propio,
+     * NO cuando el tercero arranca. Efecto: cierra el tramo de flota propia (ShipmentLegClosed) y declara que
+     * la carga pasó a manos del tercero (ShipmentHandedToCarrier). NO marca la entrega como Delivered: el
+     * envío sigue su recorrido con la transportadora.
+     *
+     * Idempotente por idempotencyKey (reintento offline no duplica) y también a nivel de ESTADO: sobre una
+     * entrega ya cerrada (entregada o fallida) es un no-op que no reemite nada. `$legSeq` es el tramo de flota
+     * propia que se cierra; `$carrierId` puede ser null si el tramo todavía no tiene transportadora.
+     */
+    public function recordCarrierHandoff(
+        string $carrierHubNodeId,
+        ?string $carrierId,
+        int $legSeq,
+        ?GeoPoint $geo,
+        DeviceContext $device,
+        DateTimeImmutable $occurredAt,
+        string $idempotencyKey,
+    ): void {
+        if ($this->isDuplicate($idempotencyKey)) {
+            return;
+        }
+
+        $carrierHubNodeId = trim($carrierHubNodeId);
+        if ($carrierHubNodeId === '') {
+            throw ExecutionException::because('la entrega a la transportadora requiere el almacén de la transportadora (nodo)');
+        }
+
+        // Entrega ya resuelta: el envío no se puede volver a entregar a la transportadora (idempotente).
+        if ($this->status === DeliveryStatus::Delivered || $this->status === DeliveryStatus::Failed) {
+            return;
+        }
+
+        $carrierId = $carrierId !== null && trim($carrierId) !== '' ? trim($carrierId) : null;
+
+        // Escaneo inmutable del handoff (append-only). El bulto de referencia es el propio envío: se entrega el
+        // envío completo a la transportadora, no un bulto suelto.
+        $this->appendScan(ScanType::Handoff, $this->shipmentId, $geo, $device, $occurredAt, $idempotencyKey);
+
+        // Cierra el tramo de flota propia...
+        $this->recordEvent(new ShipmentLegClosed(
+            $this->id->toString(),
+            $this->shipmentId,
+            $legSeq,
+            $carrierHubNodeId,
+            $occurredAt,
+        ));
+        // ...y declara el pase al tercero. El envío sigue abierto (no es Delivered).
+        $this->recordEvent(new ShipmentHandedToCarrier(
+            $this->id->toString(),
+            $this->shipmentId,
+            $carrierId,
+            $carrierHubNodeId,
             $occurredAt,
         ));
     }

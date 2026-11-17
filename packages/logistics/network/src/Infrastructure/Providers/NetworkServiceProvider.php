@@ -17,6 +17,9 @@ use Logistics\Network\Application\Command\RegisterReceivingDock\RegisterReceivin
 use Logistics\Network\Application\Command\RemoveLeg\RemoveLegCommand;
 use Logistics\Network\Application\Command\RemoveLeg\RemoveLegHandler;
 use Logistics\Network\Application\Contract\CityCatalogReader;
+use Logistics\Network\Application\Contract\ItineraryPlanner;
+use Logistics\Network\Application\Contract\NetworkNodeDirectory;
+use Logistics\Network\Application\Service\RoutedItineraryPlanner;
 use Logistics\Network\Application\Query\FindLeg\FindLegHandler;
 use Logistics\Network\Application\Query\FindLeg\FindLegQuery;
 use Logistics\Network\Application\Query\FindNode\FindNodeHandler;
@@ -40,6 +43,7 @@ use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentLegRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentNodeRepository;
 use Logistics\Network\Infrastructure\Persistence\Eloquent\EloquentReceivingDockRepository;
 use Logistics\Network\Infrastructure\ReadModel\DbCityCatalogReader;
+use Logistics\Network\Infrastructure\ReadModel\DbNetworkNodeDirectory;
 use Logistics\Shared\Application\HandlerRegistry;
 
 /**
@@ -72,6 +76,11 @@ final class NetworkServiceProvider extends ServiceProvider
 
         // Catálogo de ciudades (departamentos + almacén central): lectura directa por query builder.
         $this->app->bind(CityCatalogReader::class, DbCityCatalogReader::class);
+
+        // Ruteo de tramos (insumo de planning): directorio de nodos sobre network_nodes y el planificador
+        // que aplica el modelo Dismac (propia/interdepartamental/tercerizado).
+        $this->app->bind(NetworkNodeDirectory::class, DbNetworkNodeDirectory::class);
+        $this->app->bind(ItineraryPlanner::class, RoutedItineraryPlanner::class);
     }
 
     public function boot(): void

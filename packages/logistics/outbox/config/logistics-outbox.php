@@ -32,12 +32,16 @@ use Logistics\Promise\Infrastructure\Dispatch\OrderCancelledCupoReleaseDispatche
 use Logistics\Promise\Infrastructure\Dispatch\OrderPaidCupoConfirmDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\OrderCancelledFulfillmentDispatcher;
 use Logistics\Shipments\Infrastructure\Dispatch\ShipmentStatusProgressionDispatcher;
+use Logistics\Shipments\Infrastructure\Outbox\BuildItineraryOnShipmentReceived;
+use Logistics\Shipments\Infrastructure\Outbox\CloseLegOnShipmentLegClosed;
 use Logistics\Telemetry\Infrastructure\Outbox\BindTripToRouteOnRouteStarted;
 use Logistics\Telemetry\Infrastructure\Outbox\BroadcastFleetRemovedOnVehicleRetired;
 use Logistics\Telemetry\Infrastructure\Outbox\RefreshRerouteOnDeviation;
 use Logistics\Tracking\Infrastructure\Outbox\AtStoreOnStoreDrop;
 use Logistics\Tracking\Infrastructure\Outbox\BindShipmentOnReceived;
 use Logistics\Tracking\Infrastructure\Outbox\CancelOnOrderCancelled;
+use Logistics\Tracking\Infrastructure\Outbox\HandToCarrierOnCarrierTripStarted;
+use Logistics\Tracking\Infrastructure\Outbox\HandToCarrierOnShipmentHandoff;
 use Logistics\Tracking\Infrastructure\Outbox\InProgressOnLabelsEmitted;
 use Logistics\Tracking\Infrastructure\Outbox\OpenTrackingOnOrderPlaced;
 use Logistics\Tracking\Infrastructure\Outbox\ProcessingOnOrderPaid;
@@ -214,6 +218,15 @@ return [
         // del scheduler, para que el mapa pase de la recta al trazo por calles apenas el camión se desvía.
         'telemetry.vehicle_deviation_started' => RefreshRerouteOnDeviation::class,
         'returns.return_initiated' => ReturnedOnReturnInitiated::class,
+        // Viaje de transportadora iniciado (flujo tercerizado): el seguimiento de cada envío a bordo pasa a
+        // «entregado a la transportadora» (HANDED_TO_CARRIER), tolerante. El aviso al cliente, si corresponde,
+        // sale del propio cambio de estado visible (prefijo 'tracking.'). SAP se entera por su observador aparte.
+        'carriers.carrier_trip_started' => HandToCarrierOnCarrierTripStarted::class,
+        // Handoff PROPIO a la transportadora (nuestro escaneo al dejar la carga en su almacén): disparador
+        // PRIMARIO de «entregado a la transportadora» (el nombre exacto gana al prefijo 'execution.').
+        'execution.shipment_handed_to_carrier' => HandToCarrierOnShipmentHandoff::class,
+        // Tramo cerrado (hub intermedio o handoff): shipments pasa ese tramo a `closed` y arranca el siguiente.
+        'execution.shipment_leg_closed' => CloseLegOnShipmentLegClosed::class,
     ],
 
     // Abanico por evento: eventos que disparan reacciones en varios contextos a la vez. El
@@ -285,6 +298,8 @@ return [
             BindShipmentOnReceived::class,
             // Auto-slot (promise, Módulo 1): pedidos que entran con fecha y sin ventana (Magento/POS).
             AutoSlotOnShipmentReceived::class,
+            // Itinerario (shipments): decide propia/tercerizado por departamento destino y arma los tramos.
+            BuildItineraryOnShipmentReceived::class,
         ],
 
         // Reprogramación de entrega: aviso al cliente + seguimiento → «reprogramada» (por envío).

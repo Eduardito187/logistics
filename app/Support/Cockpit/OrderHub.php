@@ -34,18 +34,32 @@ final class OrderHub
      *
      * @return array{
      *   order: array<string, mixed>|null,
+     *   code: string|null,
      *   payment: array{method: string, status: string, amount_cents: int|null, currency: string|null, gateway_ref: string|null}|null,
      *   invoice: array{number: string|null, status: string, total_cents: int, issued_at: string|null}|null,
-     *   shipments: list<array{id: string, label: string, reference: string|null, status: string}>,
+     *   shipments: list<array{id: string, code: string|null, label: string, reference: string|null, status: string}>,
      * }
      */
     public function overview(string $orderId): array
     {
+        $shipments = $this->shipments($orderId);
+
+        // Código visible del pedido: el del primer envío que tenga uno legible (nunca un UUID). Así la ficha
+        // muestra el número por el que la app ubica el pedido, sin exponer identificadores internos.
+        $code = null;
+        foreach ($shipments as $shipment) {
+            if ($shipment['code'] !== null) {
+                $code = $shipment['code'];
+                break;
+            }
+        }
+
         return [
             'order' => $this->order($orderId),
+            'code' => $code,
             'payment' => $this->payment($orderId),
             'invoice' => $this->invoice($orderId),
-            'shipments' => $this->shipments($orderId),
+            'shipments' => $shipments,
         ];
     }
 
@@ -166,7 +180,7 @@ final class OrderHub
      * a la ficha 360 del envío, nunca se muestra) + la DIRECCIÓN de entrega como etiqueta legible + su
      * referencia (indicaciones) + estado. Nunca expone el UUID como texto. Lectura directa tolerante.
      *
-     * @return list<array{id: string, label: string, reference: string|null, status: string}>
+     * @return list<array{id: string, code: string|null, label: string, reference: string|null, status: string}>
      */
     private function shipments(string $orderId): array
     {
@@ -175,14 +189,20 @@ final class OrderHub
                 ->where('order_reference', $orderId)
                 ->orderBy('external_id')
                 ->limit(20)
-                ->get(['id', 'status', 'customer_name', 'address_text', 'address_reference'])
+                ->get(['id', 'status', 'customer_name', 'address_text', 'address_reference', 'external_id'])
                 ->map(static function ($r): array {
                     $address = is_string($r->address_text) && trim($r->address_text) !== '' ? trim($r->address_text) : null;
                     $name = is_string($r->customer_name) && trim($r->customer_name) !== '' ? trim($r->customer_name) : null;
                     $reference = is_string($r->address_reference) && trim($r->address_reference) !== '' ? trim($r->address_reference) : null;
 
+                    // Código legible del envío (el `external_id` de la fuente): se muestra SOLO si no es un UUID,
+                    // para no exponer identificadores internos. Es el número por el que la app ubica el pedido.
+                    $external = is_string($r->external_id) ? trim($r->external_id) : '';
+                    $code = ($external !== '' && !self::isUuid($external)) ? $external : null;
+
                     return [
                         'id' => (string) $r->id,
+                        'code' => $code,
                         'label' => $address ?? $name ?? 'Envío',
                         'reference' => $reference,
                         'status' => (string) $r->status,
@@ -192,5 +212,11 @@ final class OrderHub
         } catch (Throwable) {
             return [];
         }
+    }
+
+    /** ¿El texto tiene forma de UUID? (para nunca mostrarlo como código visible del pedido). */
+    private static function isUuid(string $value): bool
+    {
+        return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1;
     }
 }

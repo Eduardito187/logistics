@@ -19,6 +19,7 @@ use Logistics\Execution\Presentation\Http\MarkStopArrivedController;
 use Logistics\Execution\Presentation\Http\OpenNodeReceptionController;
 use Logistics\Execution\Presentation\Http\ReceiveUnitAtNodeController;
 use Logistics\Execution\Presentation\Http\ReconcileNodeReceptionController;
+use Logistics\Execution\Presentation\Http\RecordCarrierHandoffController;
 use Logistics\Execution\Presentation\Http\RecordEvidenceValidationController;
 use Logistics\Execution\Presentation\Http\RecordFailedDeliveryController;
 use Logistics\Execution\Presentation\Http\RecordLoadScanController;
@@ -154,6 +155,12 @@ return [
                 ->whereUuid('shipmentId')
                 ->middleware('order.scope')
                 ->name('store-drop');
+            // Handoff a la transportadora (flujo tercerizado): nuestro lado deja la carga en el almacén del
+            // tercero (carrier_hub). Cierra el tramo propio y marca «entregado a la transportadora»; NO entrega.
+            Route::post('deliveries/{shipmentId}/carrier-handoff', RecordCarrierHandoffController::class)
+                ->whereUuid('shipmentId')
+                ->middleware('order.scope')
+                ->name('carrier-handoff');
             // Cierre manual de OFICINA de un traspaso que quedó en curso con faltantes (la tienda nunca
             // concilió): queda entregado con `with_shortage`. Solo admin y supervisor; motivo obligatorio.
             Route::post('deliveries/{shipmentId}/close-transfer', CloseTransferWithShortageController::class)

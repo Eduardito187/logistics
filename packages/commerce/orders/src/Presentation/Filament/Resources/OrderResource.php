@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Commerce\Orders\Presentation\Filament\Resources;
 
+use App\Enums\Role;
 use App\Filament\Support\TableCsvExport;
+use App\Models\User;
 use Commerce\Orders\Application\Command\CancelOrder\CancelOrder;
 use Commerce\Orders\Domain\ValueObject\FinancingPlan;
 use Commerce\Orders\Infrastructure\Persistence\Eloquent\Model\OrderRecord;
@@ -14,7 +16,9 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
@@ -22,9 +26,11 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Logistics\Shared\Application\Command\CommandBus;
 use Logistics\Shared\Presentation\Filament\Concerns\OfficeOnly;
 use Logistics\Shared\Presentation\Filament\Concerns\PlainNavigationLabel;
+use Logistics\Tracking\Application\Command\CorrectShipmentVisibleState\CorrectShipmentVisibleState;
 
 /**
  * Admin de órdenes del frente comercial (OMS).
@@ -211,6 +217,65 @@ final class OrderResource extends Resource
 
                 Notification::make()
                     ->title(__('Order cancelled'))
+                    ->success()
+                    ->send();
+            });
+    }
+
+    /**
+     * Acción de CORRECCIÓN MANUAL del estado visible (de cara al cliente) de los envíos del pedido: despacha
+     * CorrectShipmentVisibleState por `order_reference` (alcanza a todos los envíos hermanos) al bus CQRS. Es
+     * para arreglar un desfase (p. ej. olvidaron el escaneo al cargar). Solo Admin/Planificador. Entregado,
+     * Cancelado, Devuelto y Pendiente NO son corregibles a mano (los gobierna su flujo real) y no se ofrecen.
+     */
+    public static function correctStateAction(): Action
+    {
+        return Action::make('correctVisibleState')
+            ->label(__('Correct visible state'))
+            ->icon('heroicon-o-pencil-square')
+            ->color('warning')
+            ->modalHeading(__('Correct visible state'))
+            ->modalDescription(__('Manually correct the customer-visible status of this order\'s shipments (for example, a missed load scan). Delivered, Cancelled, Returned and Pending are governed by their real flow and cannot be set here.'))
+            ->schema([
+                Select::make('target_status')
+                    ->label(__('Target status'))
+                    ->options([
+                        'PROCESSING' => __('Processing'),
+                        'IN_PROGRESS' => __('In progress'),
+                        'LOADED' => __('Loaded'),
+                        'ON_THE_WAY' => __('On the way'),
+                        'HANDED_TO_CARRIER' => __('Handed to carrier'),
+                    ])
+                    ->native(false)
+                    ->required(),
+                Textarea::make('reason')
+                    ->label(__('Reason'))
+                    ->rows(2)
+                    ->required()
+                    ->maxLength(500),
+                Toggle::make('notify_customer')
+                    ->label(__('Notify customer'))
+                    ->default(false),
+            ])
+            ->visible(static fn (): bool => ($user = Auth::user()) instanceof User && $user->hasAnyRole(Role::Admin, Role::Planificador))
+            ->action(static function (OrderRecord $record, array $data): void {
+                $user = Auth::user();
+                if (!$user instanceof User) {
+                    return;
+                }
+
+                app(CommandBus::class)->dispatch(new CorrectShipmentVisibleState(
+                    shipmentId: null,
+                    orderReference: (string) $record->getKey(),
+                    targetStatus: (string) $data['target_status'],
+                    reason: (string) $data['reason'],
+                    actorId: (string) $user->getAuthIdentifier(),
+                    actorName: (string) ($user->name ?? ''),
+                    notifyCustomer: (bool) ($data['notify_customer'] ?? false),
+                ));
+
+                Notification::make()
+                    ->title(__('Visible state corrected'))
                     ->success()
                     ->send();
             });

@@ -36,6 +36,7 @@ final class NodeFactory extends Factory
             NodeType::Store => 'T',
             NodeType::PickupPoint => 'PK',
             NodeType::CentralWarehouse => 'AC',
+            NodeType::CarrierHub => 'CH',
         };
 
         return [
@@ -81,6 +82,14 @@ final class NodeFactory extends Factory
     public function centralWarehouse(): self
     {
         return $this->state(fn (): array => ['type' => NodeType::CentralWarehouse->value]);
+    }
+
+    /**
+     * Estado: almacén de una transportadora (punto de handoff hacia un tercero).
+     */
+    public function carrierHub(): self
+    {
+        return $this->state(fn (): array => ['type' => NodeType::CarrierHub->value]);
     }
 
     /**
