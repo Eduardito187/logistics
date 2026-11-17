@@ -122,7 +122,19 @@ return [
         // host vacío apaga OSRM y cae al respaldo recto. En PRODUCCIÓN apuntar a un OSRM propio (ADR 009), no
         // al público (manda coordenadas de clientes a un tercero y tiene límites de uso). En los tests se
         // fuerza vacío (phpunit.xml) para no pegarle a la red.
-        'osrm_host' => (string) env('TELEMETRY_ETA_OSRM_HOST', (string) env('OSRM_HOST', 'https://router.project-osrm.org')),
+        'osrm_host' => (static function (): string {
+            // `TELEMETRY_ETA_OSRM_HOST` manda si está definido (incluso "" = apagar OSRM solo acá). Si no, cae
+            // a `OSRM_HOST`: ausente o `null` → OSRM público por default (el reruteo por calles anda sin `.env`,
+            // el caso que degradaba staging a recta); "" explícito → apagado (los tests lo fuerzan en phpunit).
+            $eta = env('TELEMETRY_ETA_OSRM_HOST');
+            if (is_string($eta)) {
+                return rtrim(trim($eta), '/');
+            }
+
+            $host = env('OSRM_HOST');
+
+            return is_string($host) ? rtrim(trim($host), '/') : 'https://router.project-osrm.org';
+        })(),
         'osrm_timeout' => (int) env('TELEMETRY_ETA_OSRM_TIMEOUT', 5),
         // Velocidad media urbana para el respaldo en línea recta (km/h).
         'average_speed_kph' => (float) env('TELEMETRY_ETA_AVERAGE_SPEED_KPH', 25.0),
@@ -176,7 +188,11 @@ return [
 
     // Analítica de calles (map-matching OSRM). Reutiliza el host OSRM de planning por defecto.
     'streets' => [
-        'osrm_host' => env('OSRM_HOST', 'https://router.project-osrm.org'),
+        'osrm_host' => (static function (): string {
+            $host = env('OSRM_HOST');
+
+            return is_string($host) ? rtrim(trim($host), '/') : 'https://router.project-osrm.org';
+        })(),
         'osrm_timeout' => (int) env('TELEMETRY_OSRM_TIMEOUT', 10),
         'min_samples' => (int) env('TELEMETRY_STREET_MIN_SAMPLES', 3),
     ],

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Logistics\Execution\Infrastructure\Providers;
 
+use Illuminate\Http\Client\Factory as HttpClientFactory;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Logistics\Execution\Application\Command\AssembleDailyRoute\AssembleDailyRoute;
@@ -128,6 +129,7 @@ use Logistics\Execution\Infrastructure\ReadModel\DbVehicleFitnessReader;
 use Logistics\Execution\Infrastructure\ReadModel\EloquentDeliveryEvidenceReader;
 use Logistics\Execution\Infrastructure\ReadModel\QueryBusLiveRouteStateReader;
 use Logistics\Execution\Infrastructure\ReadModel\QueryBusTransferDestinationReader;
+use Logistics\Execution\Infrastructure\Routing\OsrmStreetGeometry;
 use Logistics\Execution\Infrastructure\Storage\FilesystemEvidenceStorage;
 use Logistics\Execution\Presentation\Console\ReconcileRouteStopsCommand;
 use Logistics\Execution\Presentation\Http\ServeEvidenceFileController;
@@ -271,7 +273,21 @@ final class ExecutionServiceProvider extends ServiceProvider
                 }
             : null;
 
-            return new DbRouteGeometryReader($app->make('db')->connection(), $ensure);
+            // Sin plan con geometría, se rutea por CALLES las paradas de la ruta (OSRM), para que la ruta del
+            // chofer nunca salga en línea recta por el solo hecho de no tener plan. Host por config compartido
+            // (default OSRM público, sin depender del `.env`); con el host vacío el servicio devuelve null y
+            // el lector recién ahí cae a la recta.
+            $osrm = new OsrmStreetGeometry(
+                $app->make(HttpClientFactory::class),
+                (string) config('planning.osrm_host', ''),
+                (int) config('planning.osrm_timeout', 5),
+            );
+            $streetForStops = static function (array $points) use ($osrm): ?array {
+                /** @var list<array{0: float, 1: float}> $points */
+                return $osrm->forPoints($points);
+            };
+
+            return new DbRouteGeometryReader($app->make('db')->connection(), $ensure, $streetForStops);
         });
 
         // Estado en vivo de la ruta (ETA viva + "fuera de ruta") desde el motor único de ETA de telemetría,
