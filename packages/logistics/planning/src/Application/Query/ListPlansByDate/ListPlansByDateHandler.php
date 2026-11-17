@@ -48,10 +48,10 @@ final readonly class ListPlansByDateHandler implements QueryHandler
             }
         }
 
-        if ($query->status !== null) {
+        if ($query->statuses !== []) {
             $plans = array_values(array_filter(
                 $plans,
-                static fn (DeliveryPlan $plan): bool => $plan->status()->value === $query->status,
+                static fn (DeliveryPlan $plan): bool => in_array($plan->status()->value, $query->statuses, true),
             ));
         }
 
@@ -60,6 +60,22 @@ final readonly class ListPlansByDateHandler implements QueryHandler
                 $plans,
                 static fn (DeliveryPlan $plan): bool => $plan->vehicleId() === $query->vehicleId,
             ));
+        }
+
+        $search = $query->search !== null ? trim($query->search) : '';
+
+        // Filtro de texto (`q`): necesita los datos HUMANOS ya resueltos (placa, chofer, nodo de origen), así
+        // que se arma la vista de TODO el conjunto filtrado y se filtra sobre ella antes de paginar.
+        if ($search !== '') {
+            $views = $this->filterBySearch($this->views->assemble($plans), $search);
+            if ($query->limit === null) {
+                return $views;
+            }
+
+            return new Page(
+                array_values(\array_slice($views, max(0, $query->offset), max(1, $query->limit))),
+                \count($views),
+            );
         }
 
         // Sin página pedida: comportamiento histórico (lista completa del filtro).
@@ -71,6 +87,28 @@ final readonly class ListPlansByDateHandler implements QueryHandler
 
         // Placa y chofer se resuelven en lote SOLO para la página devuelta.
         return new Page($this->views->assemble($slice), \count($plans));
+    }
+
+    /**
+     * Filtra los planes por texto libre contra la placa del camión, el nombre del chofer y el nombre del nodo
+     * de origen (acento/caja indiferentes a nivel de inclusión de substring).
+     *
+     * @param  list<PlanView> $views
+     * @return list<PlanView>
+     */
+    private function filterBySearch(array $views, string $search): array
+    {
+        $needle = mb_strtolower($search);
+
+        return array_values(array_filter($views, static function (PlanView $view) use ($needle): bool {
+            $haystack = mb_strtolower(implode(' ', array_filter([
+                $view->plate,
+                $view->driverName,
+                is_array($view->originNode) && isset($view->originNode['name']) ? (string) $view->originNode['name'] : null,
+            ])));
+
+            return $haystack !== '' && str_contains($haystack, $needle);
+        }));
     }
 
     /**

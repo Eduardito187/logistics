@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Logistics\Planning\Application\Query\ListPlansByDate\ListPlansByDate;
@@ -92,6 +93,67 @@ it('filtra por estado y por vehículo', function (): void {
 
     $this->getJson('/api/v1/app/plans?date=2031-03-10&status=NOPE')->assertStatus(422);
     $this->getJson('/api/v1/app/plans?date=2031-03-10&vehicle_id=no-uuid')->assertStatus(422);
+});
+
+it('filtra por VARIOS estados (CSV o repetido)', function (): void {
+    PlanRecordFactory::new()->onDate(PLAN_PAGINATION_DATE)->published()->create();
+    PlanRecordFactory::new()->onDate(PLAN_PAGINATION_DATE)->proposed()->create();
+    PlanRecordFactory::new()->onDate(PLAN_PAGINATION_DATE)->create(); // DRAFT por defecto
+
+    // CSV: dos estados en un solo parámetro.
+    $this->getJson('/api/v1/app/plans?date=2031-03-10&status=PUBLISHED,PROPOSED')
+        ->assertOk()->assertJsonCount(2, 'data');
+
+    // Repetido: status[]=...&status[]=...
+    $this->getJson('/api/v1/app/plans?date=2031-03-10&status[]=PUBLISHED&status[]=PROPOSED')
+        ->assertOk()->assertJsonCount(2, 'data');
+
+    // Un estado inválido en la lista → 422.
+    $this->getJson('/api/v1/app/plans?date=2031-03-10&status=PUBLISHED,NOPE')->assertStatus(422);
+});
+
+it('filtra por texto q (placa del camión)', function (): void {
+    $vehicle = (string) Str::uuid7();
+    DB::table('fleet_vehicles')->insert([
+        'id' => $vehicle,
+        'plate' => 'QFILTER-7',
+        'capacity_kg' => 3000,
+        'capacity_m3' => 12,
+        'home_base_node_id' => (string) Str::uuid7(),
+        'status' => 'active',
+        'documents' => '[]',
+    ]);
+    PlanRecordFactory::new()->onDate(PLAN_PAGINATION_DATE)->create(['vehicle_id' => $vehicle]);
+    PlanRecordFactory::new()->onDate(PLAN_PAGINATION_DATE)->create(); // otro camión, sin esa placa
+
+    $this->getJson('/api/v1/app/plans?date=2031-03-10&q=qfilter')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.vehicle_id', $vehicle);
+
+    $this->getJson('/api/v1/app/plans?date=2031-03-10&q=zzz-no-existe')
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+});
+
+it('enriquece cada plan con execution_status de su ruta del día', function (): void {
+    $withRoute = (string) Str::uuid7();
+    $withoutRoute = (string) Str::uuid7();
+    PlanRecordFactory::new()->onDate(PLAN_PAGINATION_DATE)->published()->create(['vehicle_id' => $withRoute]);
+    PlanRecordFactory::new()->onDate(PLAN_PAGINATION_DATE)->published()->create(['vehicle_id' => $withoutRoute]);
+    DB::table('execution_driver_routes')->insert([
+        'id' => (string) Str::uuid7(),
+        'vehicle_id' => $withRoute,
+        'route_date' => PLAN_PAGINATION_DATE,
+        'status' => 'IN_PROGRESS',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $data = collect($this->getJson('/api/v1/app/plans?date=2031-03-10')->assertOk()->json('data'))->keyBy('vehicle_id');
+
+    expect($data[$withRoute]['execution_status'])->toBe('IN_PROGRESS')
+        ->and($data[$withoutRoute]['execution_status'])->toBeNull();
 });
 
 it('lista un rango de fechas en orden de día y valida sus límites', function (): void {

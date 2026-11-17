@@ -4312,12 +4312,24 @@ paths:
       - name: status
         in: query
         required: false
+        description: 'Filter by one or MORE plan statuses. Repeat (status[]=DRAFT&status[]=PUBLISHED) or CSV (status=DRAFT,PUBLISHED).'
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - DRAFT
+            - PROPOSED
+            - PUBLISHED
+      - name: q
+        in: query
+        required: false
+        description: Free-text search over the truck plate, the driver name and the origin node name.
         schema:
           type: string
-          enum:
-          - DRAFT
-          - PROPOSED
-          - PUBLISHED
+          maxLength: 120
       - name: vehicle_id
         in: query
         required: false
@@ -20390,6 +20402,17 @@ components:
           format: uuid
         status:
           $ref: '#/components/schemas/PlanStatus'
+        execution_status:
+          type: string
+          nullable: true
+          enum:
+          - NOT_STARTED
+          - IN_PROGRESS
+          - COMPLETED
+          description: >-
+            Execution state of the plan's route of the day (stable UI enum): NOT_STARTED (route assembled but
+            not started), IN_PROGRESS (en route, or suspended) or COMPLETED (closed). Null when the route has
+            not been assembled yet. The execution state lives in the driver route, not in the plan itself.
         stops:
           type: array
           items:
